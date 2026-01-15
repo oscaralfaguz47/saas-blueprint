@@ -1,15 +1,14 @@
-import type { DefaultSession } from "next-auth";
-import type { RoleKey } from "@prisma/client";
+import NextAuth, { DefaultSession } from "next-auth";
 
 declare module "next-auth" {
   interface Session {
     user: {
       id: string;
-      role: RoleKey;
+      role?: "ADMIN" | "MANAGER" | "MEMBER";
     } & DefaultSession["user"];
   }
 
   interface User {
-    role: RoleKey;
+    role?: "ADMIN" | "MANAGER" | "MEMBER";
   }
 }

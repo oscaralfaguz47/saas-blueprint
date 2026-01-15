@@ -1,7 +1,10 @@
-export type AppRole = "ADMIN" | "MANAGER" | "MEMBER";
+export type RoleKey = "ADMIN" | "MANAGER" | "MEMBER";
 
-export function requireRole(userRole: AppRole, allowed: AppRole[]) {
-  if (!allowed.includes(userRole)) {
-    throw new Error("FORBIDDEN");
+export function requireRole(
+  role: RoleKey | undefined,
+  allowed: RoleKey[]
+) {
+  if (!role || !allowed.includes(role)) {
+    throw new Error("UNAUTHORIZED");
   }
 }

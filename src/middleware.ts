@@ -1,13 +1,18 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { auth } from "@/server/auth";
+import { getToken } from "next-auth/jwt";
 
 export async function middleware(req: NextRequest) {
-  const session = await auth();
-
   const isDashboard = req.nextUrl.pathname.startsWith("/dashboard");
-  if (isDashboard && !session?.user) {
-    return NextResponse.redirect(new URL("/api/auth/signin", req.url));
+
+  if (!isDashboard) return NextResponse.next();
+
+  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+
+  if (!token) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/signin";
+    return NextResponse.redirect(url);
   }
 
   return NextResponse.next();

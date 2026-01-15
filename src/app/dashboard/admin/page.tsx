@@ -1,10 +1,15 @@
-import { auth } from "@/server/auth";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/server/auth-options";
 import { requireRole } from "@/server/security/authorization";
 
 export default async function AdminPage() {
-  const session = await auth();
-  const role = (session?.user as any)?.role;
-  requireRole(role, ["ADMIN"]);
+  const session = await getServerSession(authOptions);
+
+  if (!session?.user) {
+    throw new Error("UNAUTHORIZED");
+  }
+
+  requireRole(session.user.role, ["ADMIN"]);
 
   return (
     <main className="p-6">
