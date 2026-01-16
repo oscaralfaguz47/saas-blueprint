@@ -2,12 +2,11 @@ import type { NextAuthOptions } from "next-auth";
 import GitHubProvider from "next-auth/providers/github";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { prisma } from "@/server/db";
-import type { RoleKey } from "@/server/security/authorization";
+import type { RoleKey } from "@/types/next-auth";
 
 export const authOptions: NextAuthOptions = {
-  debug: true,
   adapter: PrismaAdapter(prisma),
-  session: { strategy: "database" },
+  session: { strategy: "jwt" },
 
   providers: [
     GitHubProvider({
@@ -16,22 +15,24 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
 
-  // Si quieres usar tu /signin custom:
   pages: {
     signIn: "/signin",
-    error: "/signin",
   },
 
-callbacks: {
-  async session({ session, user }) {
-    if (session.user) {
-      session.user.id = user.id;
+  callbacks: {
+    async jwt({ token, user }) {
+      // En el primer login, NextAuth pasa "user"
+      if (user) {
+        token.role = user.role ?? "MEMBER";
+      }
+      return token;
+    },
 
-      const role = (user as { role?: RoleKey }).role ?? "MEMBER";
-      session.user.role = role;
-    }
-
-    return session;
-  },
+    async session({ session, token }) {
+      if (session.user) {
+        session.user.role = (token.role as RoleKey) ?? "MEMBER";
+      }
+      return session;
+    },
   },
 };
