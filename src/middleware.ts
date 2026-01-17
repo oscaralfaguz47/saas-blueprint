@@ -9,12 +9,12 @@ export default withAuth(
   async function middleware(req: NextRequest) {
     const { pathname } = req.nextUrl;
 
-    // Permitir siempre NextAuth routes
+    // Always allow NextAuth routes
     if (pathname.startsWith("/api/auth")) {
       return NextResponse.next();
     }
 
-    // Leer token (JWT) de NextAuth sin usar "any"
+    // Read token from NextAuth (JWT)
     const token = (await getToken({ req })) as { role?: Role } | null;
     const role = token?.role;
 
@@ -28,7 +28,7 @@ export default withAuth(
       return NextResponse.next();
     }
 
-    // Authorization: Manager (ADMIN o MANAGER)
+    // Authorization: Manager (ADMIN or MANAGER)
     if (pathname.startsWith("/dashboard/manager")) {
       if (role !== "ADMIN" && role !== "MANAGER") {
         const url = req.nextUrl.clone();
@@ -38,17 +38,26 @@ export default withAuth(
       return NextResponse.next();
     }
 
-    // Member: cualquiera autenticado
+    // Member: any authenticated user
     return NextResponse.next();
   },
   {
     callbacks: {
-      // Auth only: si no hay token, a /signin
+      // Auth gating:
+      // - /api/auth always allowed
+      // - /unauthorized allowed (so redirect works)
+      // - /dashboard requires session token
       authorized: ({ token, req }) => {
         const { pathname } = req.nextUrl;
+
         if (pathname.startsWith("/api/auth")) return true;
         if (pathname.startsWith("/unauthorized")) return true;
-        return !!token;
+
+        // Protect dashboard
+        if (pathname.startsWith("/dashboard")) return !!token;
+
+        // If matcher includes other routes later, keep them open by default
+        return true;
       },
     },
   }

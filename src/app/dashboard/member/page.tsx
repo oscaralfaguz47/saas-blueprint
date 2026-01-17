@@ -1,12 +1,11 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
+import { redirect } from "next/navigation";
 
 export default async function MemberPage() {
   const session = await getServerSession(authOptions);
 
-  if (!session?.user) {
-    throw new Error("UNAUTHORIZED");
-  }
+if (!session?.user) redirect("/signin");
 
   return (
     <main className="p-6">
