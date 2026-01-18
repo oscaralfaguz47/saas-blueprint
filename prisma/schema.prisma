@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DATABASE_DIRECT_URL")
 }
 
@@ -14,38 +14,361 @@ enum RoleKey {
   MEMBER
 }
 
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  DISABLED
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  CANCELED
+}
+
+enum PermissionScope {
+  TENANT
+  VENDOR
+  BOTH
+}
+
+enum ActorContext {
+  TENANT
+  VENDOR
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
   email         String?   @unique
   emailVerified DateTime?
   image         String?
-  role          RoleKey   @default(MEMBER)
 
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  // Legacy / compatibility role (keep for now)
+  role RoleKey @default(MEMBER)
 
-  accounts      Account[]
-  sessions      Session[]
+  // If you later move to an IdP, these fields become useful
+  identityProvider String? @db.VarChar(50)
+  identityId       String? @db.VarChar(191)
+
+  isPlatformBlocked Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts Account[]
+  sessions Session[]
+
+  security UserSecurity?
+
+  tenantMemberships TenantMembership[]
+  vendorUserRoles   VendorUserRole[]
+
+  auditLogsAsActor  AuditLog[] @relation("AuditActor")
+  auditLogsAsTarget AuditLog[] @relation("AuditTargetUser")
+
+  tenantInvitationsSent TenantInvitation[] @relation("TenantInvitedByUser")
+
+  @@index([identityProvider, identityId])
 }
 
+model UserSecurity {
+  userId String @id
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // For forced logout / session invalidation
+  tokenVersion Int @default(0)
+
+  // Mirror flags (actual MFA is typically enforced at IdP level)
+  mfaEnabled  Boolean   @default(false)
+  mfaEnforced Boolean   @default(false)
+  mfaResetAt  DateTime?
+
+  lockedUntil DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Tenant {
+  id     String       @id @default(cuid())
+  name   String
+  slug   String       @unique @db.VarChar(80)
+  status TenantStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships TenantMembership[]
+  invitations TenantInvitation[]
+
+  tenantRoles   TenantRole[]
+  subscriptions Subscription[]
+
+  auditLogs AuditLog[]
+
+  featureFlags TenantFeatureFlag[]
+
+  billingEvents BillingEvent[]
+
+  @@index([status])
+}
+
+model TenantMembership {
+  id       String @id @default(cuid())
+  tenantId String
+  userId   String
+
+  status     MembershipStatus @default(ACTIVE)
+  joinedAt   DateTime?
+  lastSeenAt DateTime?
+
+  isDefaultTenant Boolean @default(false)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  roles TenantUserRole[]
+
+  @@unique([tenantId, userId])
+  @@index([userId])
+  @@index([tenantId, status])
+}
+
+model TenantInvitation {
+  id       String @id @default(cuid())
+  tenantId String
+  email    String @db.VarChar(191)
+
+  tokenHash String   @db.VarChar(191)
+  expiresAt DateTime
+
+  invitedByUserId String?
+
+  acceptedAt DateTime?
+
+  tenant        Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invitedByUser User?  @relation("TenantInvitedByUser", fields: [invitedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, email])
+  @@index([expiresAt])
+}
+
+model Permission {
+  id          String          @id @default(cuid())
+  code        String          @unique @db.VarChar(120)
+  description String?
+  scope       PermissionScope @default(TENANT)
+
+  tenantRolePermissions TenantRolePermission[]
+  vendorRolePermissions VendorRolePermission[]
+}
+
+model TenantRole {
+  id       String  @id @default(cuid())
+  tenantId String
+  name     String  @db.VarChar(80)
+  isSystem Boolean @default(false)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  permissions TenantRolePermission[]
+  users       TenantUserRole[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+model TenantRolePermission {
+  roleId       String
+  permissionId String
+
+  role       TenantRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+}
+
+model TenantUserRole {
+  membershipId String
+  roleId       String
+
+  membership TenantMembership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  role       TenantRole       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([membershipId, roleId])
+  @@index([roleId])
+}
+
+model VendorRole {
+  id       String  @id @default(cuid())
+  name     String  @unique @db.VarChar(80)
+  isSystem Boolean @default(false)
+
+  permissions VendorRolePermission[]
+  users       VendorUserRole[]
+}
+
+model VendorRolePermission {
+  roleId       String
+  permissionId String
+
+  role       VendorRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+}
+
+model VendorUserRole {
+  userId String
+  roleId String
+
+  user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role VendorRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+}
+
+model Plan {
+  id           String  @id @default(cuid())
+  code         String  @unique @db.VarChar(50)
+  name         String
+  priceMonthly Int?
+  priceYearly  Int?
+  isActive     Boolean @default(true)
+
+  featuresJson Json?
+
+  subscriptions Subscription[]
+
+  @@index([isActive])
+}
+
+model Subscription {
+  id       String @id @default(cuid())
+  tenantId String
+  planId   String
+
+  status SubscriptionStatus @default(TRIAL)
+
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  graceUntil         DateTime?
+  cancelAtPeriodEnd  Boolean   @default(false)
+
+  provider               String? @db.VarChar(30) // stripe, paddle, manual
+  providerCustomerId     String? @db.VarChar(191)
+  providerSubscriptionId String? @db.VarChar(191)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan   Plan   @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  billingEvents BillingEvent[]
+
+  @@index([tenantId, status])
+  @@index([provider, providerSubscriptionId])
+}
+
+model BillingEvent {
+  id             String  @id @default(cuid())
+  tenantId       String?
+  subscriptionId String?
+
+  type            String @db.VarChar(80)
+  providerEventId String @unique @db.VarChar(191)
+
+  payload Json
+
+  createdAt DateTime @default(now())
+
+  tenant       Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([subscriptionId, createdAt])
+}
+
+model AuditLog {
+  id String @id @default(cuid())
+
+  actorUserId  String
+  actorContext ActorContext
+  tenantId     String?
+
+  action String @db.VarChar(120)
+
+  targetType String? @db.VarChar(80)
+  targetId   String? @db.VarChar(191)
+
+  targetUserId String?
+
+  metadata  Json?
+  ipAddress String? @db.VarChar(64)
+  userAgent String? @db.VarChar(300)
+
+  createdAt DateTime @default(now())
+
+  actorUser  User    @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: Cascade)
+  tenant     Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  targetUser User?   @relation("AuditTargetUser", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
+}
+
+model FeatureFlag {
+  id          String  @id @default(cuid())
+  code        String  @unique @db.VarChar(80)
+  description String?
+
+  tenantFlags TenantFeatureFlag[]
+}
+
+model TenantFeatureFlag {
+  tenantId      String
+  featureFlagId String
+
+  isEnabled Boolean @default(false)
+  config    Json?
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  featureFlag FeatureFlag @relation(fields: [featureFlagId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, featureFlagId])
+}
+
+//
+// NextAuth Models (unchanged)
+//
 model Account {
-  id                 String  @id @default(cuid())
-  userId             String
-  type               String
-  provider           String
-  providerAccountId  String
-  refresh_token      String?
-  access_token       String?
-  expires_at         Int?
-  token_type         String?
-  scope              String?
-  id_token           String?
-  session_state      String?
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@index([userId])
 }
 
 model Session {
@@ -55,6 +378,9 @@ model Session {
   expires      DateTime
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expires])
 }
 
 model VerificationToken {
@@ -63,4 +389,5 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+  @@index([expires])
 }

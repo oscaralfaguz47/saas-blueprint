@@ -1,19 +1,13 @@
-import { getServerSession } from "next-auth";
-import { redirect } from "next/navigation";
-import { authOptions } from "@/server/auth-options";
 import SignInButton from "./signin-button";
 
-export default async function SignInPage() {
-  const session = await getServerSession(authOptions);
-
-  if (session?.user) {
-    redirect("/dashboard");
-  }
-
+export default function SignInPage() {
   return (
     <main style={{ padding: 24 }}>
       <h1>Sign in</h1>
-      <SignInButton />
+      <p style={{ marginTop: 8 }}>Use GitHub to continue.</p>
+      <div style={{ marginTop: 16 }}>
+        <SignInButton />
+      </div>
     </main>
   );
 }
