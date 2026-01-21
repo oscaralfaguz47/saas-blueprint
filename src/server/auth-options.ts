@@ -1,5 +1,8 @@
 import type { NextAuthOptions } from "next-auth";
-import GitHubProvider from "next-auth/providers/github";
+import GoogleProvider from "next-auth/providers/google";
+import EmailProvider from "next-auth/providers/email";
+import { Resend } from "resend";
+
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { prisma } from "@/server/db";
 import type { RoleKey } from "@/types/next-auth";
@@ -10,6 +13,8 @@ const JWT_MAX_AGE_SECONDS = 480 * 60;
 
 // Rolling refresh window (refresh role at most every x minutes)
 const ROLE_REFRESH_WINDOW_SECONDS = 15 * 60;
+
+const resend = new Resend(process.env.RESEND_API_KEY!);
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
@@ -25,15 +30,32 @@ export const authOptions: NextAuthOptions = {
     maxAge: JWT_MAX_AGE_SECONDS,
   },
 
-  providers: [
-    GitHubProvider({
-      clientId: process.env.GITHUB_CLIENT_ID ?? "",
-      clientSecret: process.env.GITHUB_CLIENT_SECRET ?? "",
+providers: [
+  GoogleProvider({
+    clientId: process.env.GOOGLE_CLIENT_ID ?? "",
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+  }),
+   EmailProvider({
+      from: process.env.EMAIL_FROM,
+      // NextAuth te da el URL del magic link firmado
+      async sendVerificationRequest({ identifier, url, provider }) {
+        await resend.emails.send({
+          from: provider.from as string,
+          to: identifier,
+          subject: "Sign in to your account",
+          html: `
+            <p>Click the link below to sign in:</p>
+            <p><a href="${url}">Sign in</a></p>
+            <p>If you did not request this, ignore this email.</p>
+          `,
+        });
+      },
     }),
-  ],
+],
+
 
   pages: {
-    signIn: "/signin",
+    signIn: "/auth/sign-in",
   },
 
   callbacks: {

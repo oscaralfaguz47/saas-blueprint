@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 export default async function MemberPage() {
   const session = await getServerSession(authOptions);
 
-if (!session?.user) redirect("/signin");
+if (!session?.user) redirect("/auth/sign-in");
 
   return (
     <main className="p-6">

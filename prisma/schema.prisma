@@ -44,6 +44,33 @@ enum ActorContext {
   TENANT
   VENDOR
 }
+enum RecordType {
+  SCOPE_CHANGE
+  DECISION
+  BUDGET
+}
+
+enum RecordVisibility {
+  WORKSPACE
+  RESTRICTED
+}
+
+enum RecordStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  NO_RESPONSE
+}
+
+enum ApprovalRequestStatus {
+  SENT
+  APPROVED
+  REJECTED
+  EXPIRED
+  REVOKED
+  NO_RESPONSE
+}
 
 model User {
   id            String    @id @default(cuid())
@@ -76,6 +103,7 @@ model User {
   auditLogsAsTarget AuditLog[] @relation("AuditTargetUser")
 
   tenantInvitationsSent TenantInvitation[] @relation("TenantInvitedByUser")
+  recordsCreated Record[] @relation("RecordsCreatedByUser")
 
   @@index([identityProvider, identityId])
 }
@@ -108,6 +136,8 @@ model Tenant {
 
   memberships TenantMembership[]
   invitations TenantInvitation[]
+
+  records Record[]
 
   tenantRoles   TenantRole[]
   subscriptions Subscription[]
@@ -347,6 +377,122 @@ model TenantFeatureFlag {
 
   @@id([tenantId, featureFlagId])
 }
+
+model Record {
+  id String @id @default(cuid())
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdByUserId String
+    createdByUser   User @relation("RecordsCreatedByUser", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+
+  title       String @db.VarChar(160)
+  type        RecordType
+  description String?
+
+  clientName  String? @db.VarChar(120)
+  clientEmail String? @db.VarChar(191)
+
+  amount   Decimal? @db.Decimal(12, 2)
+  currency String?  @db.VarChar(10)
+
+  visibility RecordVisibility @default(WORKSPACE)
+  isSensitive Boolean @default(false)
+
+  status RecordStatus @default(DRAFT)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attachments     RecordAttachment[]
+  evidenceLinks   RecordEvidenceLink[]
+  approvalRequests ApprovalRequest[]
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, status])
+  @@index([tenantId, type])
+}
+
+model RecordAttachment {
+  id String @id @default(cuid())
+
+  recordId String
+  record   Record @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  storageProvider String @db.VarChar(30) // s3, r2, supabase
+  objectKey       String @db.VarChar(300)
+  fileName        String @db.VarChar(255)
+  mimeType        String @db.VarChar(120)
+  sizeBytes       Int
+  sha256          String? @db.VarChar(64)
+
+  // AI-ready
+  aiExtractedText String?
+
+  createdAt DateTime @default(now())
+
+  @@index([recordId, createdAt])
+}
+
+model RecordEvidenceLink {
+  id String @id @default(cuid())
+
+  recordId String
+  record   Record @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  url   String @db.VarChar(800)
+  label String? @db.VarChar(160)
+
+  createdAt DateTime @default(now())
+
+  @@index([recordId, createdAt])
+}
+
+model ApprovalRequest {
+  id String @id @default(cuid())
+
+  recordId String
+  record   Record @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  // External approver
+  approverEmail String @db.VarChar(191)
+  approverName  String? @db.VarChar(120)
+
+  // Token security: store only hash
+  tokenHash String @unique @db.VarChar(64)
+
+  status ApprovalRequestStatus @default(SENT)
+
+  expiresAt  DateTime
+  viewedAt   DateTime?
+  respondedAt DateTime?
+  revokedAt  DateTime?
+
+  createdAt DateTime @default(now())
+
+  actions ApprovalAction[]
+
+  @@index([recordId, createdAt])
+  @@index([expiresAt])
+  @@index([approverEmail])
+}
+
+model ApprovalAction {
+  id String @id @default(cuid())
+
+  approvalRequestId String
+  approvalRequest   ApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+
+  action String @db.VarChar(20) // APPROVE / REJECT
+  comment String?
+
+  createdAt DateTime @default(now())
+
+  @@index([approvalRequestId, createdAt])
+}
+
 
 //
 // NextAuth Models (unchanged)

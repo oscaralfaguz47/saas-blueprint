@@ -44,18 +44,18 @@ export async function POST(req: Request) {
 
   // Ensure invitation email matches the logged-in user email (critical security)
   const userEmail = (session.user.email ?? "").toLowerCase();
-if (!userEmail || userEmail !== invite.email.toLowerCase()) {
-  return NextResponse.json(
-    {
-      error: "EMAIL_MISMATCH",
-      message: "This invitation was issued for a different email address.",
-      expectedEmail: invite.email,
-      currentEmail: userEmail || null,
-      nextAction: "SIGN_OUT_AND_SIGN_IN_WITH_EXPECTED_EMAIL",
-    },
-    { status: 403 }
-  );
-}
+  if (!userEmail || userEmail !== invite.email.toLowerCase()) {
+    return NextResponse.json(
+      {
+        error: "EMAIL_MISMATCH",
+        message: "This invitation was issued for a different email address.",
+        expectedEmail: invite.email,
+        currentEmail: userEmail || null,
+        nextAction: "SIGN_OUT_AND_SIGN_IN_WITH_EXPECTED_EMAIL",
+      },
+      { status: 403 }
+    );
+  }
 
 
   // Ensure user exists in DB (should, because they are logged in)
@@ -68,15 +68,16 @@ if (!userEmail || userEmail !== invite.email.toLowerCase()) {
     return NextResponse.json({ error: "USER_NOT_FOUND" }, { status: 404 });
   }
 
-  // If already a member, mark invitation accepted (idempotent-ish) and return
-  const existingMembership = await prisma.tenantMembership.findUnique({
-    where: { tenantId_userId: { tenantId: invite.tenantId, userId: user.id } },
-    select: { id: true, status: true },
-  });
-
   // Transaction: mark accepted + create membership + assign default role
   const result = await prisma.$transaction(async (tx) => {
-    // Mark invitation accepted (if already accepted by race condition, will throw)
+    // Check membership INSIDE transaction (race-safe)
+   const existingMembership = await tx.tenantMembership.findUnique({
+  where: { tenantId_userId: { tenantId: invite.tenantId, userId: user.id } },
+  select: { id: true, status: true },
+});
+
+
+    // Mark invitation accepted
     const updatedInvite = await tx.tenantInvitation.update({
       where: { id: invite.id },
       data: { acceptedAt: new Date() },
@@ -84,7 +85,11 @@ if (!userEmail || userEmail !== invite.email.toLowerCase()) {
     });
 
     if (existingMembership) {
-      return { invite: updatedInvite, membershipCreated: false, membershipId: existingMembership.id };
+      return {
+        invite: updatedInvite,
+        membershipCreated: false,
+        membershipId: existingMembership.id,
+      };
     }
 
     // Create membership
@@ -96,23 +101,46 @@ if (!userEmail || userEmail !== invite.email.toLowerCase()) {
         joinedAt: new Date(),
         isDefaultTenant: false,
       },
-      select: { id: true, tenantId: true, userId: true, status: true },
-    });
-
-    // Assign default role to invited user: Viewer
-    const viewerRole = await tx.tenantRole.findUnique({
-      where: { tenantId_name: { tenantId: invite.tenantId, name: "Viewer" } },
       select: { id: true },
     });
 
-    if (viewerRole) {
-      await tx.tenantUserRole.create({
-        data: { membershipId: membership.id, roleId: viewerRole.id },
-      });
-    }
+    // Try to find system "Member" role
+    const memberRole = await tx.tenantRole.findUnique({
+      where: {
+        tenantId_name: {
+          tenantId: invite.tenantId,
+          name: "Member",
+        },
+      },
+      select: { id: true },
+    });
 
-    return { invite: updatedInvite, membershipCreated: true, membershipId: membership.id };
+    const role =
+      memberRole ??
+      (await tx.tenantRole.create({
+        data: {
+          tenantId: invite.tenantId,
+          name: "Member",
+          isSystem: true,
+        },
+        select: { id: true },
+      }));
+
+    // Assign role
+    await tx.tenantUserRole.create({
+      data: {
+        membershipId: membership.id,
+        roleId: role.id,
+      },
+    });
+
+    return {
+      invite: updatedInvite,
+      membershipCreated: true,
+      membershipId: membership.id,
+    };
   });
+
 
   await writeAuditLog({
     actorUserId: session.user.id,

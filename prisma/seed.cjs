@@ -171,7 +171,7 @@ async function main() {
 
 async function ensureTenantRoles(tenantId) {
   // Create basic tenant roles
-  const roles = ["TenantOwner", "TenantAdmin", "Viewer"];
+  const roles = ["Owner", "Admin", "Member"];
 
   const created = {};
   for (const name of roles) {
@@ -183,25 +183,25 @@ async function ensureTenantRoles(tenantId) {
   }
 
   // Map permissions to roles (minimal set)
-  const rolePerms = {
-    TenantOwner: [
-      "tenant.users.read",
-      "tenant.users.invite",
-      "tenant.users.manage",
-      "tenant.roles.manage",
-      "tenant.settings.manage",
-      "tenant.audit.read",
-      "tenant.billing.manage",
-    ],
-    TenantAdmin: [
-      "tenant.users.read",
-      "tenant.users.invite",
-      "tenant.users.manage",
-      "tenant.settings.manage",
-      "tenant.audit.read",
-    ],
-    Viewer: ["tenant.users.read", "tenant.audit.read"],
-  };
+const rolePerms = {
+  Owner: [
+    "tenant.users.read",
+    "tenant.users.invite",
+    "tenant.users.manage",
+    "tenant.roles.manage",
+    "tenant.settings.manage",
+    "tenant.audit.read",
+    "tenant.billing.manage",
+  ],
+  Admin: [
+    "tenant.users.read",
+    "tenant.users.invite",
+    "tenant.users.manage",
+    "tenant.settings.manage",
+    "tenant.audit.read",
+  ],
+  Member: ["tenant.users.read"],
+};
 
   for (const [roleName, permCodes] of Object.entries(rolePerms)) {
     const role = created[roleName];
@@ -249,9 +249,9 @@ async function ensureBootstrapTenantAndMembership(adminUser) {
 
   // Assign TenantOwner to bootstrap admin
   await prisma.tenantUserRole.upsert({
-    where: { membershipId_roleId: { membershipId: membership.id, roleId: roles.TenantOwner.id } },
+    where: { membershipId_roleId: { membershipId: membership.id, roleId: roles.Owner.id } },
     update: {},
-    create: { membershipId: membership.id, roleId: roles.TenantOwner.id },
+    create: { membershipId: membership.id, roleId: roles.Owner.id },
   });
 
   // Create a base subscription for the tenant (trial)
