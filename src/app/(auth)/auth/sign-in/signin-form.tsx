@@ -6,6 +6,7 @@ import { useState } from "react";
 
 export default function SignInForm() {
   const searchParams = useSearchParams();
+
   const callbackUrl = searchParams.get("callbackUrl") ?? "/app";
 
   const [email, setEmail] = useState("");

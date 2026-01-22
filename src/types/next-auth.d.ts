@@ -1,5 +1,4 @@
-import NextAuth, { DefaultSession } from "next-auth";
-import { JWT } from "next-auth/jwt";
+import NextAuth from "next-auth";
 
 export type RoleKey = "ADMIN" | "MANAGER" | "MEMBER";
 
@@ -8,7 +7,10 @@ declare module "next-auth" {
     user: {
       id: string;
       role: RoleKey;
-    } & DefaultSession["user"];
+      name?: string | null;
+      email?: string | null;
+      image?: string | null;
+    };
   }
 
   interface User {

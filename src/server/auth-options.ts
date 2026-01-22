@@ -30,12 +30,12 @@ export const authOptions: NextAuthOptions = {
     maxAge: JWT_MAX_AGE_SECONDS,
   },
 
-providers: [
-  GoogleProvider({
-    clientId: process.env.GOOGLE_CLIENT_ID ?? "",
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
-  }),
-   EmailProvider({
+  providers: [
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID ?? "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+    }),
+    EmailProvider({
       from: process.env.EMAIL_FROM,
       // NextAuth te da el URL del magic link firmado
       async sendVerificationRequest({ identifier, url, provider }) {
@@ -51,12 +51,13 @@ providers: [
         });
       },
     }),
-],
+  ],
 
 
   pages: {
     signIn: "/auth/sign-in",
-  },
+  }
+  ,
 
   callbacks: {
     async jwt({ token, user }) {

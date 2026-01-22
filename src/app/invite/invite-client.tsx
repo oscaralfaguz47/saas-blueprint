@@ -97,7 +97,7 @@ export default function InviteClient() {
 
     if (authStatus === "unauthenticated") {
       const callbackUrl = `/invite?token=${encodeURIComponent(token)}`;
-      router.replace(`/signin?callbackUrl=${encodeURIComponent(callbackUrl)}`);
+      router.replace(`/auth/sign-in?callbackUrl=${encodeURIComponent(callbackUrl)}`);
     }
   }, [authStatus, token, router]);
 
@@ -164,7 +164,7 @@ export default function InviteClient() {
 
     const callbackUrl = `/invite?token=${encodeURIComponent(token)}`;
     await signOut({
-      callbackUrl: `/signin?callbackUrl=${encodeURIComponent(callbackUrl)}`,
+      callbackUrl: `/auth/sign-in?callbackUrl=${encodeURIComponent(callbackUrl)}`,
     });
   }
 
