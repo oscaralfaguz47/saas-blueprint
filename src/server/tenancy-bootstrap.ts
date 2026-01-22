@@ -3,215 +3,236 @@ import { writeAuditLog } from "@/server/audit";
 import type { Prisma } from "@prisma/client";
 
 /**
- * v1 bootstrap:
+ * v1 bootstrap (robust + fast):
  * - If user has no default tenant, create one
- * - Create system roles (Owner/Admin/Member) if missing
- * - Assign Owner role to the creator membership
+ * - Ensure system tenant roles exist: Owner/Admin/Member
+ * - Ensure minimal tenant permissions are attached to those roles
+ *
+ * IMPORTANT:
+ * We keep the DB transaction short to avoid Prisma interactive transaction timeout (5s).
+ * Heavy/iterative permission linking happens OUTSIDE the transaction.
  */
 export async function ensureDefaultTenantForUser(params: {
-    userId: string;
-    userEmail?: string | null;
-    ipAddress?: string | null;
-    userAgent?: string | null;
+  userId: string;
+  userEmail?: string | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
 }) {
-    const { userId, userEmail, ipAddress, userAgent } = params;
+  const { userId, userEmail, ipAddress, userAgent } = params;
 
-    // Fast path: already has a default tenant
-    const existing = await prisma.tenantMembership.findFirst({
+  // Fast path: already has a default active tenant
+  const existing = await prisma.tenantMembership.findFirst({
+    where: { userId, isDefaultTenant: true, status: "ACTIVE" },
+    select: {
+      id: true,
+      tenant: { select: { id: true, name: true, slug: true, status: true } },
+    },
+  });
+
+  if (existing?.tenant) return existing;
+
+  // Keep tx small: create tenant + membership + roles + owner assignment only.
+  const result = await prisma.$transaction(
+    async (tx) => {
+      // Re-check inside tx (race-safe best effort)
+      const again = await tx.tenantMembership.findFirst({
         where: { userId, isDefaultTenant: true, status: "ACTIVE" },
         select: {
-            id: true,
-            tenant: { select: { id: true, name: true, slug: true, status: true } },
+          id: true,
+          tenant: { select: { id: true, name: true, slug: true, status: true } },
         },
-    });
+      });
+      if (again?.tenant) return again;
 
-    if (existing?.tenant) return existing;
+      const baseName = (userEmail?.split("@")[0] ?? "workspace").slice(0, 30);
+      const slug = await generateUniqueTenantSlug(tx, baseName);
 
-    // Create everything in one transaction
-    const result = await prisma.$transaction(async (tx) => {
-        // Re-check inside tx (race-safe)
-        const again = await tx.tenantMembership.findFirst({
-            where: { userId, isDefaultTenant: true, status: "ACTIVE" },
-            select: {
-                id: true,
-                tenant: { select: { id: true, name: true, slug: true, status: true } },
-            },
-        });
-        if (again?.tenant) return again;
-
-        // Create tenant
-        const baseName = (userEmail?.split("@")[0] ?? "workspace").slice(0, 30);
-        const slug = await generateUniqueTenantSlug(tx, baseName);
-
-        const tenant = await tx.tenant.create({
-            data: {
-                name: `${baseName}'s Workspace`,
-                slug,
-                status: "ACTIVE",
-            },
-            select: { id: true, name: true, slug: true, status: true },
-        });
-
-        // Create membership (default tenant)
-        const membership = await tx.tenantMembership.create({
-            data: {
-                tenantId: tenant.id,
-                userId,
-                status: "ACTIVE",
-                joinedAt: new Date(),
-                isDefaultTenant: true,
-            },
-            select: { id: true },
-        });
-
-        // Ensure basic tenant roles exist (idempotent)
-        const tenantOwnerRole =
-            (await tx.tenantRole.findUnique({
-                where: { tenantId_name: { tenantId: tenant.id, name: "TenantOwner" } },
-                select: { id: true },
-            })) ??
-            (await tx.tenantRole.create({
-                data: { tenantId: tenant.id, name: "TenantOwner", isSystem: true },
-                select: { id: true },
-            }));
-
-        const tenantAdminRole =
-            (await tx.tenantRole.findUnique({
-                where: { tenantId_name: { tenantId: tenant.id, name: "TenantAdmin" } },
-                select: { id: true },
-            })) ??
-            (await tx.tenantRole.create({
-                data: { tenantId: tenant.id, name: "TenantAdmin", isSystem: true },
-                select: { id: true },
-            }));
-
-        const viewerRole =
-            (await tx.tenantRole.findUnique({
-                where: { tenantId_name: { tenantId: tenant.id, name: "Viewer" } },
-                select: { id: true },
-            })) ??
-            (await tx.tenantRole.create({
-                data: { tenantId: tenant.id, name: "Viewer", isSystem: true },
-                select: { id: true },
-            }));
-
-        // Ensure role permissions (minimal for v1)
-        const permReadUsers = await tx.permission.findUnique({
-            where: { code: "tenant.users.read" },
-            select: { id: true },
-        });
-
-        if (permReadUsers) {
-            // Viewer gets read
-            await tx.tenantRolePermission.upsert({
-                where: { roleId_permissionId: { roleId: viewerRole.id, permissionId: permReadUsers.id } },
-                update: {},
-                create: { roleId: viewerRole.id, permissionId: permReadUsers.id },
-            });
-
-            // TenantOwner gets read (you can expand later)
-            await tx.tenantRolePermission.upsert({
-                where: { roleId_permissionId: { roleId: tenantOwnerRole.id, permissionId: permReadUsers.id } },
-                update: {},
-                create: { roleId: tenantOwnerRole.id, permissionId: permReadUsers.id },
-            });
-
-            // TenantAdmin gets read
-            await tx.tenantRolePermission.upsert({
-                where: { roleId_permissionId: { roleId: tenantAdminRole.id, permissionId: permReadUsers.id } },
-                update: {},
-                create: { roleId: tenantAdminRole.id, permissionId: permReadUsers.id },
-            });
-        }
-
-
-        // Assign TenantOwner to the bootstrap user (first user in tenant)
-        await tx.tenantUserRole.upsert({
-            where: {
-                membershipId_roleId: { membershipId: membership.id, roleId: tenantOwnerRole.id },
-            },
-            update: {},
-            create: { membershipId: membership.id, roleId: tenantOwnerRole.id },
-        });
-
-        // Ensure system roles exist
-        const roleNames = ["Owner", "Admin", "Member"] as const;
-
-        const roles = await Promise.all(
-            roleNames.map(async (name) => {
-                const existingRole = await tx.tenantRole.findUnique({
-                    where: { tenantId_name: { tenantId: tenant.id, name } },
-                    select: { id: true },
-                });
-
-                if (existingRole) return { name, id: existingRole.id };
-
-                const created = await tx.tenantRole.create({
-                    data: {
-                        tenantId: tenant.id,
-                        name,
-                        isSystem: true,
-                    },
-                    select: { id: true },
-                });
-
-                return { name, id: created.id };
-            })
-        );
-
-        // Assign Owner role to the creator
-        const ownerRoleId = roles.find((r) => r.name === "Owner")!.id;
-
-        await tx.tenantUserRole.create({
-            data: { membershipId: membership.id, roleId: ownerRoleId },
-        });
-
-        return {
-            id: membership.id,
-            tenant,
-        };
-    });
-
-    await writeAuditLog({
-        actorUserId: userId,
-        actorContext: "TENANT",
-        tenantId: result.tenant.id,
-        action: "tenant.bootstrap.created",
-        targetType: "Tenant",
-        targetId: result.tenant.id,
-        metadata: {
-            tenantName: result.tenant.name,
-            tenantSlug: result.tenant.slug,
+      const tenant = await tx.tenant.create({
+        data: {
+          name: `${baseName}'s Workspace`,
+          slug,
+          status: "ACTIVE",
         },
-        ipAddress,
-        userAgent,
-    });
+        select: { id: true, name: true, slug: true, status: true },
+      });
 
-    return result;
+      const membership = await tx.tenantMembership.create({
+        data: {
+          tenantId: tenant.id,
+          userId,
+          status: "ACTIVE",
+          joinedAt: new Date(),
+          isDefaultTenant: true,
+        },
+        select: { id: true, tenantId: true },
+      });
+
+      // Ensure system roles exist (idempotent). Keep it minimal and quick.
+      const [ownerRole, adminRole, memberRole] = await Promise.all([
+        tx.tenantRole.upsert({
+          where: { tenantId_name: { tenantId: tenant.id, name: "Owner" } },
+          update: { isSystem: true },
+          create: { tenantId: tenant.id, name: "Owner", isSystem: true },
+          select: { id: true, name: true },
+        }),
+        tx.tenantRole.upsert({
+          where: { tenantId_name: { tenantId: tenant.id, name: "Admin" } },
+          update: { isSystem: true },
+          create: { tenantId: tenant.id, name: "Admin", isSystem: true },
+          select: { id: true, name: true },
+        }),
+        tx.tenantRole.upsert({
+          where: { tenantId_name: { tenantId: tenant.id, name: "Member" } },
+          update: { isSystem: true },
+          create: { tenantId: tenant.id, name: "Member", isSystem: true },
+          select: { id: true, name: true },
+        }),
+      ]);
+
+      // Assign Owner role to the creator membership (idempotent)
+      await tx.tenantUserRole.upsert({
+        where: {
+          membershipId_roleId: { membershipId: membership.id, roleId: ownerRole.id },
+        },
+        update: {},
+        create: { membershipId: membership.id, roleId: ownerRole.id },
+      });
+
+      return {
+        id: membership.id,
+        tenant,
+      };
+    },
+    // Optional: you can increase interactive transaction timeout,
+    // but the code is designed to be fast and should not need it.
+    // { timeout: 15000 }
+  );
+
+  // Heavy step OUTSIDE tx: attach role-permissions (idempotent, efficient)
+  await ensureTenantRolesAndPermissions({
+    tenantId: result.tenant.id,
+  });
+
+  // Audit log outside tx (safe)
+  await writeAuditLog({
+    actorUserId: userId,
+    actorContext: "TENANT",
+    tenantId: result.tenant.id,
+    action: "tenant.bootstrap.created",
+    targetType: "Tenant",
+    targetId: result.tenant.id,
+    metadata: {
+      tenantName: result.tenant.name,
+      tenantSlug: result.tenant.slug,
+    },
+    ipAddress,
+    userAgent,
+  });
+
+  return result;
+}
+
+/**
+ * Ensure the minimal permission mapping exists for tenant roles.
+ * This is designed to be:
+ * - Idempotent
+ * - Fast (batch createMany + minimal reads)
+ * - NOT inside interactive transaction
+ */
+async function ensureTenantRolesAndPermissions(params: { tenantId: string }) {
+  const { tenantId } = params;
+
+  // Role -> permission codes mapping (must match your Permission catalog)
+  const ROLE_PERMS: Record<"Owner" | "Admin" | "Member", string[]> = {
+    Owner: [
+      "tenant.users.read",
+      "tenant.users.invite",
+      "tenant.users.manage",
+      "tenant.roles.manage",
+      "tenant.settings.manage",
+      "tenant.audit.read",
+      "tenant.billing.manage",
+    ],
+    Admin: [
+      "tenant.users.read",
+      "tenant.users.invite",
+      "tenant.users.manage",
+      "tenant.settings.manage",
+      "tenant.audit.read",
+    ],
+    Member: ["tenant.users.read"],
+  };
+
+  // 1) Load role ids for this tenant
+  const roles = await prisma.tenantRole.findMany({
+    where: { tenantId, name: { in: ["Owner", "Admin", "Member"] } },
+    select: { id: true, name: true },
+  });
+
+  const roleIdByName = new Map(roles.map((r) => [r.name, r.id]));
+
+  // If roles are missing for some reason, do not fail hard; just exit.
+  // (In practice, they should exist.)
+  if (!roleIdByName.get("Owner")) return;
+
+  // 2) Load permission ids for the codes we need (single query)
+  const neededCodes = Array.from(
+    new Set(Object.values(ROLE_PERMS).flatMap((arr) => arr))
+  );
+
+  const perms = await prisma.permission.findMany({
+    where: { code: { in: neededCodes } },
+    select: { id: true, code: true },
+  });
+
+  const permIdByCode = new Map(perms.map((p) => [p.code, p.id]));
+
+  // 3) Build join rows and insert using createMany + skipDuplicates
+  const joinRows: Array<{ roleId: string; permissionId: string }> = [];
+
+  for (const [roleName, codes] of Object.entries(ROLE_PERMS) as Array<
+    [keyof typeof ROLE_PERMS, string[]]
+  >) {
+    const roleId = roleIdByName.get(roleName);
+    if (!roleId) continue;
+
+    for (const code of codes) {
+      const permissionId = permIdByCode.get(code);
+      if (!permissionId) continue;
+      joinRows.push({ roleId, permissionId });
+    }
+  }
+
+  if (joinRows.length === 0) return;
+
+  await prisma.tenantRolePermission.createMany({
+    data: joinRows,
+    skipDuplicates: true, // Prisma will ignore existing composite PKs
+  });
 }
 
 async function generateUniqueTenantSlug(
-    tx: Prisma.TransactionClient,
-    base: string
+  tx: Prisma.TransactionClient,
+  base: string
 ): Promise<string> {
-    const clean =
-        base
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "-")
-            .replace(/^-+|-+$/g, "")
-            .slice(0, 40) || "workspace";
+  const clean =
+    base
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40) || "workspace";
 
-    for (let i = 0; i < 10; i++) {
-        const candidate =
-            i === 0 ? clean : `${clean}-${Math.floor(Math.random() * 9999)}`;
+  for (let i = 0; i < 10; i++) {
+    const candidate =
+      i === 0 ? clean : `${clean}-${Math.floor(Math.random() * 9999)}`;
 
-        const exists = await tx.tenant.findUnique({
-            where: { slug: candidate },
-            select: { id: true },
-        });
+    const exists = await tx.tenant.findUnique({
+      where: { slug: candidate },
+      select: { id: true },
+    });
 
-        if (!exists) return candidate;
-    }
+    if (!exists) return candidate;
+  }
 
-    return `${clean}-${Date.now()}`;
+  return `${clean}-${Date.now()}`;
 }

@@ -12,10 +12,17 @@ export type VendorPermission =
   | "admin.audit.read";
 
 /**
- * Returns true if the user has the given vendor permission.
- * Uses DB roles/permissions as source of truth.
- * Includes a temporary fallback mapping from legacy User.role
- * to avoid breaking existing behavior during migration.
+ * Returns true if the user has the given vendor/platform permission.
+ *
+ * Source of truth:
+ *  - VendorRole/VendorRolePermission/VendorUserRole (DB-driven RBAC)
+ *
+ * Transitional fallback:
+ *  - legacyRole (User.role) mapping to avoid breaking behavior during migration.
+ *
+ * IMPORTANT:
+ *  - Supports multiple vendor roles per user.
+ *  - Honors User.isPlatformBlocked.
  */
 export async function hasVendorPermission(params: {
   userId: string;
@@ -24,10 +31,20 @@ export async function hasVendorPermission(params: {
 }): Promise<boolean> {
   const { userId, legacyRole, permission } = params;
 
-  // Temporary fallback mapping (keep until we fully migrate off User.role)
+  // 0) Hard block (platform-level). Blocked users have no vendor permissions.
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { isPlatformBlocked: true },
+  });
+
+  if (!user || user.isPlatformBlocked) return false;
+
+  // 1) Transitional fallback (remove once migration completes)
+  // NOTE: Keep this mapping minimal and explicitly scoped.
   if (legacyRole === "ADMIN") return true;
+
   if (legacyRole === "MANAGER") {
-    // Managers get a subset (adjust later)
+    // Managers get a limited subset (adjust as needed)
     return (
       permission === "admin.tenants.read" ||
       permission === "admin.users.read" ||
@@ -37,8 +54,8 @@ export async function hasVendorPermission(params: {
     );
   }
 
-  // DB-driven permissions
-  const row = await prisma.vendorUserRole.findFirst({
+  // 2) DB-driven permissions: gather ALL roles for this user
+  const rows = await prisma.vendorUserRole.findMany({
     where: { userId },
     select: {
       role: {
@@ -53,11 +70,14 @@ export async function hasVendorPermission(params: {
     },
   });
 
-  if (!row) return false;
+  if (rows.length === 0) return false;
 
-  const codes = new Set(
-    row.role.permissions.map((rp) => rp.permission.code)
-  );
+  // 3) Flatten permission codes across roles and check membership
+  for (const r of rows) {
+    for (const rp of r.role.permissions) {
+      if (rp.permission.code === permission) return true;
+    }
+  }
 
-  return codes.has(permission);
+  return false;
 }

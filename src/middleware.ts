@@ -31,7 +31,13 @@ function isPublicPath(pathname: string) {
 
 /** Protected product/app areas */
 function isProtectedPath(pathname: string) {
-  return pathname.startsWith("/app") || pathname.startsWith("/admin");
+  // Protect app UI
+  if (pathname.startsWith("/app") || pathname.startsWith("/admin")) return true;
+
+  // Protect APIs by default (except NextAuth)
+  if (pathname.startsWith("/api") && !pathname.startsWith("/api/auth")) return true;
+
+  return false;
 }
 
 function isAdminPath(pathname: string) {
@@ -39,12 +45,19 @@ function isAdminPath(pathname: string) {
 }
 
 function normalizePlatformAllowlist() {
+  const single = (process.env.BOOTSTRAP_ADMIN_EMAIL ?? "").trim().toLowerCase();
   const raw = process.env.PLATFORM_ADMIN_EMAILS ?? "";
-  return raw
+  const list = raw
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
+
+  if (single) list.push(single);
+
+  // de-dupe
+  return Array.from(new Set(list));
 }
+
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -59,19 +72,25 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // 2) Anything not under /app or /admin stays public
+  // 2) Anything not protected stays public
   if (!isProtectedPath(pathname)) {
     return NextResponse.next();
   }
 
   // 3) Protected routes require auth
-  const token = await getToken({ req });
+  const token = await getToken({
+    req,
+    secret: process.env.NEXTAUTH_SECRET,
+  });
 
   if (!token) {
     const url = req.nextUrl.clone();
     url.pathname = "/auth/sign-in";
-    // Preserve full path + query as callbackUrl
-    url.searchParams.set("callbackUrl", req.nextUrl.href);
+
+    // Preserve only path + query (same-origin safe)
+    const callbackUrl = req.nextUrl.pathname + req.nextUrl.search;
+    url.searchParams.set("callbackUrl", callbackUrl);
+
     return NextResponse.redirect(url);
   }
 
