@@ -1,26 +1,126 @@
 @import "tailwindcss";
 
+/* -------------------------------------------------------------------------- */
+/* Theme tokens                                                               */
+/* Default: dark                                                              */
+/* Uses: CSS vars consumed by Tailwind classes like bg-(--bg-main)            */
+/* -------------------------------------------------------------------------- */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* DARK (default) — si ya tienes estos, déjalos aquí */
+  --bg-main: #0b1220;
+  --bg-app: #0f172a;
+  --bg-surface: #0b1220;
+  --bg-surface-elev: #111b2e;
+
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-accent: #0891b2;
+
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+  --color-danger: #dc2626;
+
+  --border-subtle: rgba(148, 163, 184, 0.18);
+
+  --text-primary: #e5e7eb;
+  --text-secondary: rgba(229, 231, 235, 0.78);
+  --text-muted: rgba(229, 231, 235, 0.55);
+  --text-disabled: rgba(229, 231, 235, 0.35);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* Explicit DARK (optional: mirrors :root, useful if you ever change default) */
+:root[data-theme="dark"] {
+  --bg-main: #0b1220;
+  --bg-app: #0f172a;
+  --bg-surface: #0b1220;
+  --bg-surface-elev: #111b2e;
+
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-accent: #0891b2;
+
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+  --color-danger: #dc2626;
+
+  --border-subtle: rgba(148, 163, 184, 0.18);
+
+  --text-primary: #e5e7eb;
+  --text-secondary: rgba(229, 231, 235, 0.78);
+  --text-muted: rgba(229, 231, 235, 0.55);
+  --text-disabled: rgba(229, 231, 235, 0.35);
 }
 
+/* LIGHT (tu paleta) */
+:root[data-theme="light"] {
+  --bg-main: #f8fafc;
+  --bg-app: #ffffff;
+  --bg-surface: #ffffff;
+  --bg-surface-elev: #f1f5f9;
+
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-accent: #0891b2;
+
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+  --color-danger: #dc2626;
+
+  --border-subtle: #e2e8f0;
+
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --text-disabled: #94a3b8;
+}
+
+/* SYSTEM: uses OS preference when data-theme="system" */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  :root[data-theme="system"] {
+    --bg-main: #0b1220;
+    --bg-app: #0f172a;
+    --bg-surface: #0b1220;
+    --bg-surface-elev: #111b2e;
+
+    --color-primary: #2563eb;
+    --color-primary-hover: #1d4ed8;
+    --color-accent: #0891b2;
+
+    --color-success: #16a34a;
+    --color-warning: #d97706;
+    --color-danger: #dc2626;
+
+    --border-subtle: rgba(148, 163, 184, 0.18);
+
+    --text-primary: #e5e7eb;
+    --text-secondary: rgba(229, 231, 235, 0.78);
+    --text-muted: rgba(229, 231, 235, 0.55);
+    --text-disabled: rgba(229, 231, 235, 0.35);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] {
+    --bg-main: #f8fafc;
+    --bg-app: #ffffff;
+    --bg-surface: #ffffff;
+    --bg-surface-elev: #f1f5f9;
+
+    --color-primary: #2563eb;
+    --color-primary-hover: #1d4ed8;
+    --color-accent: #0891b2;
+
+    --color-success: #16a34a;
+    --color-warning: #d97706;
+    --color-danger: #dc2626;
+
+    --border-subtle: #e2e8f0;
+
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #64748b;
+    --text-disabled: #94a3b8;
+  }
 }
+

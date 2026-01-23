@@ -2,29 +2,40 @@ import Link from "next/link";
 
 export default function UnauthorizedPage() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-neutral-50 px-6">
-      <div className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-8 text-center shadow-sm">
-        <div className="mx-auto mb-6 flex h-12 w-12 items-center justify-center rounded-full bg-red-50">
-          <span className="text-lg font-semibold text-red-600">403</span>
-        </div>
+    <main className="min-h-screen bg-(--bg-main)">
+      <div className="flex min-h-screen items-center justify-center px-6">
+        <div className="w-full max-w-md rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-8 text-center">
+          <div className="mx-auto mb-6 flex h-12 w-12 items-center justify-center rounded-full bg-(--bg-surface-elev)">
+            <span className="text-sm font-semibold text-(--text-primary)">
+              403
+            </span>
+          </div>
 
-        <h1 className="mb-2 text-xl font-semibold text-neutral-900">
-          Access denied
-        </h1>
+          <h1 className="mb-2 text-xl font-semibold text-(--text-primary)">
+            Access denied
+          </h1>
 
-        <p className="mb-6 text-sm leading-relaxed text-neutral-600">
-          You don’t have permission to access this page.
-          <br />
-          If you believe this is a mistake, please contact an administrator.
-        </p>
+          <p className="mb-6 text-sm leading-relaxed text-(--text-secondary)">
+            You don’t have permission to access this page.
+            <br />
+            If you believe this is a mistake, please contact an administrator.
+          </p>
 
-        <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
-          <Link
-            href="/app/dashboard"
-            className="inline-flex items-center justify-center rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-800"
-          >
-            Go back to dashboard
-          </Link>
+          <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+            <Link
+              href="/app/dashboard"
+              className="inline-flex h-11 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white transition-colors hover:bg-(--color-primary-hover)"
+            >
+              Go back to dashboard
+            </Link>
+
+            <Link
+              href="/auth/sign-in"
+              className="text-sm font-medium text-(--text-secondary) hover:text-(--text-primary)"
+            >
+              Sign in with a different account
+            </Link>
+          </div>
         </div>
       </div>
     </main>

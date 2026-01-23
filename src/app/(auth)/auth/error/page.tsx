@@ -27,12 +27,12 @@ export default function AuthErrorPage({ searchParams }: Props) {
       <div className="space-y-3">
         <Link
           href="/auth/sign-in"
-          className="inline-flex w-full items-center justify-center rounded-xl bg-black px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-black/90"
+          className="inline-flex h-11 w-full items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white transition-colors hover:bg-(--color-primary-hover)"
         >
           Back to sign in
         </Link>
 
-        <p className="text-xs text-black/45">
+        <p className="text-center text-xs text-(--text-muted)">
           If the problem continues, please contact support.
         </p>
       </div>

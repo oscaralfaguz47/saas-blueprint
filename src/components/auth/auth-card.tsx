@@ -1,115 +1,126 @@
 import Link from "next/link";
-import React from "react";
 
-type Props = {
+type MessageTone = "error" | "info" | "success" | "warning";
+
+type Message = {
+  tone: MessageTone;
+  title: string;
+  description?: string;
+  code?: string;
+};
+
+type AuthCardProps = {
   title: string;
   subtitle?: string;
   badgeText?: string;
+  message?: Message;
   children: React.ReactNode;
-
-  // Optional: message box
-  message?: {
-    tone: "error" | "info";
-    title: string;
-    description: string;
-    code?: string;
-  };
-
-  // Optional: footer links
-  footer?: {
-    termsHref?: string;
-    privacyHref?: string;
-  };
 };
+
+function toneStyles(tone: MessageTone) {
+  switch (tone) {
+    case "error":
+      return "border-(--color-danger) bg-(--bg-surface) text-(--text-primary)";
+    case "success":
+      return "border-(--color-success) bg-(--bg-surface) text-(--text-primary)";
+    case "warning":
+      return "border-(--color-warning) bg-(--bg-surface) text-(--text-primary)";
+    default:
+      return "border-(--border-subtle) bg-(--bg-surface) text-(--text-primary)";
+  }
+}
 
 export default function AuthCard({
   title,
   subtitle,
   badgeText = "Secure",
-  children,
   message,
-  footer = { termsHref: "/terms", privacyHref: "/privacy" },
-}: Props) {
-  const isError = message?.tone === "error";
-
+  children,
+}: AuthCardProps) {
   return (
-    <main className="min-h-[calc(100vh-1px)] flex items-center justify-center px-4 py-10">
-      <div className="w-full max-w-md">
-        <div className="rounded-2xl border border-black/10 bg-white shadow-sm">
-          <div className="px-6 pt-6 pb-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-                {subtitle ? (
-                  <p className="mt-1 text-sm text-black/60">{subtitle}</p>
-                ) : null}
+    <main className="min-h-screen bg-(--bg-main)">
+      <div className="flex min-h-screen items-center justify-center px-6 py-12">
+        <div className="w-full max-w-md">
+          {/* Top brand row */}
+          <div className="mb-6 flex items-center justify-between">
+            <Link href="/" className="flex items-center gap-3">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface)">
+                <span className="text-xs font-semibold text-(--text-primary)">
+                  ATL
+                </span>
               </div>
+              <span className="text-sm font-medium text-(--text-primary)">
+                ATL
+              </span>
+            </Link>
 
-              {badgeText ? (
-                <div className="text-xs rounded-full border border-black/10 px-3 py-1 text-black/60">
-                  {badgeText}
-                </div>
+            <span className="rounded-md border border-(--border-subtle) bg-(--bg-surface) px-2 py-1 text-xs font-medium text-(--text-secondary)">
+              {badgeText}
+            </span>
+          </div>
+
+          {/* Card */}
+          <div className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-6">
+            <div className="text-center">
+              <h1 className="text-xl font-semibold text-(--text-primary)">
+                {title}
+              </h1>
+              {subtitle ? (
+                <p className="mt-2 text-sm leading-relaxed text-(--text-secondary)">
+                  {subtitle}
+                </p>
               ) : null}
             </div>
 
             {message ? (
               <div
                 className={[
-                  "mt-4 rounded-xl px-4 py-3 border",
-                  isError
-                    ? "border-red-200 bg-red-50"
-                    : "border-black/10 bg-black/[0.02]",
+                  "mt-6 rounded-xl border p-4",
+                  toneStyles(message.tone),
                 ].join(" ")}
               >
-                <p
-                  className={[
-                    "text-sm font-medium",
-                    isError ? "text-red-900" : "text-black",
-                  ].join(" ")}
-                >
-                  {message.title}
-                </p>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-(--text-primary)">
+                      {message.title}
+                    </p>
+                    {message.description ? (
+                      <p className="mt-1 text-sm text-(--text-secondary)">
+                        {message.description}
+                      </p>
+                    ) : null}
+                  </div>
 
-                <p
-                  className={[
-                    "mt-1 text-sm",
-                    isError ? "text-red-800" : "text-black/70",
-                  ].join(" ")}
-                >
-                  {message.description}
-                </p>
-
-                {message.code ? (
-                  <p className={["mt-2 text-xs", isError ? "text-red-900/60" : "text-black/50"].join(" ")}>
-                    Error code: <span className="font-mono">{message.code}</span>
-                  </p>
-                ) : null}
+                  {message.code ? (
+                    <span className="rounded-md bg-(--bg-surface-elev) px-2 py-1 text-xs font-medium text-(--text-secondary)">
+                      {message.code}
+                    </span>
+                  ) : null}
+                </div>
               </div>
             ) : null}
-          </div>
 
-          <div className="px-6 pb-6">
-            <div className="rounded-xl border border-black/10 bg-black/[0.02] p-4">
-              {children}
-            </div>
+            <div className="mt-6">{children}</div>
 
-            <div className="mt-6 border-t border-black/10 pt-4 text-xs text-black/45">
+            <p className="mt-6 text-center text-xs text-(--text-muted)">
               By continuing, you agree to our{" "}
-              <Link href={footer.termsHref ?? "/terms"} className="underline underline-offset-2">
+              <Link
+                href="/terms"
+                className="text-(--text-secondary) hover:text-(--text-primary)"
+              >
                 Terms
               </Link>{" "}
-              and acknowledge our{" "}
-              <Link href={footer.privacyHref ?? "/privacy"} className="underline underline-offset-2">
+              and{" "}
+              <Link
+                href="/privacy"
+                className="text-(--text-secondary) hover:text-(--text-primary)"
+              >
                 Privacy Policy
               </Link>
               .
-            </div>
+            </p>
           </div>
         </div>
-
-        <p className="mt-6 text-center text-xs text-black/40">
-          © {new Date().getFullYear()} Your Company. All rights reserved.
-        </p>
       </div>
     </main>
   );
