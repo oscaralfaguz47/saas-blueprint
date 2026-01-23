@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/server/auth-options";
-import { getDefaultTenantForUser } from "@/server/tenancy";
+import { getDefaultTenantForUser } from "@/server/services/tenancy";
 
 export default async function AppRootPage() {
   const session = await getServerSession(authOptions);

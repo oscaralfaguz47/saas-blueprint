@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
-import { getDefaultTenantForUser } from "@/server/tenancy";
-import { writeAuditLog } from "@/server/audit";
+import { getDefaultTenantForUser } from "@/server/services/tenancy";
+import { writeAuditLog } from "@/server/services/audit";
 
 export async function GET() {
   const session = await getServerSession(authOptions);

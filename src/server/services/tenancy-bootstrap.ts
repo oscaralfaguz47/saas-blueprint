@@ -1,5 +1,7 @@
+import "server-only";
+
 import { prisma } from "@/server/db";
-import { writeAuditLog } from "@/server/audit";
+import { writeAuditLog } from "@/server/services/audit";
 import type { Prisma } from "@prisma/client";
 
 /**

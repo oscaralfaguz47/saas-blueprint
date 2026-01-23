@@ -1,3 +1,5 @@
+import "server-only";
+
 import { hasTenantPermission, TenantPermission } from "@/server/security/tenant-authorization";
 
 export async function requireTenantPermission(params: {

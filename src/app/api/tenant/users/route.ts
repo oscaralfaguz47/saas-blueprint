@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
-import { getDefaultTenantForUser } from "@/server/tenancy";
+import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { prisma } from "@/server/db";
-import { writeAuditLog } from "@/server/audit";
+import { writeAuditLog } from "@/server/services/audit";
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);

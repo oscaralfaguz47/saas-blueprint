@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
-import { writeAuditLog } from "@/server/audit";
+import { writeAuditLog } from "@/server/services/audit";
 import crypto from "crypto";
 
 type AcceptBody = { token: string };

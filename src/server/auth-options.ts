@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import EmailProvider from "next-auth/providers/email";
@@ -5,9 +7,8 @@ import { Resend } from "resend";
 
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { prisma } from "@/server/db";
-import type { RoleKey } from "@/types/next-auth";
 
-import { ensureDefaultTenantForUser } from "@/server/tenancy-bootstrap";
+import { ensureDefaultTenantForUser } from "@/server/services/tenancy-bootstrap";
 import { ensureBootstrapPlatformOwner } from "@/server/services/platform-bootstrap";
 
 // ---- Tunables (performance + security) ----
@@ -18,6 +19,23 @@ const JWT_MAX_AGE_SECONDS = 8 * 60 * 60;
 const ROLE_REFRESH_WINDOW_SECONDS = 15 * 60;
 
 const resend = new Resend(process.env.RESEND_API_KEY!);
+
+async function runUserBootstraps(params: { userId: string; email?: string | null }) {
+  // Defensive guards (avoid unexpected nulls)
+  if (!params.userId) return;
+
+  // Ensure user has a default tenant membership (idempotent)
+  await ensureDefaultTenantForUser({
+    userId: params.userId,
+    userEmail: params.email ?? undefined,
+  });
+
+  // Ensure platform owner/admin bootstrap (idempotent)
+  await ensureBootstrapPlatformOwner({
+    userId: params.userId,
+    email: params.email ?? undefined,
+  });
+}
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
@@ -37,12 +55,13 @@ export const authOptions: NextAuthOptions = {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID ?? "",
       clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
-      allowDangerousEmailAccountLinking: true,
+      allowDangerousEmailAccountLinking: true, // Keep only if you truly need it
     }),
+
     EmailProvider({
       from: process.env.EMAIL_FROM,
-      // NextAuth te da el URL del magic link firmado
       async sendVerificationRequest({ identifier, url, provider }) {
+        // Send magic link
         await resend.emails.send({
           from: provider.from as string,
           to: identifier,
@@ -60,37 +79,30 @@ export const authOptions: NextAuthOptions = {
   pages: {
     signIn: "/auth/sign-in",
     error: "/auth/error",
-    verifyRequest: "/auth/verify-request",
   },
 
- callbacks: {
- async session({ session, token }) {
-  if (session.user) {
-    session.user.id = token.sub ?? session.user.id;
+  callbacks: {
+    async session({ session, token }) {
+      // Keep session callback pure: no DB writes / bootstraps here.
+      if (session.user) {
+        session.user.id = token.sub ?? session.user.id;
+      }
+      return session;
+    },
+  },
 
-    await ensureDefaultTenantForUser({
-      userId: session.user.id,
-      userEmail: session.user.email,
-    });
-
-    await ensureBootstrapPlatformOwner({
-      userId: session.user.id,
-      email: session.user.email,
-    });
-  }
-
-  return session;
-},
-},
   events: {
     async createUser({ user }) {
+      // Bootstraps on user creation (idempotent)
+      await runUserBootstraps({ userId: user.id, email: user.email });
+
+      // Optional: assign PlatformAdmin based on env allowlist (your existing logic)
       const bootstrapEmail = (process.env.BOOTSTRAP_ADMIN_EMAIL ?? "").trim().toLowerCase();
       const userEmail = (user.email ?? "").trim().toLowerCase();
 
       if (!bootstrapEmail || !userEmail) return;
       if (userEmail !== bootstrapEmail) return;
 
-      // Ensure PlatformAdmin role exists (seed should do it, but defense-in-depth)
       const platformAdmin = await prisma.vendorRole.findUnique({
         where: { name: "PlatformAdmin" },
         select: { id: true },
@@ -98,13 +110,18 @@ export const authOptions: NextAuthOptions = {
 
       if (!platformAdmin) return;
 
-      // Assign role idempotently
       await prisma.vendorUserRole.upsert({
         where: { userId_roleId: { userId: user.id, roleId: platformAdmin.id } },
         update: {},
         create: { userId: user.id, roleId: platformAdmin.id },
       });
     },
-  },
 
+    async signIn({ user }) {
+      // Also run bootstraps on sign-in to cover legacy users or missing defaults.
+      // This should be cheap if ensure* functions are idempotent.
+      if (!user?.id) return;
+      await runUserBootstraps({ userId: user.id, email: user.email });
+    },
+  },
 };

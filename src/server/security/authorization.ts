@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { RoleKey } from "@/types/next-auth";
 
 export function requireRole(role: RoleKey | undefined, allowed: RoleKey[]) {

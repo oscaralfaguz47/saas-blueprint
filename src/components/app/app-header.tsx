@@ -24,8 +24,8 @@ export default function AppHeader({ user }: AppHeaderProps) {
   const initials = initialsFrom(user.name || user.email);
 
   async function handleSignOut() {
-    // Te manda a la landing pública
-    await signOut({ callbackUrl: "/" });
+    // Redirected to the sign-in after sign out
+    await signOut({ callbackUrl: "/auth/sign-in" });
   }
 
   return (

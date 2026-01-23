@@ -1,3 +1,5 @@
+import "server-only";
+
 import { hasVendorPermission, type VendorPermission } from "@/server/security/vendor-authorization";
 import type { RoleKey } from "@/types/next-auth";
 

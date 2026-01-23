@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { redirect } from "next/navigation";
-import { getDefaultTenantForUser } from "@/server/tenancy";
+import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { requireTenantPermission } from "@/server/security/workspace-guards";
 
 

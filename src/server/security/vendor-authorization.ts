@@ -1,3 +1,5 @@
+import "server-only";
+
 import { prisma } from "@/server/db";
 import type { RoleKey } from "@/types/next-auth";
 
