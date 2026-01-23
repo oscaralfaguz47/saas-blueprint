@@ -26,7 +26,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             }}
           />
 
-          <main className="py-8">
+         <main className="py-8 text-(--text-primary)">
             <Container>
               <div className="max-w-5xl">{children}</div>
             </Container>

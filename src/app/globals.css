@@ -74,6 +74,13 @@
   --text-muted: #64748b;
   --text-disabled: #94a3b8;
 }
+/* Default text color for app content */
+[data-theme] {
+  color: var(--text-primary);
+}
+header[data-app-header="true"] {
+  background-color: color-mix(in srgb, var(--bg-surface) 85%, transparent);
+}
 
 /* SYSTEM: uses OS preference when data-theme="system" */
 @media (prefers-color-scheme: dark) {

@@ -54,13 +54,14 @@ function normalizePlatformAllowlist() {
 
   if (single) list.push(single);
 
-  // de-dupe
   return Array.from(new Set(list));
 }
 
-
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  // Extra hardening: always allow Next internal paths
+  if (pathname.startsWith("/_next")) return NextResponse.next();
 
   // 1) Public routes: pass-through (+ hardening for /r/)
   if (isPublicPath(pathname)) {
@@ -78,16 +79,29 @@ export async function middleware(req: NextRequest) {
   }
 
   // 3) Protected routes require auth
-  const token = await getToken({
-    req,
-    secret: process.env.NEXTAUTH_SECRET,
-  });
+  const secret = process.env.NEXTAUTH_SECRET;
+
+  // Fail-safe: if secret is missing, do NOT attempt getToken (can throw/hang in edge)
+  // In production you SHOULD enforce it, but this avoids "app never loads" in dev misconfig.
+  if (!secret) {
+    const res = NextResponse.redirect(new URL("/auth/sign-in", req.url));
+    res.headers.set("X-Auth-Error", "Missing NEXTAUTH_SECRET");
+    return res;
+  }
+
+  let token: Awaited<ReturnType<typeof getToken>> | null = null;
+
+  try {
+    token = await getToken({ req, secret });
+  } catch {
+    // If token parsing fails, treat as unauthenticated (avoid freezing the request)
+    token = null;
+  }
 
   if (!token) {
     const url = req.nextUrl.clone();
     url.pathname = "/auth/sign-in";
 
-    // Preserve only path + query (same-origin safe)
     const callbackUrl = req.nextUrl.pathname + req.nextUrl.search;
     url.searchParams.set("callbackUrl", callbackUrl);
 

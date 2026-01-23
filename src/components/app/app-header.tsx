@@ -1,7 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { signOut } from "next-auth/react";
+import { useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
+import UserMenu from "@/components/app/user-menu";
+import { IconMenu, IconX } from "@/components/ui/icons";
 
 type AppHeaderProps = {
   user: {
@@ -11,99 +14,175 @@ type AppHeaderProps = {
   };
 };
 
-function initialsFrom(nameOrEmail: string | null) {
-  if (!nameOrEmail) return "U";
-  const s = nameOrEmail.trim();
-  if (!s) return "U";
-  const parts = s.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
+const NAV = [
+  { href: "/app/dashboard", label: "Dashboard" },
+  { href: "/app/records", label: "Records" },
+  { href: "/app/members", label: "Members" },
+  { href: "/app/settings", label: "Settings" },
+] as const;
+
+function isActivePath(currentPath: string, href: string) {
+  // Exact match for dashboard (avoid matching everything under /app)
+  if (href === "/app/dashboard") {
+    return currentPath === "/app/dashboard" || currentPath === "/app";
+  }
+
+  // Prefix match for sections
+  return currentPath === href || currentPath.startsWith(`${href}/`);
 }
 
 export default function AppHeader({ user }: AppHeaderProps) {
-  const label = user.name || user.email || "User";
-  const initials = initialsFrom(user.name || user.email);
+  const pathname = usePathname() ?? "/app";
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement | null>(null);
 
-  async function handleSignOut() {
-    await signOut({ callbackUrl: "/auth/sign-in" });
-  }
+  useEffect(() => {
+    if (!mobileOpen) return;
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setMobileOpen(false);
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [mobileOpen]);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+
+    function onPointerDown(e: PointerEvent) {
+      const target = e.target as Node | null;
+      if (!target) return;
+
+      if (panelRef.current && !panelRef.current.contains(target)) {
+        setMobileOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [mobileOpen]);
 
   return (
-    <header className="border-b border-(--border-subtle) bg-(--bg-main)">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+    <header className="border-b border-(--border-subtle) bg-(--bg-surface)">
+      <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3">
+        {/* Left: Brand + Nav */}
         <div className="flex items-center gap-4">
-          <Link href="/app/dashboard" className="flex items-center gap-3">
-            <div className="grid h-9 w-9 place-items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface)">
-              <span className="text-xs font-semibold text-(--text-primary)">
-                ATL
-              </span>
-            </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-sm font-semibold text-(--text-primary)">
-                ATL
-              </span>
-              <span className="hidden text-xs text-(--text-muted) sm:inline">
-                /app
-              </span>
-            </div>
+          <Link
+            href="/app/dashboard"
+            className="flex items-center gap-2 font-semibold text-(--text-primary)"
+          >
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) text-sm">
+              ATL
+            </span>
+            <span>ATL</span>
+            <span className="text-xs font-medium text-(--text-muted)">/app</span>
           </Link>
 
-          <nav className="hidden items-center gap-4 text-sm md:flex">
-            <Link
-              href="/app/records"
-              className="text-(--text-secondary) hover:text-(--text-primary)"
-            >
-              Records
-            </Link>
-            <Link
-              href="/app/members"
-              className="text-(--text-secondary) hover:text-(--text-primary)"
-            >
-              Members
-            </Link>
-            <Link
-              href="/app/settings"
-              className="text-(--text-secondary) hover:text-(--text-primary)"
-            >
-              Settings
-            </Link>
+          {/* Desktop nav */}
+          <nav className="hidden items-center gap-1 md:flex">
+            {NAV.map((item) => {
+              const active = isActivePath(pathname, item.href);
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={active ? "page" : undefined}
+                  className={[
+                    "rounded-lg px-3 py-2 text-sm font-medium transition",
+                    active
+                      ? "bg-(--bg-surface-elev) text-(--text-primary)"
+                      : "text-(--text-secondary) hover:bg-(--bg-surface-elev) hover:text-(--text-primary)",
+                  ].join(" ")}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
           </nav>
         </div>
 
-        <div className="flex items-center gap-3">
-          {/* Avatar */}
-          {user.image ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={user.image}
-              alt="Profile"
-              className="h-9 w-9 rounded-full border border-(--border-subtle) object-cover"
-            />
-          ) : (
-            <div className="flex h-9 w-9 items-center justify-center rounded-full border border-(--border-subtle) bg-(--bg-surface) text-xs font-semibold text-(--text-primary)">
-              {initials}
-            </div>
-          )}
-
-          {/* User label */}
-          <div className="hidden sm:block">
-            <div className="text-sm font-medium leading-4 text-(--text-primary)">
-              {label}
-            </div>
-            {user.email ? (
-              <div className="text-xs text-(--text-muted)">{user.email}</div>
-            ) : null}
-          </div>
-
+        {/* Right: Mobile button + UserMenu */}
+        <div className="flex items-center gap-2">
+          {/* Mobile nav trigger */}
           <button
-            onClick={handleSignOut}
-            className="rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2 text-sm font-medium text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev)"
             type="button"
+            onClick={() => setMobileOpen(true)}
+            className="inline-flex items-center justify-center rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-2 text-(--text-secondary) transition hover:bg-(--bg-surface-elev) hover:text-(--text-primary) md:hidden"
+            aria-label="Open navigation"
           >
-            Sign out
+            <IconMenu size={18} />
           </button>
+
+          <UserMenu user={user} />
         </div>
       </div>
+
+      {/* Mobile drawer */}
+      {mobileOpen ? (
+        <div className="fixed inset-0 z-50 md:hidden">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/40" />
+
+          {/* Panel */}
+          <div
+            ref={panelRef}
+            className="absolute right-0 top-0 h-full w-[84%] max-w-sm border-l border-(--border-subtle) bg-(--bg-surface) shadow-xl"
+          >
+            <div className="flex items-center justify-between border-b border-(--border-subtle) px-4 py-3">
+              <div className="text-sm font-semibold text-(--text-primary)">
+                Navigation
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileOpen(false)}
+                className="rounded-xl p-2 text-(--text-secondary) transition hover:bg-(--bg-surface-elev) hover:text-(--text-primary)"
+                aria-label="Close navigation"
+              >
+                <IconX size={18} />
+              </button>
+            </div>
+
+            <nav className="px-2 py-2">
+              {NAV.map((item) => {
+                const active = isActivePath(pathname, item.href);
+
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    aria-current={active ? "page" : undefined}
+                    onClick={() => setMobileOpen(false)}
+                    className={[
+                      "flex items-center rounded-xl px-3 py-2.5 text-sm font-medium transition",
+                      active
+                        ? "bg-(--bg-surface-elev) text-(--text-primary)"
+                        : "text-(--text-secondary) hover:bg-(--bg-surface-elev) hover:text-(--text-primary)",
+                    ].join(" ")}
+                  >
+                    {/* Active indicator */}
+                    <span
+                      aria-hidden="true"
+                      className={[
+                        "mr-3 h-2 w-2 rounded-full",
+                        active ? "bg-(--color-primary)" : "bg-transparent",
+                      ].join(" ")}
+                    />
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
+
+            <div className="border-t border-(--border-subtle) px-4 py-3">
+              <p className="text-xs text-(--text-muted)">
+                Tip: Use the user menu for workspace and billing.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </header>
   );
 }
