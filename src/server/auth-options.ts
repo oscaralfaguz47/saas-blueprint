@@ -18,7 +18,14 @@ const JWT_MAX_AGE_SECONDS = 8 * 60 * 60;
 // Rolling refresh window (refresh role at most every x minutes)
 const ROLE_REFRESH_WINDOW_SECONDS = 15 * 60;
 
-const resend = new Resend(process.env.RESEND_API_KEY!);
+// Initialize Resend lazily to avoid issues during build
+function getResend() {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    throw new Error("RESEND_API_KEY is not configured");
+  }
+  return new Resend(apiKey);
+}
 
 async function runUserBootstraps(params: { userId: string; email?: string | null }) {
   // Defensive guards (avoid unexpected nulls)
@@ -62,7 +69,8 @@ export const authOptions: NextAuthOptions = {
       from: process.env.EMAIL_FROM,
       async sendVerificationRequest({ identifier, url, provider }) {
         // Send magic link
-        await resend.emails.send({
+        const resendInstance = getResend();
+        await resendInstance.emails.send({
           from: provider.from as string,
           to: identifier,
           subject: "Sign in to your account",

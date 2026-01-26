@@ -4,20 +4,26 @@ import { PrismaClient } from "@prisma/client";
 
 // Don't validate env during build - only at runtime
 // Vercel sets env vars at runtime, not during build
+// During build, Next.js may try to analyze server components, so we skip validation
 const isBuildPhase = 
   process.env.NEXT_PHASE === "phase-production-build" ||
+  process.env.NEXT_PHASE === "phase-development-build" ||
   process.env.SKIP_ENV_VALIDATION === "true" ||
+  typeof window !== "undefined" || // Client-side check
   !process.env.DATABASE_URL; // If DATABASE_URL is missing, we're likely in build phase
 
-if (!isBuildPhase) {
+if (!isBuildPhase && typeof process !== "undefined") {
   // Only validate at runtime, not during build
-  const { validateEnv } = require("@/lib/env");
   try {
+    // Use dynamic import to avoid issues during build
+    const { validateEnv } = require("@/lib/env");
     validateEnv();
   } catch (error) {
     // Log but don't fail during module load
     // Will fail at runtime when Prisma tries to connect
-    console.warn("Environment validation warning:", error);
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("Environment validation warning:", error);
+    }
   }
 }
 
