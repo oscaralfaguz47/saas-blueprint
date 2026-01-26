@@ -18,14 +18,19 @@ export function apiError(
   message?: string,
   details?: unknown
 ): NextResponse<ApiError> {
-  return NextResponse.json(
-    {
-      error,
-      ...(message && { message }),
-      ...(details && { details }),
-    },
-    { status }
-  );
+  const response: ApiError = {
+    error,
+  };
+
+  if (message) {
+    response.message = message;
+  }
+
+  if (details !== undefined) {
+    response.details = details;
+  }
+
+  return NextResponse.json(response, { status });
 }
 
 /**
