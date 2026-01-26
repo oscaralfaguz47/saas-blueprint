@@ -62,21 +62,6 @@ export function getOptionalEnv(key: keyof typeof optionalEnvVars): string | unde
   return optionalEnvVars[key];
 }
 
-// Validate on module load (skip during build if needed)
-// Vercel builds may not have all runtime env vars, so we validate at runtime
-const shouldValidate = 
-  process.env.SKIP_ENV_VALIDATION !== "true" &&
-  process.env.NEXT_PHASE !== "phase-production-build";
-
-if (shouldValidate && (process.env.NODE_ENV === "production" || process.env.VALIDATE_ENV === "true")) {
-  try {
-    validateEnv();
-  } catch (error) {
-    console.error("Environment validation failed:", error);
-    // In production runtime, we should fail fast
-    // But during build, we allow it to continue (env vars may be set at runtime)
-    if (process.env.NODE_ENV === "production" && process.env.NEXT_PHASE === undefined) {
-      process.exit(1);
-    }
-  }
-}
+// Don't validate on module load - validation happens at runtime
+// Vercel sets environment variables at runtime, not during build phase
+// This prevents build failures when env vars aren't available yet
