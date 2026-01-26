@@ -1,24 +1,17 @@
-import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
 import { writeAuditLog } from "@/server/services/audit";
+import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
+import { parseBody, acceptInvitationSchema } from "@/lib/validations";
 import crypto from "crypto";
 
-type AcceptBody = { token: string };
-
-export async function POST(req: Request) {
+export const POST = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
-  if (!session?.user) {
-    return NextResponse.json({ error: "UNAUTHENTICATED" }, { status: 401 });
-  }
+  if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 
-  const body = (await req.json().catch(() => null)) as AcceptBody | null;
-  const token = body?.token?.trim() ?? "";
-
-  if (!token || token.length < 20) {
-    return NextResponse.json({ error: "INVALID_TOKEN" }, { status: 400 });
-  }
+  const body = await parseBody(req, acceptInvitationSchema);
+  const token = body.token;
 
   const tokenHash = sha256(token);
 
@@ -39,24 +32,21 @@ export async function POST(req: Request) {
   });
 
   if (!invite) {
-    return NextResponse.json({ error: "INVITE_NOT_FOUND_OR_EXPIRED" }, { status: 404 });
+    return ApiErrors.NOT_FOUND("Invitation not found or expired");
   }
 
   // Ensure invitation email matches the logged-in user email (critical security)
   const userEmail = (session.user.email ?? "").toLowerCase();
   if (!userEmail || userEmail !== invite.email.toLowerCase()) {
-    return NextResponse.json(
+    return ApiErrors.VALIDATION_ERROR(
+      "This invitation was issued for a different email address",
       {
-        error: "EMAIL_MISMATCH",
-        message: "This invitation was issued for a different email address.",
         expectedEmail: invite.email,
         currentEmail: userEmail || null,
         nextAction: "SIGN_OUT_AND_SIGN_IN_WITH_EXPECTED_EMAIL",
-      },
-      { status: 403 }
+      }
     );
   }
-
 
   // Ensure user exists in DB (should, because they are logged in)
   const user = await prisma.user.findUnique({
@@ -65,7 +55,7 @@ export async function POST(req: Request) {
   });
 
   if (!user) {
-    return NextResponse.json({ error: "USER_NOT_FOUND" }, { status: 404 });
+    return ApiErrors.NOT_FOUND("User");
   }
 
   // Transaction: mark accepted + create membership + assign default role
@@ -158,14 +148,14 @@ export async function POST(req: Request) {
     userAgent: getUserAgent(req),
   });
 
-  return NextResponse.json({
+  return apiSuccess({
     ok: true,
     invitationId: invite.id,
     tenantId: invite.tenantId,
     membershipCreated: result.membershipCreated,
     membershipId: result.membershipId,
   });
-}
+});
 
 function sha256(v: string): string {
   return crypto.createHash("sha256").update(v).digest("hex");

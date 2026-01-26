@@ -1,6 +1,10 @@
 import "server-only";
 
 import { PrismaClient } from "@prisma/client";
+import { validateEnv } from "@/lib/env";
+
+// Validate environment variables on module load
+validateEnv();
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 

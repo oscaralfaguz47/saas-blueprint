@@ -1,22 +1,18 @@
-import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { prisma } from "@/server/db";
 import { writeAuditLog } from "@/server/services/audit";
+import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 
-export async function GET(req: Request) {
+export const GET = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
-  if (!session?.user) {
-    return NextResponse.json({ error: "UNAUTHENTICATED" }, { status: 401 });
-  }
+  if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 
   const membership = await getDefaultTenantForUser(session.user.id);
   const tenant = membership?.tenant;
-  if (!tenant) {
-    return NextResponse.json({ error: "NO_TENANT" }, { status: 403 });
-  }
+  if (!tenant) return ApiErrors.NO_TENANT();
 
   const allowed = await hasTenantPermission({
     userId: session.user.id,
@@ -24,9 +20,7 @@ export async function GET(req: Request) {
     permission: "tenant.users.read",
   });
 
-  if (!allowed) {
-    return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
-  }
+  if (!allowed) return ApiErrors.FORBIDDEN();
 
   const rows = await prisma.tenantMembership.findMany({
     where: { tenantId: tenant.id },
@@ -67,7 +61,7 @@ export async function GET(req: Request) {
     userAgent: getUserAgent(req),
   });
 
-  return NextResponse.json({
+  return apiSuccess({
     tenant,
     users: rows.map((m) => ({
       membership: {
@@ -80,7 +74,7 @@ export async function GET(req: Request) {
       roles: m.roles.map((r) => r.role.name),
     })),
   });
-}
+});
 
 function getIp(req: Request) {
   return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;

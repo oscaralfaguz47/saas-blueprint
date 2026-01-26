@@ -1,0 +1,46 @@
+name: Vercel Deployment
+
+on:
+  push:
+    branches:
+      - main
+      - demo
+  pull_request:
+    branches:
+      - main
+      - demo
+
+jobs:
+  lint-and-test:
+    name: Lint and Type Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run linter
+        run: pnpm lint
+
+      - name: Type check
+        run: pnpm tsc --noEmit
+
+      - name: Format check
+        run: pnpm format:check
+
+  # Vercel handles the actual deployment
+  # This workflow just ensures code quality before deployment

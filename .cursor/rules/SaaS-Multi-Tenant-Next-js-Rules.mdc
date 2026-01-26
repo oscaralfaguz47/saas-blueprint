@@ -1,0 +1,135 @@
+---
+alwaysApply: true
+---
+
+You are working on a production-grade multi-tenant SaaS built with:
+- Next.js App Router
+- Route Handlers (src/app/api/**/route.ts)
+- NextAuth (JWT strategy)
+- Prisma + PostgreSQL
+- Zod for validation
+- Tailwind CSS and shadcn/ui
+- Server-first architecture
+
+Follow these rules strictly.
+
+────────────────────────────────────────
+ARCHITECTURE
+────────────────────────────────────────
+
+1) App Router only
+- Use Next.js App Router conventions exclusively.
+- API routes must be implemented as Route Handlers under:
+  src/app/api/**/route.ts
+- Do NOT introduce pages/, pages/api/, or legacy patterns.
+
+2) Server-first rendering
+- All components are Server Components by default.
+- Add `"use client"` ONLY when strictly required:
+  - React hooks (useState, useEffect, etc.)
+  - Browser-only APIs
+  - Event handlers (onClick, onChange, etc.)
+- Keep client components as small leaf components to minimize bundle size.
+
+3) No Server Actions
+- Do NOT create or use Server Actions (`"use server"`).
+- All mutations and side effects must go through API Route Handlers.
+- If asked to use Server Actions, propose a Route Handler instead.
+
+4) Route groups must be respected
+- Respect existing route groups:
+  (public), (auth), (product)
+- Do not create new groups or routes without following existing structure.
+- Do not invent routing patterns.
+
+────────────────────────────────────────
+SECURITY & MULTI-TENANCY
+────────────────────────────────────────
+
+5) Never trust the client
+- All security enforcement happens on the server.
+- Client-side checks are UX-only and never authoritative.
+
+6) Auth is mandatory
+- Any route under /app/* requires authentication.
+- Any API under /api/* (except /api/auth/*) requires authentication.
+- Always validate the session/token inside the endpoint.
+
+7) Tenant scoping is mandatory
+- All tenant-scoped data MUST be filtered by tenantId/workspaceId.
+- Never query or mutate data without tenant isolation.
+- Do NOT assume tenant context from the client.
+
+8) Tenant resolution
+- Tenant is resolved server-side using database membership.
+- Prefer a single shared helper to resolve the active tenant.
+- Never hardcode tenantId values.
+
+9) Admin access
+- Middleware allowlists are NOT sufficient for data access.
+- Admin-only endpoints must enforce authorization inside the API handler.
+
+────────────────────────────────────────
+VALIDATION & TYPES
+────────────────────────────────────────
+
+10) Zod validation required
+- All API request payloads must be validated with Zod.
+- Validate req.json() before using the data.
+- Return consistent error responses with proper HTTP status codes.
+
+11) Type safety
+- TypeScript strict mode is assumed.
+- Avoid `any`.
+- Avoid `@ts-ignore` unless absolutely necessary and documented.
+
+────────────────────────────────────────
+PRISMA & PERFORMANCE
+────────────────────────────────────────
+
+12) Prisma query discipline
+- Prefer `select` over broad `include`.
+- Avoid loading unnecessary relations.
+- Avoid N+1 queries.
+- Use batch operations and transactions wisely.
+
+13) Transactions
+- Keep interactive transactions short.
+- Do NOT run heavy loops or long operations inside transactions.
+
+14) Multi-tenant integrity
+- Every Prisma query touching tenant data must enforce tenant isolation.
+- Cross-tenant queries require explicit platform-level authorization.
+
+────────────────────────────────────────
+UI (TAILWIND + SHADCN)
+────────────────────────────────────────
+
+15) Component boundaries
+- UI primitives live in src/components/ui/** (shadcn-style).
+- Domain components live in:
+  - src/components/app
+  - src/components/auth
+  - src/components/settings
+- Do not duplicate UI primitives.
+
+16) UI behavior
+- All user-facing screens must include:
+  - loading state
+  - empty state
+  - error state
+
+────────────────────────────────────────
+DEFINITION OF DONE
+────────────────────────────────────────
+
+17) Any change must:
+- Compile successfully (npm run build)
+- Respect TypeScript types
+- Not introduce new architectural patterns
+- Keep security, tenant isolation, and performance intact
+
+18) When implementing features:
+- Propose a plan before large changes.
+- Modify only the necessary files.
+- Avoid speculative or unused code.

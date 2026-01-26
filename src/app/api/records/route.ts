@@ -1,16 +1,17 @@
-import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { writeAuditLog } from "@/server/services/audit";
+import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
+import { parseBody, createRecordSchema } from "@/lib/validations";
 
-export async function GET() {
+export const GET = withErrorHandler(async () => {
   const session = await getServerSession(authOptions);
-  if (!session?.user) return NextResponse.json({ error: "UNAUTHENTICATED" }, { status: 401 });
+  if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 
   const membership = await getDefaultTenantForUser(session.user.id);
-  if (!membership?.tenant) return NextResponse.json({ error: "NO_TENANT" }, { status: 403 });
+  if (!membership?.tenant) return ApiErrors.NO_TENANT();
 
   const rows = await prisma.record.findMany({
     where: { tenantId: membership.tenant.id },
@@ -19,44 +20,31 @@ export async function GET() {
     take: 50,
   });
 
-  return NextResponse.json({ records: rows });
-}
+  return apiSuccess({ records: rows });
+});
 
-export async function POST(req: Request) {
+export const POST = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
-  if (!session?.user) return NextResponse.json({ error: "UNAUTHENTICATED" }, { status: 401 });
+  if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 
   const membership = await getDefaultTenantForUser(session.user.id);
-  if (!membership?.tenant) return NextResponse.json({ error: "NO_TENANT" }, { status: 403 });
+  if (!membership?.tenant) return ApiErrors.NO_TENANT();
 
-  const body = await req.json().catch(() => null) as null | {
-    title: string;
-    type: "SCOPE_CHANGE" | "DECISION" | "BUDGET";
-    description?: string;
-    clientName?: string;
-    clientEmail?: string;
-    amount?: number;
-    currency?: string;
-    visibility?: "WORKSPACE" | "RESTRICTED";
-    isSensitive?: boolean;
-  };
-
-  const title = (body?.title ?? "").trim();
-  if (!title) return NextResponse.json({ error: "TITLE_REQUIRED" }, { status: 400 });
+  const body = await parseBody(req, createRecordSchema);
 
   const created = await prisma.record.create({
     data: {
       tenantId: membership.tenant.id,
       createdByUserId: session.user.id,
-      title,
-      type: body?.type ?? "SCOPE_CHANGE",
-      description: body?.description?.trim() || null,
-      clientName: body?.clientName?.trim() || null,
-      clientEmail: body?.clientEmail?.trim().toLowerCase() || null,
-      amount: body?.amount != null ? body.amount : null,
-      currency: body?.currency?.trim() || null,
-      visibility: body?.visibility ?? "WORKSPACE",
-      isSensitive: body?.isSensitive ?? false,
+      title: body.title,
+      type: body.type,
+      description: body.description || null,
+      clientName: body.clientName || null,
+      clientEmail: body.clientEmail || null,
+      amount: body.amount != null ? body.amount : null,
+      currency: body.currency || null,
+      visibility: body.visibility,
+      isSensitive: body.isSensitive,
       status: "DRAFT",
     },
     select: { id: true },
@@ -71,5 +59,5 @@ export async function POST(req: Request) {
     targetId: created.id,
   });
 
-  return NextResponse.json({ id: created.id }, { status: 201 });
-}
+  return apiSuccess({ id: created.id }, 201);
+});
