@@ -31,4 +31,4 @@ tests/
 .prettierrc
 .prettierignore
 eslint.config.mjs
-tsconfig.json
+# Keep tsconfig.json - needed for path resolution
