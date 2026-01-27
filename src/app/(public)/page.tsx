@@ -135,7 +135,7 @@ export default async function PublicHomePage() {
                       <div className="rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev) p-4">
                         <p className="text-xs text-(--text-muted)">SLA</p>
                         <p className="mt-1 text-sm font-semibold text-(--text-primary)">
-                          7 days (this is main UPDATED)
+                          7 days (this is main UPDATED AGAIN)
                         </p>
                       </div>
 
