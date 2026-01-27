@@ -6,17 +6,18 @@ import { getAuthErrorCopy } from "@/lib/auth-errors";
 import AuthCard from "@/components/auth/auth-card";
 
 type Props = {
-  searchParams?: {
+  searchParams?: Promise<{
     callbackUrl?: string;
     error?: string;
-  };
+  }>;
 };
 
 export default async function SignInPage({ searchParams }: Props) {
   const session = await getServerSession(authOptions);
   if (session?.user) redirect("/app/dashboard");
 
-  const error = searchParams?.error;
+  const params = await searchParams;
+  const error = params?.error;
   const errorCopy = error ? getAuthErrorCopy(error) : null;
 
   return (

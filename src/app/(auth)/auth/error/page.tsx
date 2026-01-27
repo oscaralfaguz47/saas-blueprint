@@ -3,14 +3,15 @@ import AuthCard from "@/components/auth/auth-card";
 import { getAuthErrorCopy } from "@/lib/auth-errors";
 
 type Props = {
-  searchParams?: {
+  searchParams?: Promise<{
     error?: string;
     callbackUrl?: string;
-  };
+  }>;
 };
 
-export default function AuthErrorPage({ searchParams }: Props) {
-  const copy = getAuthErrorCopy(searchParams?.error);
+export default async function AuthErrorPage({ searchParams }: Props) {
+  const params = await searchParams;
+  const copy = getAuthErrorCopy(params?.error);
 
   return (
     <AuthCard
