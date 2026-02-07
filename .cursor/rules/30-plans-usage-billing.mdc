@@ -1,0 +1,45 @@
+---
+alwaysApply: true
+---
+
+────────────────────────────────────────
+PLANS, USAGE LIMITS, BILLING (J1/J2)
+────────────────────────────────────────
+
+Plan fundamentals:
+- Plan determines features and limits (featuresJson or dedicated fields).
+- Price can be overridden per workspace via Subscription priceOverride fields.
+- Price overrides MUST NOT change features or limits.
+
+One workspace = one subscription:
+- Enforce exactly one Subscription per Tenant (recommended via unique tenantId).
+
+Usage counters:
+- Use TenantUsageMonthly (tenantId, yearMonth) to track:
+  - requestsCreated
+  - exportsGenerated
+- Counters increment ONLY on successful actions.
+- Counter increments must be atomic (single DB transaction / safe update).
+
+Gating rules (hard block):
+- Before creating a request:
+  - validate plan is active
+  - validate requestsCreated < limit (unless unlimited)
+- Before exporting:
+  - validate exportsGenerated < limit (unless unlimited)
+- If limit exceeded:
+  - return HTTP 402/403 (choose a standard) with code "UPGRADE_REQUIRED"
+  - do not partially mutate anything
+
+Recommended shared helpers:
+- resolveTenantPlan(tenantId) -> { planCode, limits, flags }
+- assertWithinPlanLimit(tenantId, actionType) -> throws typed error
+
+Plan changes:
+- Upgrades apply immediately.
+- Downgrades do not delete data; they block new actions beyond limits.
+- Plan changes should be auditable (see AuditLog rules).
+
+Pricing overrides:
+- Store optional fields on Subscription (e.g. priceOverrideMonthly, discountNote, discountEndsAt).
+- If override is set, UI should display that as "Your negotiated price" (optional).

@@ -1,0 +1,50 @@
+---
+alwaysApply: true
+---
+
+You are working on a production-grade multi-tenant SaaS built with:
+- Next.js App Router
+- Route Handlers (src/app/api/**/route.ts)
+- NextAuth (JWT strategy)
+- Prisma + PostgreSQL
+- Zod for validation
+- Tailwind CSS and shadcn/ui
+- Server-first architecture
+
+Follow these rules strictly.
+
+────────────────────────────────────────
+ARCHITECTURE
+────────────────────────────────────────
+
+1) App Router only
+- Use Next.js App Router conventions exclusively.
+- API routes must be implemented as Route Handlers under:
+  src/app/api/**/route.ts
+- Do NOT introduce pages/, pages/api/, or legacy patterns.
+
+2) Server-first rendering
+- All components are Server Components by default.
+- Add "use client" ONLY when strictly required:
+  - React hooks (useState, useEffect, etc.)
+  - Browser-only APIs
+  - Event handlers (onClick, onChange, etc.)
+- Keep client components as small leaf components.
+
+3) No Server Actions
+- Do NOT create or use Server Actions ("use server").
+- All mutations and side effects must go through API Route Handlers.
+- If asked to use Server Actions, propose a Route Handler instead.
+
+4) Route groups must be respected
+- Respect existing route groups: (public), (auth), (product)
+- Do not create new groups or routes unless consistent with existing structure.
+- Do not invent routing patterns.
+
+5) Single source of truth helpers
+- Prefer shared server helpers for:
+  - active tenant resolution
+  - permission checks (RBAC)
+  - plan/usage gating
+  - request access rules (C1)
+- Avoid duplicating business logic across handlers/components.

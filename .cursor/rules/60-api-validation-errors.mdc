@@ -1,0 +1,39 @@
+---
+alwaysApply: true
+---
+
+────────────────────────────────────────
+API CONTRACT: VALIDATION, ERRORS, STATUS CODES
+────────────────────────────────────────
+
+1) Zod validation required
+- All API request payloads must be validated with Zod before use.
+- Validate query params too (not only req.json()).
+- Reject invalid inputs with 400.
+
+2) Consistent error response shape
+All errors must return JSON in this shape:
+{
+  "error": {
+    "code": "SOME_CODE",
+    "message": "Human readable message",
+    "details": { ...optional }
+  }
+}
+
+3) Recommended HTTP codes:
+- 400: validation error
+- 401: unauthenticated
+- 403: authenticated but forbidden
+- 404: resource not found (optionally also used when access is missing)
+- 409: conflicts (slug duplicate, unique constraint)
+- 429: rate-limited
+- 500: unexpected server error
+
+4) No silent failures
+- Never swallow DB errors.
+- Map known constraint errors to 409 with clear messages.
+
+5) Rate limiting (v1 minimal)
+- External approval endpoints must include basic rate limiting.
+- Manual reminder action must have a soft rate limit to prevent spamming.

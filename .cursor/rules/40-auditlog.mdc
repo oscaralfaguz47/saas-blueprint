@@ -1,0 +1,54 @@
+---
+alwaysApply: true
+---
+
+────────────────────────────────────────
+AUDIT LOG (K1) CONTRACT
+────────────────────────────────────────
+
+AuditLog must capture sensitive actions with consistent metadata.
+Audit logs are append-only (never edited; no deletes).
+
+Minimum required audit events (v1):
+Tenant:
+- tenant.created
+- tenant.plan.assigned
+- tenant.plan.changed
+- tenant.billing.price_override_set
+Users/Roles:
+- tenant.user.invited
+- tenant.user.disabled (if used)
+- tenant.role.changed (role assignment changes)
+Requests:
+- request.created
+- request.closed
+Evidence:
+- request.evidence.file_added
+- request.evidence.link_added
+Approvals:
+- request.approval.internal_assigned
+- request.approval.external_sent
+- request.approval.approved
+- request.approval.rejected
+- request.reminder.sent
+Payments:
+- request.payment.status_set
+- request.payment.evidence_added
+Exports:
+- request.export.pdf_generated
+- request.export.bundle_generated
+
+Rules:
+1) Every audited action must include:
+- actorUserId
+- actorContext (TENANT or VENDOR)
+- tenantId (when tenant scoped)
+- action (string code)
+- metadata: minimal but useful (ids, old/new, counts)
+
+2) AuditLog visibility is permission-based:
+- tenant.audit.read required
+
+3) Do not log secrets:
+- never store raw tokens (external approval tokens must be hashed in DB)
+- avoid PII in metadata where not necessary
