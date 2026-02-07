@@ -22,7 +22,7 @@ Roles (system roles in v1):
 - FINANCE
 - MEMBER
 
-Permission catalog (v1) includes (examples):
+Permission catalog (v1). Full canonical list: docs/epics/00-NAMING-AND-PERMISSION-ALIGNMENT.md and epic A2.
 Tenant admin:
 - tenant.audit.read
 - tenant.billing.manage
@@ -32,6 +32,7 @@ Tenant admin:
 - tenant.users.read
 - tenant.users.invite
 - tenant.users.manage
+- tenant.users.disable
 Requests:
 - tenant.requests.create
 - tenant.requests.read_all
@@ -39,6 +40,7 @@ Requests:
 - tenant.requests.share
 - tenant.requests.link
 - tenant.requests.export
+- tenant.requests.comment
 Evidence:
 - tenant.evidence.add
 Approvals:

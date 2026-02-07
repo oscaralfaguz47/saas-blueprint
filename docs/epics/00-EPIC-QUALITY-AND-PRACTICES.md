@@ -67,6 +67,11 @@ Use **shared helpers** (e.g. `canAccessRequest`, `resolveTenantPlan`, `tryConsum
 - **Long-running work**: Export PDF/ZIP or bulk operations that may take > few seconds should be designed for async (e.g. job queue + polling or webhook). Epics may defer implementation but should call out “async recommended.”
 - **Connection and pooling**: Handled at runtime/DB layer; epics do not need to specify, but implementations must not hold connections across long operations.
 
+- **Caching** (for speed and efficiency):
+  - **Do cache** (when safe): Plan/limits resolution per request (e.g. `resolveTenantPlan` result for the same tenantId within one request); static or rarely changing reference data (e.g. plan definitions) with short TTL and clear invalidation.
+  - **Do not cache** (without explicit design): Tenant-scoped list or detail responses (stale data risk); anything that must reflect immediate writes (mutations, access changes); raw tokens or secrets.
+  - Prefer request-scoped or short-TTL caches; document invalidation and tenant isolation for any shared cache. Use platform primitives (e.g. React `cache()`, Next `unstable_cache`) where they respect request/tenant boundaries.
+
 ---
 
 ## 5. API contract (all API-facing epics)

@@ -29,6 +29,7 @@ All errors must return JSON in this shape:
 - 409: conflicts (slug duplicate, unique constraint)
 - 429: rate-limited
 - 500: unexpected server error
+Standard error codes (UPGRADE_REQUIRED, REQUEST_CLOSED, etc.): docs/epics/00-EPIC-QUALITY-AND-PRACTICES.md §6.
 
 4) No silent failures
 - Never swallow DB errors.

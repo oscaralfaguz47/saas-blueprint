@@ -29,3 +29,8 @@ PRISMA & PERFORMANCE
 - Local dev: prisma migrate dev
 - Production/CI (Vercel): prisma migrate deploy
 - Do not introduce db push as a deployment mechanism.
+
+6) Caching (efficiency)
+- Cache plan/limits per request when safe (e.g. resolveTenantPlan for same tenantId).
+- Do not cache tenant-scoped list/detail responses without explicit invalidation and tenant isolation.
+- See docs/epics/00-EPIC-QUALITY-AND-PRACTICES.md §4 (Caching) for full guidance.
