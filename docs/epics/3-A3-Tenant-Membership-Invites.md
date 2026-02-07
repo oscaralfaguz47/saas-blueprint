@@ -153,10 +153,10 @@ Disabling a member:
 
 | Action | Audit `action` |
 |------|----------------|
-| Invite created | `tenant.invite.created` |
+| Invite created | `tenant.user.invited` |
 | Invite accepted | `tenant.invite.accepted` |
 | Invite revoked | `tenant.invite.revoked` |
-| Member disabled | `tenant.member.disabled` |
+| Member disabled | `tenant.user.disabled` |
 
 Each audit log must include:
 - `actorUserId`
@@ -267,8 +267,8 @@ This epic is complete when:
 
 ## 📣 Events (Closed Scope)
 
-- `tenant.invite.created`
+- `tenant.user.invited`
 - `tenant.invite.accepted`
 - `tenant.invite.revoked`
-- `tenant.member.disabled`
+- `tenant.user.disabled`
 

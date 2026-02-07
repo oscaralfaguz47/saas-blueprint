@@ -53,7 +53,8 @@ This epic defines **what permissions exist** and **which roles receive them**.
 | `tenant.requests.close` | Close requests (OPEN → CLOSED) |
 | `tenant.requests.share` | Share request (create viewer access) |
 | `tenant.requests.link` | Link requests (G1 / G2) |
-| `tenant.requests.export` | Export request packet / bundle |
+| `tenant.requests.export` | Export request packet (PDF) and/or bundle (ZIP) |
+| `tenant.requests.comment` | Add comments on requests |
 
 ---
 
@@ -112,6 +113,7 @@ Full control role. Break-glass access. Cannot be restricted.
 - `tenant.requests.share`
 - `tenant.requests.link`
 - `tenant.requests.export`
+- `tenant.requests.comment`
 
 #### Evidence
 - `tenant.evidence.add`
@@ -150,6 +152,7 @@ Manages the workspace operationally, **but does NOT manage billing**.
 - `tenant.requests.share`
 - `tenant.requests.link`
 - `tenant.requests.export`
+- `tenant.requests.comment`
 
 #### Evidence
 - `tenant.evidence.add`
@@ -184,6 +187,7 @@ Does **not** administer the tenant itself.
 - `tenant.requests.share`
 - `tenant.requests.link`
 - `tenant.requests.export`
+- `tenant.requests.comment`
 
 #### Evidence
 - `tenant.evidence.add`
@@ -216,6 +220,7 @@ Cannot close, pay, or export at scale.
 - `tenant.requests.create`
 - `tenant.requests.share`
 - `tenant.requests.link`
+- `tenant.requests.comment`
 
 #### Evidence
 - `tenant.evidence.add`

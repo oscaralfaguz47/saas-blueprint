@@ -56,7 +56,7 @@ Indexes (minimum):
 
 ## Action Catalog (v1)
 
-System must create AuditLog entries for:
+System must create AuditLog entries using **canonical action keys only**. See `docs/epics/00-NAMING-AND-PERMISSION-ALIGNMENT.md`.
 
 ### Tenant
 
@@ -67,23 +67,46 @@ System must create AuditLog entries for:
 
 ### Invites / Membership
 
-- `tenant.invite.created`
+- `tenant.user.invited`
+- `tenant.invite.accepted`
 - `tenant.invite.resent`
 - `tenant.invite.revoked`
-- `tenant.member.role_changed`
-- `tenant.member.removed`
+- `tenant.user.disabled`
+- `tenant.role.changed`
+
+### Requests
+
+- `request.created`
+- `request.closed`
+
+### Evidence
+
+- `request.evidence.file_added`
+- `request.evidence.link_added`
+
+### Approvals
+
+- `request.approval.internal_assigned`
+- `request.approval.external_sent`
+- `request.approval.approved`
+- `request.approval.rejected`
+- `request.reminder.sent`
+
+### Payments
+
+- `request.payment.status_set`
+- `request.payment.evidence_added`
+- `request.payment.evidence_removed`
 
 ### Exports
 
-- `export.pdf.created`
-- `export.zip.created`
+- `request.export.pdf_generated`
+- `request.export.bundle_generated`
 - `export.blocked.upgrade_required` (optional but recommended)
 
-### Payment Status
+### Comments (optional)
 
-- `payment.status.changed`
-- `payment.proof.added`
-- `payment.proof.removed`
+- `request.comment.added`
 
 
 ---
@@ -94,7 +117,7 @@ Each `actionKey` must have a stable metadata schema.
 
 Examples (minimum recommended):
 
-### `tenant.member.role_changed`
+### `tenant.role.changed`
 
 metadataJson:
 
@@ -103,7 +126,7 @@ metadataJson:
 - oldRole
 - newRole
 
-### `export.pdf.created`
+### `request.export.pdf_generated`
 
 metadataJson:
 
@@ -112,7 +135,7 @@ metadataJson:
 - fileId / blobKey (if applicable)
 - watermarkApplied (bool)
 
-### `payment.status.changed`
+### `request.payment.status_set`
 
 metadataJson:
 

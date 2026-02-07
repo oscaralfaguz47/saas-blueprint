@@ -44,7 +44,7 @@ To export PDF, acting user must:
 1. Have access to the request (C1)
 AND
 2. Have permission:
-   - `tenant.exports.pdf`
+   - `tenant.requests.export`
    - OR role equivalent
 
 If not authorized:
@@ -184,9 +184,9 @@ Metadata (recommended):
 
 ---
 
-## Audit Logging (K1) — Recommended
+## Audit Logging (K1)
 
-AuditLog action:
+AuditLog action (canonical):
 
 - `request.export.pdf_generated`
 

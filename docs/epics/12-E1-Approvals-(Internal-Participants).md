@@ -121,11 +121,11 @@ Sorted by:
 
 ---
 
-## Audit Logging (K1) — Recommended
+## Audit Logging (K1)
 
-Create AuditLog entry:
+Create AuditLog entry (canonical action key):
 
-- `request.approver.assigned_internal`
+- `request.approval.internal_assigned`
 
 Recommended metadataJson:
 

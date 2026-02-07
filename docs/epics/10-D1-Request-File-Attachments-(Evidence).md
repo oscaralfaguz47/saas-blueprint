@@ -22,8 +22,8 @@
 - Evidence can be soft-deleted (optional in v1, but model must support it)
 - A RequestEvent is created:
   - `request.evidence.added`
-- An AuditLog entry is created (recommended, aligned with K1):
-  - `request.evidence.added`
+- An AuditLog entry is created (canonical action key, K1):
+  - `request.evidence.file_added`
 
 
 ---
@@ -106,7 +106,7 @@ Constraints / Indexes:
 4. Upload object to storage provider
 5. Persist RequestEvidence row with metadata
 6. Emit RequestEvent `request.evidence.added`
-7. Write AuditLog entry `request.evidence.added`
+7. Write AuditLog entry `request.evidence.file_added`
 8. Commit
 
 Transaction rule:
@@ -153,6 +153,7 @@ Rules:
   - export output (PDF and/or ZIP depending on plan)
 
 - RequestEvent `request.evidence.added` is created on success
+- AuditLog `request.evidence.file_added` is written
 - Evidence metadata is stored correctly:
   - provider, objectKey, filename, mime, size, sha256 (optional)
 

@@ -115,8 +115,8 @@ When assigning external approver:
 4. Send email with secure link
 5. Emit RequestEvent:
    - `request.approval.link_opened` (optional on first visit)
-6. AuditLog entry:
-   - `request.approver.assigned_external`
+6. AuditLog entry (canonical):
+   - `request.approval.external_sent`
 
 
 ---

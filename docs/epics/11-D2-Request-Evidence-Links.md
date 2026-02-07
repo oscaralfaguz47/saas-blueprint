@@ -26,9 +26,8 @@
 - A RequestEvent is created:
   - `request.evidence.added`
   - type = "LINK"
-- An AuditLog entry is created (aligned with K1):
-  - `request.evidence.added`
-  - metadata indicates evidenceType = LINK
+- An AuditLog entry is created (canonical action key, K1):
+  - `request.evidence.link_added`
 
 Permissions must match D1 (file evidence).
 
@@ -120,7 +119,7 @@ Indexes:
 5. Emit RequestEvent:
    - `request.evidence.added`
    - metadata: evidenceType = LINK
-6. Write AuditLog entry
+6. Write AuditLog entry `request.evidence.link_added`
 7. Commit transaction
 
 
@@ -169,7 +168,7 @@ Export inclusion must respect plan limits (Starter/Pro).
 
 - URL is validated (reject invalid or unsafe protocols)
 - RequestEvent `request.evidence.added` is created with type LINK
-- AuditLog entry is created
+- AuditLog `request.evidence.link_added` is created
 
 
 ---

@@ -40,9 +40,7 @@ A RequestEvent is created for each action:
 - `request.rejected`
 - `request.commented`
 
-AuditLog entry created for:
-
-- `request.approval.action_internal`
+AuditLog: use canonical action key per outcome — `request.approval.approved` or `request.approval.rejected` (comment-only does not change status)
 
 
 ---
@@ -177,9 +175,11 @@ Metadata:
 
 ## Audit Logging (K1)
 
-AuditLog action:
+AuditLog action (canonical per outcome):
 
-- `request.approval.action_internal`
+- On APPROVE: `request.approval.approved`
+- On REJECT: `request.approval.rejected`
+- On COMMENT only: optional
 
 Metadata:
 

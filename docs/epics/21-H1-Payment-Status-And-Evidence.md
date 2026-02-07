@@ -35,7 +35,7 @@ To set payment status, acting user must:
 1. Have access to the request (C1)
 AND
 2. Have permission:
-   - `tenant.payments.set_status`
+   - `tenant.payments.manage`
    - OR Finance/Admin equivalent
 
 If not authorized:

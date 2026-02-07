@@ -46,8 +46,8 @@ OR
 
 Internal users must:
 
-- Have access to the request
-- Have permission `tenant.requests.comment` (recommended)
+- Have access to the request (C1)
+- Have permission `tenant.requests.comment`
 
 External users:
 
@@ -128,7 +128,7 @@ Metadata (recommended):
 
 ## Audit Logging (K1)
 
-Optional but recommended:
+Optional but recommended. Use canonical action key:
 
 AuditLog entry:
 

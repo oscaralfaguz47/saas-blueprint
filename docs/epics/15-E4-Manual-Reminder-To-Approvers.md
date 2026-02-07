@@ -59,7 +59,7 @@ When sending a reminder:
   - Token link (for external) if still valid
 - A RequestEvent is created:
   - `request.reminder.sent`
-- AuditLog entry is created (recommended, aligned with K1):
+- AuditLog entry is created (canonical action key, K1):
   - `request.reminder.sent`
 
 

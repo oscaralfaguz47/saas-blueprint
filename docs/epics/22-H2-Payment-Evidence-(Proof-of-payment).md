@@ -41,7 +41,7 @@ To add or remove payment evidence, acting user must:
 1. Have access to the request (C1)
 AND
 2. Have permission:
-   - `tenant.payments.evidence.add`
+   - `tenant.payments.manage`
    - OR Finance/Admin equivalent
 
 If not authorized:
@@ -178,10 +178,10 @@ Metadata:
 
 ## Audit Logging (K1)
 
-AuditLog entries:
+AuditLog entries (canonical action keys):
 
-- `request.payment.evidence.added`
-- `request.payment.evidence.removed`
+- `request.payment.evidence_added`
+- `request.payment.evidence_removed`
 
 Metadata:
 

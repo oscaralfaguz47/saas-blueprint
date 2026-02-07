@@ -63,7 +63,7 @@ To export bundle, acting user must:
 1. Have access to the request (C1)
 AND
 2. Have permission:
-   - `tenant.exports.bundle`
+   - `tenant.requests.export`
    - OR Finance/Admin equivalent
 
 If unauthorized:
@@ -172,7 +172,7 @@ Metadata:
 
 ## Audit Logging (K1)
 
-AuditLog action:
+AuditLog action (canonical):
 
 - `request.export.bundle_generated`
 

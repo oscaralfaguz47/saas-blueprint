@@ -9,14 +9,17 @@ AUDIT LOG (K1) CONTRACT
 AuditLog must capture sensitive actions with consistent metadata.
 Audit logs are append-only (never edited; no deletes).
 
-Minimum required audit events (v1):
+Minimum required audit events (v1). Canonical names only; see docs/epics/00-NAMING-AND-PERMISSION-ALIGNMENT.md.
 Tenant:
 - tenant.created
 - tenant.plan.assigned
 - tenant.plan.changed
 - tenant.billing.price_override_set
-Users/Roles:
+Invites/Users/Roles:
 - tenant.user.invited
+- tenant.invite.accepted
+- tenant.invite.resent
+- tenant.invite.revoked
 - tenant.user.disabled (if used)
 - tenant.role.changed (role assignment changes)
 Requests:
@@ -34,9 +37,12 @@ Approvals:
 Payments:
 - request.payment.status_set
 - request.payment.evidence_added
+- request.payment.evidence_removed
 Exports:
 - request.export.pdf_generated
 - request.export.bundle_generated
+Comments (optional):
+- request.comment.added
 
 Rules:
 1) Every audited action must include:
