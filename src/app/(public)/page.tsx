@@ -43,7 +43,7 @@ export default async function PublicHomePage() {
               </span>
 
               <span className="hidden text-sm text-(--text-muted) md:inline">
-                Executive approvals, evidence, timeline.
+                Executive approvals, evidence, timeline. UPDATED
               </span>
             </div>
 
