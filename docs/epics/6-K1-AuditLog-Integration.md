@@ -1,5 +1,7 @@
 # K1 — AuditLog Integration
 
+> Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
+
 ## Scope
 
 - Log sensitive actions across the product, including:

@@ -1,5 +1,7 @@
 # G1 — Link Existing Request
 
+> Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
+
 ## Scope
 
 - Create relationships between existing requests within the same tenant

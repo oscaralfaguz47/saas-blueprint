@@ -1,5 +1,7 @@
 # E2 — Approval Action (Internal)
 
+> Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
+
 ## Scope
 
 - Allow internal approvers to:

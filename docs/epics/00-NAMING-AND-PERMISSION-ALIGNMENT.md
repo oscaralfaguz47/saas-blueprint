@@ -4,6 +4,7 @@ This document is the **single source of truth** for permission codes and audit-l
 
 - **Permissions**: Full tenant permission catalog is in **A2** and below; `docs/PERMISSIONS.md` may document a subset (e.g. platform vs tenant).
 - **Audit**: Canonical action keys are also listed in `.cursor/rules/40-auditlog.mdc`.
+- **Quality, security, scalability**: See **00-EPIC-QUALITY-AND-PRACTICES.md** for cross-cutting requirements and standard error codes.
 
 ---
 

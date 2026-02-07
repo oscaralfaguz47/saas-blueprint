@@ -1,5 +1,7 @@
 # I2 — Audit Bundle (ZIP Export)
 
+> Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
+
 ## Scope
 
 Generate a ZIP “Audit Bundle” that includes:

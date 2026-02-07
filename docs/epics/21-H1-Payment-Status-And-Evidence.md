@@ -1,5 +1,7 @@
 # H1 — Payment Status & Evidence
 
+> Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
+
 ## Scope
 
 - Support payment status tracking for payable requests

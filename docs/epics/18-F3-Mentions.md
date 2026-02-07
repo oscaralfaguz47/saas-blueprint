@@ -1,5 +1,7 @@
 # F3 — Mentions (@username)
 
+> Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
+
 ## Scope
 
 - Detect `@username` inside comments

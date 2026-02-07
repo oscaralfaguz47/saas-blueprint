@@ -1,5 +1,7 @@
 # D1 — Request File Attachments (Evidence)
 
+> Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
+
 ## Scope
 
 - Upload a file, store metadata, and associate it with a request

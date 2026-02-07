@@ -1,5 +1,7 @@
 # E3 — Approval Action (External Approvers)
 
+> Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
+
 ## Scope
 
 - Send email with secure token link for external approval

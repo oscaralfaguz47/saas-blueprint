@@ -1,5 +1,7 @@
 # C1 — Request Access Rules
 
+> Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
+
 ## Scope
 
 Define and enforce request visibility rules.

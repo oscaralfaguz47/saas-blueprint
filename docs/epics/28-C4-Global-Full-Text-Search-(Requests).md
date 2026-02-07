@@ -1,5 +1,7 @@
 # C4 — Global Full-Text Search (Requests)
 
+> Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
+
 ## Scope
 
 Provide a single global search input for requests that searches across key fields and works together with existing filters (C3).

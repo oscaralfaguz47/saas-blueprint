@@ -1,5 +1,7 @@
 # H2 — Payment Evidence (Proof of Payment)
 
+> Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
+
 ## Scope
 
 - Attach proof of payment to a payable request

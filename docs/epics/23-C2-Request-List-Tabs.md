@@ -1,5 +1,7 @@
 # C2 — Request List Tabs
 
+> Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
+
 ## Scope
 
 Provide structured request list tabs in the main list view:

@@ -1,5 +1,7 @@
 # B1 — Create Request
 
+> Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
+
 ## Scope
 
 - Create a request (record) with:

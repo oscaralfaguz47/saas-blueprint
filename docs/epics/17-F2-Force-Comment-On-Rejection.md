@@ -1,5 +1,7 @@
 # F2 — Force Comment on Rejection
 
+> Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
+
 ## Scope
 
 - Require a non-empty comment when an approval is rejected

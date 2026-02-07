@@ -1,5 +1,7 @@
 # F1 — Request Comments
 
+> Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
+
 ## Scope
 
 - Allow creating comments on a request

@@ -1,5 +1,7 @@
 # J1 — Pricing Plan Configuration & Tenant Subscription
 
+> Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
+
 ## Scope
 
 - Define Free / Starter / Pro in Plan.featuresJson or dedicated fields

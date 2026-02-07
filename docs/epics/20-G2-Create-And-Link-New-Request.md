@@ -1,5 +1,7 @@
 # G2 — Create & Link New Request
 
+> Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
+
 ## Scope
 
 - From an existing Request A, create a new Request B (prefilled)

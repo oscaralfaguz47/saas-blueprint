@@ -1,5 +1,7 @@
 # B2 — Request Details View
 
+> Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
+
 ## Scope
 
 Build the request details endpoint/page that displays a complete request view, including:

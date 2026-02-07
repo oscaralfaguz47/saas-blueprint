@@ -1,5 +1,7 @@
 # A2 — Roles and Permissions (RBAC)
 
+> Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
+
 ---
 
 ## 🎯 Epic Objective

@@ -1,5 +1,7 @@
 # D2 — Request Evidence Links
 
+> Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
+
 ## Scope
 
 - Allow adding an external URL as evidence to a request

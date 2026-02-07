@@ -1,5 +1,7 @@
 # J2 — Monthly Usage Counters (Hard-Limit Safe)
 
+> Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
+
 ## Scope
 
 - Implement TenantUsageMonthly (requestsCreated, exportsGenerated)

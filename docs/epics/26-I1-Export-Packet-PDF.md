@@ -1,5 +1,7 @@
 # I1 — Export Packet (PDF)
 
+> Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
+
 ## Scope
 
 Generate a single “Approval Packet” PDF for a request, containing sections:

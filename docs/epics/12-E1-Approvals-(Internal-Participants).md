@@ -1,5 +1,7 @@
 # E1 — Approvals (Internal Participants)
 
+> Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
+
 ## Scope
 
 - Add an internal participant (tenant membership/user) as an approver to a request

@@ -1,5 +1,7 @@
 # E4 — Manual Reminder to Approvers
 
+> Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
+
 ## Scope
 
 - Allow sending manual reminders to pending approvers

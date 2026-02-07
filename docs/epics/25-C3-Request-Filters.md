@@ -1,5 +1,7 @@
 # C3 — Request Filters
 
+> Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
+
 ## Scope
 
 Implement combinable filters for request list views (C2) with validation and performant queries.

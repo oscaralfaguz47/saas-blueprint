@@ -1,5 +1,7 @@
 # B3 — Close Request
 
+> Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
+
 ## Scope
 
 - Close a request (soft state change, not deletion)

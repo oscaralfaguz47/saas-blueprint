@@ -1,5 +1,7 @@
 # A1 — Workspace (Tenant)
 
+> Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
+
 ---
 
 ## 🎯 Epic Objective
