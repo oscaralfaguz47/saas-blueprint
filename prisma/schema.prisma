@@ -300,6 +300,13 @@ model Subscription {
   providerCustomerId     String? @db.VarChar(191)
   providerSubscriptionId String? @db.VarChar(191)
 
+  // Per-workspace price override
+  priceOverrideMonthly Int?       // cents
+  priceOverrideYearly  Int?       // cents
+  currency             String?    @db.VarChar(10) // "USD"
+  discountNote         String?    @db.VarChar(300)
+  discountEndsAt       DateTime?
+
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   plan   Plan   @relation(fields: [planId], references: [id], onDelete: Restrict)
 
@@ -308,6 +315,7 @@ model Subscription {
   @@index([tenantId, status])
   @@index([provider, providerSubscriptionId])
 }
+
 
 model BillingEvent {
   id             String  @id @default(cuid())
