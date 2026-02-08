@@ -13,6 +13,7 @@ import {
   IconWorkspace,
 } from "@/components/ui/icons";
 import { Spinner } from "@/components/ui/spinner";
+import { useCreateWorkspaceModal } from "@/components/app/workspace/create-workspace-modal-context";
 
 type TenantItem = {
   id: string;
@@ -110,6 +111,7 @@ function MenuButton({
 
 export default function UserMenu({ user }: UserMenuProps) {
   const router = useRouter();
+  const { openCreateWorkspaceModal, openWorkspaceSettingsModal } = useCreateWorkspaceModal();
   const label = user.name || user.email || "User";
   const secondary = user.email ?? "";
   const initials = initialsFrom(user.name || user.email);
@@ -317,18 +319,22 @@ export default function UserMenu({ user }: UserMenuProps) {
               </div>
             ) : null}
 
-            <MenuItem
-              href="/app/workspace/new"
+            <MenuButton
               label="Create workspace"
               icon={<IconPlus size={16} />}
-              onSelect={() => setOpen(false)}
+              onSelect={() => {
+                setOpen(false);
+                openCreateWorkspaceModal();
+              }}
             />
 
-            <MenuItem
-              href="/app/workspace/settings"
+            <MenuButton
               label="Workspace settings"
               icon={<IconWorkspace size={16} />}
-              onSelect={() => setOpen(false)}
+              onSelect={() => {
+                setOpen(false);
+                openWorkspaceSettingsModal();
+              }}
             />
 
             <MenuItem

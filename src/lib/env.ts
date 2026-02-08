@@ -21,6 +21,10 @@ const optionalEnvVars = {
   RESEND_API_KEY: process.env.RESEND_API_KEY,
   BOOTSTRAP_ADMIN_EMAIL: process.env.BOOTSTRAP_ADMIN_EMAIL,
   PLATFORM_ADMIN_EMAILS: process.env.PLATFORM_ADMIN_EMAILS,
+  R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID,
+  R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
+  R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,
+  R2_BUCKET_NAME: process.env.R2_BUCKET_NAME,
 } as const;
 
 /**

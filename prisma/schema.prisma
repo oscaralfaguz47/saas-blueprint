@@ -133,6 +133,13 @@ model Tenant {
   slug   String       @unique @db.VarChar(80)
   status TenantStatus @default(ACTIVE)
 
+  // Workspace settings (A1)
+  logoObjectKey String?  @db.VarChar(512)
+  timezone      String?  @db.VarChar(64)
+  currency      String?  @db.VarChar(10)
+  dateFormat    String?  @db.VarChar(32)
+  description   String?  @db.VarChar(500)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

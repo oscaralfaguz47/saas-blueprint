@@ -13,9 +13,14 @@ export {
 } from "./common";
 
 export {
-  slugFromTenantName,
+  TENANT_SLUG_MAX,
+  normalizeSlug,
+  nameFromSlug,
   createTenantSchema,
   setDefaultTenantSchema,
+  workspaceSettingsSchema,
+  logoUploadUrlSchema,
+  logoConfirmSchema,
 } from "./workspace";
 
 export { createRecordSchema } from "./record";

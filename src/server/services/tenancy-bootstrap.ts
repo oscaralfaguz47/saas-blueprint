@@ -2,17 +2,51 @@ import "server-only";
 
 import { prisma } from "@/server/db";
 import { writeAuditLog } from "@/server/services/audit";
-import { slugFromTenantName } from "@/lib/validations";
+import { nameFromSlug } from "@/lib/validations";
 import type { Prisma } from "@prisma/client";
 
 /** Thrown when create-tenant fails because the slug is already in use. No retries. */
 export class SlugTakenError extends Error {
   readonly slug: string;
   constructor(slug: string) {
-    super(`A workspace with the URL "${slug}" already exists. Please choose a different name.`);
+    super(`That workspace URL is already taken. Please choose a different slug.`);
     this.name = "SlugTakenError";
     this.slug = slug;
   }
+}
+
+/** Thrown when create/update fails because the user already has a workspace with that name. */
+export class WorkspaceNameTakenError extends Error {
+  readonly workspaceName: string;
+  constructor(workspaceName: string) {
+    super(`You already have a workspace with that name. Please choose a different name.`);
+    this.name = "WorkspaceNameTakenError";
+    this.workspaceName = workspaceName;
+  }
+}
+
+/**
+ * Ensures no other workspace the user belongs to has the given name (case-insensitive).
+ * @param excludeTenantId - If set, this tenant is excluded (for updates).
+ */
+export async function assertWorkspaceNameUniqueForUser(
+  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0] | typeof prisma,
+  userId: string,
+  name: string,
+  excludeTenantId?: string
+): Promise<void> {
+  const existing = await tx.tenant.findFirst({
+    where: {
+      status: "ACTIVE",
+      ...(excludeTenantId ? { id: { not: excludeTenantId } } : {}),
+      memberships: {
+        some: { userId, status: "ACTIVE" },
+      },
+      name: { equals: name, mode: "insensitive" },
+    },
+    select: { id: true },
+  });
+  if (existing) throw new WorkspaceNameTakenError(name);
 }
 
 /**
@@ -154,28 +188,30 @@ export async function ensureDefaultTenantForUser(params: {
 /**
  * Create a new workspace (tenant) for an authenticated user.
  * A1: single transaction (Tenant + TenantMembership + TenantUserRole + AuditLog).
- * Slug is derived from name; on collision throws SlugTakenError (no retries).
+ * Request provides slug only; name is derived from slug (e.g. acme-inc → Acme Inc).
  */
 export async function createTenantForUser(params: {
   userId: string;
-  name: string;
+  slug: string;
   ipAddress?: string | null;
   userAgent?: string | null;
 }): Promise<{ tenant: { id: string; name: string; slug: string; status: string } }> {
-  const { userId, name, ipAddress, userAgent } = params;
+  const { userId, slug, ipAddress, userAgent } = params;
 
-  const slug = slugFromTenantName(name);
-  const existing = await prisma.tenant.findUnique({
+  const name = nameFromSlug(slug);
+  const existingBySlug = await prisma.tenant.findUnique({
     where: { slug },
     select: { id: true },
   });
-  if (existing) throw new SlugTakenError(slug);
+  if (existingBySlug) throw new SlugTakenError(slug);
+
+  await assertWorkspaceNameUniqueForUser(prisma, userId, name);
 
   try {
     const result = await prisma.$transaction(async (tx) => {
       const tenant = await tx.tenant.create({
         data: {
-          name: name.trim(),
+          name,
           slug,
           status: "ACTIVE",
         },
@@ -201,18 +237,16 @@ export async function createTenantForUser(params: {
         }),
       ]);
 
-      // Newly created workspace becomes the active one: clear other defaults, then set this as default
-      await tx.tenantMembership.updateMany({
-        where: { userId },
-        data: { isDefaultTenant: false },
-      });
+      const hasOtherDefault = (await tx.tenantMembership.count({
+        where: { userId, isDefaultTenant: true, status: "ACTIVE" },
+      })) > 0;
       const membership = await tx.tenantMembership.create({
         data: {
           tenantId: tenant.id,
           userId,
           status: "ACTIVE",
           joinedAt: new Date(),
-          isDefaultTenant: true,
+          isDefaultTenant: !hasOtherDefault,
         },
         select: { id: true },
       });

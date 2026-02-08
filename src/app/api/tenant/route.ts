@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
-import { createTenantForUser, SlugTakenError } from "@/server/services/tenancy-bootstrap";
+import { createTenantForUser, SlugTakenError, WorkspaceNameTakenError } from "@/server/services/tenancy-bootstrap";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { parseBody, createTenantSchema, setDefaultTenantSchema } from "@/lib/validations";
 
@@ -58,7 +58,7 @@ export const POST = withErrorHandler(async (req: Request) => {
   try {
     const result = await createTenantForUser({
       userId: session.user.id,
-      name: body.name,
+      slug: body.slug,
       ipAddress: getIp(req),
       userAgent: getUserAgent(req),
     });
@@ -66,6 +66,8 @@ export const POST = withErrorHandler(async (req: Request) => {
   } catch (err) {
     if (err instanceof SlugTakenError)
       return ApiErrors.CONFLICT(err.message, { slug: err.slug });
+    if (err instanceof WorkspaceNameTakenError)
+      return ApiErrors.CONFLICT(err.message, { name: err.workspaceName });
     throw err;
   }
 });

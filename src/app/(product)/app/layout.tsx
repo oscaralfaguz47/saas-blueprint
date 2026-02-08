@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { authOptions } from "@/server/auth-options";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import AppHeader from "@/components/app/app-header";
+import { CreateWorkspaceModalProvider } from "@/components/app/workspace/create-workspace-modal-context";
 import { WorkspaceReadyNotifier } from "@/components/app/workspace-ready-notifier";
 import { Container } from "@/components/ui/container";
 import { ThemeProvider } from "@/components/theme/theme-provider";
@@ -23,8 +24,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       <WorkspaceReadyNotifier tenantId={tenantId} />
 
       <ThemeProvider>
-        <div className="min-h-screen bg-(--bg-app)">
-          <AppHeader
+        <CreateWorkspaceModalProvider>
+          <div className="min-h-screen bg-(--bg-app)">
+            <AppHeader
             user={{
               name: session.user.name ?? null,
               email: session.user.email ?? null,
@@ -37,7 +39,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
               <div className="max-w-5xl">{children}</div>
             </Container>
           </main>
-        </div>
+          </div>
+        </CreateWorkspaceModalProvider>
       </ThemeProvider>
     </>
   );

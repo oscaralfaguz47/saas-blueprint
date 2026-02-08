@@ -52,6 +52,13 @@ RESEND_API_KEY=<demo-resend-key>
 
 # Demo admin
 BOOTSTRAP_ADMIN_EMAIL=demo-admin@yourdomain.com
+
+# Optional: workspace logo upload (Cloudflare R2)
+# See docs/R2_SETUP.md for full steps
+# R2_ACCOUNT_ID=
+# R2_ACCESS_KEY_ID=
+# R2_SECRET_ACCESS_KEY=
+# R2_BUCKET_NAME=
 ```
 
 #### Production Environment
