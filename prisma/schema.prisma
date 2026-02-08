@@ -179,6 +179,8 @@ model TenantMembership {
   @@unique([tenantId, userId])
   @@index([userId])
   @@index([tenantId, status])
+  @@index([tenantId, joinedAt])
+  @@index([userId, status, isDefaultTenant, joinedAt])
 }
 
 model TenantInvitation {

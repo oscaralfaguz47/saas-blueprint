@@ -327,8 +327,21 @@ Audit logging is mandatory.
 
 # 📊 Indexes & Constraints
 
+## Required
+
 - `Tenant.slug` → UNIQUE
 - `TenantMembership(tenantId, userId)` → UNIQUE
+
+## Indexes for performance (A1 and workspace flows)
+
+- **Tenant**: `@@index([status])` — used when resolving default tenant and in duplicate-name checks.
+- **TenantMembership**:
+  - `@@index([userId])` — list workspaces for user, resolve default tenant.
+  - `@@index([tenantId, status])` — membership lookup by tenant and status; permission checks.
+  - `@@index([tenantId, joinedAt])` — workspace users list ordered by `joinedAt`.
+  - `@@index([userId, status, isDefaultTenant, joinedAt])` — default-tenant lookup (`getDefaultTenantForUser`, `ensureDefaultTenantForUser`) and workspace list with `orderBy isDefaultTenant desc, joinedAt desc` (GET /api/tenant).
+
+All tenant-scoped queries use indexed columns (tenantId, userId, status) for efficiency.
 
 ---
 
