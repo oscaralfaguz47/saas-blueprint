@@ -1,16 +1,30 @@
 const { PrismaClient, PermissionScope } = require("@prisma/client");
 const prisma = new PrismaClient();
 
-// Minimal, stable permission catalog to start.
+// Permission catalog aligned with docs/epics/2-A2-Roles-And-Permissions.md and 00-NAMING-AND-PERMISSION-ALIGNMENT.md.
 const PERMISSIONS = [
-  // Tenant scope
-  { code: "tenant.users.read", scope: "TENANT", description: "Read tenant users" },
-  { code: "tenant.users.invite", scope: "TENANT", description: "Invite users to tenant" },
-  { code: "tenant.users.manage", scope: "TENANT", description: "Manage tenant users" },
-  { code: "tenant.roles.manage", scope: "TENANT", description: "Manage tenant roles and permissions" },
-  { code: "tenant.settings.manage", scope: "TENANT", description: "Manage tenant settings" },
-  { code: "tenant.audit.read", scope: "TENANT", description: "Read tenant audit logs" },
-  { code: "tenant.billing.manage", scope: "TENANT", description: "Manage billing for tenant" },
+  // Tenant scope (A2 catalog)
+  { code: "tenant.audit.read", scope: "TENANT", description: "View audit logs (AuditLog)" },
+  { code: "tenant.billing.manage", scope: "TENANT", description: "Manage billing, plans, subscriptions" },
+  { code: "tenant.settings.manage", scope: "TENANT", description: "Manage workspace settings" },
+  { code: "tenant.roles.read", scope: "TENANT", description: "View roles and permissions" },
+  { code: "tenant.roles.manage", scope: "TENANT", description: "Create/edit roles and assign permissions" },
+  { code: "tenant.users.read", scope: "TENANT", description: "View workspace users" },
+  { code: "tenant.users.invite", scope: "TENANT", description: "Invite users to workspace" },
+  { code: "tenant.users.manage", scope: "TENANT", description: "Edit/activate/deactivate members" },
+  { code: "tenant.users.disable", scope: "TENANT", description: "Disable users (explicit action)" },
+  { code: "tenant.requests.create", scope: "TENANT", description: "Create requests" },
+  { code: "tenant.requests.read_all", scope: "TENANT", description: "View all tenant requests (bypass access rules)" },
+  { code: "tenant.requests.close", scope: "TENANT", description: "Close requests (OPEN → CLOSED)" },
+  { code: "tenant.requests.share", scope: "TENANT", description: "Share request (create viewer access)" },
+  { code: "tenant.requests.link", scope: "TENANT", description: "Link requests (G1 / G2)" },
+  { code: "tenant.requests.export", scope: "TENANT", description: "Export request packet (PDF) and/or bundle (ZIP)" },
+  { code: "tenant.requests.comment", scope: "TENANT", description: "Add comments on requests" },
+  { code: "tenant.evidence.add", scope: "TENANT", description: "Attach evidence (files and links)" },
+  { code: "tenant.approvals.assign_internal", scope: "TENANT", description: "Assign internal approvers" },
+  { code: "tenant.approvals.assign_external", scope: "TENANT", description: "Send external approvals via email/token" },
+  { code: "tenant.approvals.remind", scope: "TENANT", description: "Send manual reminders to pending approvers" },
+  { code: "tenant.payments.manage", scope: "TENANT", description: "Set payment status and manage payment evidence" },
 
   // Vendor scope
   { code: "admin.tenants.read", scope: "VENDOR", description: "Read tenants (vendor)" },

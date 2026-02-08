@@ -69,8 +69,8 @@ export async function ensureDefaultTenantForUser(params: {
         select: { id: true, tenantId: true },
       });
 
-      // Ensure system roles exist (idempotent). Keep it minimal and quick.
-      const [ownerRole, adminRole, memberRole] = await Promise.all([
+      // Ensure system roles exist (idempotent). Aligned with A2: Owner, Admin, Finance, Member.
+      const [ownerRole, adminRole, financeRole, memberRole] = await Promise.all([
         tx.tenantRole.upsert({
           where: { tenantId_name: { tenantId: tenant.id, name: "Owner" } },
           update: { isSystem: true },
@@ -81,6 +81,12 @@ export async function ensureDefaultTenantForUser(params: {
           where: { tenantId_name: { tenantId: tenant.id, name: "Admin" } },
           update: { isSystem: true },
           create: { tenantId: tenant.id, name: "Admin", isSystem: true },
+          select: { id: true, name: true },
+        }),
+        tx.tenantRole.upsert({
+          where: { tenantId_name: { tenantId: tenant.id, name: "Finance" } },
+          update: { isSystem: true },
+          create: { tenantId: tenant.id, name: "Finance", isSystem: true },
           select: { id: true, name: true },
         }),
         tx.tenantRole.upsert({
@@ -120,7 +126,7 @@ export async function ensureDefaultTenantForUser(params: {
     actorUserId: userId,
     actorContext: "TENANT",
     tenantId: result.tenant.id,
-    action: "tenant.bootstrap.created",
+    action: "tenant.created",
     targetType: "Tenant",
     targetId: result.tenant.id,
     metadata: {
@@ -136,38 +142,87 @@ export async function ensureDefaultTenantForUser(params: {
 
 /**
  * Ensure the minimal permission mapping exists for tenant roles.
- * This is designed to be:
- * - Idempotent
- * - Fast (batch createMany + minimal reads)
- * - NOT inside interactive transaction
+ * Aligned with docs/epics/2-A2-Roles-And-Permissions.md (A2).
+ * - Idempotent, fast (batch createMany + minimal reads), NOT inside interactive transaction.
  */
 async function ensureTenantRolesAndPermissions(params: { tenantId: string }) {
   const { tenantId } = params;
 
-  // Role -> permission codes mapping (must match your Permission catalog)
-  const ROLE_PERMS: Record<"Owner" | "Admin" | "Member", string[]> = {
+  // Role -> permission codes (A2 catalog)
+  const ROLE_PERMS: Record<"Owner" | "Admin" | "Finance" | "Member", string[]> = {
     Owner: [
-      "tenant.users.read",
-      "tenant.users.invite",
-      "tenant.users.manage",
-      "tenant.roles.manage",
-      "tenant.settings.manage",
       "tenant.audit.read",
       "tenant.billing.manage",
-    ],
-    Admin: [
+      "tenant.settings.manage",
+      "tenant.roles.read",
+      "tenant.roles.manage",
       "tenant.users.read",
       "tenant.users.invite",
       "tenant.users.manage",
-      "tenant.settings.manage",
-      "tenant.audit.read",
+      "tenant.users.disable",
+      "tenant.requests.create",
+      "tenant.requests.read_all",
+      "tenant.requests.close",
+      "tenant.requests.share",
+      "tenant.requests.link",
+      "tenant.requests.export",
+      "tenant.requests.comment",
+      "tenant.evidence.add",
+      "tenant.approvals.assign_internal",
+      "tenant.approvals.assign_external",
+      "tenant.approvals.remind",
+      "tenant.payments.manage",
     ],
-    Member: ["tenant.users.read"],
+    Admin: [
+      "tenant.audit.read",
+      "tenant.settings.manage",
+      "tenant.roles.read",
+      "tenant.roles.manage",
+      "tenant.users.read",
+      "tenant.users.invite",
+      "tenant.users.manage",
+      "tenant.users.disable",
+      "tenant.requests.create",
+      "tenant.requests.read_all",
+      "tenant.requests.close",
+      "tenant.requests.share",
+      "tenant.requests.link",
+      "tenant.requests.export",
+      "tenant.requests.comment",
+      "tenant.evidence.add",
+      "tenant.approvals.assign_internal",
+      "tenant.approvals.assign_external",
+      "tenant.approvals.remind",
+      "tenant.payments.manage",
+    ],
+    Finance: [
+      "tenant.audit.read",
+      "tenant.requests.create",
+      "tenant.requests.read_all",
+      "tenant.requests.close",
+      "tenant.requests.share",
+      "tenant.requests.link",
+      "tenant.requests.export",
+      "tenant.requests.comment",
+      "tenant.evidence.add",
+      "tenant.approvals.assign_internal",
+      "tenant.approvals.assign_external",
+      "tenant.approvals.remind",
+      "tenant.payments.manage",
+    ],
+    Member: [
+      "tenant.users.read",
+      "tenant.requests.create",
+      "tenant.requests.share",
+      "tenant.requests.link",
+      "tenant.requests.comment",
+      "tenant.evidence.add",
+    ],
   };
 
   // 1) Load role ids for this tenant
   const roles = await prisma.tenantRole.findMany({
-    where: { tenantId, name: { in: ["Owner", "Admin", "Member"] } },
+    where: { tenantId, name: { in: ["Owner", "Admin", "Finance", "Member"] } },
     select: { id: true, name: true },
   });
 

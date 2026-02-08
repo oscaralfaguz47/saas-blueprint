@@ -2,14 +2,32 @@ import "server-only";
 
 import { prisma } from "@/server/db";
 
+/**
+ * Tenant permission codes aligned with docs/epics/2-A2-Roles-And-Permissions.md
+ * and docs/epics/00-NAMING-AND-PERMISSION-ALIGNMENT.md.
+ */
 export type TenantPermission =
+  | "tenant.audit.read"
+  | "tenant.billing.manage"
+  | "tenant.settings.manage"
+  | "tenant.roles.read"
+  | "tenant.roles.manage"
   | "tenant.users.read"
   | "tenant.users.invite"
   | "tenant.users.manage"
-  | "tenant.roles.manage"
-  | "tenant.settings.manage"
-  | "tenant.audit.read"
-  | "tenant.billing.manage";
+  | "tenant.users.disable"
+  | "tenant.requests.create"
+  | "tenant.requests.read_all"
+  | "tenant.requests.close"
+  | "tenant.requests.share"
+  | "tenant.requests.link"
+  | "tenant.requests.export"
+  | "tenant.requests.comment"
+  | "tenant.evidence.add"
+  | "tenant.approvals.assign_internal"
+  | "tenant.approvals.assign_external"
+  | "tenant.approvals.remind"
+  | "tenant.payments.manage";
 
 export async function hasTenantPermission(params: {
   userId: string;
