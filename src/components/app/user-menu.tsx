@@ -2,13 +2,25 @@
 
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
   IconBilling,
   IconLogout,
+  IconPlus,
   IconSettings,
   IconWorkspace,
 } from "@/components/ui/icons";
+import { Spinner } from "@/components/ui/spinner";
+
+type TenantItem = {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  isDefaultTenant: boolean;
+};
 
 type UserMenuProps = {
   user: {
@@ -97,11 +109,15 @@ function MenuButton({
 }
 
 export default function UserMenu({ user }: UserMenuProps) {
+  const router = useRouter();
   const label = user.name || user.email || "User";
   const secondary = user.email ?? "";
   const initials = initialsFrom(user.name || user.email);
 
   const [open, setOpen] = useState(false);
+  const [tenants, setTenants] = useState<TenantItem[]>([]);
+  const [tenantsLoading, setTenantsLoading] = useState(false);
+  const [switchingId, setSwitchingId] = useState<string | null>(null);
 
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -124,13 +140,70 @@ export default function UserMenu({ user }: UserMenuProps) {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    setTenantsLoading(true);
+    fetch("/api/tenant")
+      .then((r) => r.json())
+      .then((json: { data?: { tenants?: TenantItem[] } }) => {
+        setTenants(json.data?.tenants ?? []);
+      })
+      .finally(() => setTenantsLoading(false));
+  }, [open]);
+
+  async function handleSwitchTenant(tenantId: string) {
+    setSwitchingId(tenantId);
+    try {
+      const res = await fetch("/api/tenant", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenantId }),
+      });
+      if (res.ok) {
+        setOpen(false);
+        router.push("/app/dashboard");
+        router.refresh();
+        // Overlay stays until workspace-ready event (from layout after RSC refetch) or fallback timeout
+        const done = () => {
+          setSwitchingId(null);
+          window.removeEventListener("workspace-ready", onReady);
+          clearTimeout(fallback);
+        };
+        const onReady = () => done();
+        window.addEventListener("workspace-ready", onReady);
+        const fallback = setTimeout(done, 3000);
+        return;
+      }
+    } catch {
+      // fall through to clear overlay
+    }
+    setSwitchingId(null);
+  }
+
   async function handleSignOut() {
     setOpen(false);
     await signOut({ callbackUrl: "/auth/sign-in" });
   }
 
+  const switchingOverlay =
+    switchingId !== null && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            className="fixed inset-0 z-100 flex flex-col items-center justify-center gap-4 bg-(--bg-app)/90 text-(--text-primary) backdrop-blur-sm"
+            role="status"
+            aria-live="polite"
+            aria-label="Switching workspace"
+          >
+            <Spinner size="lg" />
+            <p className="text-sm text-(--text-muted)">Switching workspace…</p>
+          </div>,
+          document.body
+        )
+      : null;
+
   return (
     <div className="relative">
+      {switchingOverlay}
       {/* Trigger */}
       <button
         ref={buttonRef}
@@ -202,6 +275,54 @@ export default function UserMenu({ user }: UserMenuProps) {
             <div className="px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-(--text-muted)">
               Workspace
             </div>
+
+            {tenantsLoading ? (
+              <div className="flex items-center gap-2 px-4 py-3 text-sm text-(--text-muted)">
+                <Spinner size="sm" />
+                <span>Loading workspaces…</span>
+              </div>
+            ) : tenants.length > 0 ? (
+              <div className="max-h-40 overflow-y-auto">
+                {tenants.map((t) => (
+                  <div
+                    key={t.id}
+                    className="flex items-center justify-between gap-2 px-4 py-2"
+                  >
+                    <span className="min-w-0 truncate text-sm text-(--text-primary)">
+                      {t.name}
+                    </span>
+                    {t.isDefaultTenant ? (
+                      <span className="shrink-0 rounded bg-(--bg-surface-elev) px-2 py-0.5 text-[10px] font-medium text-(--text-muted)">
+                        Current
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleSwitchTenant(t.id)}
+                        disabled={switchingId !== null}
+                        className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-(--color-primary) hover:underline disabled:opacity-60"
+                      >
+                        {switchingId === t.id ? (
+                          <>
+                            <Spinner size="sm" />
+                            <span>Switching…</span>
+                          </>
+                        ) : (
+                          "Switch to"
+                        )}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            <MenuItem
+              href="/app/workspace/new"
+              label="Create workspace"
+              icon={<IconPlus size={16} />}
+              onSelect={() => setOpen(false)}
+            />
 
             <MenuItem
               href="/app/workspace/settings"

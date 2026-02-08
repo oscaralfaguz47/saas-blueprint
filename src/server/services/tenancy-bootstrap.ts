@@ -2,7 +2,18 @@ import "server-only";
 
 import { prisma } from "@/server/db";
 import { writeAuditLog } from "@/server/services/audit";
+import { slugFromTenantName } from "@/lib/validations";
 import type { Prisma } from "@prisma/client";
+
+/** Thrown when create-tenant fails because the slug is already in use. No retries. */
+export class SlugTakenError extends Error {
+  readonly slug: string;
+  constructor(slug: string) {
+    super(`A workspace with the URL "${slug}" already exists. Please choose a different name.`);
+    this.name = "SlugTakenError";
+    this.slug = slug;
+  }
+}
 
 /**
  * v1 bootstrap (robust + fast):
@@ -138,6 +149,103 @@ export async function ensureDefaultTenantForUser(params: {
   });
 
   return result;
+}
+
+/**
+ * Create a new workspace (tenant) for an authenticated user.
+ * A1: single transaction (Tenant + TenantMembership + TenantUserRole + AuditLog).
+ * Slug is derived from name; on collision throws SlugTakenError (no retries).
+ */
+export async function createTenantForUser(params: {
+  userId: string;
+  name: string;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+}): Promise<{ tenant: { id: string; name: string; slug: string; status: string } }> {
+  const { userId, name, ipAddress, userAgent } = params;
+
+  const slug = slugFromTenantName(name);
+  const existing = await prisma.tenant.findUnique({
+    where: { slug },
+    select: { id: true },
+  });
+  if (existing) throw new SlugTakenError(slug);
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const tenant = await tx.tenant.create({
+        data: {
+          name: name.trim(),
+          slug,
+          status: "ACTIVE",
+        },
+        select: { id: true, name: true, slug: true, status: true },
+      });
+
+      const [ownerRole] = await Promise.all([
+        tx.tenantRole.create({
+          data: { tenantId: tenant.id, name: "Owner", isSystem: true },
+          select: { id: true, name: true },
+        }),
+        tx.tenantRole.create({
+          data: { tenantId: tenant.id, name: "Admin", isSystem: true },
+          select: { id: true, name: true },
+        }),
+        tx.tenantRole.create({
+          data: { tenantId: tenant.id, name: "Finance", isSystem: true },
+          select: { id: true, name: true },
+        }),
+        tx.tenantRole.create({
+          data: { tenantId: tenant.id, name: "Member", isSystem: true },
+          select: { id: true, name: true },
+        }),
+      ]);
+
+      // Newly created workspace becomes the active one: clear other defaults, then set this as default
+      await tx.tenantMembership.updateMany({
+        where: { userId },
+        data: { isDefaultTenant: false },
+      });
+      const membership = await tx.tenantMembership.create({
+        data: {
+          tenantId: tenant.id,
+          userId,
+          status: "ACTIVE",
+          joinedAt: new Date(),
+          isDefaultTenant: true,
+        },
+        select: { id: true },
+      });
+
+      await tx.tenantUserRole.create({
+        data: { membershipId: membership.id, roleId: ownerRole.id },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          actorUserId: userId,
+          actorContext: "TENANT",
+          tenantId: tenant.id,
+          action: "tenant.created",
+          targetType: "Tenant",
+          targetId: tenant.id,
+          metadata: { tenantName: tenant.name, tenantSlug: tenant.slug },
+          ipAddress: ipAddress ?? null,
+          userAgent: userAgent ?? null,
+        },
+      });
+
+      return { tenant };
+    });
+
+    await ensureTenantRolesAndPermissions({ tenantId: result.tenant.id });
+
+    return result;
+  } catch (err) {
+    if (err && typeof err === "object" && "code" in err && (err as { code: string }).code === "P2002")
+      throw new SlugTakenError(slug);
+    throw err;
+  }
 }
 
 /**

@@ -84,3 +84,12 @@ export function IconX(props: IconProps) {
     </BaseIcon>
   );
 }
+
+export function IconPlus(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </BaseIcon>
+  );
+}

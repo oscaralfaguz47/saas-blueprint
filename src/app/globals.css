@@ -131,3 +131,12 @@ header[data-app-header="true"] {
   }
 }
 
+/* Spinner animation for loading states */
+.animate-spin {
+  animation: spinner-rotate 0.7s linear infinite;
+}
+@keyframes spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}

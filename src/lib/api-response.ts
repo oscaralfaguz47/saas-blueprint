@@ -53,6 +53,9 @@ export const ApiErrors = {
   INTERNAL_ERROR: (message?: string) =>
     apiError("INTERNAL_ERROR", 500, message || "An internal error occurred"),
   NO_TENANT: () => apiError("NO_TENANT", 403, "No active tenant found"),
+  /** Conflict (e.g. duplicate slug); 409 */
+  CONFLICT: (message?: string, details?: unknown) =>
+    apiError("CONFLICT", 409, message ?? "Resource conflict", details),
 } as const;
 
 /**
