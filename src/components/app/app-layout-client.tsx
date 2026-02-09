@@ -31,7 +31,7 @@ export default function AppLayoutClient({
 
   useEffect(() => {
     const m = window.matchMedia("(max-width: 767px)");
-    setIsMobile(m.matches);
+    queueMicrotask(() => setIsMobile(m.matches));
     const listener = () => setIsMobile(m.matches);
     m.addEventListener("change", listener);
     return () => m.removeEventListener("change", listener);

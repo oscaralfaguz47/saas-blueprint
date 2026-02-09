@@ -48,15 +48,14 @@ export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps)
   const [switchingId, setSwitchingId] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
-  const [collapsed, setCollapsed] = useState(false);
-
-  useEffect(() => {
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
     try {
-      setCollapsed(window.localStorage.getItem("sidebar-collapsed") === "1");
+      return window.localStorage.getItem("sidebar-collapsed") === "1";
     } catch {
-      // ignore
+      return false;
     }
-  }, []);
+  });
 
   useEffect(() => {
     try {
@@ -72,7 +71,7 @@ export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps)
   useEffect(() => {
     const sidebarVisible = !isMobile || open;
     if (!sidebarVisible) return;
-    setTenantsLoading(true);
+    queueMicrotask(() => setTenantsLoading(true));
     fetch("/api/tenant")
       .then((r) => r.json())
       .then((json: { data?: { tenants?: TenantItem[] } }) => {
