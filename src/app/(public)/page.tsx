@@ -20,7 +20,7 @@ export default async function PublicHomePage() {
 
   // Logged-in users go directly to the app
   if (session?.user) {
-    redirect("/app/dashboard");
+    redirect("/app/requests");
   }
 
   return (

@@ -1,0 +1,61 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import AppHeader from "@/components/app/app-header";
+import AppSidebar from "@/components/app/app-sidebar";
+import { Container } from "@/components/ui/container";
+
+type Workspace = {
+  id: string;
+  name: string;
+  logoObjectKey?: string | null;
+};
+
+type AppLayoutClientProps = {
+  user: {
+    name: string | null;
+    email: string | null;
+    image: string | null;
+  };
+  workspace: Workspace | null;
+  children: React.ReactNode;
+};
+
+export default function AppLayoutClient({
+  user,
+  workspace,
+  children,
+}: AppLayoutClientProps) {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const m = window.matchMedia("(max-width: 767px)");
+    setIsMobile(m.matches);
+    const listener = () => setIsMobile(m.matches);
+    m.addEventListener("change", listener);
+    return () => m.removeEventListener("change", listener);
+  }, []);
+
+  return (
+    <div className="flex min-h-screen bg-(--bg-app)">
+      <AppSidebar
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        isMobile={isMobile}
+      />
+      <div className="flex min-w-0 flex-1 flex-col border-t border-(--border-subtle)">
+        <AppHeader
+          user={user}
+          workspace={workspace}
+          onMenuClick={isMobile ? () => setSidebarOpen(true) : undefined}
+        />
+        <main className="flex-1 py-8 text-(--text-primary)">
+          <Container>
+            <div className="max-w-5xl">{children}</div>
+          </Container>
+        </main>
+      </div>
+    </div>
+  );
+}

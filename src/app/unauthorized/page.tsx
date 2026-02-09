@@ -23,10 +23,10 @@ export default function UnauthorizedPage() {
 
           <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
             <Link
-              href="/app/dashboard"
+              href="/app/requests"
               className="inline-flex h-11 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white transition-colors hover:bg-(--color-primary-hover)"
             >
-              Go back to dashboard
+              Go back to app
             </Link>
 
             <Link

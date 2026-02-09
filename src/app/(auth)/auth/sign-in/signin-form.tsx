@@ -55,8 +55,8 @@ function getFriendlyError(messageOrCode?: string) {
 
 function getSafeCallbackUrl(value: string | null) {
   // Keep same-origin relative paths only (prevents open-redirect)
-  if (!value) return "/app/dashboard";
-  return value.startsWith("/") ? value : "/app/dashboard";
+  if (!value) return "/app/requests";
+  return value.startsWith("/") ? value : "/app/requests";
 }
 
 function GoogleIcon() {

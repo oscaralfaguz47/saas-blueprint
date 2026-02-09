@@ -11,5 +11,5 @@ export default async function AppRootPage() {
 
   if (!membership?.tenant) redirect("/app/onboarding");
 
-  redirect("/app/dashboard");
+  redirect("/app/requests");
 }

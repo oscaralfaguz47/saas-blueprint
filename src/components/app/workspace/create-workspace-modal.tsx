@@ -60,7 +60,8 @@ type Tenant = {
 type Props = {
   open: boolean;
   onClose: () => void;
-  onCreated?: () => void;
+  /** Called when user closes or saves after creating a workspace; redirects to Requests. */
+  onCloseAfterCreate?: () => void;
   mode?: "create" | "settings";
 };
 
@@ -139,7 +140,7 @@ function getApiMessage(res: { error?: string; message?: string }) {
   return "Something went wrong. Please try again.";
 }
 
-export function CreateWorkspaceModal({ open, onClose, onCreated, mode = "create" }: Props) {
+export function CreateWorkspaceModal({ open, onClose, onCloseAfterCreate, mode = "create" }: Props) {
   const router = useRouter();
   const [step, setStep] = useState<"create" | "settings">("create");
   const [settingsLoadStatus, setSettingsLoadStatus] = useState<"idle" | "loading" | "error">("idle");
@@ -252,8 +253,7 @@ export function CreateWorkspaceModal({ open, onClose, onCreated, mode = "create"
       setSettings((s) => ({ ...s, name: created.name, timezone: tz, currency }));
       setStep("settings");
       setCreateStatus("idle");
-      onCreated?.();
-      router.refresh();
+      // Ensure the new workspace is selected as default before redirect so navbar/sidebar show it
       const hasDefault = await fetch("/api/tenant").then(async (r) => {
         const j = await r.json();
         const tenants = (j.data as { tenants?: { id: string; isDefaultTenant: boolean }[] })?.tenants ?? [];
@@ -265,8 +265,9 @@ export function CreateWorkspaceModal({ open, onClose, onCreated, mode = "create"
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ tenantId: created.id }),
         });
-        router.refresh();
       }
+      router.refresh();
+      // Stay in modal on settings step with success message; redirect only when user closes or saves (handleClose / handleSettingsSubmit)
     } catch {
       setCreateError("Something went wrong. Please try again.");
       setCreateStatus("error");
@@ -382,14 +383,25 @@ export function CreateWorkspaceModal({ open, onClose, onCreated, mode = "create"
       if (data.data?.tenant) setTenant(data.data.tenant);
       setSettingsStatus("idle");
       router.refresh();
-      handleClose();
+      // Notify sidebar to refetch so workspace list shows updated name/icon
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("workspace-updated"));
+      }
+      // Post-create: close then redirect (skip redirect in handleClose to avoid double call)
+      if (mode === "create") {
+        handleClose(true);
+        queueMicrotask(() => onCloseAfterCreate?.());
+      } else {
+        handleClose();
+      }
     } catch {
       setSettingsError("Something went wrong. Please try again.");
       setSettingsStatus("error");
     }
   };
 
-  const handleClose = () => {
+  const handleClose = (skipRedirectAfterCreate?: boolean) => {
+    const wasPostCreate = step === "settings" && mode === "create";
     setStep("create");
     setSlug("");
     setCreateError(null);
@@ -400,19 +412,27 @@ export function CreateWorkspaceModal({ open, onClose, onCreated, mode = "create"
     setSettingsStatus("idle");
     setSettingsLoadStatus("idle");
     onClose();
+    // Redirect after closing so it's not lost during unmount; run in next tick
+    if (wasPostCreate && !skipRedirectAfterCreate) {
+      queueMicrotask(() => onCloseAfterCreate?.());
+    }
   };
 
   const isSubmitting = createStatus === "submitting" || settingsStatus === "submitting";
   const title = step === "create" && mode === "create" ? "Create workspace" : "Workspace Settings";
   const description =
-    step === "settings" && mode === "create" && tenant
-      ? "Workspace created successfully. You can update settings now."
-      : step === "settings" && mode === "settings"
-        ? "Update your workspace settings."
-        : undefined;
+    step === "settings" && mode === "settings"
+      ? "Update your workspace settings."
+      : undefined;
 
   return (
-    <Dialog open={open} onClose={handleClose} title={title} description={description} closeDisabled={isSubmitting}>
+    <Dialog
+      open={open}
+      onClose={() => handleClose()}
+      title={title}
+      description={description}
+      closeDisabled={isSubmitting}
+    >
       {step === "create" && mode === "create" ? (
         <form onSubmit={handleCreateSubmit} className="space-y-4">
           <div>
@@ -443,7 +463,7 @@ export function CreateWorkspaceModal({ open, onClose, onCreated, mode = "create"
           <div className="flex justify-end gap-2">
             <button
               type="button"
-              onClick={handleClose}
+              onClick={() => handleClose()}
               disabled={createStatus === "submitting"}
               className="rounded-lg border border-(--border-subtle) px-4 py-2 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60 disabled:pointer-events-none"
             >
@@ -476,7 +496,7 @@ export function CreateWorkspaceModal({ open, onClose, onCreated, mode = "create"
           <div className="mt-3 flex justify-end">
             <button
               type="button"
-              onClick={handleClose}
+              onClick={() => handleClose()}
               className="rounded-lg border border-(--border-subtle) px-4 py-2 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev)"
             >
               Close
@@ -485,6 +505,17 @@ export function CreateWorkspaceModal({ open, onClose, onCreated, mode = "create"
         </div>
       ) : tenant ? (
           <form onSubmit={handleSettingsSubmit} className="space-y-4">
+            {step === "settings" && mode === "create" && tenant ? (
+              <div
+                role="status"
+                className="rounded-lg border border-(--color-success) p-3 text-sm text-(--color-success)"
+                style={{
+                  backgroundColor: "color-mix(in srgb, var(--color-success) 14%, var(--bg-surface))",
+                }}
+              >
+                Workspace created successfully. You can update settings now.
+              </div>
+            ) : null}
             <div>
               <label className="block text-sm font-medium text-(--text-primary)">
                 Logo
@@ -643,7 +674,7 @@ export function CreateWorkspaceModal({ open, onClose, onCreated, mode = "create"
             <div className="flex justify-end gap-2">
               <button
                 type="button"
-                onClick={handleClose}
+                onClick={() => handleClose()}
                 disabled={settingsStatus === "submitting"}
                 className="rounded-lg border border-(--border-subtle) px-4 py-2 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60 disabled:pointer-events-none"
               >

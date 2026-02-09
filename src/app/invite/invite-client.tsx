@@ -128,7 +128,7 @@ export default function InviteClient() {
         setResult({ kind: "ok", status: res.status, data: normalized });
 
         if (res.ok) {
-          router.replace("/dashboard/member");
+          router.replace("/app/requests");
         }
 
         return;

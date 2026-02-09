@@ -13,5 +13,5 @@ export default async function OnboardingPage() {
     userEmail: session.user.email,
   });
 
-  redirect("/app/dashboard");
+  redirect("/app/requests");
 }

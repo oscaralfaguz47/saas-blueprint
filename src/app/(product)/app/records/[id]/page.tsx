@@ -1,8 +1,8 @@
-export default function RecordDetailPage() {
-  return (
-    <main className="p-6">
-      <h1 className="text-xl font-semibold">Record Detail</h1>
-      <p className="mt-2">Details coming next.</p>
-    </main>
-  );
+import { redirect } from "next/navigation";
+
+type Props = { params: Promise<{ id: string }> };
+
+export default async function RecordDetailRedirectPage({ params }: Props) {
+  const { id } = await params;
+  redirect(`/app/requests/${id}`);
 }

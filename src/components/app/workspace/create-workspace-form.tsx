@@ -40,7 +40,7 @@ export default function CreateWorkspaceForm() {
         return;
       }
 
-      router.push("/app/dashboard");
+      router.push("/app/requests");
       router.refresh();
     } catch {
       setErrorMessage("Something went wrong. Please try again.");
@@ -96,7 +96,7 @@ export default function CreateWorkspaceForm() {
           >
             {isLoading ? "Creating…" : "Create workspace"}
           </button>
-          <ButtonLink href="/app/dashboard" variant="secondary">
+          <ButtonLink href="/app/requests" variant="secondary">
             Cancel
           </ButtonLink>
         </div>

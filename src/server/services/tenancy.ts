@@ -14,7 +14,7 @@ export async function getDefaultTenantForUser(userId: string) {
     select: {
       id: true,
       tenantId: true,
-      tenant: { select: { id: true, name: true, slug: true, status: true } },
+      tenant: { select: { id: true, name: true, slug: true, status: true, logoObjectKey: true } },
     },
   });
 }

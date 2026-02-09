@@ -14,7 +14,7 @@ type Props = {
 
 export default async function SignInPage({ searchParams }: Props) {
   const session = await getServerSession(authOptions);
-  if (session?.user) redirect("/app/dashboard");
+  if (session?.user) redirect("/app/requests");
 
   const params = await searchParams;
   const error = params?.error;
