@@ -26,8 +26,9 @@ export class WorkspaceNameTakenError extends Error {
 }
 
 /**
- * Ensures no other workspace the user belongs to has the given name (case-insensitive).
- * @param excludeTenantId - If set, this tenant is excluded (for updates).
+ * Ensures no other workspace **of the same user** has the given name (case-insensitive).
+ * Only compares against workspaces this user is a member of — not global uniqueness.
+ * @param excludeTenantId - If set, this tenant is excluded (for renames).
  */
 export async function assertWorkspaceNameUniqueForUser(
   tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0] | typeof prisma,
@@ -35,12 +36,13 @@ export async function assertWorkspaceNameUniqueForUser(
   name: string,
   excludeTenantId?: string
 ): Promise<void> {
+  const currentUserId = userId;
   const existing = await tx.tenant.findFirst({
     where: {
       status: "ACTIVE",
       ...(excludeTenantId ? { id: { not: excludeTenantId } } : {}),
       memberships: {
-        some: { userId, status: "ACTIVE" },
+        some: { userId: currentUserId, status: "ACTIVE" },
       },
       name: { equals: name, mode: "insensitive" },
     },

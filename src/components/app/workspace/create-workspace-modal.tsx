@@ -425,6 +425,7 @@ export function CreateWorkspaceModal({ open, onClose, onCreated, mode = "create"
               value={slug}
               onChange={(e) => setSlug(e.target.value)}
               placeholder="e.g. acme-inc"
+              maxLength={80}
               disabled={createStatus === "submitting"}
               autoFocus
               className="mt-1.5 w-full rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2.5 text-sm text-(--text-primary) placeholder:text-(--text-muted) focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-60"
@@ -527,7 +528,7 @@ export function CreateWorkspaceModal({ open, onClose, onCreated, mode = "create"
                 type="text"
                 value={settings.name ?? ""}
                 onChange={(e) => setSettings((s) => ({ ...s, name: e.target.value }))}
-                maxLength={160}
+                maxLength={80}
                 disabled={settingsStatus === "submitting"}
                 className="mt-1.5 w-full rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2.5 text-sm text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-60"
               />

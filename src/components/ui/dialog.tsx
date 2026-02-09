@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type DialogProps = {
   open: boolean;
@@ -15,6 +15,7 @@ type DialogProps = {
 
 export function Dialog({ open, onClose, title, description, closeDisabled, children }: DialogProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
+  const [pointerDownOnOverlay, setPointerDownOnOverlay] = useState(false);
   const titleId = useRef<string>(`dialog-title-${Math.random().toString(36).slice(2, 9)}`).current;
   const descId = description ? `dialog-desc-${Math.random().toString(36).slice(2, 9)}` : undefined;
 
@@ -33,8 +34,17 @@ export function Dialog({ open, onClose, title, description, closeDisabled, child
 
   if (!open) return null;
 
-  const handleOverlayClick = (e: React.MouseEvent) => {
-    if (e.target === overlayRef.current && !closeDisabled) onClose();
+  const handleOverlayPointerDown = (e: React.PointerEvent) => {
+    if (e.target === overlayRef.current) setPointerDownOnOverlay(true);
+  };
+
+  const handleOverlayPointerUp = (e: React.PointerEvent) => {
+    if (e.target === overlayRef.current && pointerDownOnOverlay && !closeDisabled) onClose();
+    setPointerDownOnOverlay(false);
+  };
+
+  const handleContentPointerDown = () => {
+    setPointerDownOnOverlay(false);
   };
 
   return (
@@ -45,11 +55,14 @@ export function Dialog({ open, onClose, title, description, closeDisabled, child
       aria-labelledby={titleId}
       aria-describedby={descId}
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      onClick={handleOverlayClick}
+      onPointerDown={handleOverlayPointerDown}
+      onPointerUp={handleOverlayPointerUp}
+      onPointerLeave={() => setPointerDownOnOverlay(false)}
     >
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" aria-hidden="true" />
       <div
         className="relative w-full max-w-md rounded-xl border border-(--border-subtle) bg-(--bg-surface) shadow-xl"
+        onPointerDown={handleContentPointerDown}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="border-b border-(--border-subtle) px-6 py-4">

@@ -50,7 +50,7 @@ export const setDefaultTenantSchema = z.object({
 
 /** Workspace settings (editable in modal after create) */
 export const workspaceSettingsSchema = z.object({
-  name: z.string().min(1).max(160).trim().optional(),
+  name: z.string().min(1).max(80).trim().optional(),
   timezone: z.string().max(64).optional(),
   currency: z.string().length(3).optional(),
   dateFormat: z.string().max(32).optional(),
