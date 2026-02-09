@@ -39,6 +39,10 @@ function isSettingsBillingActive(pathname: string) {
   return pathname === "/app/settings/billing";
 }
 
+const hoverBg = "hover:bg-[color-mix(in_srgb,var(--text-primary)_6%,transparent)]";
+const activeBg = "bg-[color-mix(in_srgb,var(--text-primary)_10%,transparent)]";
+const brandBoxBg = "bg-[color-mix(in_srgb,var(--bg-surface-elev)_85%,transparent)]";
+
 export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps) {
   const pathname = usePathname() ?? "";
   const router = useRouter();
@@ -161,18 +165,18 @@ export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps)
 
   const showLabels = !collapsed;
   const content = (
-    <div className="flex h-full flex-col bg-(--bg-surface)">
-      {/* Logo — same height as header for alignment; mobile: close (X) at top right */}
+    <div className="flex h-full flex-col bg-[var(--bg-app)]">
+      {/* Top brand row — entire row clickable, routes to /requests */}
       <div
-        className={`flex h-14 shrink-0 items-center border-b border-(--border-subtle) ${showLabels ? "px-4" : "justify-center px-0"} ${isMobile ? "justify-between" : ""}`}
+        className={`flex h-14 shrink-0 items-center border-b border-[var(--border-subtle)] ${showLabels ? "px-4" : "justify-center px-0"} ${isMobile ? "justify-between" : ""}`}
       >
         <Link
           href="/app/requests"
           onClick={() => isMobile && onClose()}
-          className="flex items-center gap-2 font-semibold text-(--text-primary)"
+          className={`flex flex-1 items-center gap-2 font-semibold text-[var(--text-primary)] transition-colors duration-150 ${showLabels ? "" : "justify-center"} rounded-lg ${brandBoxBg} ${hoverBg} min-h-[2.25rem] ${showLabels ? "pl-2 pr-2" : "p-2"}`}
           title={collapsed ? "Requests" : undefined}
         >
-          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) text-sm">
+          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-elev)] text-sm">
             ATL
           </span>
         </Link>
@@ -180,7 +184,7 @@ export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps)
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl p-2 text-(--text-secondary) transition hover:bg-(--bg-surface-elev) hover:text-(--text-primary)"
+            className="ml-2 rounded-lg p-2 text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[color-mix(in_srgb,var(--text-primary)_6%,transparent)] hover:text-[var(--text-primary)]"
             aria-label="Close menu"
           >
             <IconX size={18} />
@@ -189,29 +193,23 @@ export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps)
       </div>
 
       {/* Primary nav */}
-      <nav className="flex flex-col gap-0.5 px-2 py-3">
+      <nav className="flex flex-col gap-0.5 px-3 py-2">
         <Link
           href="/app/requests"
           onClick={() => isMobile && onClose()}
           aria-current={requestsActive ? "page" : undefined}
           title="Requests"
-          className={[
-            "flex items-center rounded-lg py-2.5 text-sm font-medium transition",
-            showLabels ? "gap-3 px-3" : "justify-center px-2",
-            requestsActive
-              ? "bg-(--bg-surface-elev) text-(--text-primary)"
-              : "text-(--text-secondary) hover:bg-(--bg-surface-elev) hover:text-(--text-primary)",
-          ].join(" ")}
+          className={`flex items-center rounded-lg py-2.5 text-sm font-medium transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} ${requestsActive ? `${activeBg} text-[var(--text-primary)]` : `text-[var(--text-secondary)] ${hoverBg} hover:text-[var(--text-primary)]`}`}
         >
           <IconFileText size={18} className="shrink-0" />
           {showLabels ? <span>Requests</span> : null}
         </Link>
       </nav>
 
-      {/* Workspace section */}
-      <div className="mt-2 flex flex-1 flex-col border-t border-(--border-subtle) px-2 py-3">
+      {/* Workspace section — separator, label, scrollable list */}
+      <div className="mt-2 flex flex-1 flex-col min-h-0 border-t border-[var(--border-subtle)] px-3 py-2">
         {showLabels ? (
-          <div className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wide text-(--text-muted)">
+          <div className="px-1 pb-2 text-xs uppercase tracking-widest text-[var(--text-muted)]">
             Workspace
           </div>
         ) : null}
@@ -219,22 +217,22 @@ export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps)
         {showLabels ? (
           <>
             {tenantsLoading ? (
-              <div className="flex items-center gap-2 px-3 py-2 text-sm text-(--text-muted)">
+              <div className="flex items-center gap-2 px-3 py-2 text-sm text-[var(--text-muted)]">
                 <Spinner size="sm" />
                 <span>Loading…</span>
               </div>
             ) : (
-              <div className="max-h-40 overflow-y-auto">
+              <div className="min-h-0 max-h-40 overflow-y-auto">
                 {tenants.map((t) => (
                   <div
                     key={t.id}
-                    className="flex items-center justify-between gap-2 rounded-lg px-3 py-2"
+                    className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 ${t.isDefaultTenant ? activeBg : ""}`}
                   >
-                    <span className="min-w-0 truncate text-sm text-(--text-primary)">
+                    <span className="min-w-0 truncate text-sm text-[var(--text-primary)]">
                       {t.name}
                     </span>
                     {t.isDefaultTenant ? (
-                      <span className="shrink-0 rounded bg-(--bg-surface-elev) px-2 py-0.5 text-[10px] font-medium text-(--text-muted)">
+                      <span className="shrink-0 rounded bg-[var(--bg-surface-elev)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-muted)]">
                         Current
                       </span>
                     ) : (
@@ -242,7 +240,7 @@ export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps)
                         type="button"
                         onClick={() => handleSwitchTenant(t.id)}
                         disabled={switchingId !== null}
-                        className="shrink-0 text-xs font-medium text-(--color-primary) hover:underline disabled:opacity-60"
+                        className="shrink-0 text-xs font-medium text-[var(--text-muted)] transition-colors duration-150 hover:text-[var(--color-primary)] disabled:opacity-60"
                       >
                         {switchingId === t.id ? (
                           <Spinner size="sm" />
@@ -265,10 +263,7 @@ export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps)
             onClose();
           }}
           title="Create workspace"
-          className={[
-            "flex w-full items-center rounded-lg py-2.5 text-sm text-(--text-secondary) transition hover:bg-(--bg-surface-elev) hover:text-(--text-primary)",
-            showLabels ? "mt-1 gap-3 px-3" : "mt-1 justify-center px-2",
-          ].join(" ")}
+          className={`mt-1 flex w-full items-center rounded-lg py-2.5 text-sm text-[var(--text-secondary)] transition-colors duration-150 ${hoverBg} hover:text-[var(--text-primary)] ${showLabels ? "gap-3 px-3" : "justify-center px-2"}`}
         >
           <IconPlus size={18} className="shrink-0" />
           {showLabels ? <span>Create workspace</span> : null}
@@ -281,10 +276,7 @@ export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps)
             onClose();
           }}
           title="Workspace settings"
-          className={[
-            "flex w-full items-center rounded-lg py-2.5 text-left text-sm text-(--text-secondary) transition hover:bg-(--bg-surface-elev) hover:text-(--text-primary)",
-            showLabels ? "gap-3 px-3" : "justify-center px-2",
-          ].join(" ")}
+          className={`flex w-full items-center rounded-lg py-2.5 text-left text-sm text-[var(--text-secondary)] transition-colors duration-150 ${hoverBg} hover:text-[var(--text-primary)] ${showLabels ? "gap-3 px-3" : "justify-center px-2"}`}
         >
           <IconWorkspace size={18} className="shrink-0" />
           {showLabels ? <span>Workspace settings</span> : null}
@@ -295,13 +287,7 @@ export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps)
           onClick={() => isMobile && onClose()}
           aria-current={billingActive ? "page" : undefined}
           title="Billing"
-          className={[
-            "flex items-center rounded-lg py-2.5 text-sm transition",
-            showLabels ? "gap-3 px-3" : "justify-center px-2",
-            billingActive
-              ? "bg-(--bg-surface-elev) font-medium text-(--text-primary)"
-              : "text-(--text-secondary) hover:bg-(--bg-surface-elev) hover:text-(--text-primary)",
-          ].join(" ")}
+          className={`flex items-center rounded-lg py-2.5 text-sm transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} ${billingActive ? `${activeBg} font-medium text-[var(--text-primary)]` : `text-[var(--text-secondary)] ${hoverBg} hover:text-[var(--text-primary)]`}`}
         >
           <IconBilling size={18} className="shrink-0" />
           {showLabels ? <span>Billing</span> : null}
@@ -310,12 +296,12 @@ export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps)
 
       {/* Collapse toggle — desktop only */}
       {!isMobile ? (
-        <div className="mt-auto border-t border-(--border-subtle) p-2">
+        <div className="mt-auto border-t border-[var(--border-subtle)] p-2">
           <button
             type="button"
             onClick={toggleCollapsed}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="flex w-full items-center justify-center rounded-lg py-2.5 text-(--text-muted) transition hover:bg-(--bg-surface-elev) hover:text-(--text-primary)"
+            className={`flex w-full items-center justify-center rounded-lg py-2.5 text-[var(--text-muted)] transition-colors duration-150 ${hoverBg} hover:text-[var(--text-primary)]`}
             title={collapsed ? "Show option names" : "Hide option names"}
           >
             {collapsed ? (
@@ -333,10 +319,10 @@ export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps)
     if (!open) return null;
     return (
       <div className="fixed inset-0 z-50 md:hidden">
-        <div className="absolute inset-0 bg-black/40" aria-hidden />
+        <div className="absolute inset-0 bg-[color-mix(in_srgb,var(--text-primary)_40%,transparent)]" aria-hidden />
         <div
           ref={panelRef}
-          className="absolute left-0 top-0 flex h-full w-[84%] max-w-sm flex-col border-r border-(--border-subtle) shadow-xl"
+          className="absolute left-0 top-0 flex h-full w-[84%] max-w-sm flex-col border-r border-[var(--border-subtle)] bg-[var(--bg-app)] shadow-xl"
         >
           <div className="flex-1 overflow-y-auto">
             {content}
@@ -349,8 +335,8 @@ export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps)
   return (
     <aside
       className={[
-        "hidden shrink-0 border-r border-(--border-subtle) md:block",
-        collapsed ? "w-16" : "w-56",
+        "hidden shrink-0 border-r border-[var(--border-subtle)] md:block",
+        collapsed ? "w-16" : "w-64",
       ].join(" ")}
     >
       {content}

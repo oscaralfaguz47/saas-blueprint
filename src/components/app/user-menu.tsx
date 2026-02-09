@@ -61,9 +61,9 @@ function MenuItem({
       href={href}
       role="menuitem"
       onClick={onSelect}
-      className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-(--text-secondary) transition hover:bg-(--bg-surface-elev) hover:text-(--text-primary)"
+      className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[color-mix(in_srgb,var(--text-primary)_6%,transparent)] hover:text-[var(--text-primary)]"
     >
-      <span className="text-(--text-muted)">{icon}</span>
+      <span className="text-[var(--text-muted)]">{icon}</span>
       <span className="min-w-0 truncate">{label}</span>
     </Link>
   );
@@ -83,9 +83,9 @@ function MenuButton({
       type="button"
       role="menuitem"
       onClick={onSelect}
-      className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-(--text-secondary) transition hover:bg-(--bg-surface-elev) hover:text-(--text-primary)"
+      className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[color-mix(in_srgb,var(--text-primary)_6%,transparent)] hover:text-[var(--text-primary)]"
     >
-      <span className="text-(--text-muted)">{icon}</span>
+      <span className="text-[var(--text-muted)]">{icon}</span>
       <span className="min-w-0 truncate">{label}</span>
     </button>
   );
@@ -131,34 +131,34 @@ export default function UserMenu({ user }: UserMenuProps) {
         aria-expanded={open}
         aria-controls={menuId}
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-3 rounded-xl px-2 py-1.5 transition hover:bg-(--bg-surface-elev) focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+        className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors duration-150 hover:bg-[color-mix(in_srgb,var(--text-primary)_6%,transparent)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
       >
         {user.image ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={user.image}
             alt="Profile"
-            className="h-9 w-9 rounded-full border border-(--border-subtle) object-cover"
+            className="h-9 w-9 rounded-full border border-[var(--border-subtle)] object-cover"
           />
         ) : (
-          <div className="flex h-9 w-9 items-center justify-center rounded-full border border-(--border-subtle) bg-(--bg-surface) text-xs font-semibold text-(--text-primary)">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[color-mix(in_srgb,var(--text-primary)_10%,transparent)] text-xs font-semibold text-[var(--text-primary)]">
             {initials}
           </div>
         )}
 
         <div className="hidden min-w-0 text-left sm:block">
-          <div className="truncate text-sm font-semibold text-(--text-primary)">
+          <div className="truncate text-sm font-semibold text-[var(--text-primary)]">
             {label}
           </div>
           {secondary ? (
-            <div className="truncate text-xs text-(--text-muted)">{secondary}</div>
+            <div className="truncate text-xs text-[var(--text-muted)]">{secondary}</div>
           ) : null}
         </div>
 
         <span
           aria-hidden="true"
           className={[
-            "hidden text-(--text-muted) sm:inline-block",
+            "hidden text-[var(--text-muted)] sm:inline-block",
             open ? "rotate-180" : "rotate-0",
           ].join(" ")}
           style={{ transition: "transform 120ms ease" }}
@@ -173,13 +173,13 @@ export default function UserMenu({ user }: UserMenuProps) {
           id={menuId}
           role="menu"
           aria-label="User menu"
-          className="absolute right-0 z-50 mt-2 w-72 overflow-hidden rounded-xl border border-(--border-subtle) bg-(--bg-surface) shadow-lg"
+          className="absolute right-0 z-50 mt-2 w-72 overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-elev)] shadow-xl"
         >
-          <div className="border-b border-(--border-subtle) px-4 py-3">
-            <div className="text-xs font-medium text-(--text-muted)">
+          <div className="border-b border-[var(--border-subtle)] px-4 py-3">
+            <div className="text-xs font-medium text-[var(--text-muted)]">
               Signed in as
             </div>
-            <div className="mt-1 truncate text-sm font-semibold text-(--text-primary)">
+            <div className="mt-1 truncate text-sm font-semibold text-[var(--text-primary)]">
               {secondary || label}
             </div>
           </div>

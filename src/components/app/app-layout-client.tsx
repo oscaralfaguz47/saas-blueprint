@@ -38,21 +38,21 @@ export default function AppLayoutClient({
   }, []);
 
   return (
-    <div className="flex min-h-screen bg-(--bg-app)">
+    <div className="flex min-h-screen w-full bg-[var(--bg-main)]">
       <AppSidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         isMobile={isMobile}
       />
-      <div className="flex min-w-0 flex-1 flex-col border-t border-(--border-subtle)">
+      <div className="flex min-w-0 flex-1 flex-col border-l border-[var(--border-subtle)] w-full overflow-hidden">
         <AppHeader
           user={user}
           workspace={workspace}
           onMenuClick={isMobile ? () => setSidebarOpen(true) : undefined}
         />
-        <main className="flex-1 py-8 text-(--text-primary)">
+        <main className="min-h-0 flex-1 w-full overflow-auto text-[var(--text-primary)]">
           <Container>
-            <div className="max-w-5xl">{children}</div>
+            <div className="max-w-5xl w-full">{children}</div>
           </Container>
         </main>
       </div>
