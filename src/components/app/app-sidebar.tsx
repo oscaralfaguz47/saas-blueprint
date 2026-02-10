@@ -15,6 +15,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { useCreateWorkspaceModal } from "@/components/app/workspace/create-workspace-modal-context";
+import { useTenantPermissions } from "@/components/app/tenant-permissions-context";
 
 type TenantItem = {
   id: string;
@@ -44,6 +45,12 @@ export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps)
   const router = useRouter();
   const apiFetch = useApiFetch();
   const { openCreateWorkspaceModal } = useCreateWorkspaceModal();
+  const { hasAny } = useTenantPermissions();
+  const canAccessWorkspaceSettings = hasAny([
+    "tenant.settings.manage",
+    "tenant.users.read",
+    "tenant.billing.manage",
+  ]);
   const [tenants, setTenants] = useState<TenantItem[]>([]);
   const [tenantsLoading, setTenantsLoading] = useState(false);
   const [switchingId, setSwitchingId] = useState<string | null>(null);
@@ -272,16 +279,18 @@ export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps)
           {showLabels ? <span>Create workspace</span> : null}
         </button>
 
-        <Link
-          href="/app/settings/workspace"
-          onClick={() => isMobile && onClose()}
-          aria-current={workspaceSettingsActive ? "page" : undefined}
-          title="Workspace settings"
-          className={`flex w-full items-center rounded-lg py-2.5 text-sm transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} ${workspaceSettingsActive ? `${activeBg} font-medium text-[var(--text-primary)]` : `text-[var(--text-secondary)] ${hoverBg} hover:text-[var(--text-primary)]`}`}
-        >
-          <IconWorkspace size={18} className="shrink-0" />
-          {showLabels ? <span>Workspace settings</span> : null}
-        </Link>
+        {canAccessWorkspaceSettings ? (
+          <Link
+            href="/app/settings/workspace"
+            onClick={() => isMobile && onClose()}
+            aria-current={workspaceSettingsActive ? "page" : undefined}
+            title="Workspace settings"
+            className={`flex w-full items-center rounded-lg py-2.5 text-sm transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} ${workspaceSettingsActive ? `${activeBg} font-medium text-[var(--text-primary)]` : `text-[var(--text-secondary)] ${hoverBg} hover:text-[var(--text-primary)]`}`}
+          >
+            <IconWorkspace size={18} className="shrink-0" />
+            {showLabels ? <span>Workspace settings</span> : null}
+          </Link>
+        ) : null}
       </div>
 
       {/* Collapse toggle — desktop only */}

@@ -14,9 +14,16 @@ type Member = {
   roles: string[];
 };
 
-type Props = { tenant: Tenant };
+type Props = { tenant: Tenant; permissions: string[] };
 
-export function WorkspaceMembersTab({ tenant }: Props) {
+export function WorkspaceMembersTab({ tenant, permissions }: Props) {
+  const permSet = new Set(permissions);
+  const canManageRoles = permSet.has("tenant.roles.manage");
+  const canInvite = permSet.has("tenant.users.invite");
+  const canDisable = permSet.has("tenant.users.disable");
+  const canManage = permSet.has("tenant.users.manage");
+  const canChangeStatus = canManage || canDisable;
+  const canEnable = canManage;
   const apiFetch = useApiFetch();
   const [users, setUsers] = useState<Member[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -119,13 +126,15 @@ export function WorkspaceMembersTab({ tenant }: Props) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium text-(--text-primary)">Members</h2>
-        <button
-          type="button"
-          onClick={() => setInviteOpen(true)}
-          className="inline-flex h-10 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover)"
-        >
-          Invite people
-        </button>
+        {canInvite ? (
+          <button
+            type="button"
+            onClick={() => setInviteOpen(true)}
+            className="inline-flex h-10 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover)"
+          >
+            Invite people
+          </button>
+        ) : null}
       </div>
 
       <InviteMemberModal
@@ -140,13 +149,15 @@ export function WorkspaceMembersTab({ tenant }: Props) {
           <p className="text-sm text-(--text-secondary)">
             Invite teammates to collaborate in this workspace.
           </p>
-          <button
-            type="button"
-            onClick={() => setInviteOpen(true)}
-            className="mt-4 inline-flex h-10 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover)"
-          >
-            Invite people
-          </button>
+          {canInvite ? (
+            <button
+              type="button"
+              onClick={() => setInviteOpen(true)}
+              className="mt-4 inline-flex h-10 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover)"
+            >
+              Invite people
+            </button>
+          ) : null}
         </div>
       ) : (
         <div className="overflow-hidden rounded-lg border border-(--border-subtle)">
@@ -216,44 +227,50 @@ export function WorkspaceMembersTab({ tenant }: Props) {
                           )}
                           <span>Copy Email</span>
                         </button>
-                        {!isLastOwner && (
+                        {!isLastOwner && (canManageRoles || canChangeStatus) && (
                           <>
-                            <select
-                              value={role}
-                              onChange={(e) => handleRole(m.user.id, e.target.value)}
-                              disabled={roleLoadingId === m.user.id}
-                              className="rounded border border-(--border-subtle) bg-(--bg-surface) px-2 py-1 text-xs text-(--text-primary) disabled:opacity-60"
-                            >
-                              {["Owner", "Admin", "Finance", "Member"].map((r) => (
-                                <option key={r} value={r}>{r}</option>
-                              ))}
-                            </select>
+                            {canManageRoles ? (
+                              <select
+                                value={role}
+                                onChange={(e) => handleRole(m.user.id, e.target.value)}
+                                disabled={roleLoadingId === m.user.id}
+                                className="rounded border border-(--border-subtle) bg-(--bg-surface) px-2 py-1 text-xs text-(--text-primary) disabled:opacity-60"
+                              >
+                                {["Owner", "Admin", "Finance", "Member"].map((r) => (
+                                  <option key={r} value={r}>{r}</option>
+                                ))}
+                              </select>
+                            ) : null}
                             {m.membership.status === "ACTIVE" ? (
-                              <button
-                                type="button"
-                                onClick={() => handleStatus(m.user.id, "DISABLED")}
-                                disabled={statusLoadingId === m.user.id || isLastOwner}
-                                className="inline-flex min-w-18 items-center justify-center rounded px-2 py-1 text-xs text-(--color-danger) hover:bg-(--bg-surface-elev) disabled:opacity-60"
-                              >
-                                {statusLoadingId === m.user.id ? (
-                                  <Spinner size="sm" className="text-(--color-danger)" />
-                                ) : (
-                                  "Disable"
-                                )}
-                              </button>
+                              (canDisable || canManage) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleStatus(m.user.id, "DISABLED")}
+                                  disabled={statusLoadingId === m.user.id || isLastOwner}
+                                  className="inline-flex min-w-18 items-center justify-center rounded px-2 py-1 text-xs text-(--color-danger) hover:bg-(--bg-surface-elev) disabled:opacity-60"
+                                >
+                                  {statusLoadingId === m.user.id ? (
+                                    <Spinner size="sm" className="text-(--color-danger)" />
+                                  ) : (
+                                    "Disable"
+                                  )}
+                                </button>
+                              )
                             ) : (
-                              <button
-                                type="button"
-                                onClick={() => handleStatus(m.user.id, "ACTIVE")}
-                                disabled={statusLoadingId === m.user.id}
-                                className="inline-flex min-w-18 items-center justify-center rounded px-2 py-1 text-xs text-(--color-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60"
-                              >
-                                {statusLoadingId === m.user.id ? (
-                                  <Spinner size="sm" className="text-(--color-primary)" />
-                                ) : (
-                                  "Enable"
-                                )}
-                              </button>
+                              canEnable && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleStatus(m.user.id, "ACTIVE")}
+                                  disabled={statusLoadingId === m.user.id}
+                                  className="inline-flex min-w-18 items-center justify-center rounded px-2 py-1 text-xs text-(--color-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60"
+                                >
+                                  {statusLoadingId === m.user.id ? (
+                                    <Spinner size="sm" className="text-(--color-primary)" />
+                                  ) : (
+                                    "Enable"
+                                  )}
+                                </button>
+                              )
                             )}
                           </>
                         )}

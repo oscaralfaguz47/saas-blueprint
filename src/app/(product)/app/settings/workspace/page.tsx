@@ -3,11 +3,18 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/server/auth-options";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
+import { getTenantPermissions } from "@/server/security/tenant-authorization";
 import { prisma } from "@/server/db";
 import { Container } from "@/components/ui/container";
 import Link from "next/link";
 import { WorkspaceSettingsTabs } from "@/components/app/settings/workspace-settings-tabs";
 import { Spinner } from "@/components/ui/spinner";
+
+const WORKSPACE_SETTINGS_PERMISSIONS = [
+  "tenant.settings.manage",
+  "tenant.users.read",
+  "tenant.billing.manage",
+] as const;
 
 export default async function WorkspaceSettingsPage() {
   const session = await getServerSession(authOptions);
@@ -58,6 +65,15 @@ export default async function WorkspaceSettingsPage() {
     );
   }
 
+  const permissions = await getTenantPermissions({
+    userId: session.user.id,
+    tenantId: tenant.id,
+  });
+  const canAccessAnyTab = WORKSPACE_SETTINGS_PERMISSIONS.some((p) =>
+    permissions.includes(p)
+  );
+  if (!canAccessAnyTab) redirect("/unauthorized");
+
   return (
     <Suspense
       fallback={
@@ -69,7 +85,7 @@ export default async function WorkspaceSettingsPage() {
         </Container>
       }
     >
-      <WorkspaceSettingsTabs tenant={tenant} />
+      <WorkspaceSettingsTabs tenant={tenant} permissions={permissions} />
     </Suspense>
   );
 }

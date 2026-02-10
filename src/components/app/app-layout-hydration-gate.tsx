@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { CreateWorkspaceModalProvider } from "@/components/app/workspace/create-workspace-modal-context";
+import { TenantPermissionsProvider } from "@/components/app/tenant-permissions-context";
 import { WorkspaceReadyNotifier } from "@/components/app/workspace-ready-notifier";
 import AppLayoutClient from "@/components/app/app-layout-client";
 import { ThemeProvider } from "@/components/theme/theme-provider";
@@ -60,11 +61,13 @@ export function AppLayoutHydrationGate({
       <ThemeBootstrap />
       <WorkspaceReadyNotifier tenantId={tenantId} />
       <ThemeProvider>
-        <CreateWorkspaceModalProvider>
-          <AppLayoutClient user={user} workspace={workspace}>
-            {children}
-          </AppLayoutClient>
-        </CreateWorkspaceModalProvider>
+        <TenantPermissionsProvider>
+          <CreateWorkspaceModalProvider>
+            <AppLayoutClient user={user} workspace={workspace}>
+              {children}
+            </AppLayoutClient>
+          </CreateWorkspaceModalProvider>
+        </TenantPermissionsProvider>
       </ThemeProvider>
     </>
   );

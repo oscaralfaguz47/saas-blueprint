@@ -16,11 +16,14 @@ type Invitation = {
   expiresAt: string;
 };
 
-type Props = { tenant: Tenant };
+type Props = { tenant: Tenant; permissions: string[] };
 
 type ActionType = "resend" | "revoke" | "reinvite";
 
-export function WorkspaceInvitesTab({ tenant }: Props) {
+export function WorkspaceInvitesTab({ tenant, permissions }: Props) {
+  const permSet = new Set(permissions);
+  const canInvite = permSet.has("tenant.users.invite");
+  const canManageInvites = permSet.has("tenant.users.manage");
   const apiFetch = useApiFetch();
   const [invitations, setInvitations] = useState<Invitation[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,13 +89,15 @@ export function WorkspaceInvitesTab({ tenant }: Props) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium text-(--text-primary)">Invitations</h2>
-        <button
-          type="button"
-          onClick={() => setInviteOpen(true)}
-          className="inline-flex h-10 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover)"
-        >
-          Invite people
-        </button>
+        {canInvite ? (
+          <button
+            type="button"
+            onClick={() => setInviteOpen(true)}
+            className="inline-flex h-10 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover)"
+          >
+            Invite people
+          </button>
+        ) : null}
       </div>
 
       <InviteMemberModal
@@ -105,13 +110,15 @@ export function WorkspaceInvitesTab({ tenant }: Props) {
       {isEmpty ? (
         <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface) p-8 text-center">
           <p className="text-sm text-(--text-secondary)">No invitations yet.</p>
-          <button
-            type="button"
-            onClick={() => setInviteOpen(true)}
-            className="mt-4 inline-flex h-10 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover)"
-          >
-            Invite people
-          </button>
+          {canInvite ? (
+            <button
+              type="button"
+              onClick={() => setInviteOpen(true)}
+              className="mt-4 inline-flex h-10 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover)"
+            >
+              Invite people
+            </button>
+          ) : null}
         </div>
       ) : (
         <div className="overflow-hidden rounded-lg border border-(--border-subtle)">
@@ -146,7 +153,7 @@ export function WorkspaceInvitesTab({ tenant }: Props) {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      {inv.status === "ACTIVE" && (
+                      {canManageInvites && inv.status === "ACTIVE" && (
                         <>
                           <button
                             type="button"
@@ -174,7 +181,7 @@ export function WorkspaceInvitesTab({ tenant }: Props) {
                           </button>
                         </>
                       )}
-                      {(inv.status === "EXPIRED" || inv.status === "REVOKED") && (
+                      {canManageInvites && (inv.status === "EXPIRED" || inv.status === "REVOKED") && (
                         <button
                           type="button"
                           onClick={() => runAction(inv.id, "reinvite")}

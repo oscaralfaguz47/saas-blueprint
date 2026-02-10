@@ -64,3 +64,39 @@ export async function hasTenantPermission(params: {
 
   return codes.has(permission);
 }
+
+/** Return all permission codes for the user in the tenant (for UI gating). */
+export async function getTenantPermissions(params: {
+  userId: string;
+  tenantId: string;
+}): Promise<string[]> {
+  const { userId, tenantId } = params;
+
+  const membership = await prisma.tenantMembership.findUnique({
+    where: { tenantId_userId: { tenantId, userId } },
+    select: {
+      status: true,
+      roles: {
+        select: {
+          role: {
+            select: {
+              permissions: {
+                select: { permission: { select: { code: true } } },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!membership || membership.status !== "ACTIVE") return [];
+
+  return Array.from(
+    new Set(
+      membership.roles.flatMap((r) =>
+        r.role.permissions.map((rp) => rp.permission.code)
+      )
+    )
+  );
+}

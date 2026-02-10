@@ -22,20 +22,28 @@ type Tenant = {
 
 type Props = {
   tenant: Tenant;
+  permissions: string[];
 };
 
-const TABS: { id: WorkspaceSettingsTab; label: string }[] = [
-  { id: "general", label: "General" },
-  { id: "members", label: "Members" },
-  { id: "invites", label: "Invites" },
-  { id: "billing", label: "Billing" },
+const ALL_TABS: { id: WorkspaceSettingsTab; label: string; permission: string }[] = [
+  { id: "general", label: "General", permission: "tenant.settings.manage" },
+  { id: "members", label: "Members", permission: "tenant.users.read" },
+  { id: "invites", label: "Invites", permission: "tenant.users.read" },
+  { id: "billing", label: "Billing", permission: "tenant.billing.manage" },
 ];
 
-export function WorkspaceSettingsTabs({ tenant }: Props) {
+export function WorkspaceSettingsTabs({ tenant, permissions }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const permSet = new Set(permissions);
+  const visibleTabs = ALL_TABS.filter((t) => permSet.has(t.permission));
   const tab = (searchParams.get("tab") as WorkspaceSettingsTab) || "general";
-  const effectiveTab = TABS.some((t) => t.id === tab) ? tab : "general";
+  const tabAllowed = visibleTabs.some((t) => t.id === tab);
+  const effectiveTab = tabAllowed ? tab : visibleTabs[0]?.id ?? "general";
+
+  if (!tabAllowed && visibleTabs.length > 0) {
+    router.replace(`/app/settings/workspace?tab=${effectiveTab}`);
+  }
 
   return (
     <div className="space-y-6">
@@ -44,7 +52,7 @@ export function WorkspaceSettingsTabs({ tenant }: Props) {
         </h1>
 
         <nav className="flex flex-wrap gap-1 border-b border-(--border-subtle)" aria-label="Settings sections">
-          {TABS.map((t) => {
+          {visibleTabs.map((t) => {
             const isActive = effectiveTab === t.id;
             const href = `/app/settings/workspace?tab=${t.id}`;
             return (
@@ -70,8 +78,12 @@ export function WorkspaceSettingsTabs({ tenant }: Props) {
         </nav>
 
         {effectiveTab === "general" && <WorkspaceGeneralTab tenant={tenant} />}
-        {effectiveTab === "members" && <WorkspaceMembersTab tenant={tenant} />}
-        {effectiveTab === "invites" && <WorkspaceInvitesTab tenant={tenant} />}
+        {effectiveTab === "members" && (
+          <WorkspaceMembersTab tenant={tenant} permissions={permissions} />
+        )}
+        {effectiveTab === "invites" && (
+          <WorkspaceInvitesTab tenant={tenant} permissions={permissions} />
+        )}
         {effectiveTab === "billing" && <WorkspaceBillingTab />}
       </div>
   );
