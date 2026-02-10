@@ -19,9 +19,9 @@ export function CreateWorkspaceModalProvider({ children }: { children: React.Rea
   const closeModal = useCallback(() => {
     setOpen(false);
   }, []);
-  /** Called when user closes or saves after creating a workspace; redirects to Requests and refreshes. */
+  /** Called when user creates a workspace; redirects to workspace settings (General tab) and refreshes. */
   const handleCloseAfterCreate = useCallback(() => {
-    router.push("/app/requests");
+    router.push("/app/settings/workspace");
     router.refresh();
   }, [router]);
 
@@ -32,7 +32,6 @@ export function CreateWorkspaceModalProvider({ children }: { children: React.Rea
         open={open}
         onClose={closeModal}
         onCloseAfterCreate={handleCloseAfterCreate}
-        mode="create"
       />
     </Context.Provider>
   );
