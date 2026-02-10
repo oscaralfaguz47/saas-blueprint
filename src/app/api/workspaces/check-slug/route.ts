@@ -44,7 +44,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     slug = claimSlugSchema.parse(slugParam);
   } catch {
     return ApiErrors.VALIDATION_ERROR(
-      "Slug must be 3–32 characters, lowercase letters, numbers, and hyphens only (no leading/trailing/consecutive hyphens)"
+      "Slug must be 3–80 characters, lowercase letters, numbers, and hyphens only (no leading/trailing/consecutive hyphens)"
     );
   }
 

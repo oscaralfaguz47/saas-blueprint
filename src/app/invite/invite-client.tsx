@@ -326,6 +326,40 @@ export default function InviteClient({ hasActiveWorkspace = false }: InviteClien
     );
   }
 
+  const invitedEmail = validatePayload?.invitedEmail?.trim().toLowerCase();
+  const sessionEmail = currentEmail?.trim().toLowerCase();
+  const emailMismatch =
+    validateState === "valid" &&
+    authStatus === "authenticated" &&
+    invitedEmail != null &&
+    invitedEmail !== "" &&
+    sessionEmail != null &&
+    sessionEmail !== "" &&
+    invitedEmail !== sessionEmail;
+
+  if (emailMismatch) {
+    return (
+      <AuthCard
+        title="Wrong account"
+        subtitle={
+          <>
+            This invite was sent to <strong className="font-semibold text-(--text-primary)">{validatePayload!.invitedEmail}</strong>, but you&apos;re signed in as{" "}
+            <strong className="font-semibold text-(--text-primary)">{currentEmail ?? "Unknown"}</strong>.
+          </>
+        }
+        badgeText="Invitation"
+      >
+        <button
+          type="button"
+          onClick={signOutAndContinue}
+          className="inline-flex h-11 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev)"
+        >
+          Sign out and use correct email
+        </button>
+      </AuthCard>
+    );
+  }
+
   if (validateState === "valid" && authStatus === "authenticated") {
     return (
       <AuthCard

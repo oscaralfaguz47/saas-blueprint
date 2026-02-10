@@ -4,9 +4,9 @@ import { cuidSchema } from "./common";
 /** Max length for tenant slug (DB VarChar(80)) */
 export const TENANT_SLUG_MAX = 80;
 
-/** A5 claim: min 3, max 32 chars */
+/** A5 claim: min 3, max 80 chars (matches DB VarChar(80)) */
 export const CLAIM_SLUG_MIN = 3;
-export const CLAIM_SLUG_MAX = 32;
+export const CLAIM_SLUG_MAX = 80;
 
 /** Reserved slugs (A5) — cannot be used as workspace URL */
 export const RESERVED_SLUGS = new Set([
@@ -51,15 +51,16 @@ export function nameFromSlug(slug: string): string {
     .join(" ");
 }
 
-/** Slug-only workspace creation (modal flow). Name is derived server-side from slug. */
+/** Slug-only workspace creation (modal flow). Same rules as claim: min 3, max 80, no reserved. */
 export const createTenantSchema = z.object({
   slug: z
     .string()
-    .min(1, "Workspace URL is required")
-    .max(TENANT_SLUG_MAX, `Workspace URL must be ${TENANT_SLUG_MAX} characters or less`)
-    .transform(normalizeSlug)
-    .refine((s) => s.length >= 1, "Workspace URL is required")
-    .refine((s) => slugRegex.test(s), "Use only lowercase letters, numbers, and hyphens"),
+    .min(CLAIM_SLUG_MIN, `Workspace URL must be at least ${CLAIM_SLUG_MIN} characters`)
+    .max(CLAIM_SLUG_MAX, `Workspace URL must be ${CLAIM_SLUG_MAX} characters or less`)
+    .transform((s) => s.toLowerCase().trim())
+    .refine((s) => s.length >= CLAIM_SLUG_MIN, "Workspace URL is too short")
+    .refine((s) => slugRegex.test(s), "Use only lowercase letters, numbers, and hyphens (no leading/trailing/consecutive hyphens)")
+    .refine((s) => !RESERVED_SLUGS.has(s), "This workspace URL is reserved"),
 });
 
 /** Set default workspace (tenant) for the current user */
@@ -67,7 +68,7 @@ export const setDefaultTenantSchema = z.object({
   tenantId: cuidSchema,
 });
 
-/** A5 claim workspace: slug rules (min 3, max 32, no reserved) */
+/** A5 claim workspace: slug rules (min 3, max 80, no reserved) */
 export const claimSlugSchema = z
   .string()
   .min(CLAIM_SLUG_MIN, `Workspace URL must be at least ${CLAIM_SLUG_MIN} characters`)

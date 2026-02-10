@@ -143,18 +143,22 @@ export const POST = withErrorHandler(async (req: Request) => {
     action: "tenant.user.invited",
     targetType: "TenantInvitation",
     targetId: invite.id,
-    metadata: { email: invite.email, expiresAt: invite.expiresAt.toISOString() },
+    metadata: { email: invite.email, expiresAt: invite.expiresAt.toISOString(), sendEmail: body.sendEmail },
     ipAddress: getIp(req),
     userAgent: getUserAgent(req),
   });
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  await sendInvitationEmail({
-    tenantName: tenant.name,
-    invitedEmail: invite.email,
-    rawToken,
-    baseUrl,
-  });
+  const inviteUrl = `${baseUrl.replace(/\/$/, "")}/invite?token=${encodeURIComponent(rawToken)}`;
+
+  if (body.sendEmail !== false) {
+    await sendInvitationEmail({
+      tenantName: tenant.name,
+      invitedEmail: invite.email,
+      rawToken,
+      baseUrl,
+    });
+  }
 
   return apiSuccess({
     invitation: {
@@ -162,6 +166,7 @@ export const POST = withErrorHandler(async (req: Request) => {
       email: invite.email,
       expiresAt: invite.expiresAt,
     },
+    inviteUrl,
   });
 });
 

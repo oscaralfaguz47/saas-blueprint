@@ -91,7 +91,7 @@ export default function SetupWorkspaceClient({ pendingInviteWorkspaceName = null
       <div className="flex min-h-screen items-center justify-center px-6 py-12">
         <AuthCard
           title="Claim your workspace"
-          subtitle="Choose a URL for your workspace. You can use letters, numbers, and hyphens (3–32 characters)."
+          subtitle="Choose a URL for your workspace. You can use letters, numbers, and hyphens (3–80 characters)."
           badgeText="Setup"
         >
           {pendingInviteWorkspaceName && (
