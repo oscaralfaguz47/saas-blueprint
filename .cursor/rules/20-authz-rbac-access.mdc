@@ -51,7 +51,7 @@ Payments:
 - tenant.payments.manage
 
 RBAC rules:
-1) Owner/Admin/Finance should generally have supersets of permissions.
+1) OWNER has all tenant permissions; ADMIN has all except billing; FINANCE has settings, users (read/invite/disable), requests, approvals, payments — not roles or billing; MEMBER is restricted (see A2).
 2) RBAC checks must be done in the API handler (not middleware allowlists).
 
 ────────────────────────────────────────

@@ -32,15 +32,23 @@ export const PATCH = withErrorHandler(async (
   const tenant = membership?.tenant;
   if (!tenant) return ApiErrors.NO_TENANT();
 
-  const allowed = await hasTenantPermission({
-    userId: session.user.id,
-    tenantId: tenant.id,
-    permission: "tenant.users.manage",
-  });
+  const body = await parseBody(req, updateMemberStatusSchema);
+  const [canManage, canDisable] = await Promise.all([
+    hasTenantPermission({
+      userId: session.user.id,
+      tenantId: tenant.id,
+      permission: "tenant.users.manage",
+    }),
+    hasTenantPermission({
+      userId: session.user.id,
+      tenantId: tenant.id,
+      permission: "tenant.users.disable",
+    }),
+  ]);
+  const allowed = canManage || (body.status === "DISABLED" && canDisable);
   if (!allowed) return ApiErrors.FORBIDDEN();
 
   const { userId: targetUserId } = paramsSchema.parse(await context.params);
-  const body = await parseBody(req, updateMemberStatusSchema);
 
   const targetMembership = await prisma.tenantMembership.findUnique({
     where: { tenantId_userId: { tenantId: tenant.id, userId: targetUserId } },

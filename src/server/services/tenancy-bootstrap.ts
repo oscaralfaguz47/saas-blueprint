@@ -509,132 +509,29 @@ export async function createTenantForUser(params: {
   }
 }
 
+import { ensureTenantRolesAndPermissionsWithPrisma } from "@/lib/tenant-role-permissions";
+
 /**
- * Ensure the minimal permission mapping exists for tenant roles.
- * Aligned with docs/epics/2-A2-Roles-And-Permissions.md (A2).
- * - Idempotent, fast (batch createMany + minimal reads), NOT inside interactive transaction.
+ * Ensure the minimal permission mapping exists for tenant roles (A2).
+ * Idempotent; uses shared ROLE_PERMS from @/lib/tenant-role-permissions.
  */
-async function ensureTenantRolesAndPermissions(params: { tenantId: string }) {
-  const { tenantId } = params;
+export async function ensureTenantRolesAndPermissions(params: { tenantId: string }) {
+  await ensureTenantRolesAndPermissionsWithPrisma(prisma, params);
+}
 
-  // Role -> permission codes (A2 catalog)
-  const ROLE_PERMS: Record<"Owner" | "Admin" | "Finance" | "Member", string[]> = {
-    Owner: [
-      "tenant.audit.read",
-      "tenant.billing.manage",
-      "tenant.settings.manage",
-      "tenant.roles.read",
-      "tenant.roles.manage",
-      "tenant.users.read",
-      "tenant.users.invite",
-      "tenant.users.manage",
-      "tenant.users.disable",
-      "tenant.requests.create",
-      "tenant.requests.read_all",
-      "tenant.requests.close",
-      "tenant.requests.share",
-      "tenant.requests.link",
-      "tenant.requests.export",
-      "tenant.requests.comment",
-      "tenant.evidence.add",
-      "tenant.approvals.assign_internal",
-      "tenant.approvals.assign_external",
-      "tenant.approvals.remind",
-      "tenant.payments.manage",
-    ],
-    Admin: [
-      "tenant.audit.read",
-      "tenant.settings.manage",
-      "tenant.roles.read",
-      "tenant.roles.manage",
-      "tenant.users.read",
-      "tenant.users.invite",
-      "tenant.users.manage",
-      "tenant.users.disable",
-      "tenant.requests.create",
-      "tenant.requests.read_all",
-      "tenant.requests.close",
-      "tenant.requests.share",
-      "tenant.requests.link",
-      "tenant.requests.export",
-      "tenant.requests.comment",
-      "tenant.evidence.add",
-      "tenant.approvals.assign_internal",
-      "tenant.approvals.assign_external",
-      "tenant.approvals.remind",
-      "tenant.payments.manage",
-    ],
-    Finance: [
-      "tenant.audit.read",
-      "tenant.requests.create",
-      "tenant.requests.read_all",
-      "tenant.requests.close",
-      "tenant.requests.share",
-      "tenant.requests.link",
-      "tenant.requests.export",
-      "tenant.requests.comment",
-      "tenant.evidence.add",
-      "tenant.approvals.assign_internal",
-      "tenant.approvals.assign_external",
-      "tenant.approvals.remind",
-      "tenant.payments.manage",
-    ],
-    Member: [
-      "tenant.users.read",
-      "tenant.requests.create",
-      "tenant.requests.share",
-      "tenant.requests.link",
-      "tenant.requests.comment",
-      "tenant.evidence.add",
-    ],
-  };
-
-  // 1) Load role ids for this tenant
-  const roles = await prisma.tenantRole.findMany({
-    where: { tenantId, name: { in: ["Owner", "Admin", "Finance", "Member"] } },
-    select: { id: true, name: true },
+/**
+ * One-off sync: ensure all existing tenants have role-permission links per A2.
+ * Run after updating ROLE_PERMS (e.g. Finance permissions). Idempotent.
+ */
+export async function syncAllTenantRolePermissions(): Promise<{ synced: number }> {
+  const tenants = await prisma.tenant.findMany({
+    select: { id: true },
+    where: { status: { in: ["ACTIVE", "DRAFT"] } },
   });
-
-  const roleIdByName = new Map(roles.map((r) => [r.name, r.id]));
-
-  // If roles are missing for some reason, do not fail hard; just exit.
-  // (In practice, they should exist.)
-  if (!roleIdByName.get("Owner")) return;
-
-  // 2) Load permission ids for the codes we need (single query)
-  const neededCodes = Array.from(
-    new Set(Object.values(ROLE_PERMS).flatMap((arr) => arr))
-  );
-
-  const perms = await prisma.permission.findMany({
-    where: { code: { in: neededCodes } },
-    select: { id: true, code: true },
-  });
-
-  const permIdByCode = new Map(perms.map((p) => [p.code, p.id]));
-
-  // 3) Build join rows and insert using createMany + skipDuplicates
-  const joinRows: Array<{ roleId: string; permissionId: string }> = [];
-
-  for (const [roleName, codes] of Object.entries(ROLE_PERMS) as Array<
-    [keyof typeof ROLE_PERMS, string[]]
-  >) {
-    const roleId = roleIdByName.get(roleName);
-    if (!roleId) continue;
-
-    for (const code of codes) {
-      const permissionId = permIdByCode.get(code);
-      if (!permissionId) continue;
-      joinRows.push({ roleId, permissionId });
-    }
+  for (const t of tenants) {
+    await ensureTenantRolesAndPermissions({ tenantId: t.id });
   }
-
-  if (joinRows.length === 0) return;
-
-  await prisma.tenantRolePermission.createMany({
-    data: joinRows,
-    skipDuplicates: true, // Prisma will ignore existing composite PKs
-  });
+  return { synced: tenants.length };
 }
 
 async function generateUniqueTenantSlug(

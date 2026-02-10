@@ -181,6 +181,10 @@ Does **not** administer the tenant itself.
 
 #### Tenant
 - `tenant.audit.read` *(important for compliance)*
+- `tenant.settings.manage`
+- `tenant.users.read`
+- `tenant.users.invite`
+- `tenant.users.disable`
 
 #### Requests
 - `tenant.requests.create`
@@ -204,8 +208,6 @@ Does **not** administer the tenant itself.
 
 ❌ No access to:
 - roles
-- users
-- workspace settings
 - billing config
 
 ---
@@ -266,6 +268,20 @@ Changes to:
 
 ---
 
+## 🔄 Syncing role permissions across environments
+
+When you change which permissions a role has (e.g. in `src/lib/tenant-role-permissions.ts`), **existing** tenants only get the new links if you sync. Two approaches:
+
+1. **SQL migration (recommended for production)**  
+   Add a migration that inserts the new `TenantRolePermission` rows (see example in `prisma/migrations/*_a2_sync_finance_role_permissions`). Then `prisma migrate deploy` updates every environment (staging, production) when you deploy. No manual step per env.
+
+2. **Deploy pipeline**  
+   After `prisma migrate deploy`, run `pnpm run sync:role-permissions`. The script is idempotent, so safe to run on every deploy. Use this if you prefer not to add a migration per permission change.
+
+New workspaces always get the current role–permission set from code at creation time; sync is only for existing tenants.
+
+---
+
 ## ✅ Definition of Done (DoD)
 
 This epic is complete when:
@@ -283,7 +299,7 @@ This epic is complete when:
 
 - OWNER can perform all actions
 - ADMIN cannot access billing
-- FINANCE cannot manage users or settings
+- FINANCE can manage settings and invites but cannot manage users or roles
 - MEMBER cannot close, pay, or export
 - Unauthorized access returns clear errors
 - No role escalation is possible via client input
