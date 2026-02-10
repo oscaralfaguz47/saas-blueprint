@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/ui/spinner";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { InviteMemberModal } from "./invite-member-modal";
@@ -19,13 +18,14 @@ type Invitation = {
 
 type Props = { tenant: Tenant };
 
+type ActionType = "resend" | "revoke" | "reinvite";
+
 export function WorkspaceInvitesTab({ tenant }: Props) {
-  const router = useRouter();
   const apiFetch = useApiFetch();
   const [invitations, setInvitations] = useState<Invitation[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<{ id: string; action: ActionType } | null>(null);
 
   const refetch = () => {
     setLoading(true);
@@ -42,18 +42,35 @@ export function WorkspaceInvitesTab({ tenant }: Props) {
     refetch();
   }, []);
 
-  const runAction = async (id: string, path: "resend" | "revoke" | "reinvite") => {
-    setActionLoading(id);
+  const runAction = async (id: string, action: ActionType) => {
+    setActionLoading({ id, action });
     try {
-      const res = await apiFetch(`/api/tenant/invitations/${id}/${path}`, { method: "POST" });
+      const res = await apiFetch(`/api/tenant/invitations/${id}/${action}`, { method: "POST" });
       if (res.ok) {
-        router.refresh();
-        refetch();
+        if (action === "revoke") {
+          setInvitations((prev) =>
+            prev?.map((inv) =>
+              inv.id === id ? { ...inv, status: "REVOKED" } : inv
+            ) ?? null
+          );
+        } else if (action === "reinvite") {
+          const newExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+          setInvitations((prev) =>
+            prev?.map((inv) =>
+              inv.id === id ? { ...inv, status: "ACTIVE", expiresAt: newExpiresAt } : inv
+            ) ?? null
+          );
+        }
+        // resend: no row data change, just stop spinner
       }
     } finally {
       setActionLoading(null);
     }
   };
+
+  const isRowLoading = (id: string) => actionLoading?.id === id;
+  const isActionLoading = (id: string, action: ActionType) =>
+    actionLoading?.id === id && actionLoading?.action === action;
 
   if (loading) {
     return (
@@ -134,18 +151,26 @@ export function WorkspaceInvitesTab({ tenant }: Props) {
                           <button
                             type="button"
                             onClick={() => runAction(inv.id, "resend")}
-                            disabled={actionLoading === inv.id}
-                            className="rounded px-2 py-1 text-xs text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60"
+                            disabled={isRowLoading(inv.id)}
+                            className="inline-flex min-w-18 items-center justify-center rounded px-2 py-1 text-xs text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60"
                           >
-                            Resend
+                            {isActionLoading(inv.id, "resend") ? (
+                              <Spinner size="sm" className="text-(--text-primary)" />
+                            ) : (
+                              "Resend"
+                            )}
                           </button>
                           <button
                             type="button"
                             onClick={() => runAction(inv.id, "revoke")}
-                            disabled={actionLoading === inv.id}
-                            className="rounded px-2 py-1 text-xs text-(--color-danger) hover:bg-(--bg-surface-elev) disabled:opacity-60"
+                            disabled={isRowLoading(inv.id)}
+                            className="inline-flex min-w-18 items-center justify-center rounded px-2 py-1 text-xs text-(--color-danger) hover:bg-(--bg-surface-elev) disabled:opacity-60"
                           >
-                            Revoke
+                            {isActionLoading(inv.id, "revoke") ? (
+                              <Spinner size="sm" className="text-(--color-danger)" />
+                            ) : (
+                              "Revoke"
+                            )}
                           </button>
                         </>
                       )}
@@ -153,10 +178,14 @@ export function WorkspaceInvitesTab({ tenant }: Props) {
                         <button
                           type="button"
                           onClick={() => runAction(inv.id, "reinvite")}
-                          disabled={actionLoading === inv.id}
-                          className="rounded px-2 py-1 text-xs text-(--color-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60"
+                          disabled={isRowLoading(inv.id)}
+                          className="inline-flex min-w-18 items-center justify-center rounded px-2 py-1 text-xs text-(--color-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60"
                         >
-                          Re-invite
+                          {isActionLoading(inv.id, "reinvite") ? (
+                            <Spinner size="sm" className="text-(--color-primary)" />
+                          ) : (
+                            "Re-invite"
+                          )}
                         </button>
                       )}
                     </div>
