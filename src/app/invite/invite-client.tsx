@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
+import { useApiFetch } from "@/hooks/use-api-fetch";
+import AuthCard from "@/components/auth/auth-card";
+import { Spinner } from "@/components/ui/spinner";
 
 type ValidateState = "idle" | "loading" | "invalid" | "expired" | "revoked" | "accepted" | "valid";
 type ValidateResult = {
@@ -49,6 +52,7 @@ function getPayload(raw: unknown): unknown {
 export default function InviteClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const apiFetch = useApiFetch();
   const { data: session, status: authStatus } = useSession();
 
   const token = useMemo(() => searchParams.get("token")?.trim() ?? "", [searchParams]);
@@ -63,7 +67,7 @@ export default function InviteClient() {
       return;
     }
     setValidateState("loading");
-    fetch(`/api/tenant/invitations/validate?token=${encodeURIComponent(token)}`)
+    apiFetch(`/api/tenant/invitations/validate?token=${encodeURIComponent(token)}`, { showToastOnError: false })
       .then((r) => r.json())
       .then((j: unknown) => {
         const d = isObject(j) && "data" in j ? (j as { data: ValidateResult }).data : (j as ValidateResult);
@@ -84,7 +88,7 @@ export default function InviteClient() {
     }
     setResult({ kind: "submitting" });
     try {
-      const res = await fetch("/api/tenant/invitations/accept", {
+      const res = await apiFetch("/api/tenant/invitations/accept", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
@@ -140,122 +144,168 @@ export default function InviteClient() {
   const workspaceName = validatePayload?.workspaceName ?? "this workspace";
   const currentEmail = session?.user?.email ?? null;
 
+  const callbackUrl = `/invite?token=${encodeURIComponent(token)}`;
+  const signInHref = `/auth/sign-in?callbackUrl=${encodeURIComponent(callbackUrl)}`;
+
   if (validateState === "loading" || (validateState === "valid" && authStatus === "loading")) {
     return (
-      <main className="mx-auto max-w-md px-6 py-12">
-        <h1 className="text-xl font-semibold text-(--text-primary)">Accept Invitation</h1>
-        <p className="mt-2 text-(--text-secondary)">Validating invitation…</p>
-      </main>
+      <AuthCard
+        title="Accept invitation"
+        subtitle="Validating invitation…"
+        badgeText="Invitation"
+      >
+        <div className="flex justify-center py-6">
+          <Spinner size="md" />
+        </div>
+      </AuthCard>
     );
   }
 
   if (validateState === "valid" && authStatus === "unauthenticated") {
     return (
-      <main className="mx-auto max-w-md px-6 py-12">
-        <h1 className="text-xl font-semibold text-(--text-primary)">Join {workspaceName}</h1>
-        <p className="mt-2 text-(--text-secondary)">Sign in or create an account to accept this invitation.</p>
-        <div className="mt-6 flex flex-col gap-3">
+      <AuthCard
+        title={`Join ${workspaceName}`}
+        subtitle="Sign in or create an account to accept this invitation."
+        badgeText="Invitation"
+      >
+        <div className="flex flex-col gap-3">
           <Link
-            href={`/auth/sign-in?callbackUrl=${encodeURIComponent(`/invite?token=${encodeURIComponent(token)}`)}`}
-            className="inline-flex h-11 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover)"
+            href={signInHref}
+            className="inline-flex h-11 w-full items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover)"
           >
             Sign in
           </Link>
-          {/* TODO: replace with /auth/sign-up when signup flow exists */}
           <Link
-            href={`/auth/sign-in?callbackUrl=${encodeURIComponent(`/invite?token=${encodeURIComponent(token)}`)}`}
-            className="inline-flex h-11 items-center justify-center rounded-lg border border-(--border-subtle) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev)"
+            href={signInHref}
+            className="inline-flex h-11 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev)"
           >
             Create account
           </Link>
         </div>
-      </main>
+      </AuthCard>
     );
   }
 
   if (validateState === "invalid" || validateState === "expired" || validateState === "revoked" || validateState === "accepted") {
     return (
-      <main className="mx-auto max-w-md px-6 py-12">
-        <h1 className="text-xl font-semibold text-(--text-primary)">Invalid invitation</h1>
-        <p className="mt-2 text-(--text-secondary)">
-          This invitation link is no longer valid.
-        </p>
-        <p className="mt-4 text-sm text-(--text-muted)">
-          Contact your workspace admin for a new invite.
-        </p>
-      </main>
+      <AuthCard
+        title="Invalid invitation"
+        subtitle="This invitation link is no longer valid. Contact your workspace admin for a new invite."
+        badgeText="Invitation"
+      >
+        <Link
+          href="/"
+          className="inline-flex h-11 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev)"
+        >
+          Back to home
+        </Link>
+      </AuthCard>
     );
   }
 
   if (!token) {
     return (
-      <main className="mx-auto max-w-md px-6 py-12">
-        <h1 className="text-xl font-semibold text-(--text-primary)">Invalid invitation</h1>
-        <p className="mt-2 text-(--text-secondary)">Missing token.</p>
-      </main>
+      <AuthCard
+        title="Invalid invitation"
+        subtitle="Missing invitation token. Use the link from your invite email."
+        badgeText="Invitation"
+      >
+        <Link
+          href="/"
+          className="inline-flex h-11 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev)"
+        >
+          Back to home
+        </Link>
+      </AuthCard>
     );
   }
 
   if (result.kind === "ok" && result.data.alreadyMember) {
     return (
-      <main className="mx-auto max-w-md px-6 py-12">
-        <h1 className="text-xl font-semibold text-(--text-primary)">Already a member</h1>
-        <p className="mt-2 text-(--text-secondary)">You already belong to this workspace.</p>
+      <AuthCard
+        title="Already a member"
+        subtitle="You already belong to this workspace."
+        badgeText="Invitation"
+      >
         <Link
           href="/app/requests"
-          className="mt-6 inline-flex h-11 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover)"
+          className="inline-flex h-11 w-full items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover)"
         >
           Go to workspace
         </Link>
-      </main>
+      </AuthCard>
     );
   }
 
   if (result.kind === "email_mismatch") {
     return (
-      <main className="mx-auto max-w-md px-6 py-12">
-        <h1 className="text-xl font-semibold text-(--text-primary)">Wrong account</h1>
-        <p className="mt-2 text-(--text-secondary)">
-          This invite was sent to <strong>{result.data.expectedEmail}</strong>, but you&apos;re signed in as{" "}
-          <strong>{currentEmail ?? "Unknown"}</strong>.
-        </p>
+      <AuthCard
+        title="Wrong account"
+        subtitle={
+          <>
+            This invite was sent to <strong className="font-semibold text-(--text-primary)">{result.data.expectedEmail}</strong>, but you&apos;re signed in as{" "}
+            <strong className="font-semibold text-(--text-primary)">{currentEmail ?? "Unknown"}</strong>.
+          </>
+        }
+        badgeText="Invitation"
+      >
         <button
           type="button"
           onClick={signOutAndContinue}
-          className="mt-6 inline-flex h-11 items-center justify-center rounded-lg border border-(--border-subtle) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev)"
+          className="inline-flex h-11 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev)"
         >
-          Sign out and continue
+          Sign out and use correct email
         </button>
-      </main>
+      </AuthCard>
     );
   }
 
   if (validateState === "valid" && authStatus === "authenticated") {
     return (
-      <main className="mx-auto max-w-md px-6 py-12">
-        <h1 className="text-xl font-semibold text-(--text-primary)">Join {workspaceName}</h1>
-        <p className="mt-2 text-(--text-secondary)">
-          You&apos;re signed in as {currentEmail}. Click below to join.
-        </p>
-        <button
-          type="button"
-          onClick={acceptInvitation}
-          disabled={result.kind === "submitting"}
-          className="mt-6 inline-flex h-11 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-60"
-        >
-          {result.kind === "submitting" ? "Joining…" : "Join workspace"}
-        </button>
-        {result.kind === "error" && (
-          <p className="mt-4 text-sm text-(--color-danger)">{result.data.message ?? result.data.error}</p>
-        )}
-      </main>
+      <AuthCard
+        title={`Join ${workspaceName}`}
+        subtitle={
+          <>
+            You&apos;re signed in as <span className="font-medium text-(--text-primary)">{currentEmail}</span>. Click below to join.
+          </>
+        }
+        badgeText="Invitation"
+      >
+        <div className="space-y-4">
+          <button
+            type="button"
+            onClick={acceptInvitation}
+            disabled={result.kind === "submitting"}
+            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {result.kind === "submitting" ? (
+              <>
+                <Spinner size="sm" className="text-white" />
+                Joining…
+              </>
+            ) : (
+              "Join workspace"
+            )}
+          </button>
+          {result.kind === "error" && (
+            <p className="text-center text-sm text-(--color-danger)" role="alert">
+              {result.data.message ?? result.data.error}
+            </p>
+          )}
+        </div>
+      </AuthCard>
     );
   }
 
   return (
-    <main className="mx-auto max-w-md px-6 py-12">
-      <h1 className="text-xl font-semibold text-(--text-primary)">Accept Invitation</h1>
-      <p className="mt-2 text-(--text-secondary)">Loading…</p>
-    </main>
+    <AuthCard
+      title="Accept invitation"
+      subtitle="Loading…"
+      badgeText="Invitation"
+    >
+      <div className="flex justify-center py-6">
+        <Spinner size="md" />
+      </div>
+    </AuthCard>
   );
 }

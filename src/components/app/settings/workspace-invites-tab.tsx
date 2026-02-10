@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/ui/spinner";
+import { useApiFetch } from "@/hooks/use-api-fetch";
 import { InviteMemberModal } from "./invite-member-modal";
 
 type Tenant = { id: string; name: string };
@@ -20,6 +21,7 @@ type Props = { tenant: Tenant };
 
 export function WorkspaceInvitesTab({ tenant }: Props) {
   const router = useRouter();
+  const apiFetch = useApiFetch();
   const [invitations, setInvitations] = useState<Invitation[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -27,7 +29,7 @@ export function WorkspaceInvitesTab({ tenant }: Props) {
 
   const refetch = () => {
     setLoading(true);
-    fetch("/api/tenant/invitations")
+    apiFetch("/api/tenant/invitations")
       .then((r) => r.json())
       .then((j: { data?: { invitations?: Invitation[] } }) => {
         setInvitations((j.data?.invitations ?? []) as Invitation[]);
@@ -43,7 +45,7 @@ export function WorkspaceInvitesTab({ tenant }: Props) {
   const runAction = async (id: string, path: "resend" | "revoke" | "reinvite") => {
     setActionLoading(id);
     try {
-      const res = await fetch(`/api/tenant/invitations/${id}/${path}`, { method: "POST" });
+      const res = await apiFetch(`/api/tenant/invitations/${id}/${path}`, { method: "POST" });
       if (res.ok) {
         router.refresh();
         refetch();

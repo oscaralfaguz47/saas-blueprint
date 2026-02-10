@@ -13,6 +13,7 @@ import {
   IconX,
 } from "@/components/ui/icons";
 import { Spinner } from "@/components/ui/spinner";
+import { useApiFetch } from "@/hooks/use-api-fetch";
 import { useCreateWorkspaceModal } from "@/components/app/workspace/create-workspace-modal-context";
 
 type TenantItem = {
@@ -41,6 +42,7 @@ const brandBoxBg = "bg-[color-mix(in_srgb,var(--bg-surface-elev)_85%,transparent
 export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps) {
   const pathname = usePathname() ?? "";
   const router = useRouter();
+  const apiFetch = useApiFetch();
   const { openCreateWorkspaceModal } = useCreateWorkspaceModal();
   const [tenants, setTenants] = useState<TenantItem[]>([]);
   const [tenantsLoading, setTenantsLoading] = useState(false);
@@ -78,7 +80,7 @@ export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps)
     const sidebarVisible = !isMobile || open;
     if (!sidebarVisible) return;
     queueMicrotask(() => setTenantsLoading(true));
-    fetch("/api/tenant")
+    apiFetch("/api/tenant", { showToastOnError: true })
       .then((r) => r.json())
       .then((json: { data?: { tenants?: TenantItem[] } }) => {
         setTenants(json.data?.tenants ?? []);
@@ -87,7 +89,7 @@ export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps)
   }, [isMobile, open]);
 
   const refetchTenants = () => {
-    fetch("/api/tenant")
+    apiFetch("/api/tenant", { showToastOnError: false })
       .then((r) => r.json())
       .then((json: { data?: { tenants?: TenantItem[] } }) => {
         setTenants(json.data?.tenants ?? []);
@@ -129,7 +131,7 @@ export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps)
   async function handleSwitchTenant(tenantId: string) {
     setSwitchingId(tenantId);
     try {
-      const res = await fetch("/api/tenant", {
+      const res = await apiFetch("/api/tenant", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tenantId }),
@@ -144,8 +146,7 @@ export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps)
           clearTimeout(fallback);
         };
         const onReady = () => {
-          // Refetch tenants so "Current" label updates to the new default
-          fetch("/api/tenant")
+          apiFetch("/api/tenant", { showToastOnError: false })
             .then((r) => r.json())
             .then((json: { data?: { tenants?: TenantItem[] } }) => {
               setTenants(json.data?.tenants ?? []);
@@ -157,7 +158,7 @@ export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps)
         return;
       }
     } catch {
-      // fall through
+      // Toast already shown by apiFetch
     }
     setSwitchingId(null);
   }

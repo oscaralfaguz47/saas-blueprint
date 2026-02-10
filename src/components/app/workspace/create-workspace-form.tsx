@@ -3,19 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ButtonLink } from "@/components/ui/button";
+import { useApiFetch } from "@/hooks/use-api-fetch";
+import { getApiErrorMessage } from "@/lib/api-client";
 
 type Status = "idle" | "submitting" | "error";
 
-function getApiMessage(res: { error?: string; message?: string }) {
-  if (res.message) return res.message;
-  if (res.error === "CONFLICT")
-    return "A workspace with this name already exists. Please choose a different name.";
-  if (res.error === "VALIDATION_ERROR") return "Please check the workspace name and try again.";
-  return "Something went wrong. Please try again.";
-}
-
 export default function CreateWorkspaceForm() {
   const router = useRouter();
+  const apiFetch = useApiFetch();
   const [name, setName] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -26,7 +21,7 @@ export default function CreateWorkspaceForm() {
     setStatus("submitting");
 
     try {
-      const res = await fetch("/api/tenant", {
+      const res = await apiFetch("/api/tenant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: name.trim() }),
@@ -35,7 +30,7 @@ export default function CreateWorkspaceForm() {
       const data = (await res.json()) as { data?: { tenant?: unknown }; error?: string; message?: string };
 
       if (!res.ok) {
-        setErrorMessage(getApiMessage(data));
+        setErrorMessage(getApiErrorMessage(res, data));
         setStatus("error");
         return;
       }

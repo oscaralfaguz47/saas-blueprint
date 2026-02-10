@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Spinner } from "@/components/ui/spinner";
 import { IconCopy, IconCheck } from "@/components/ui/icons";
-import { useToast } from "@/components/ui/toast";
+import { useApiFetch } from "@/hooks/use-api-fetch";
 import { InviteMemberModal } from "./invite-member-modal";
 
 type Tenant = { id: string; name: string };
@@ -16,17 +16,8 @@ type Member = {
 
 type Props = { tenant: Tenant };
 
-function getErrorMessage(res: Response, data: { error?: string; message?: string }): string {
-  if (data.message && typeof data.message === "string") return data.message;
-  if (data.error === "FORBIDDEN") return "You don't have permission to do this.";
-  if (data.error === "UNAUTHENTICATED") return "Please sign in again.";
-  if (res.status === 403) return "You don't have permission to do this.";
-  if (res.status === 401) return "Please sign in again.";
-  return "Something went wrong. Please try again.";
-}
-
 export function WorkspaceMembersTab({ tenant }: Props) {
-  const toast = useToast();
+  const apiFetch = useApiFetch();
   const [users, setUsers] = useState<Member[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -36,15 +27,12 @@ export function WorkspaceMembersTab({ tenant }: Props) {
 
   const refetch = () => {
     setLoading(true);
-    fetch("/api/tenant/users")
+    apiFetch("/api/tenant/users")
       .then((r) => r.json())
       .then((j: { data?: { users?: Member[] } }) => {
         setUsers((j.data?.users ?? []) as Member[]);
       })
-      .catch(() => {
-        setUsers([]);
-        toast.addToast("error", "Failed to load members.");
-      })
+      .catch(() => setUsers([]))
       .finally(() => setLoading(false));
   };
 
@@ -57,12 +45,11 @@ export function WorkspaceMembersTab({ tenant }: Props) {
   const handleStatus = async (userId: string, status: "ACTIVE" | "DISABLED") => {
     setStatusLoadingId(userId);
     try {
-      const res = await fetch(`/api/tenant/users/${userId}/status`, {
+      const res = await apiFetch(`/api/tenant/users/${userId}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
-      const data = (await res.json()) as { error?: string; message?: string };
       if (res.ok) {
         setUsers((prev) =>
           prev?.map((m) =>
@@ -71,11 +58,9 @@ export function WorkspaceMembersTab({ tenant }: Props) {
               : m
           ) ?? null
         );
-      } else {
-        toast.addToast("error", getErrorMessage(res, data));
       }
     } catch {
-      toast.addToast("error", "Something went wrong. Please try again.");
+      // Toast already shown by apiFetch
     } finally {
       setStatusLoadingId(null);
     }
@@ -84,23 +69,20 @@ export function WorkspaceMembersTab({ tenant }: Props) {
   const handleRole = async (userId: string, role: string) => {
     setRoleLoadingId(userId);
     try {
-      const res = await fetch(`/api/tenant/users/${userId}/role`, {
+      const res = await apiFetch(`/api/tenant/users/${userId}/role`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role }),
       });
-      const data = (await res.json()) as { error?: string; message?: string };
       if (res.ok) {
         setUsers((prev) =>
           prev?.map((m) =>
             m.user.id === userId ? { ...m, roles: [role] } : m
           ) ?? null
         );
-      } else {
-        toast.addToast("error", getErrorMessage(res, data));
       }
     } catch {
-      toast.addToast("error", "Something went wrong. Please try again.");
+      // Toast already shown by apiFetch
     } finally {
       setRoleLoadingId(null);
     }

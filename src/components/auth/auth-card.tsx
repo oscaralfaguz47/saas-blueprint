@@ -11,7 +11,7 @@ type Message = {
 
 type AuthCardProps = {
   title: string;
-  subtitle?: string;
+  subtitle?: React.ReactNode;
   badgeText?: string;
   message?: Message;
   children: React.ReactNode;
@@ -65,10 +65,10 @@ export default function AuthCard({
               <h1 className="text-xl font-semibold text-(--text-primary)">
                 {title}
               </h1>
-              {subtitle ? (
-                <p className="mt-2 text-sm leading-relaxed text-(--text-secondary)">
+              {subtitle != null ? (
+                <div className="mt-2 text-sm leading-relaxed text-(--text-secondary)">
                   {subtitle}
-                </p>
+                </div>
               ) : null}
             </div>
 

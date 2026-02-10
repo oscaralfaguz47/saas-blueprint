@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
-import { useToast } from "@/components/ui/toast";
+import { useApiFetch } from "@/hooks/use-api-fetch";
 
 type Props = {
   open: boolean;
@@ -15,7 +15,7 @@ type Props = {
 
 export function InviteMemberModal({ open, onClose, workspaceName, onSuccess }: Props) {
   const router = useRouter();
-  const toast = useToast();
+  const apiFetch = useApiFetch();
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "submitting" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +27,7 @@ export function InviteMemberModal({ open, onClose, workspaceName, onSuccess }: P
     setError(null);
     setStatus("submitting");
     try {
-      const res = await fetch("/api/tenant/invitations", {
+      const res = await apiFetch("/api/tenant/invitations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: trimmed }),
@@ -39,7 +39,6 @@ export function InviteMemberModal({ open, onClose, workspaceName, onSuccess }: P
             ? "An active invite already exists for this email."
             : (data.message as string) ?? "Failed to send invite.";
         setError(msg);
-        toast.addToast("error", msg);
         setStatus("error");
         return;
       }
@@ -49,9 +48,7 @@ export function InviteMemberModal({ open, onClose, workspaceName, onSuccess }: P
       router.refresh();
       onClose();
     } catch {
-      const msg = "Something went wrong. Please try again.";
-      setError(msg);
-      toast.addToast("error", msg);
+      setError("Something went wrong. Please try again.");
       setStatus("error");
     }
   };

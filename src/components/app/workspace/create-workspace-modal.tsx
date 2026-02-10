@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { Dialog } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { normalizeSlug } from "@/lib/validations";
+import { useApiFetch } from "@/hooks/use-api-fetch";
+import { getApiErrorMessage } from "@/lib/api-client";
 
 type Tenant = {
   id: string;
@@ -19,14 +21,8 @@ type Props = {
   onCloseAfterCreate?: () => void;
 };
 
-function getApiMessage(res: { error?: string; message?: string }) {
-  if (res.message) return res.message;
-  if (res.error === "CONFLICT") return "That workspace URL is already taken. Please choose a different slug.";
-  if (res.error === "VALIDATION_ERROR") return "Please check the value and try again.";
-  return "Something went wrong. Please try again.";
-}
-
 export function CreateWorkspaceModal({ open, onClose, onCloseAfterCreate }: Props) {
+  const apiFetch = useApiFetch();
   const [slug, setSlug] = useState("");
   const [createStatus, setCreateStatus] = useState<"idle" | "submitting" | "error">("idle");
   const [createError, setCreateError] = useState<string | null>(null);
@@ -51,14 +47,14 @@ export function CreateWorkspaceModal({ open, onClose, onCloseAfterCreate }: Prop
       return;
     }
     try {
-      const res = await fetch("/api/tenant", {
+      const res = await apiFetch("/api/tenant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slug: normalizedSlug }),
       });
       const data = (await res.json()) as { data?: { tenant?: Tenant }; error?: string; message?: string };
       if (!res.ok) {
-        setCreateError(getApiMessage(data));
+        setCreateError(getApiErrorMessage(res, data));
         setCreateStatus("error");
         return;
       }
@@ -69,13 +65,13 @@ export function CreateWorkspaceModal({ open, onClose, onCloseAfterCreate }: Prop
         return;
       }
       // Switch to the new workspace (set as default)
-      const hasDefault = await fetch("/api/tenant").then(async (r) => {
+      const hasDefault = await apiFetch("/api/tenant", { showToastOnError: false }).then(async (r) => {
         const j = await r.json();
         const tenants = (j.data as { tenants?: { id: string; isDefaultTenant: boolean }[] })?.tenants ?? [];
         return tenants.some((t) => t.isDefaultTenant && t.id === created.id);
       });
       if (!hasDefault) {
-        await fetch("/api/tenant", {
+        await apiFetch("/api/tenant", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ tenantId: created.id }),
