@@ -33,9 +33,11 @@ export const GET = withErrorHandler(async () => {
     orderBy: [{ isDefaultTenant: "desc" }, { joinedAt: "desc" }],
   });
 
-  const tenants = memberships.map((m) => ({
+  // Ensure at most one isDefaultTenant true in response (fixes duplicate-default bug after disable/re-enable)
+  const hasAnyDefault = memberships.some((m) => m.isDefaultTenant);
+  const tenants = memberships.map((m, i) => ({
     ...m.tenant,
-    isDefaultTenant: m.isDefaultTenant,
+    isDefaultTenant: hasAnyDefault && i === 0,
   }));
 
   return apiSuccess({ tenants });

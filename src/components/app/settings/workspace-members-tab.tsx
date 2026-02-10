@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/ui/spinner";
+import { IconCopy, IconCheck } from "@/components/ui/icons";
+import { useToast } from "@/components/ui/toast";
 import { InviteMemberModal } from "./invite-member-modal";
 
 type Tenant = { id: string; name: string };
@@ -15,12 +16,23 @@ type Member = {
 
 type Props = { tenant: Tenant };
 
+function getErrorMessage(res: Response, data: { error?: string; message?: string }): string {
+  if (data.message && typeof data.message === "string") return data.message;
+  if (data.error === "FORBIDDEN") return "You don't have permission to do this.";
+  if (data.error === "UNAUTHENTICATED") return "Please sign in again.";
+  if (res.status === 403) return "You don't have permission to do this.";
+  if (res.status === 401) return "Please sign in again.";
+  return "Something went wrong. Please try again.";
+}
+
 export function WorkspaceMembersTab({ tenant }: Props) {
-  const router = useRouter();
+  const toast = useToast();
   const [users, setUsers] = useState<Member[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [statusLoadingId, setStatusLoadingId] = useState<string | null>(null);
+  const [roleLoadingId, setRoleLoadingId] = useState<string | null>(null);
+  const [copiedUserId, setCopiedUserId] = useState<string | null>(null);
 
   const refetch = () => {
     setLoading(true);
@@ -29,7 +41,10 @@ export function WorkspaceMembersTab({ tenant }: Props) {
       .then((j: { data?: { users?: Member[] } }) => {
         setUsers((j.data?.users ?? []) as Member[]);
       })
-      .catch(() => setUsers([]))
+      .catch(() => {
+        setUsers([]);
+        toast.addToast("error", "Failed to load members.");
+      })
       .finally(() => setLoading(false));
   };
 
@@ -40,42 +55,73 @@ export function WorkspaceMembersTab({ tenant }: Props) {
   const ownerCount = users?.filter((u) => u.roles.includes("Owner")).length ?? 0;
 
   const handleStatus = async (userId: string, status: "ACTIVE" | "DISABLED") => {
-    setActionLoading(userId);
+    setStatusLoadingId(userId);
     try {
       const res = await fetch(`/api/tenant/users/${userId}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
+      const data = (await res.json()) as { error?: string; message?: string };
       if (res.ok) {
-        router.refresh();
-        refetch();
+        setUsers((prev) =>
+          prev?.map((m) =>
+            m.user.id === userId
+              ? { ...m, membership: { ...m.membership, status } }
+              : m
+          ) ?? null
+        );
+      } else {
+        toast.addToast("error", getErrorMessage(res, data));
       }
+    } catch {
+      toast.addToast("error", "Something went wrong. Please try again.");
     } finally {
-      setActionLoading(null);
+      setStatusLoadingId(null);
     }
   };
 
   const handleRole = async (userId: string, role: string) => {
-    setActionLoading(userId);
+    setRoleLoadingId(userId);
     try {
       const res = await fetch(`/api/tenant/users/${userId}/role`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role }),
       });
+      const data = (await res.json()) as { error?: string; message?: string };
       if (res.ok) {
-        router.refresh();
-        refetch();
+        setUsers((prev) =>
+          prev?.map((m) =>
+            m.user.id === userId ? { ...m, roles: [role] } : m
+          ) ?? null
+        );
+      } else {
+        toast.addToast("error", getErrorMessage(res, data));
       }
+    } catch {
+      toast.addToast("error", "Something went wrong. Please try again.");
     } finally {
-      setActionLoading(null);
+      setRoleLoadingId(null);
     }
   };
 
-  const copyEmail = (email: string | null) => {
-    if (email) void navigator.clipboard.writeText(email);
+  const copyEmail = async (userId: string, email: string | null) => {
+    if (!email) return;
+    try {
+      await navigator.clipboard.writeText(email);
+      setCopiedUserId(userId);
+    } catch {
+      // ignore
+    }
   };
+
+  // Reset copy button to default state after 2s
+  useEffect(() => {
+    if (copiedUserId === null) return;
+    const t = setTimeout(() => setCopiedUserId(null), 2000);
+    return () => clearTimeout(t);
+  }, [copiedUserId]);
 
   if (loading) {
     return (
@@ -155,8 +201,14 @@ export function WorkspaceMembersTab({ tenant }: Props) {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="inline-flex rounded-full bg-(--bg-surface-elev) px-2 py-0.5 text-xs font-medium text-(--text-primary)">
-                        {role}
+                      <span className="inline-flex min-w-16 items-center gap-1.5">
+                        {roleLoadingId === m.user.id ? (
+                          <Spinner size="sm" />
+                        ) : (
+                          <span className="rounded-full bg-(--bg-surface-elev) px-2 py-0.5 text-xs font-medium text-(--text-primary)">
+                            {role}
+                          </span>
+                        )}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-(--text-secondary)">{m.membership.status}</td>
@@ -167,17 +219,27 @@ export function WorkspaceMembersTab({ tenant }: Props) {
                       <div className="flex items-center justify-end gap-1">
                         <button
                           type="button"
-                          onClick={() => copyEmail(m.user.email ?? null)}
-                          className="rounded px-2 py-1 text-xs text-(--text-muted) hover:bg-(--bg-surface-elev) hover:text-(--text-primary)"
+                          onClick={() => copyEmail(m.user.id, m.user.email ?? null)}
+                          className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition-colors ${
+                            copiedUserId === m.user.id
+                              ? "bg-(--bg-surface-elev) text-(--text-primary)"
+                              : "bg-(--bg-surface-elev) text-(--color-primary) hover:bg-[color-mix(in_srgb,var(--color-primary)_10%,transparent)]"
+                          }`}
+                          aria-label={copiedUserId === m.user.id ? "Copied" : "Copy email"}
                         >
-                          Copy email
+                          {copiedUserId === m.user.id ? (
+                            <IconCheck size={14} />
+                          ) : (
+                            <IconCopy size={14} />
+                          )}
+                          <span>Copy Email</span>
                         </button>
                         {!isLastOwner && (
                           <>
                             <select
                               value={role}
                               onChange={(e) => handleRole(m.user.id, e.target.value)}
-                              disabled={actionLoading === m.user.id}
+                              disabled={roleLoadingId === m.user.id}
                               className="rounded border border-(--border-subtle) bg-(--bg-surface) px-2 py-1 text-xs text-(--text-primary) disabled:opacity-60"
                             >
                               {["Owner", "Admin", "Finance", "Member"].map((r) => (
@@ -188,19 +250,27 @@ export function WorkspaceMembersTab({ tenant }: Props) {
                               <button
                                 type="button"
                                 onClick={() => handleStatus(m.user.id, "DISABLED")}
-                                disabled={actionLoading === m.user.id || isLastOwner}
-                                className="rounded px-2 py-1 text-xs text-(--color-danger) hover:bg-(--bg-surface-elev) disabled:opacity-60"
+                                disabled={statusLoadingId === m.user.id || isLastOwner}
+                                className="inline-flex min-w-18 items-center justify-center rounded px-2 py-1 text-xs text-(--color-danger) hover:bg-(--bg-surface-elev) disabled:opacity-60"
                               >
-                                Disable
+                                {statusLoadingId === m.user.id ? (
+                                  <Spinner size="sm" className="text-(--color-danger)" />
+                                ) : (
+                                  "Disable"
+                                )}
                               </button>
                             ) : (
                               <button
                                 type="button"
                                 onClick={() => handleStatus(m.user.id, "ACTIVE")}
-                                disabled={actionLoading === m.user.id}
-                                className="rounded px-2 py-1 text-xs text-(--color-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60"
+                                disabled={statusLoadingId === m.user.id}
+                                className="inline-flex min-w-18 items-center justify-center rounded px-2 py-1 text-xs text-(--color-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60"
                               >
-                                Enable
+                                {statusLoadingId === m.user.id ? (
+                                  <Spinner size="sm" className="text-(--color-primary)" />
+                                ) : (
+                                  "Enable"
+                                )}
                               </button>
                             )}
                           </>

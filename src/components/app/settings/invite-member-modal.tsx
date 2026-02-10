@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
+import { useToast } from "@/components/ui/toast";
 
 type Props = {
   open: boolean;
@@ -14,6 +15,7 @@ type Props = {
 
 export function InviteMemberModal({ open, onClose, workspaceName, onSuccess }: Props) {
   const router = useRouter();
+  const toast = useToast();
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "submitting" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -32,11 +34,12 @@ export function InviteMemberModal({ open, onClose, workspaceName, onSuccess }: P
       });
       const data = (await res.json()) as { data?: unknown; error?: string; message?: string; details?: { code?: string } };
       if (!res.ok) {
-        if (data.error === "CONFLICT" || data.details?.code === "ACTIVE_INVITE_EXISTS") {
-          setError("An active invite already exists for this email.");
-        } else {
-          setError((data.message as string) ?? "Failed to send invite.");
-        }
+        const msg =
+          data.error === "CONFLICT" || data.details?.code === "ACTIVE_INVITE_EXISTS"
+            ? "An active invite already exists for this email."
+            : (data.message as string) ?? "Failed to send invite.";
+        setError(msg);
+        toast.addToast("error", msg);
         setStatus("error");
         return;
       }
@@ -46,7 +49,9 @@ export function InviteMemberModal({ open, onClose, workspaceName, onSuccess }: P
       router.refresh();
       onClose();
     } catch {
-      setError("Something went wrong. Please try again.");
+      const msg = "Something went wrong. Please try again.";
+      setError(msg);
+      toast.addToast("error", msg);
       setStatus("error");
     }
   };

@@ -6,6 +6,7 @@ import { WorkspaceReadyNotifier } from "@/components/app/workspace-ready-notifie
 import AppLayoutClient from "@/components/app/app-layout-client";
 import { ThemeProvider } from "@/components/theme/theme-provider";
 import ThemeBootstrap from "@/components/theme/theme-bootstrap";
+import { ToastProvider } from "@/components/ui/toast";
 
 type Workspace = {
   id: string;
@@ -60,11 +61,13 @@ export function AppLayoutHydrationGate({
       <ThemeBootstrap />
       <WorkspaceReadyNotifier tenantId={tenantId} />
       <ThemeProvider>
-        <CreateWorkspaceModalProvider>
-          <AppLayoutClient user={user} workspace={workspace}>
-            {children}
-          </AppLayoutClient>
-        </CreateWorkspaceModalProvider>
+        <ToastProvider>
+          <CreateWorkspaceModalProvider>
+            <AppLayoutClient user={user} workspace={workspace}>
+              {children}
+            </AppLayoutClient>
+          </CreateWorkspaceModalProvider>
+        </ToastProvider>
       </ThemeProvider>
     </>
   );

@@ -132,3 +132,22 @@ export function IconChevronRight(props: IconProps) {
     </BaseIcon>
   );
 }
+
+/** Copy to clipboard. */
+export function IconCopy(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+      <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+    </BaseIcon>
+  );
+}
+
+/** Check / success. */
+export function IconCheck(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M20 6 9 17l-5-5" />
+    </BaseIcon>
+  );
+}

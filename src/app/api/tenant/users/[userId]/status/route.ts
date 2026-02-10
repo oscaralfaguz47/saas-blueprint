@@ -67,6 +67,27 @@ export const PATCH = withErrorHandler(async (
     data: { status: body.status },
   });
 
+  // When re-enabling, ensure at most one ACTIVE membership has isDefaultTenant true (fixes duplicate-default bug)
+  if (body.status === "ACTIVE") {
+    const activeWithDefault = await prisma.tenantMembership.findMany({
+      where: {
+        userId: targetUserId,
+        status: "ACTIVE",
+        tenant: { status: "ACTIVE" },
+        isDefaultTenant: true,
+      },
+      select: { id: true },
+      orderBy: { joinedAt: "desc" },
+    });
+    if (activeWithDefault.length > 1) {
+      const keepId = activeWithDefault[0]!.id;
+      await prisma.tenantMembership.updateMany({
+        where: { userId: targetUserId, status: "ACTIVE", id: { not: keepId } },
+        data: { isDefaultTenant: false },
+      });
+    }
+  }
+
   const action = body.status === "ACTIVE" ? "tenant.user.enabled" : "tenant.user.disabled";
   await writeAuditLog({
     actorUserId: session.user.id,
