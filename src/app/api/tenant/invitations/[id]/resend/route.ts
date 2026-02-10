@@ -3,12 +3,18 @@ import { authOptions } from "@/server/auth-options";
 import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { prisma } from "@/server/db";
 import { writeAuditLog } from "@/server/services/audit";
+import { sendInvitationEmail } from "@/server/services/invitation-email";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { z } from "zod";
+import crypto from "crypto";
 
 const paramsSchema = z.object({ id: z.string().cuid() });
 
-/** POST resend: audit only. Same-token resend would require storing token (e.g. queue); TODO when email provider is added. */
+function sha256(v: string): string {
+  return crypto.createHash("sha256").update(v).digest("hex");
+}
+
+/** POST resend: generate new token, update invite, send email (we don't store raw token so we issue a fresh link). */
 export const POST = withErrorHandler(async (
   req: Request,
   context: { params: Promise<{ id: string }> }
@@ -27,6 +33,7 @@ export const POST = withErrorHandler(async (
       acceptedAt: true,
       revokedAt: true,
       expiresAt: true,
+      tenant: { select: { name: true } },
     },
   });
   if (!invite) return ApiErrors.NOT_FOUND("Invitation");
@@ -50,6 +57,15 @@ export const POST = withErrorHandler(async (
     return ApiErrors.VALIDATION_ERROR("Only active invitations can be resent.");
   }
 
+  const rawToken = crypto.randomBytes(32).toString("hex");
+  const tokenHash = sha256(rawToken);
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7); // 7 days
+
+  await prisma.tenantInvitation.update({
+    where: { id: invite.id },
+    data: { tokenHash, expiresAt },
+  });
+
   await writeAuditLog({
     actorUserId: session.user.id,
     actorContext: "TENANT",
@@ -60,6 +76,14 @@ export const POST = withErrorHandler(async (
     metadata: { email: invite.email },
     ipAddress: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
     userAgent: req.headers.get("user-agent") ?? null,
+  });
+
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  await sendInvitationEmail({
+    tenantName: invite.tenant.name,
+    invitedEmail: invite.email,
+    rawToken,
+    baseUrl,
   });
 
   return apiSuccess({ ok: true });
