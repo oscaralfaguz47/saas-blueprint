@@ -14,12 +14,24 @@ export const GET = withErrorHandler(async (req: Request) => {
   const tenant = membership?.tenant;
   if (!tenant) return ApiErrors.NO_TENANT();
 
-  const allowed = await hasTenantPermission({
-    userId: session.user.id,
-    tenantId: tenant.id,
-    permission: "tenant.users.read",
-  });
+  const url = new URL(req.url);
+  const context = url.searchParams.get("context");
+  const isAssignmentContext = context === "assignment";
 
+  const [hasUsersRead, hasRequestsCreate] = await Promise.all([
+    hasTenantPermission({
+      userId: session.user.id,
+      tenantId: tenant.id,
+      permission: "tenant.users.read",
+    }),
+    hasTenantPermission({
+      userId: session.user.id,
+      tenantId: tenant.id,
+      permission: "tenant.requests.create",
+    }),
+  ]);
+
+  const allowed = hasUsersRead || (isAssignmentContext && hasRequestsCreate);
   if (!allowed) return ApiErrors.FORBIDDEN();
 
   const rows = await prisma.tenantMembership.findMany({
@@ -49,18 +61,20 @@ export const GET = withErrorHandler(async (req: Request) => {
     orderBy: [{ joinedAt: "desc" }],
   });
 
-  // Audit (read access) – útil para debugging y compliance.
-  await writeAuditLog({
-    actorUserId: session.user.id,
-    actorContext: "TENANT",
-    tenantId: tenant.id,
-    action: "tenant.users.read",
-    targetType: "Tenant",
-    targetId: tenant.id,
-    metadata: { count: rows.length },
-    ipAddress: getIp(req),
-    userAgent: getUserAgent(req),
-  });
+  // Audit only when read in settings context (not when listing for request assignment).
+  if (!isAssignmentContext) {
+    await writeAuditLog({
+      actorUserId: session.user.id,
+      actorContext: "TENANT",
+      tenantId: tenant.id,
+      action: "tenant.users.read",
+      targetType: "Tenant",
+      targetId: tenant.id,
+      metadata: { count: rows.length },
+      ipAddress: getIp(req),
+      userAgent: getUserAgent(req),
+    });
+  }
 
   return apiSuccess({
     tenant,

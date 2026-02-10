@@ -216,7 +216,7 @@ Does **not** administer the tenant itself.
 
 **Description**  
 Operational user. Creates requests, collaborates, attaches evidence.  
-Cannot close, pay, or export at scale.
+Cannot close, pay, or export at scale. **No access to Workspace Settings** (no Members/Invites tabs).
 
 ### Permissions
 
@@ -229,9 +229,6 @@ Cannot close, pay, or export at scale.
 #### Evidence
 - `tenant.evidence.add`
 
-#### Tenant
-- `tenant.users.read` *(only to select approvers / viewers)*
-
 #### Approvals
 - No assignment permissions  
 - Can respond **only if explicitly assigned**
@@ -240,7 +237,10 @@ Cannot close, pay, or export at scale.
 - close requests
 - manage payments
 - export packets
+- access Workspace Settings (Members, Invites, General, Billing)
 - manage users or roles
+
+**Listing users for request context:** MEMBER does **not** have `tenant.users.read`. They can load the workspace user list **only in the context of creating/editing requests** (e.g. to select approvers, viewers). The API allows this via `GET /api/tenant/users?context=assignment` when the user has `tenant.requests.create`.
 
 ---
 

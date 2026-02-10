@@ -70,7 +70,6 @@ export const ROLE_PERMS: Record<"Owner" | "Admin" | "Finance" | "Member", string
     "tenant.payments.manage",
   ],
   Member: [
-    "tenant.users.read",
     "tenant.requests.create",
     "tenant.requests.share",
     "tenant.requests.link",
