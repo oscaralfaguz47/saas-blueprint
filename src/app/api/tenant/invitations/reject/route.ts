@@ -85,8 +85,10 @@ export const POST = withErrorHandler(async (req: Request) => {
   const redirectTo =
     draftResult.tenant.status === "ACTIVE" ? "/app/requests" : "/setup/workspace";
 
-  return apiSuccess({
+  const res = apiSuccess({
     ok: true,
     redirect: redirectTo,
   });
+  res.cookies.set("pending_invite_token", "", { maxAge: 0, path: "/" });
+  return res;
 });

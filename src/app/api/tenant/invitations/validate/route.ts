@@ -1,16 +1,23 @@
+import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { apiSuccess, withErrorHandler } from "@/lib/api-response";
 import crypto from "crypto";
+
+const PENDING_INVITE_COOKIE = "pending_invite_token";
+const PENDING_INVITE_MAX_AGE = 60 * 60 * 24; // 24h
+
+function clearPendingInviteCookie(res: NextResponse) {
+  res.cookies.set(PENDING_INVITE_COOKIE, "", { maxAge: 0, path: "/" });
+}
 
 /** GET /api/tenant/invitations/validate?token=RAW_TOKEN — public, no auth. Returns minimal safe payload for /invite page. */
 export const GET = withErrorHandler(async (req: Request) => {
   const url = new URL(req.url);
   const token = url.searchParams.get("token")?.trim();
   if (!token || token.length < 20) {
-    return apiSuccess({
-      valid: false,
-      state: "invalid",
-    });
+    const res = apiSuccess({ valid: false, state: "invalid" });
+    clearPendingInviteCookie(res);
+    return res;
   }
 
   const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
@@ -28,24 +35,40 @@ export const GET = withErrorHandler(async (req: Request) => {
   });
 
   if (!invite) {
-    return apiSuccess({ valid: false, state: "invalid" });
+    const res = apiSuccess({ valid: false, state: "invalid" });
+    clearPendingInviteCookie(res);
+    return res;
   }
 
   const now = new Date();
   if (invite.acceptedAt) {
-    return apiSuccess({ valid: false, state: "accepted" });
+    const res = apiSuccess({ valid: false, state: "accepted" });
+    clearPendingInviteCookie(res);
+    return res;
   }
   if (invite.revokedAt) {
-    return apiSuccess({ valid: false, state: "revoked" });
+    const res = apiSuccess({ valid: false, state: "revoked" });
+    clearPendingInviteCookie(res);
+    return res;
   }
   if (invite.expiresAt <= now) {
-    return apiSuccess({ valid: false, state: "expired" });
+    const res = apiSuccess({ valid: false, state: "expired" });
+    clearPendingInviteCookie(res);
+    return res;
   }
 
-  return apiSuccess({
+  const res = apiSuccess({
     valid: true,
     state: "valid",
     workspaceName: invite.tenant.name,
     invitedEmail: invite.email,
   });
+  res.cookies.set(PENDING_INVITE_COOKIE, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: PENDING_INVITE_MAX_AGE,
+    path: "/",
+  });
+  return res;
 });

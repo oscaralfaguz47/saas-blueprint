@@ -69,13 +69,15 @@ export const POST = withErrorHandler(async (req: Request) => {
         data: { isDefaultTenant: true },
       }),
     ]);
-    return apiSuccess({
+    const res = apiSuccess({
       ok: true,
       alreadyMember: true,
       invitationId: invite.id,
       tenantId: invite.tenantId,
       membershipId: existingMembership.id,
     });
+    res.cookies.set("pending_invite_token", "", { maxAge: 0, path: "/" });
+    return res;
   }
 
   let result: { membershipId: string; membershipCreated: boolean; reenabled: boolean };
@@ -197,7 +199,7 @@ export const POST = withErrorHandler(async (req: Request) => {
     });
   }
 
-  return apiSuccess({
+  const res = apiSuccess({
     ok: true,
     invitationId: invite.id,
     tenantId: invite.tenantId,
@@ -205,6 +207,8 @@ export const POST = withErrorHandler(async (req: Request) => {
     membershipId: result.membershipId,
     alreadyMember: false,
   });
+  res.cookies.set("pending_invite_token", "", { maxAge: 0, path: "/" });
+  return res;
 });
 
 function sha256(v: string): string {

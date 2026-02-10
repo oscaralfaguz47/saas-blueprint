@@ -2,12 +2,18 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { signOut } from "next-auth/react";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import AuthCard from "@/components/auth/auth-card";
 import { Spinner } from "@/components/ui/spinner";
 import { CLAIM_SLUG_MIN, CLAIM_SLUG_MAX } from "@/lib/validations";
 
-export default function SetupWorkspaceClient() {
+type SetupWorkspaceClientProps = {
+  /** When set, user has a valid pending invite for this workspace (from server lookup by email). Show hint to use email link. */
+  pendingInviteWorkspaceName?: string | null;
+};
+
+export default function SetupWorkspaceClient({ pendingInviteWorkspaceName = null }: SetupWorkspaceClientProps) {
   const router = useRouter();
   const apiFetch = useApiFetch();
   const [slug, setSlug] = useState("");
@@ -88,6 +94,15 @@ export default function SetupWorkspaceClient() {
           subtitle="Choose a URL for your workspace. You can use letters, numbers, and hyphens (3–32 characters)."
           badgeText="Setup"
         >
+          {pendingInviteWorkspaceName && (
+            <div
+              className="mb-4 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 py-3 text-sm text-(--text-secondary)"
+              role="status"
+            >
+              You have an invite to <span className="font-medium text-(--text-primary)">{pendingInviteWorkspaceName}</span>.
+              Use the link in your email to join, or create your own workspace below.
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label htmlFor="slug" className="mb-1 block text-xs font-medium text-(--text-secondary)">
@@ -149,6 +164,15 @@ export default function SetupWorkspaceClient() {
                 "Claim workspace"
               )}
             </button>
+            <p className="text-center text-sm text-(--text-muted)">
+              <button
+                type="button"
+                onClick={() => signOut({ callbackUrl: "/auth/sign-in" })}
+                className="font-medium text-(--text-secondary) underline hover:text-(--text-primary)"
+              >
+                Sign out and do it later
+              </button>
+            </p>
           </form>
         </AuthCard>
       </div>
