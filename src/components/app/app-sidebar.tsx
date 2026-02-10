@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import {
-  IconBilling,
   IconChevronLeft,
   IconChevronRight,
   IconFileText,
@@ -35,10 +34,6 @@ function isRequestsActive(pathname: string) {
   return pathname === "/app/requests" || pathname.startsWith("/app/requests/");
 }
 
-function isSettingsBillingActive(pathname: string) {
-  return pathname === "/app/settings/billing";
-}
-
 const hoverBg = "hover:bg-[color-mix(in_srgb,var(--text-primary)_6%,transparent)]";
 const activeBg = "bg-[color-mix(in_srgb,var(--text-primary)_10%,transparent)]";
 const brandBoxBg = "bg-[color-mix(in_srgb,var(--bg-surface-elev)_85%,transparent)]";
@@ -46,7 +41,7 @@ const brandBoxBg = "bg-[color-mix(in_srgb,var(--bg-surface-elev)_85%,transparent
 export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps) {
   const pathname = usePathname() ?? "";
   const router = useRouter();
-  const { openCreateWorkspaceModal, openWorkspaceSettingsModal } = useCreateWorkspaceModal();
+  const { openCreateWorkspaceModal } = useCreateWorkspaceModal();
   const [tenants, setTenants] = useState<TenantItem[]>([]);
   const [tenantsLoading, setTenantsLoading] = useState(false);
   const [switchingId, setSwitchingId] = useState<string | null>(null);
@@ -168,7 +163,7 @@ export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps)
   }
 
   const requestsActive = isRequestsActive(pathname);
-  const billingActive = isSettingsBillingActive(pathname);
+  const workspaceSettingsActive = pathname === "/app/settings/workspace" || pathname.startsWith("/app/settings/workspace?");
 
   const showLabels = !collapsed;
   const content = (
@@ -276,28 +271,15 @@ export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps)
           {showLabels ? <span>Create workspace</span> : null}
         </button>
 
-        <button
-          type="button"
-          onClick={() => {
-            openWorkspaceSettingsModal();
-            onClose();
-          }}
+        <Link
+          href="/app/settings/workspace"
+          onClick={() => isMobile && onClose()}
+          aria-current={workspaceSettingsActive ? "page" : undefined}
           title="Workspace settings"
-          className={`flex w-full items-center rounded-lg py-2.5 text-left text-sm text-[var(--text-secondary)] transition-colors duration-150 ${hoverBg} hover:text-[var(--text-primary)] ${showLabels ? "gap-3 px-3" : "justify-center px-2"}`}
+          className={`flex w-full items-center rounded-lg py-2.5 text-sm transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} ${workspaceSettingsActive ? `${activeBg} font-medium text-[var(--text-primary)]` : `text-[var(--text-secondary)] ${hoverBg} hover:text-[var(--text-primary)]`}`}
         >
           <IconWorkspace size={18} className="shrink-0" />
           {showLabels ? <span>Workspace settings</span> : null}
-        </button>
-
-        <Link
-          href="/app/settings/billing"
-          onClick={() => isMobile && onClose()}
-          aria-current={billingActive ? "page" : undefined}
-          title="Billing"
-          className={`flex items-center rounded-lg py-2.5 text-sm transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} ${billingActive ? `${activeBg} font-medium text-[var(--text-primary)]` : `text-[var(--text-secondary)] ${hoverBg} hover:text-[var(--text-primary)]`}`}
-        >
-          <IconBilling size={18} className="shrink-0" />
-          {showLabels ? <span>Billing</span> : null}
         </Link>
       </div>
 
