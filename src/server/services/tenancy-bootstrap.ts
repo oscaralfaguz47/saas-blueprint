@@ -69,7 +69,7 @@ export async function ensureDefaultTenantForUser(params: {
 }) {
   const { userId, userEmail, ipAddress, userAgent } = params;
 
-  // Fast path: already has a default active tenant
+  // Fast path: already has a default active tenant (legacy: ensureDefaultTenantForUser still creates ACTIVE for backward compatibility)
   const existing = await prisma.tenantMembership.findFirst({
     where: { userId, isDefaultTenant: true, status: "ACTIVE" },
     select: {
@@ -101,6 +101,7 @@ export async function ensureDefaultTenantForUser(params: {
           name: `${baseName}'s Workspace`,
           slug,
           status: "ACTIVE",
+          createdByUserId: userId,
         },
         select: { id: true, name: true, slug: true, status: true },
       });
@@ -188,6 +189,219 @@ export async function ensureDefaultTenantForUser(params: {
 }
 
 /**
+ * A5: Ensure user has a default workspace; if none, create a DRAFT workspace (to be claimed).
+ * Returns the default membership (and tenant) whether existing or newly created.
+ * Used by app layout and setup page so first-time users get a DRAFT to claim.
+ */
+export async function ensureDraftWorkspaceForUser(params: {
+  userId: string;
+  userEmail?: string | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+}): Promise<{
+  id: string;
+  tenantId: string;
+  tenant: { id: string; name: string; slug: string; status: string };
+}> {
+  const { userId, userEmail, ipAddress, userAgent } = params;
+
+  const existing = await prisma.tenantMembership.findFirst({
+    where: { userId, isDefaultTenant: true },
+    select: {
+      id: true,
+      tenantId: true,
+      tenant: { select: { id: true, name: true, slug: true, status: true } },
+    },
+  });
+
+  if (existing) return existing as { id: string; tenantId: string; tenant: { id: string; name: string; slug: string; status: string } };
+
+  const result = await prisma.$transaction(async (tx) => {
+    const again = await tx.tenantMembership.findFirst({
+      where: { userId, isDefaultTenant: true },
+      select: {
+        id: true,
+        tenantId: true,
+        tenant: { select: { id: true, name: true, slug: true, status: true } },
+      },
+    });
+    if (again?.tenant) return again;
+
+    const baseName = (userEmail?.split("@")[0] ?? "workspace").slice(0, 30);
+    const slug = await generateUniqueTenantSlug(tx, baseName);
+
+    const tenant = await tx.tenant.create({
+      data: {
+        name: `${baseName}'s Workspace`,
+        slug,
+        status: "DRAFT",
+        createdByUserId: userId,
+      },
+      select: { id: true, name: true, slug: true, status: true },
+    });
+
+    const membership = await tx.tenantMembership.create({
+      data: {
+        tenantId: tenant.id,
+        userId,
+        status: "ACTIVE",
+        joinedAt: new Date(),
+        isDefaultTenant: true,
+      },
+      select: { id: true, tenantId: true },
+    });
+
+    const [ownerRole] = await Promise.all([
+      tx.tenantRole.upsert({
+        where: { tenantId_name: { tenantId: tenant.id, name: "Owner" } },
+        update: { isSystem: true },
+        create: { tenantId: tenant.id, name: "Owner", isSystem: true },
+        select: { id: true, name: true },
+      }),
+      tx.tenantRole.upsert({
+        where: { tenantId_name: { tenantId: tenant.id, name: "Admin" } },
+        update: { isSystem: true },
+        create: { tenantId: tenant.id, name: "Admin", isSystem: true },
+        select: { id: true },
+      }),
+      tx.tenantRole.upsert({
+        where: { tenantId_name: { tenantId: tenant.id, name: "Finance" } },
+        update: { isSystem: true },
+        create: { tenantId: tenant.id, name: "Finance", isSystem: true },
+        select: { id: true },
+      }),
+      tx.tenantRole.upsert({
+        where: { tenantId_name: { tenantId: tenant.id, name: "Member" } },
+        update: { isSystem: true },
+        create: { tenantId: tenant.id, name: "Member", isSystem: true },
+        select: { id: true },
+      }),
+    ]);
+
+    await tx.tenantUserRole.upsert({
+      where: {
+        membershipId_roleId: { membershipId: membership.id, roleId: ownerRole.id },
+      },
+      update: {},
+      create: { membershipId: membership.id, roleId: ownerRole.id },
+    });
+
+    return {
+      id: membership.id,
+      tenantId: membership.tenantId,
+      tenant,
+    };
+  });
+
+  await ensureTenantRolesAndPermissions({ tenantId: result.tenant.id });
+
+  await writeAuditLog({
+    actorUserId: userId,
+    actorContext: "TENANT",
+    tenantId: result.tenant.id,
+    action: "workspace.auto_created",
+    targetType: "Tenant",
+    targetId: result.tenant.id,
+    metadata: {
+      tenantName: result.tenant.name,
+      tenantSlug: result.tenant.slug,
+    },
+    ipAddress,
+    userAgent,
+  });
+
+  return result;
+}
+
+/**
+ * A5: Check if a slug is available (case-insensitive). Call with lowercased slug.
+ */
+export async function isSlugAvailable(slugLower: string): Promise<boolean> {
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM "Tenant" WHERE LOWER("slug") = ${slugLower} LIMIT 1
+  `;
+  return rows.length === 0;
+}
+
+/**
+ * A5: Claim user's DRAFT workspace with a chosen slug. Caller must validate slug (claimSlugSchema + availability).
+ */
+export async function claimWorkspaceBySlug(params: {
+  userId: string;
+  slug: string;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+}): Promise<{ tenant: { id: string; name: string; slug: string; status: string } }> {
+  const { userId, slug, ipAddress, userAgent } = params;
+
+  const slugLower = slug.toLowerCase();
+  const available = await isSlugAvailable(slugLower);
+  if (!available) throw new SlugTakenError(slug);
+
+  const membership = await prisma.tenantMembership.findFirst({
+    where: {
+      userId,
+      isDefaultTenant: true,
+      status: "ACTIVE",
+      tenant: { status: "DRAFT" },
+      roles: {
+        some: {
+          role: { name: "Owner" },
+        },
+      },
+    },
+    select: {
+      id: true,
+      tenantId: true,
+      tenant: { select: { id: true, name: true, slug: true, status: true } },
+    },
+  });
+
+  if (!membership?.tenant) {
+    const err = new Error("No DRAFT workspace found for user");
+    (err as Error & { code?: string }).code = "NO_DRAFT_WORKSPACE";
+    throw err;
+  }
+
+  const name = nameFromSlug(slugLower);
+  const previousSlug = membership.tenant.slug;
+
+  const tenant = await prisma.$transaction(async (tx) => {
+    const updated = await tx.tenant.update({
+      where: { id: membership.tenantId },
+      data: {
+        slug: slugLower,
+        name,
+        status: "ACTIVE",
+        claimedAt: new Date(),
+      },
+      select: { id: true, name: true, slug: true, status: true },
+    });
+
+    return updated;
+  });
+
+  await writeAuditLog({
+    actorUserId: userId,
+    actorContext: "TENANT",
+    tenantId: tenant.id,
+    action: "workspace.claimed",
+    targetType: "Tenant",
+    targetId: tenant.id,
+    metadata: {
+      previousSlug,
+      newSlug: slugLower,
+      statusFrom: "DRAFT",
+      statusTo: "ACTIVE",
+    },
+    ipAddress,
+    userAgent,
+  });
+
+  return { tenant };
+}
+
+/**
  * Create a new workspace (tenant) for an authenticated user.
  * A1: single transaction (Tenant + TenantMembership + TenantUserRole + AuditLog).
  * Request provides slug only; name is derived from slug (e.g. acme-inc → Acme Inc).
@@ -216,6 +430,7 @@ export async function createTenantForUser(params: {
           name,
           slug,
           status: "ACTIVE",
+          createdByUserId: userId,
         },
         select: { id: true, name: true, slug: true, status: true },
       });

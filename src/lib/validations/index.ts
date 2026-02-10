@@ -14,10 +14,15 @@ export {
 
 export {
   TENANT_SLUG_MAX,
+  CLAIM_SLUG_MIN,
+  CLAIM_SLUG_MAX,
+  RESERVED_SLUGS,
   normalizeSlug,
   nameFromSlug,
   createTenantSchema,
   setDefaultTenantSchema,
+  claimSlugSchema,
+  claimWorkspaceSchema,
   workspaceSettingsSchema,
   logoUploadUrlSchema,
   logoConfirmSchema,

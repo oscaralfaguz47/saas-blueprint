@@ -59,6 +59,16 @@ export const POST = withErrorHandler(async (req: Request) => {
   });
 
   if (existingMembership?.status === "ACTIVE") {
+    await prisma.$transaction([
+      prisma.tenantMembership.updateMany({
+        where: { userId: user.id },
+        data: { isDefaultTenant: false },
+      }),
+      prisma.tenantMembership.update({
+        where: { id: existingMembership.id },
+        data: { isDefaultTenant: true },
+      }),
+    ]);
     return apiSuccess({
       ok: true,
       alreadyMember: true,
@@ -144,6 +154,17 @@ export const POST = withErrorHandler(async (req: Request) => {
     }
     throw err;
   }
+
+  await prisma.$transaction([
+    prisma.tenantMembership.updateMany({
+      where: { userId: user.id },
+      data: { isDefaultTenant: false },
+    }),
+    prisma.tenantMembership.update({
+      where: { id: result.membershipId },
+      data: { isDefaultTenant: true },
+    }),
+  ]);
 
   await writeAuditLog({
     actorUserId: session.user.id,

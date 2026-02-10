@@ -14,7 +14,12 @@ type Props = {
 
 export default async function SignInPage({ searchParams }: Props) {
   const session = await getServerSession(authOptions);
-  if (session?.user) redirect("/app/requests");
+  if (session?.user) {
+    const params = await searchParams;
+    const callbackUrl = params?.callbackUrl?.trim();
+    if (callbackUrl && callbackUrl.startsWith("/")) redirect(callbackUrl);
+    redirect("/app/requests");
+  }
 
   const params = await searchParams;
   const error = params?.error;

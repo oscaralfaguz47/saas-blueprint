@@ -1,4 +1,7 @@
 import { Suspense } from "react";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/server/auth-options";
+import { prisma } from "@/server/db";
 import InviteClient from "./invite-client";
 
 // Force dynamic rendering - this page uses client-side hooks and search params
@@ -16,10 +19,24 @@ function InviteFallback() {
   );
 }
 
-export default function InvitePage() {
+export default async function InvitePage() {
+  let hasActiveWorkspace = false;
+  const session = await getServerSession(authOptions);
+  if (session?.user?.id) {
+    const activeMembership = await prisma.tenantMembership.findFirst({
+      where: {
+        userId: session.user.id,
+        status: "ACTIVE",
+        tenant: { status: "ACTIVE" },
+      },
+      select: { id: true },
+    });
+    hasActiveWorkspace = !!activeMembership;
+  }
+
   return (
     <Suspense fallback={<InviteFallback />}>
-      <InviteClient />
+      <InviteClient hasActiveWorkspace={hasActiveWorkspace} />
     </Suspense>
   );
 }

@@ -56,6 +56,9 @@ export const ApiErrors = {
   /** Conflict (e.g. duplicate slug); 409 */
   CONFLICT: (message?: string, details?: unknown) =>
     apiError("CONFLICT", 409, message ?? "Resource conflict", details),
+  /** Rate limited; 429 */
+  RATE_LIMITED: (message?: string) =>
+    apiError("RATE_LIMITED", 429, message ?? "Too many requests"),
 } as const;
 
 /**

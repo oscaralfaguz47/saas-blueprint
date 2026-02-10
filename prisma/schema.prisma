@@ -15,6 +15,7 @@ enum RoleKey {
 }
 
 enum TenantStatus {
+  DRAFT
   ACTIVE
   SUSPENDED
   CLOSED
@@ -106,6 +107,7 @@ model User {
 
   tenantInvitationsSent TenantInvitation[] @relation("TenantInvitedByUser")
   recordsCreated Record[] @relation("RecordsCreatedByUser")
+  tenantsCreated Tenant[] @relation("TenantCreatedByUser")
 
   @@index([identityProvider, identityId])
 }
@@ -133,6 +135,11 @@ model Tenant {
   slug   String       @unique @db.VarChar(80)
   status TenantStatus @default(ACTIVE)
 
+  // A5: first-time setup — creator and claim time
+  createdByUserId String
+  createdByUser   User   @relation("TenantCreatedByUser", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  claimedAt       DateTime?
+
   // Workspace settings (A1)
   logoObjectKey String?  @db.VarChar(512)
   timezone      String?  @db.VarChar(64)
@@ -158,6 +165,8 @@ model Tenant {
   billingEvents BillingEvent[]
 
   @@index([status])
+  @@index([createdByUserId])
+  @@index([createdByUserId, status])
 }
 
 model TenantMembership {

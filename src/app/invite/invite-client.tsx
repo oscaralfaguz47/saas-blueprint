@@ -49,7 +49,12 @@ function getPayload(raw: unknown): unknown {
   return raw;
 }
 
-export default function InviteClient() {
+type InviteClientProps = {
+  /** When true, invalid/expired/revoked invite shows "Continue to my workspace" → /app/requests instead of setup */
+  hasActiveWorkspace?: boolean;
+};
+
+export default function InviteClient({ hasActiveWorkspace = false }: InviteClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const apiFetch = useApiFetch();
@@ -60,6 +65,7 @@ export default function InviteClient() {
   const [validateState, setValidateState] = useState<ValidateState>("idle");
   const [validatePayload, setValidatePayload] = useState<ValidateResult | null>(null);
   const [result, setResult] = useState<AcceptResult>({ kind: "idle" });
+  const [rejectSubmitting, setRejectSubmitting] = useState(false);
 
   useEffect(() => {
     if (!token || token.length < 20) {
@@ -141,6 +147,26 @@ export default function InviteClient() {
     await signOut({ callbackUrl: `/auth/sign-in?callbackUrl=${encodeURIComponent(callbackUrl)}` });
   }
 
+  async function rejectInvitation() {
+    if (!token) return;
+    setRejectSubmitting(true);
+    try {
+      const res = await apiFetch("/api/tenant/invitations/reject", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+      const raw: unknown = await res.json();
+      const payload = getPayload(raw) as { ok?: boolean; redirect?: string } | undefined;
+      if (payload?.ok === true && typeof payload.redirect === "string") {
+        router.replace(payload.redirect);
+        return;
+      }
+    } finally {
+      setRejectSubmitting(false);
+    }
+  }
+
   const workspaceName = validatePayload?.workspaceName ?? "this workspace";
   const currentEmail = session?.user?.email ?? null;
 
@@ -187,18 +213,58 @@ export default function InviteClient() {
   }
 
   if (validateState === "invalid" || validateState === "expired" || validateState === "revoked" || validateState === "accepted") {
+    if (hasActiveWorkspace) {
+      return (
+        <AuthCard
+          title="Invitation no longer valid"
+          subtitle="This invitation has expired or was revoked. You can continue to your existing workspace."
+          badgeText="Invitation"
+        >
+          <Link
+            href="/app/requests"
+            className="inline-flex h-11 w-full items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover)"
+          >
+            OK, continue to my workspace
+          </Link>
+        </AuthCard>
+      );
+    }
+    if (authStatus === "unauthenticated") {
+      return (
+        <AuthCard
+          title="Invalid invitation"
+          subtitle="This invitation link is no longer valid. You can continue to set up your own workspace."
+          badgeText="Invitation"
+        >
+          <Link
+            href="/auth/sign-in"
+            className="inline-flex h-11 w-full items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover)"
+          >
+            OK, continue to log in or create my workspace
+          </Link>
+        </AuthCard>
+      );
+    }
     return (
       <AuthCard
         title="Invalid invitation"
-        subtitle="This invitation link is no longer valid. Contact your workspace admin for a new invite."
+        subtitle="This invitation link is no longer valid. You can continue to set up your own workspace."
         badgeText="Invitation"
       >
-        <Link
-          href="/"
-          className="inline-flex h-11 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev)"
-        >
-          Back to home
-        </Link>
+        <div className="flex flex-col gap-3">
+          <Link
+            href="/setup/workspace"
+            className="inline-flex h-11 w-full items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover)"
+          >
+            Continue setup
+          </Link>
+          <Link
+            href="/"
+            className="inline-flex h-11 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev)"
+          >
+            Back to home
+          </Link>
+        </div>
       </AuthCard>
     );
   }
@@ -275,7 +341,7 @@ export default function InviteClient() {
           <button
             type="button"
             onClick={acceptInvitation}
-            disabled={result.kind === "submitting"}
+            disabled={result.kind === "submitting" || rejectSubmitting}
             className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
           >
             {result.kind === "submitting" ? (
@@ -285,6 +351,23 @@ export default function InviteClient() {
               </>
             ) : (
               "Join workspace"
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={rejectInvitation}
+            disabled={result.kind === "submitting" || rejectSubmitting}
+            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {rejectSubmitting ? (
+              <>
+                <Spinner size="sm" />
+                Declining…
+              </>
+            ) : hasActiveWorkspace ? (
+              "Decline and go to my workspace"
+            ) : (
+              "Decline and create my own workspace"
             )}
           </button>
           {result.kind === "error" && (

@@ -8,7 +8,6 @@ import { Resend } from "resend";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { prisma } from "@/server/db";
 
-import { ensureDefaultTenantForUser } from "@/server/services/tenancy-bootstrap";
 import { ensureBootstrapPlatformOwner } from "@/server/services/platform-bootstrap";
 
 // ---- Tunables (performance + security) ----
@@ -31,11 +30,8 @@ async function runUserBootstraps(params: { userId: string; email?: string | null
   // Defensive guards (avoid unexpected nulls)
   if (!params.userId) return;
 
-  // Ensure user has a default tenant membership (idempotent)
-  await ensureDefaultTenantForUser({
-    userId: params.userId,
-    userEmail: params.email ?? undefined,
-  });
+  // A5: No workspace creation on sign-in/createUser. First-time setup and DRAFT creation
+  // happen when user hits /app (layout) or /setup/workspace (ensureDraftWorkspaceForUser).
 
   // Ensure platform owner/admin bootstrap (idempotent)
   await ensureBootstrapPlatformOwner({
@@ -126,8 +122,6 @@ export const authOptions: NextAuthOptions = {
     },
 
     async signIn({ user }) {
-      // Also run bootstraps on sign-in to cover legacy users or missing defaults.
-      // This should be cheap if ensure* functions are idempotent.
       if (!user?.id) return;
       await runUserBootstraps({ userId: user.id, email: user.email });
     },
