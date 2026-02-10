@@ -1,23 +1,37 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/ui/spinner";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+import { useApiFetch } from "@/hooks/use-api-fetch";
+import { getApiErrorMessage } from "@/lib/api-client";
 
 const CURRENCY_OPTIONS: { value: string; label: string }[] = [
-  { value: "USD", label: "USD" },
-  { value: "EUR", label: "EUR" },
-  { value: "GBP", label: "GBP" },
-  { value: "CAD", label: "CAD" },
-  { value: "AUD", label: "AUD" },
-  { value: "CHF", label: "CHF" },
-  { value: "JPY", label: "JPY" },
+  { value: "USD", label: "USD — United States Dollar" },
+  { value: "EUR", label: "EUR — Euro" },
+  { value: "GBP", label: "GBP — British Pound" },
+  { value: "CAD", label: "CAD — Canadian Dollar" },
+  { value: "AUD", label: "AUD — Australian Dollar" },
+  { value: "MXN", label: "MXN — Mexican Peso" },
+  { value: "CRC", label: "CRC — Costa Rican Colón" },
+  { value: "BRL", label: "BRL — Brazilian Real" },
+  { value: "COP", label: "COP — Colombian Peso" },
+  { value: "ARS", label: "ARS — Argentine Peso" },
+  { value: "CLP", label: "CLP — Chilean Peso" },
+  { value: "PEN", label: "PEN — Peruvian Sol" },
+  { value: "CHF", label: "CHF — Swiss Franc" },
+  { value: "JPY", label: "JPY — Japanese Yen" },
+  { value: "CNY", label: "CNY — Chinese Yuan" },
+  { value: "INR", label: "INR — Indian Rupee" },
 ];
 
 const DATE_FORMAT_OPTIONS: { value: string; label: string }[] = [
-  { value: "MM/DD/YYYY", label: "MM/DD/YYYY" },
-  { value: "DD/MM/YYYY", label: "DD/MM/YYYY" },
-  { value: "YYYY-MM-DD", label: "YYYY-MM-DD" },
+  { value: "MM/DD/YYYY", label: "MM/DD/YYYY (US format)" },
+  { value: "DD/MM/YYYY", label: "DD/MM/YYYY (Most of the world)" },
+  { value: "YYYY-MM-DD", label: "YYYY-MM-DD (ISO standard)" },
+  { value: "DD MMM YYYY", label: "DD MMM YYYY (05 Jan 2026)" },
+  { value: "MMM DD, YYYY", label: "MMM DD, YYYY (Jan 05, 2026)" },
 ];
 
 function getTimeZones(): string[] {
@@ -48,14 +62,9 @@ type Tenant = {
 
 type Props = { tenant: Tenant };
 
-function getApiMessage(data: { error?: string; message?: string }): string {
-  if (data.message) return data.message;
-  if (data.error === "CONFLICT") return "Name is already in use.";
-  return "Something went wrong.";
-}
-
 export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
   const router = useRouter();
+  const apiFetch = useApiFetch();
   const [tenant, setTenant] = useState(initialTenant);
   const [name, setName] = useState(initialTenant.name);
   const [timezone, setTimezone] = useState(initialTenant.timezone ?? "");
@@ -76,14 +85,17 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
     setDescription(initialTenant.description ?? "");
   }, [initialTenant]);
 
-  const timeZones = getTimeZones();
+  const timeZoneOptions = useMemo(
+    () => getTimeZones().map((tz) => ({ value: tz, label: tz })),
+    []
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaveError(null);
     setSaveStatus("submitting");
     try {
-      const res = await fetch(`/api/tenant/${tenant.id}`, {
+      const res = await apiFetch(`/api/tenant/${tenant.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -96,7 +108,7 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
       });
       const data = (await res.json()) as { data?: { tenant?: Tenant }; error?: string; message?: string };
       if (!res.ok) {
-        setSaveError(getApiMessage(data));
+        setSaveError(getApiErrorMessage(res, data));
         setSaveStatus("error");
         return;
       }
@@ -129,7 +141,7 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
     setLogoError(null);
     setLogoStatus("uploading");
     try {
-      const resUrl = await fetch(`/api/tenant/${tenant.id}/logo/upload-url`, {
+      const resUrl = await apiFetch(`/api/tenant/${tenant.id}/logo/upload-url`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -150,7 +162,7 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
         setLogoStatus("error");
         return;
       }
-      const resConfirm = await fetch(`/api/tenant/${tenant.id}/logo/confirm`, {
+      const resConfirm = await apiFetch(`/api/tenant/${tenant.id}/logo/confirm`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ objectKey: urlData.data.objectKey }),
@@ -171,6 +183,12 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="max-w-xl space-y-4">
+      {saveStatus === "submitting" && (
+        <div className="flex items-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 py-2 text-sm text-(--text-secondary)">
+          <Spinner size="sm" />
+          <span>Saving changes…</span>
+        </div>
+      )}
       <div>
         <label className="block text-sm font-medium text-(--text-primary)">Logo</label>
         {tenant.logoObjectKey ? (
@@ -207,45 +225,39 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
       </div>
       <div>
         <label htmlFor="ws-timezone" className="block text-sm font-medium text-(--text-primary)">Timezone</label>
-        <select
+        <SearchableSelect
           id="ws-timezone"
+          options={timeZoneOptions}
           value={timezone}
-          onChange={(e) => setTimezone(e.target.value)}
+          onChange={setTimezone}
+          placeholder="Search timezone…"
           disabled={saveStatus === "submitting"}
-          className="mt-1.5 w-full rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2.5 text-sm text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-60"
-        >
-          {timeZones.map((tz) => (
-            <option key={tz} value={tz}>{tz}</option>
-          ))}
-        </select>
+          aria-label="Timezone"
+        />
       </div>
       <div>
         <label htmlFor="ws-currency" className="block text-sm font-medium text-(--text-primary)">Currency</label>
-        <select
+        <SearchableSelect
           id="ws-currency"
+          options={CURRENCY_OPTIONS}
           value={currency}
-          onChange={(e) => setCurrency(e.target.value)}
+          onChange={setCurrency}
+          placeholder="Search currency…"
           disabled={saveStatus === "submitting"}
-          className="mt-1.5 w-full rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2.5 text-sm text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-60"
-        >
-          {CURRENCY_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
+          aria-label="Currency"
+        />
       </div>
       <div>
         <label htmlFor="ws-dateFormat" className="block text-sm font-medium text-(--text-primary)">Date format</label>
-        <select
+        <SearchableSelect
           id="ws-dateFormat"
+          options={DATE_FORMAT_OPTIONS}
           value={dateFormat}
-          onChange={(e) => setDateFormat(e.target.value)}
+          onChange={setDateFormat}
+          placeholder="Search date format…"
           disabled={saveStatus === "submitting"}
-          className="mt-1.5 w-full rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2.5 text-sm text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-60"
-        >
-          {DATE_FORMAT_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
+          aria-label="Date format"
+        />
       </div>
       <div>
         <label htmlFor="ws-description" className="block text-sm font-medium text-(--text-primary)">Description</label>
