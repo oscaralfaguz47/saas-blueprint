@@ -14,10 +14,13 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  /* suppressHydrationWarning: reduces hydration errors when extensions modify the DOM (see: incognito vs normal window). */
   return (
-    <html lang="en" className={inter.className}>
-      <body>
-        <Providers>{children}</Providers>
+    <html lang="en" className={inter.className} suppressHydrationWarning>
+      <body suppressHydrationWarning>
+        <div id="__app-root" suppressHydrationWarning>
+          <Providers>{children}</Providers>
+        </div>
       </body>
     </html>
   );

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import {
   IconBilling,
@@ -52,14 +52,20 @@ export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps)
   const [switchingId, setSwitchingId] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
-  const [collapsed, setCollapsed] = useState(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      return window.localStorage.getItem("sidebar-collapsed") === "1";
-    } catch {
-      return false;
-    }
-  });
+  // Read initial value from localStorage via useSyncExternalStore (no setState in effect; avoids cascading-renders lint).
+  const collapsedFromStorage = useSyncExternalStore(
+    () => () => {},
+    () => {
+      try {
+        return window.localStorage.getItem("sidebar-collapsed") === "1";
+      } catch {
+        return false;
+      }
+    },
+    () => false
+  );
+  const [userToggled, setUserToggled] = useState<boolean | null>(null);
+  const collapsed = userToggled ?? collapsedFromStorage;
 
   useEffect(() => {
     try {
@@ -69,7 +75,8 @@ export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps)
     }
   }, [collapsed]);
 
-  const toggleCollapsed = () => setCollapsed((c) => !c);
+  const toggleCollapsed = () =>
+    setUserToggled((prev) => !(prev ?? collapsedFromStorage));
 
   // Load workspaces when sidebar is visible: always on desktop, or when mobile drawer is open
   useEffect(() => {

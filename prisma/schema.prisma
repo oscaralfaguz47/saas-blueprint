@@ -184,14 +184,16 @@ model TenantMembership {
 }
 
 model TenantInvitation {
-  id       String @id @default(cuid())
+  id       String   @id @default(cuid())
   tenantId String
-  email    String @db.VarChar(191)
+  email    String   @db.VarChar(191)
+  createdAt DateTime @default(now())
 
-  tokenHash String   @db.VarChar(191)
+  tokenHash String   @unique @db.VarChar(191)
   expiresAt DateTime
 
   invitedByUserId String?
+  revokedAt       DateTime?
 
   acceptedAt DateTime?
 

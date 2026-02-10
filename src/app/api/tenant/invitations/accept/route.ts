@@ -12,14 +12,13 @@ export const POST = withErrorHandler(async (req: Request) => {
 
   const body = await parseBody(req, acceptInvitationSchema);
   const token = body.token;
-
   const tokenHash = sha256(token);
 
-  // Find active invitation (not accepted, not expired)
   const invite = await prisma.tenantInvitation.findFirst({
     where: {
       tokenHash,
       acceptedAt: null,
+      revokedAt: null,
       expiresAt: { gt: new Date() },
     },
     select: {
@@ -35,7 +34,6 @@ export const POST = withErrorHandler(async (req: Request) => {
     return ApiErrors.NOT_FOUND("Invitation not found or expired");
   }
 
-  // Ensure invitation email matches the logged-in user email (critical security)
   const userEmail = (session.user.email ?? "").toLowerCase();
   if (!userEmail || userEmail !== invite.email.toLowerCase()) {
     return ApiErrors.VALIDATION_ERROR(
@@ -48,41 +46,57 @@ export const POST = withErrorHandler(async (req: Request) => {
     );
   }
 
-  // Ensure user exists in DB (should, because they are logged in)
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { id: true, email: true },
+    select: { id: true, email: true, isPlatformBlocked: true },
+  });
+  if (!user) return ApiErrors.NOT_FOUND("User");
+  if (user.isPlatformBlocked) return ApiErrors.FORBIDDEN();
+
+  const existingMembership = await prisma.tenantMembership.findUnique({
+    where: { tenantId_userId: { tenantId: invite.tenantId, userId: user.id } },
+    select: { id: true, status: true },
   });
 
-  if (!user) {
-    return ApiErrors.NOT_FOUND("User");
+  if (existingMembership?.status === "ACTIVE") {
+    return apiSuccess({
+      ok: true,
+      alreadyMember: true,
+      invitationId: invite.id,
+      tenantId: invite.tenantId,
+      membershipId: existingMembership.id,
+    });
   }
 
-  // Transaction: mark accepted + create membership + assign default role
-  const result = await prisma.$transaction(async (tx) => {
-    // Check membership INSIDE transaction (race-safe)
-   const existingMembership = await tx.tenantMembership.findUnique({
-  where: { tenantId_userId: { tenantId: invite.tenantId, userId: user.id } },
-  select: { id: true, status: true },
-});
+  let result: { membershipId: string; membershipCreated: boolean; reenabled: boolean };
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      const updated = await tx.tenantInvitation.updateMany({
+        where: {
+          id: invite.id,
+          acceptedAt: null,
+          revokedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+        data: { acceptedAt: new Date() },
+      });
 
+      if (updated.count !== 1) {
+        throw new Error("INVITATION_CONSUMED_OR_INVALID");
+      }
 
-    // Mark invitation accepted
-    const updatedInvite = await tx.tenantInvitation.update({
-      where: { id: invite.id },
-      data: { acceptedAt: new Date() },
-      select: { id: true, tenantId: true, email: true, acceptedAt: true },
-    });
-
-    if (existingMembership) {
+    if (existingMembership && existingMembership.status === "DISABLED") {
+      await tx.tenantMembership.update({
+        where: { id: existingMembership.id },
+        data: { status: "ACTIVE" },
+      });
       return {
-        invite: updatedInvite,
-        membershipCreated: false,
         membershipId: existingMembership.id,
+        membershipCreated: false,
+        reenabled: true,
       };
     }
 
-    // Create membership
     const membership = await tx.tenantMembership.create({
       data: {
         tenantId: invite.tenantId,
@@ -94,17 +108,12 @@ export const POST = withErrorHandler(async (req: Request) => {
       select: { id: true },
     });
 
-    // Try to find system "Member" role
     const memberRole = await tx.tenantRole.findUnique({
       where: {
-        tenantId_name: {
-          tenantId: invite.tenantId,
-          name: "Member",
-        },
+        tenantId_name: { tenantId: invite.tenantId, name: "Member" },
       },
       select: { id: true },
     });
-
     const role =
       memberRole ??
       (await tx.tenantRole.create({
@@ -116,7 +125,6 @@ export const POST = withErrorHandler(async (req: Request) => {
         select: { id: true },
       }));
 
-    // Assign role
     await tx.tenantUserRole.create({
       data: {
         membershipId: membership.id,
@@ -125,28 +133,48 @@ export const POST = withErrorHandler(async (req: Request) => {
     });
 
     return {
-      invite: updatedInvite,
-      membershipCreated: true,
       membershipId: membership.id,
+      membershipCreated: true,
+      reenabled: false,
     };
   });
-
+  } catch (err) {
+    if (err instanceof Error && err.message === "INVITATION_CONSUMED_OR_INVALID") {
+      return ApiErrors.NOT_FOUND("Invitation not found or expired");
+    }
+    throw err;
+  }
 
   await writeAuditLog({
     actorUserId: session.user.id,
     actorContext: "TENANT",
     tenantId: invite.tenantId,
-    action: "tenant.invitation.accept",
+    action: "tenant.invite.accepted",
     targetType: "TenantInvitation",
     targetId: invite.id,
     metadata: {
       invitedEmail: invite.email,
       membershipCreated: result.membershipCreated,
       membershipId: result.membershipId,
+      reenabled: result.reenabled,
     },
     ipAddress: getIp(req),
     userAgent: getUserAgent(req),
   });
+
+  if (result.reenabled) {
+    await writeAuditLog({
+      actorUserId: session.user.id,
+      actorContext: "TENANT",
+      tenantId: invite.tenantId,
+      action: "tenant.user.reenabled",
+      targetType: "TenantMembership",
+      targetId: result.membershipId,
+      metadata: { invitedEmail: invite.email },
+      ipAddress: getIp(req),
+      userAgent: getUserAgent(req),
+    });
+  }
 
   return apiSuccess({
     ok: true,
@@ -154,6 +182,7 @@ export const POST = withErrorHandler(async (req: Request) => {
     tenantId: invite.tenantId,
     membershipCreated: result.membershipCreated,
     membershipId: result.membershipId,
+    alreadyMember: false,
   });
 });
 

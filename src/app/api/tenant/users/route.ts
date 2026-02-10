@@ -25,6 +25,7 @@ export const GET = withErrorHandler(async (req: Request) => {
   const rows = await prisma.tenantMembership.findMany({
     where: { tenantId: tenant.id },
     select: {
+      id: true,
       status: true,
       joinedAt: true,
       lastSeenAt: true,
@@ -65,6 +66,7 @@ export const GET = withErrorHandler(async (req: Request) => {
     tenant,
     users: rows.map((m) => ({
       membership: {
+        id: m.id,
         status: m.status,
         joinedAt: m.joinedAt,
         lastSeenAt: m.lastSeenAt,

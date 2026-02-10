@@ -29,3 +29,8 @@ export {
   createInvitationSchema,
   acceptInvitationSchema,
 } from "./invitation";
+
+export {
+  updateMemberStatusSchema,
+  updateMemberRoleSchema,
+} from "./member";

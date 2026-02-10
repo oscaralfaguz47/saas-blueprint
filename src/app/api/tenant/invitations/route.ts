@@ -4,9 +4,68 @@ import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { prisma } from "@/server/db";
 import { writeAuditLog } from "@/server/services/audit";
+import { sendInvitationEmail } from "@/server/services/invitation-email";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { parseBody, createInvitationSchema } from "@/lib/validations";
 import crypto from "crypto";
+
+function normalizeEmail(email: string): string {
+  return email.toLowerCase().trim();
+}
+
+export const GET = withErrorHandler(async (req: Request) => {
+  const session = await getServerSession(authOptions);
+  if (!session?.user) return ApiErrors.UNAUTHENTICATED();
+
+  const membership = await getDefaultTenantForUser(session.user.id);
+  const tenant = membership?.tenant;
+  if (!tenant) return ApiErrors.NO_TENANT();
+
+  const allowed = await hasTenantPermission({
+    userId: session.user.id,
+    tenantId: tenant.id,
+    permission: "tenant.users.read",
+  });
+  if (!allowed) return ApiErrors.FORBIDDEN();
+
+  const invitations = await prisma.tenantInvitation.findMany({
+    where: { tenantId: tenant.id },
+    select: {
+      id: true,
+      email: true,
+      createdAt: true,
+      expiresAt: true,
+      acceptedAt: true,
+      revokedAt: true,
+      invitedByUser: { select: { name: true, email: true } },
+    },
+    orderBy: [{ createdAt: "desc" }],
+  });
+
+  const now = new Date();
+  const list = invitations.map((inv) => ({
+    id: inv.id,
+    email: inv.email,
+    status: deriveInviteStatus(inv, now),
+    invitedBy: inv.invitedByUser
+      ? { name: inv.invitedByUser.name, email: inv.invitedByUser.email }
+      : null,
+    invitedAt: inv.createdAt,
+    expiresAt: inv.expiresAt,
+  }));
+
+  return apiSuccess({ invitations: list });
+});
+
+function deriveInviteStatus(
+  inv: { acceptedAt: Date | null; revokedAt: Date | null; expiresAt: Date },
+  now: Date
+): "ACTIVE" | "EXPIRED" | "REVOKED" | "ACCEPTED" {
+  if (inv.acceptedAt) return "ACCEPTED";
+  if (inv.revokedAt) return "REVOKED";
+  if (inv.expiresAt <= now) return "EXPIRED";
+  return "ACTIVE";
+}
 
 export const POST = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
@@ -21,39 +80,50 @@ export const POST = withErrorHandler(async (req: Request) => {
     tenantId: tenant.id,
     permission: "tenant.users.invite",
   });
-
   if (!allowed) return ApiErrors.FORBIDDEN();
 
   const body = await parseBody(req, createInvitationSchema);
-  const email = body.email;
+  const emailNormalized = normalizeEmail(body.email);
 
-  // If user already belongs to tenant, don't invite.
   const existingUser = await prisma.user.findUnique({
-    where: { email },
+    where: { email: emailNormalized },
     select: { id: true },
   });
-
   if (existingUser) {
     const existingMembership = await prisma.tenantMembership.findUnique({
       where: { tenantId_userId: { tenantId: tenant.id, userId: existingUser.id } },
       select: { id: true },
     });
-
     if (existingMembership) {
       return ApiErrors.VALIDATION_ERROR("User is already a member of this tenant");
     }
   }
 
-  // Create invitation token (store only hash)
+  const now = new Date();
+  const activeInvite = await prisma.tenantInvitation.findFirst({
+    where: {
+      tenantId: tenant.id,
+      email: emailNormalized,
+      acceptedAt: null,
+      revokedAt: null,
+      expiresAt: { gt: now },
+    },
+    select: { id: true },
+  });
+  if (activeInvite) {
+    return ApiErrors.CONFLICT("An active invite already exists for this email.", {
+      code: "ACTIVE_INVITE_EXISTS",
+    });
+  }
+
   const rawToken = crypto.randomBytes(32).toString("hex");
   const tokenHash = sha256(rawToken);
-
   const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7); // 7 days
 
   const invite = await prisma.tenantInvitation.create({
     data: {
       tenantId: tenant.id,
-      email,
+      email: emailNormalized,
       tokenHash,
       expiresAt,
       invitedByUserId: session.user.id,
@@ -70,23 +140,27 @@ export const POST = withErrorHandler(async (req: Request) => {
     actorUserId: session.user.id,
     actorContext: "TENANT",
     tenantId: tenant.id,
-    action: "tenant.invitation.create",
+    action: "tenant.user.invited",
     targetType: "TenantInvitation",
     targetId: invite.id,
-    metadata: { email, expiresAt: invite.expiresAt.toISOString() },
+    metadata: { email: invite.email, expiresAt: invite.expiresAt.toISOString() },
     ipAddress: getIp(req),
     userAgent: getUserAgent(req),
   });
 
-  // For now we return a token only for local/dev testing.
-  // In production you'd email a link like:
-  //   https://app.com/invite?token=<rawToken>
-  // and you NEVER store the raw token in DB.
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  await sendInvitationEmail({
+    tenantName: tenant.name,
+    invitedEmail: invite.email,
+    rawToken,
+    baseUrl,
+  });
+
   return apiSuccess({
-    invitation: invite,
-    dev: {
-      token: rawToken,
-      // e.g. /invite?token=<token> (you'll implement acceptance next)
+    invitation: {
+      id: invite.id,
+      email: invite.email,
+      expiresAt: invite.expiresAt,
     },
   });
 });

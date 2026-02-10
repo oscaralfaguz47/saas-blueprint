@@ -17,11 +17,7 @@ function isTheme(value: unknown): value is Theme {
   return value === "dark" || value === "light" || value === "system";
 }
 
-function readInitialTheme(): Theme {
-  // Default global is dark. If user never picked, keep "dark" here.
-  // Root layout script already applies saved theme before paint; this keeps React in sync.
-  if (typeof window === "undefined") return "dark";
-
+function readThemeFromStorage(): Theme {
   try {
     const saved = window.localStorage.getItem(STORAGE_KEY);
     return isTheme(saved) ? saved : "dark";
@@ -37,10 +33,13 @@ function applyThemeToDocument(theme: Theme) {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  // ✅ No setState in effects: we hydrate from localStorage using lazy initializer.
-  const [theme, setThemeState] = useState<Theme>(() => readInitialTheme());
+  // Always start with "dark" so server and client first paint match (avoid hydration mismatch).
+  const [theme, setThemeState] = useState<Theme>("dark");
 
-  // ✅ Effect only syncs DOM with current React state.
+  useEffect(() => {
+    setThemeState(readThemeFromStorage());
+  }, []);
+
   useEffect(() => {
     applyThemeToDocument(theme);
   }, [theme]);
