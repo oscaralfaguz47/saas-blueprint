@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/server/auth-options";
+import { prisma } from "@/server/db";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { ensureDraftWorkspaceForUser } from "@/server/services/tenancy-bootstrap";
 import { AppLayoutHydrationGate } from "@/components/app/app-layout-hydration-gate";
@@ -9,6 +10,14 @@ import { AppLayoutHydrationGate } from "@/components/app/app-layout-hydration-ga
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const session = await getServerSession(authOptions);
   if (!session?.user) redirect("/auth/sign-in");
+
+  const userExists = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { id: true },
+  });
+  if (!userExists) {
+    redirect("/api/auth/signout?callbackUrl=/auth/sign-in");
+  }
 
   let membership = await getDefaultTenantForUser(session.user.id);
 

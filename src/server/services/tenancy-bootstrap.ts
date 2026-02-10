@@ -205,6 +205,16 @@ export async function ensureDraftWorkspaceForUser(params: {
 }> {
   const { userId, userEmail, ipAddress, userAgent } = params;
 
+  const userExists = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true },
+  });
+  if (!userExists) {
+    const err = new Error("User not found (e.g. session stale after DB reset). Sign in again.");
+    (err as Error & { code?: string }).code = "USER_NOT_FOUND";
+    throw err;
+  }
+
   const existing = await prisma.tenantMembership.findFirst({
     where: { userId, isDefaultTenant: true },
     select: {
