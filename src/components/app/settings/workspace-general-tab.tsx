@@ -75,6 +75,7 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [logoStatus, setLogoStatus] = useState<"idle" | "uploading" | "error">("idle");
   const [logoError, setLogoError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setTenant(initialTenant);
@@ -84,6 +85,25 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
     setDateFormat(initialTenant.dateFormat ?? "MM/DD/YYYY");
     setDescription(initialTenant.description ?? "");
   }, [initialTenant]);
+
+  useEffect(() => {
+    setLoading(true);
+    apiFetch(`/api/tenant/${initialTenant.id}`)
+      .then((r) => r.json())
+      .then((j: { data?: { tenant?: Tenant } }) => {
+        const t = j.data?.tenant;
+        if (t) {
+          setTenant(t);
+          setName(t.name);
+          setTimezone(t.timezone ?? "");
+          setCurrency(t.currency ?? "USD");
+          setDateFormat(t.dateFormat ?? "MM/DD/YYYY");
+          setDescription(t.description ?? "");
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [initialTenant.id]);
 
   const timeZoneOptions = useMemo(
     () => getTimeZones().map((tz) => ({ value: tz, label: tz })),
@@ -181,14 +201,17 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 py-8">
+        <Spinner size="sm" />
+        <span className="text-sm text-(--text-muted)">Loading general settings…</span>
+      </div>
+    );
+  }
+
   return (
     <form onSubmit={handleSubmit} className="max-w-xl space-y-4">
-      {saveStatus === "submitting" && (
-        <div className="flex items-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 py-2 text-sm text-(--text-secondary)">
-          <Spinner size="sm" />
-          <span>Saving changes…</span>
-        </div>
-      )}
       <div>
         <label className="block text-sm font-medium text-(--text-primary)">Logo</label>
         {tenant.logoObjectKey ? (
