@@ -1,7 +1,6 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Container } from "@/components/ui/container";
 import { WorkspaceGeneralTab } from "./workspace-general-tab";
 import { WorkspaceMembersTab } from "./workspace-members-tab";
 import { WorkspaceInvitesTab } from "./workspace-invites-tab";
@@ -39,8 +38,7 @@ export function WorkspaceSettingsTabs({ tenant }: Props) {
   const effectiveTab = TABS.some((t) => t.id === tab) ? tab : "general";
 
   return (
-    <Container>
-      <div className="space-y-6">
+    <div className="space-y-6">
         <h1 className="text-xl font-semibold text-(--text-primary)">
           Workspace Settings
         </h1>
@@ -76,6 +74,5 @@ export function WorkspaceSettingsTabs({ tenant }: Props) {
         {effectiveTab === "invites" && <WorkspaceInvitesTab tenant={tenant} />}
         {effectiveTab === "billing" && <WorkspaceBillingTab />}
       </div>
-    </Container>
   );
 }

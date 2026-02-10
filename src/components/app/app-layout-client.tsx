@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import AppHeader from "@/components/app/app-header";
 import AppSidebar from "@/components/app/app-sidebar";
-import { Container } from "@/components/ui/container";
 
 type Workspace = {
   id: string;
@@ -51,9 +50,9 @@ export default function AppLayoutClient({
           onMenuClick={isMobile ? () => setSidebarOpen(true) : undefined}
         />
         <main className="min-h-0 flex-1 w-full overflow-auto text-[var(--text-primary)]">
-          <Container>
-            <div className="max-w-5xl w-full">{children}</div>
-          </Container>
+          <div className="w-full max-w-5xl px-4 py-6 sm:px-6">
+            {children}
+          </div>
         </main>
       </div>
     </div>
