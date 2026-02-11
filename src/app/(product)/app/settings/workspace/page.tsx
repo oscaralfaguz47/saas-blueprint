@@ -8,7 +8,7 @@ import { prisma } from "@/server/db";
 import { Container } from "@/components/ui/container";
 import Link from "next/link";
 import { WorkspaceSettingsTabs } from "@/components/app/settings/workspace-settings-tabs";
-import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const WORKSPACE_SETTINGS_PERMISSIONS = [
   "tenant.settings.manage",
@@ -78,9 +78,18 @@ export default async function WorkspaceSettingsPage() {
     <Suspense
       fallback={
         <Container>
-          <div className="flex items-center gap-2 py-8">
-            <Spinner size="sm" />
-            <span className="text-sm text-(--text-muted)">Loading settings…</span>
+          <div className="space-y-6">
+            <Skeleton className="h-7 w-48" />
+            <div className="flex gap-1 border-b border-(--border-subtle)">
+              {[1, 2, 3, 4].map((i) => (
+                <Skeleton key={i} className="h-12 w-24 shrink" />
+              ))}
+            </div>
+            <div className="space-y-4">
+              <Skeleton className="h-10 w-full max-w-md" />
+              <Skeleton className="h-10 w-full max-w-md" />
+              <Skeleton className="h-10 w-full max-w-md" />
+            </div>
           </div>
         </Container>
       }

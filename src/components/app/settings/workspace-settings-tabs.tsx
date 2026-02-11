@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { WorkspaceGeneralTab } from "./workspace-general-tab";
 import { WorkspaceMembersTab } from "./workspace-members-tab";
 import { WorkspaceInvitesTab } from "./workspace-invites-tab";
@@ -37,54 +39,52 @@ export function WorkspaceSettingsTabs({ tenant, permissions }: Props) {
   const searchParams = useSearchParams();
   const permSet = new Set(permissions);
   const visibleTabs = ALL_TABS.filter((t) => permSet.has(t.permission));
-  const tab = (searchParams.get("tab") as WorkspaceSettingsTab) || "general";
-  const tabAllowed = visibleTabs.some((t) => t.id === tab);
-  const effectiveTab = tabAllowed ? tab : visibleTabs[0]?.id ?? "general";
+  const tabFromUrl = (searchParams.get("tab") as WorkspaceSettingsTab) || "general";
+  const tabAllowed = visibleTabs.some((t) => t.id === tabFromUrl);
+  const effectiveTab = tabAllowed ? tabFromUrl : visibleTabs[0]?.id ?? "general";
+
+  const [activeTab, setActiveTab] = useState(effectiveTab);
+
+  useEffect(() => {
+    setActiveTab(effectiveTab);
+  }, [effectiveTab]);
 
   if (!tabAllowed && visibleTabs.length > 0) {
     router.replace(`/app/settings/workspace?tab=${effectiveTab}`);
   }
 
+  const handleTabChange = (value: string) => {
+    setActiveTab(value as WorkspaceSettingsTab);
+    router.push(`/app/settings/workspace?tab=${value}`);
+  };
+
   return (
     <div className="space-y-6">
-        <h1 className="text-xl font-semibold text-(--text-primary)">
-          Workspace Settings
-        </h1>
+      <h1 className="text-xl font-semibold text-(--text-primary)">
+        Workspace Settings
+      </h1>
 
-        <nav className="flex flex-wrap gap-1 border-b border-(--border-subtle)" aria-label="Settings sections">
-          {visibleTabs.map((t) => {
-            const isActive = effectiveTab === t.id;
-            const href = `/app/settings/workspace?tab=${t.id}`;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => router.push(href)}
-                className={isActive ? "cursor-default" : ""}
-              >
-                <span
-                  className={
-                    "inline-block px-4 py-3 text-sm font-medium border-b-2 -mb-px transition-colors " +
-                    (isActive
-                      ? "border-(--color-primary) text-(--color-primary)"
-                      : "border-transparent text-(--text-secondary) hover:text-(--text-primary)")
-                  }
-                >
-                  {t.label}
-                </span>
-              </button>
-            );
-          })}
-        </nav>
-
-        {effectiveTab === "general" && <WorkspaceGeneralTab tenant={tenant} />}
-        {effectiveTab === "members" && (
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
+        <TabsList>
+          {visibleTabs.map((t) => (
+            <TabsTrigger key={t.id} value={t.id}>
+              {t.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        <TabsContent value="general">
+          <WorkspaceGeneralTab tenant={tenant} />
+        </TabsContent>
+        <TabsContent value="members">
           <WorkspaceMembersTab tenant={tenant} permissions={permissions} />
-        )}
-        {effectiveTab === "invites" && (
+        </TabsContent>
+        <TabsContent value="invites">
           <WorkspaceInvitesTab tenant={tenant} permissions={permissions} />
-        )}
-        {effectiveTab === "billing" && <WorkspaceBillingTab />}
-      </div>
+        </TabsContent>
+        <TabsContent value="billing">
+          <WorkspaceBillingTab />
+        </TabsContent>
+      </Tabs>
+    </div>
   );
 }

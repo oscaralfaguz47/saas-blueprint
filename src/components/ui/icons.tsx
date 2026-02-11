@@ -133,6 +133,14 @@ export function IconChevronRight(props: IconProps) {
   );
 }
 
+export function IconChevronDown(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="m6 9 6 6 6-6" />
+    </BaseIcon>
+  );
+}
+
 /** Copy to clipboard. */
 export function IconCopy(props: IconProps) {
   return (
@@ -148,6 +156,17 @@ export function IconCheck(props: IconProps) {
   return (
     <BaseIcon {...props}>
       <path d="M20 6 9 17l-5-5" />
+    </BaseIcon>
+  );
+}
+
+/** Help / info (e.g. role descriptions). */
+export function IconHelpCircle(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+      <path d="M12 17h.01" />
     </BaseIcon>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { IconCheck, IconChevronDown } from "@/components/ui/icons";
 
 export type SearchableSelectOption = { value: string; label: string };
 
@@ -113,21 +114,19 @@ export function SearchableSelect({
         aria-controls={id ? `${id}-listbox` : undefined}
         disabled={disabled}
         onClick={() => !disabled && setOpen((o) => !o)}
-        className="mt-1.5 flex w-full items-center justify-between rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2.5 text-left text-sm text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-60"
+        className="mt-1.5 flex h-10 w-full cursor-pointer items-center justify-between rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2.5 text-left text-sm text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-60 disabled:cursor-not-allowed"
       >
         <span className={value ? "" : "text-(--text-muted)"}>
           {displayValue || placeholder}
         </span>
-        <span className="ml-2 text-(--text-muted)" aria-hidden>
-          {open ? "▲" : "▼"}
-        </span>
+        <IconChevronDown size={16} className="ml-2 shrink-0 text-(--text-muted)" aria-hidden />
       </button>
       {open && (
         <div
           id={id ? `${id}-listbox` : undefined}
           role="listbox"
           ref={listRef}
-          className="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-(--border-subtle) bg-(--bg-surface) py-1 shadow-lg"
+          className="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-(--border-subtle) bg-(--bg-surface) py-1 shadow-md"
         >
           <div className="sticky top-0 border-b border-(--border-subtle) bg-(--bg-surface) p-2">
             <input
@@ -135,7 +134,7 @@ export function SearchableSelect({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={placeholder}
-              className="w-full rounded border border-(--border-subtle) bg-(--bg-main) px-2.5 py-1.5 text-sm text-(--text-primary) placeholder:text-(--text-muted) focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+              className="w-full rounded-md border border-(--border-subtle) bg-(--bg-main) px-2.5 py-1.5 text-sm text-(--text-primary) placeholder:text-(--text-muted) focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
               autoFocus
               onKeyDown={(e) => e.stopPropagation()}
             />
@@ -145,27 +144,33 @@ export function SearchableSelect({
               No matches
             </div>
           ) : (
-            filtered.map((opt, i) => (
-              <button
-                key={opt.value}
-                type="button"
-                role="option"
-                aria-selected={opt.value === value}
-                data-highlighted={i === highlightIndex}
-                className={`w-full px-3 py-2 text-left text-sm hover:bg-(--bg-surface-elev) ${
-                  opt.value === value
-                    ? "bg-(--bg-surface-elev) font-medium text-(--text-primary)"
-                    : "text-(--text-primary)"
-                } ${i === highlightIndex ? "bg-(--bg-surface-elev)" : ""}`}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  onChange(opt.value);
-                  setOpen(false);
-                }}
-              >
-                {opt.label}
-              </button>
-            ))
+            filtered.map((opt, i) => {
+              const isSelected = opt.value === value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  data-highlighted={i === highlightIndex}
+                  className={`flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-(--bg-surface-elev) ${
+                    isSelected
+                      ? "bg-(--bg-surface-elev) font-medium text-(--text-primary)"
+                      : "text-(--text-primary)"
+                  } ${i === highlightIndex ? "bg-(--bg-surface-elev)" : ""}`}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    onChange(opt.value);
+                    setOpen(false);
+                  }}
+                >
+                  <span>{opt.label}</span>
+                  {isSelected ? (
+                    <IconCheck size={16} className="shrink-0 text-(--color-primary)" aria-hidden />
+                  ) : null}
+                </button>
+              );
+            })
           )}
         </div>
       )}

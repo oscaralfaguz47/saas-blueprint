@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 
@@ -37,6 +38,7 @@ export function InviteMemberModal({ open, onClose, workspaceName, onSuccess }: P
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: trimmed, sendEmail: mode === "email" }),
+        showToastOnError: false,
       });
       const data = (await res.json()) as {
         data?: { invitation?: unknown; inviteUrl?: string };
@@ -46,9 +48,11 @@ export function InviteMemberModal({ open, onClose, workspaceName, onSuccess }: P
       };
       if (!res.ok) {
         const msg =
-          data.error === "CONFLICT" || data.details?.code === "ACTIVE_INVITE_EXISTS"
-            ? "An active invite already exists for this email."
-            : (data.message as string) ?? "Failed to send invite.";
+          data.error === "VALIDATION_ERROR" && typeof data.message === "string" && data.message.toLowerCase().includes("already a member")
+            ? "User is already a member of this workspace."
+            : data.error === "CONFLICT" || data.details?.code === "ACTIVE_INVITE_EXISTS"
+              ? "An active invite already exists for this email."
+              : (data.message as string) ?? "Failed to send invite.";
         setError(msg);
         setStatus("error");
         setSubmittingMode(null);
@@ -123,7 +127,7 @@ export function InviteMemberModal({ open, onClose, workspaceName, onSuccess }: P
             <label htmlFor="invite-email" className="block text-sm font-medium text-(--text-primary)">
               Email
             </label>
-            <input
+            <Input
               id="invite-email"
               type="email"
               value={email}
@@ -131,7 +135,7 @@ export function InviteMemberModal({ open, onClose, workspaceName, onSuccess }: P
               placeholder="colleague@example.com"
               disabled={status === "submitting"}
               required
-              className="mt-1.5 w-full rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2.5 text-sm text-(--text-primary) placeholder:text-(--text-muted) focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-60"
+              className="mt-1.5"
             />
           </div>
           {error ? (
@@ -144,7 +148,7 @@ export function InviteMemberModal({ open, onClose, workspaceName, onSuccess }: P
               type="button"
               onClick={handleClose}
               disabled={status === "submitting"}
-              className="rounded-lg border border-(--border-subtle) px-4 py-2 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60"
+              className="cursor-pointer rounded-lg border border-(--border-subtle) px-4 py-2 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
@@ -152,16 +156,24 @@ export function InviteMemberModal({ open, onClose, workspaceName, onSuccess }: P
               type="button"
               onClick={handleGetLink}
               disabled={status === "submitting" || !email.trim()}
-              className="inline-flex h-10 items-center justify-center rounded-lg border border-(--border-subtle) px-4 py-2 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60"
+              className="inline-flex h-10 cursor-pointer items-center justify-center rounded-lg border border-(--border-subtle) px-4 py-2 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {status === "submitting" && submittingMode === "link" ? <><Spinner size="sm" className="mr-2" /> Creating…</> : "Get invite link"}
+              {status === "submitting" && submittingMode === "link" ? (
+                <span className="inline-flex items-center gap-2">
+                  <Spinner size="sm" /> Creating…
+                </span>
+              ) : "Get invite link"}
             </button>
             <button
               type="submit"
               disabled={status === "submitting" || !email.trim()}
-              className="inline-flex h-10 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-60"
+              className="inline-flex h-10 cursor-pointer items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {status === "submitting" && submittingMode === "email" ? <><Spinner size="sm" className="mr-2" /> Sending…</> : "Send invite"}
+              {status === "submitting" && submittingMode === "email" ? (
+                <span className="inline-flex items-center gap-2">
+                  <Spinner size="sm" /> Sending…
+                </span>
+              ) : "Send invite"}
             </button>
           </div>
         </form>
@@ -181,7 +193,7 @@ export function InviteMemberModal({ open, onClose, workspaceName, onSuccess }: P
             <button
               type="button"
               onClick={handleCopy}
-              className="shrink-0 rounded-lg bg-(--color-primary) px-4 py-2.5 text-sm font-medium text-white hover:bg-(--color-primary-hover)"
+              className="shrink-0 cursor-pointer rounded-lg bg-(--color-primary) px-4 py-2.5 text-sm font-medium text-white hover:bg-(--color-primary-hover)"
             >
               {copied ? "Copied!" : "Copy"}
             </button>
@@ -190,14 +202,14 @@ export function InviteMemberModal({ open, onClose, workspaceName, onSuccess }: P
             <button
               type="button"
               onClick={() => { setStatus("idle"); setInviteUrl(null); setEmail(""); onSuccess?.(); router.refresh(); }}
-              className="rounded-lg border border-(--border-subtle) px-4 py-2 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev)"
+              className="cursor-pointer rounded-lg border border-(--border-subtle) px-4 py-2 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev)"
             >
               Invite another
             </button>
             <button
               type="button"
               onClick={handleClose}
-              className="rounded-lg bg-(--color-primary) px-4 py-2 text-sm font-medium text-white hover:bg-(--color-primary-hover)"
+              className="cursor-pointer rounded-lg bg-(--color-primary) px-4 py-2 text-sm font-medium text-white hover:bg-(--color-primary-hover)"
             >
               Done
             </button>

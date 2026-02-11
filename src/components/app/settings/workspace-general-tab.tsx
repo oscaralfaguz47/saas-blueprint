@@ -2,8 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Spinner } from "@/components/ui/spinner";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
+import { IconCheck } from "@/components/ui/icons";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { getApiErrorMessage } from "@/lib/api-client";
 
@@ -71,7 +75,7 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
   const [currency, setCurrency] = useState(initialTenant.currency ?? "USD");
   const [dateFormat, setDateFormat] = useState(initialTenant.dateFormat ?? "MM/DD/YYYY");
   const [description, setDescription] = useState(initialTenant.description ?? "");
-  const [saveStatus, setSaveStatus] = useState<"idle" | "submitting" | "error">("idle");
+  const [saveStatus, setSaveStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [logoStatus, setLogoStatus] = useState<"idle" | "uploading" | "error">("idle");
   const [logoError, setLogoError] = useState<string | null>(null);
@@ -133,11 +137,12 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
         return;
       }
       if (data.data?.tenant) setTenant(data.data.tenant);
-      setSaveStatus("idle");
+      setSaveStatus("success");
       router.refresh();
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("workspace-updated"));
       }
+      setTimeout(() => setSaveStatus("idle"), 3000);
     } catch {
       setSaveError("Something went wrong. Please try again.");
       setSaveStatus("error");
@@ -203,9 +208,13 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 py-8">
-        <Spinner size="sm" />
-        <span className="text-sm text-(--text-muted)">Loading general settings…</span>
+      <div className="max-w-xl space-y-4">
+        <Skeleton className="h-14 w-32" />
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-20 w-full" />
       </div>
     );
   }
@@ -232,18 +241,21 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
           onChange={handleLogoChange}
         />
         {logoError ? <p className="mt-1 text-sm text-(--color-danger)">{logoError}</p> : null}
-        {logoStatus === "uploading" ? <p className="mt-1 flex items-center gap-1.5 text-sm text-(--text-muted)"><Spinner size="sm" /> Uploading…</p> : null}
+        {logoStatus === "uploading" ? (
+          <p className="mt-1 flex items-center gap-1.5 text-sm text-(--text-muted)">
+            <Spinner size="sm" /> Uploading…
+          </p>
+        ) : null}
       </div>
       <div>
         <label htmlFor="ws-name" className="block text-sm font-medium text-(--text-primary)">Name</label>
-        <input
+        <Input
           id="ws-name"
-          type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
           maxLength={80}
           disabled={saveStatus === "submitting"}
-          className="mt-1.5 w-full rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2.5 text-sm text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-60"
+          className="mt-1.5"
         />
       </div>
       <div>
@@ -284,14 +296,14 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
       </div>
       <div>
         <label htmlFor="ws-description" className="block text-sm font-medium text-(--text-primary)">Description</label>
-        <textarea
+        <Textarea
           id="ws-description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           rows={2}
           maxLength={500}
           disabled={saveStatus === "submitting"}
-          className="mt-1.5 w-full rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2.5 text-sm text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-60"
+          className="mt-1.5"
         />
       </div>
       {saveError ? (
@@ -301,9 +313,21 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
         <button
           type="submit"
           disabled={saveStatus === "submitting"}
-          className="inline-flex h-10 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-60"
+          className="inline-flex h-10 min-w-[120px] cursor-pointer items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          {saveStatus === "submitting" ? <><Spinner size="sm" className="mr-2" /> Saving…</> : "Save changes"}
+          {saveStatus === "submitting" ? (
+            <>
+              <Spinner size="sm" className="mr-2" />
+              Saving…
+            </>
+          ) : saveStatus === "success" ? (
+            <>
+              <IconCheck size={18} className="mr-2" />
+              Saved
+            </>
+          ) : (
+            "Save changes"
+          )}
         </button>
       </div>
     </form>

@@ -1,49 +1,117 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { DropdownMultiSelect } from "@/components/ui/dropdown-multi-select";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { InviteMemberModal } from "./invite-member-modal";
 
+const PAGE_SIZE = 10;
+const STATUSES = [
+  { value: "ACTIVE", label: "Active" },
+  { value: "EXPIRED", label: "Expired" },
+  { value: "REVOKED", label: "Revoked" },
+  { value: "ACCEPTED", label: "Accepted" },
+];
+
 type Tenant = { id: string; name: string };
 
-type Invitation = {
+type InvitationItem = {
   id: string;
   email: string;
   status: string;
-  invitedBy: { name: string | null; email: string | null } | null;
   invitedAt: string;
   expiresAt: string;
+  invitedBy: { name: string | null; email: string | null } | null;
 };
 
 type Props = { tenant: Tenant; permissions: string[] };
 
 type ActionType = "resend" | "revoke" | "reinvite";
+type SortBy = "email" | "status" | "invitedAt" | "expiresAt";
+type SortDir = "asc" | "desc";
 
 export function WorkspaceInvitesTab({ tenant, permissions }: Props) {
   const permSet = new Set(permissions);
   const canInvite = permSet.has("tenant.users.invite");
   const canManageInvites = permSet.has("tenant.users.manage");
   const apiFetch = useApiFetch();
-  const [invitations, setInvitations] = useState<Invitation[] | null>(null);
+  const [items, setItems] = useState<InvitationItem[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [search, setSearch] = useState("");
+  const [searchSent, setSearchSent] = useState("");
+  const [statuses, setStatuses] = useState<string[]>([]);
+  const [sortBy, setSortBy] = useState<SortBy>("invitedAt");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [inviteOpen, setInviteOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState<{ id: string; action: ActionType } | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  const refetch = () => {
+  const fetchPage = useCallback(
+    async (cursor: string | null, append: boolean) => {
+      const params = new URLSearchParams();
+      params.set("limit", String(PAGE_SIZE));
+      if (cursor) params.set("cursor", cursor);
+      params.set("sortBy", sortBy);
+      params.set("sortDir", sortDir);
+      if (searchSent.trim()) params.set("search", searchSent.trim());
+      if (statuses.length) params.set("statuses", statuses.join(","));
+      const res = await apiFetch(
+        `/api/settings/workspace/invitations?${params.toString()}`
+      );
+      const data = (await res.json()) as {
+        data?: { items?: InvitationItem[]; nextCursor?: string | null };
+      };
+      const list = data.data?.items ?? [];
+      const next = data.data?.nextCursor ?? null;
+      if (append) {
+        setItems((prev) => [...prev, ...list]);
+      } else {
+        setItems(list);
+      }
+      setNextCursor(next);
+      return next;
+    },
+    [apiFetch, sortBy, sortDir, searchSent, statuses]
+  );
+
+  const loadInitial = useCallback(() => {
     setLoading(true);
-    apiFetch("/api/tenant/invitations")
-      .then((r) => r.json())
-      .then((j: { data?: { invitations?: Invitation[] } }) => {
-        setInvitations((j.data?.invitations ?? []) as Invitation[]);
-      })
-      .catch(() => setInvitations([]))
-      .finally(() => setLoading(false));
-  };
+    fetchPage(null, false).finally(() => setLoading(false));
+  }, [fetchPage]);
 
   useEffect(() => {
-    refetch();
-  }, []);
+    loadInitial();
+  }, [sortBy, sortDir, searchSent, statuses.join(",")]);
+
+  const loadMore = useCallback(() => {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    fetchPage(nextCursor, true).finally(() => setLoadingMore(false));
+  }, [nextCursor, loadingMore, fetchPage]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = el;
+      if (scrollHeight - scrollTop - clientHeight < 200) loadMore();
+    };
+    el.addEventListener("scroll", onScroll);
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [loadMore]);
 
   const runAction = async (id: string, action: ActionType) => {
     setActionLoading({ id, action });
@@ -51,20 +119,19 @@ export function WorkspaceInvitesTab({ tenant, permissions }: Props) {
       const res = await apiFetch(`/api/tenant/invitations/${id}/${action}`, { method: "POST" });
       if (res.ok) {
         if (action === "revoke") {
-          setInvitations((prev) =>
-            prev?.map((inv) =>
+          setItems((prev) =>
+            prev.map((inv) =>
               inv.id === id ? { ...inv, status: "REVOKED" } : inv
-            ) ?? null
+            )
           );
         } else if (action === "reinvite") {
           const newExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-          setInvitations((prev) =>
-            prev?.map((inv) =>
+          setItems((prev) =>
+            prev.map((inv) =>
               inv.id === id ? { ...inv, status: "ACTIVE", expiresAt: newExpiresAt } : inv
-            ) ?? null
+            )
           );
         }
-        // resend: no row data change, just stop spinner
       }
     } finally {
       setActionLoading(null);
@@ -75,109 +142,187 @@ export function WorkspaceInvitesTab({ tenant, permissions }: Props) {
   const isActionLoading = (id: string, action: ActionType) =>
     actionLoading?.id === id && actionLoading?.action === action;
 
-  if (loading) {
-    return (
-      <div className="flex items-center gap-2 py-8">
-        <Spinner size="sm" />
-        <span className="text-sm text-(--text-muted)">Loading invitations…</span>
-      </div>
-    );
-  }
+  const onSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") setSearchSent(search);
+  };
+  const onSearchBlur = () => setSearchSent(search);
 
-  const isEmpty = !invitations?.length;
+  const handleSort = (col: SortBy) => {
+    if (sortBy === col) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(col);
+      setSortDir("desc");
+    }
+  };
+  const SortHeader = ({ col, label }: { col: SortBy; label: string }) => (
+    <TableHead>
+      <button
+        type="button"
+        onClick={() => handleSort(col)}
+        className="cursor-pointer text-left font-medium text-(--text-primary) hover:underline"
+      >
+        {label}
+        {sortBy === col ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+      </button>
+    </TableHead>
+  );
+
+  const isEmpty = !loading && !items.length;
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-medium text-(--text-primary)">Invitations</h2>
         {canInvite ? (
           <button
             type="button"
             onClick={() => setInviteOpen(true)}
-            className="inline-flex h-10 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover)"
+            className="inline-flex h-10 min-h-[44px] cursor-pointer items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover)"
           >
             Invite people
           </button>
         ) : null}
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        <div className="min-w-[200px] flex-1">
+          <label className="block text-sm font-medium text-(--text-primary)">
+            Search
+          </label>
+          <Input
+            placeholder="Search by email"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={onSearchKeyDown}
+            onBlur={onSearchBlur}
+            disabled={loading}
+            className="mt-1.5"
+          />
+        </div>
+        <DropdownMultiSelect
+          options={STATUSES}
+          selected={statuses}
+          onChange={setStatuses}
+          placeholder="Status"
+          label="Status"
+          disabled={loading}
+          className="min-w-[140px]"
+        />
+        {(searchSent.trim() || statuses.length > 0) && (
+          <button
+            type="button"
+            onClick={() => {
+              setSearch("");
+              setSearchSent("");
+              setStatuses([]);
+            }}
+            className="self-end cursor-pointer text-sm font-medium text-(--color-primary) hover:underline disabled:cursor-not-allowed"
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
+
       <InviteMemberModal
         open={inviteOpen}
         onClose={() => setInviteOpen(false)}
         workspaceName={tenant.name}
-        onSuccess={refetch}
+        onSuccess={loadInitial}
       />
 
-      {isEmpty ? (
+      {loading ? (
+        <div className="overflow-hidden rounded-lg border border-(--border-subtle)">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Email</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Invited by</TableHead>
+                <TableHead>Invited at</TableHead>
+                <TableHead>Expires at</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <TableRow key={i}>
+                  <TableCell><Skeleton className="h-5 w-40" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-16" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-28" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-28" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-20 ml-auto" /></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      ) : isEmpty ? (
         <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface) p-8 text-center">
           <p className="text-sm text-(--text-secondary)">No invitations yet.</p>
           {canInvite ? (
             <button
               type="button"
               onClick={() => setInviteOpen(true)}
-              className="mt-4 inline-flex h-10 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover)"
+              className="mt-4 inline-flex h-10 min-h-[44px] cursor-pointer items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover)"
             >
               Invite people
             </button>
           ) : null}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-(--border-subtle)">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-(--border-subtle) bg-(--bg-surface-elev)">
-                <th className="px-4 py-3 text-left font-medium text-(--text-primary)">Email</th>
-                <th className="px-4 py-3 text-left font-medium text-(--text-primary)">Status</th>
-                <th className="px-4 py-3 text-left font-medium text-(--text-primary)">Invited by</th>
-                <th className="px-4 py-3 text-left font-medium text-(--text-primary)">Invited at</th>
-                <th className="px-4 py-3 text-left font-medium text-(--text-primary)">Expires at</th>
-                <th className="px-4 py-3 text-right font-medium text-(--text-primary)">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {invitations?.map((inv) => (
-                <tr key={inv.id} className="border-b border-(--border-subtle) last:border-0">
-                  <td className="px-4 py-3 text-(--text-primary)">{inv.email}</td>
-                  <td className="px-4 py-3">
+        <div
+          ref={scrollRef}
+          className="overflow-auto rounded-lg border border-(--border-subtle) max-h-[60vh]"
+        >
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <SortHeader col="email" label="Email" />
+                <SortHeader col="status" label="Status" />
+                <TableHead>Invited by</TableHead>
+                <SortHeader col="invitedAt" label="Invited at" />
+                <SortHeader col="expiresAt" label="Expires at" />
+                <TableHead className="text-right min-w-[180px]">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.map((inv) => (
+                <TableRow key={inv.id}>
+                  <TableCell className="text-(--text-primary)">{inv.email}</TableCell>
+                  <TableCell>
                     <span className="inline-flex rounded-full bg-(--bg-surface-elev) px-2 py-0.5 text-xs font-medium text-(--text-primary)">
                       {inv.status}
                     </span>
-                  </td>
-                  <td className="px-4 py-3 text-(--text-muted)">
+                  </TableCell>
+                  <TableCell className="text-(--text-muted)">
                     {inv.invitedBy?.name ?? inv.invitedBy?.email ?? "—"}
-                  </td>
-                  <td className="px-4 py-3 text-(--text-muted)">
+                  </TableCell>
+                  <TableCell className="text-(--text-muted)">
                     {new Date(inv.invitedAt).toLocaleString()}
-                  </td>
-                  <td className="px-4 py-3 text-(--text-muted)">
+                  </TableCell>
+                  <TableCell className="text-(--text-muted)">
                     {new Date(inv.expiresAt).toLocaleString()}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1">
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex flex-nowrap items-center justify-end gap-1">
                       {canManageInvites && inv.status === "ACTIVE" && (
                         <>
                           <button
                             type="button"
                             onClick={() => runAction(inv.id, "resend")}
                             disabled={isRowLoading(inv.id)}
-                            className="inline-flex min-w-18 items-center justify-center rounded px-2 py-1 text-xs text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60"
+                            className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded px-2 py-1 text-xs text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60 disabled:cursor-not-allowed"
                           >
-                            {isActionLoading(inv.id, "resend") ? (
-                              <Spinner size="sm" className="text-(--text-primary)" />
-                            ) : (
-                              "Resend"
-                            )}
+                            {isActionLoading(inv.id, "resend") ? <Spinner size="sm" /> : "Resend"}
                           </button>
                           <button
                             type="button"
                             onClick={() => runAction(inv.id, "revoke")}
                             disabled={isRowLoading(inv.id)}
-                            className="inline-flex min-w-18 items-center justify-center rounded px-2 py-1 text-xs text-(--color-danger) hover:bg-(--bg-surface-elev) disabled:opacity-60"
+                            className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded px-2 py-1 text-xs text-(--color-danger) hover:bg-(--bg-surface-elev) disabled:opacity-60 disabled:cursor-not-allowed"
                           >
-                            {isActionLoading(inv.id, "revoke") ? (
-                              <Spinner size="sm" className="text-(--color-danger)" />
-                            ) : (
-                              "Revoke"
-                            )}
+                            {isActionLoading(inv.id, "revoke") ? <Spinner size="sm" /> : "Revoke"}
                           </button>
                         </>
                       )}
@@ -186,21 +331,27 @@ export function WorkspaceInvitesTab({ tenant, permissions }: Props) {
                           type="button"
                           onClick={() => runAction(inv.id, "reinvite")}
                           disabled={isRowLoading(inv.id)}
-                          className="inline-flex min-w-18 items-center justify-center rounded px-2 py-1 text-xs text-(--color-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60"
+                          className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded px-2 py-1 text-xs text-(--color-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60 disabled:cursor-not-allowed"
                         >
-                          {isActionLoading(inv.id, "reinvite") ? (
-                            <Spinner size="sm" className="text-(--color-primary)" />
-                          ) : (
-                            "Re-invite"
-                          )}
+                          {isActionLoading(inv.id, "reinvite") ? <Spinner size="sm" /> : "Re-invite"}
                         </button>
                       )}
                     </div>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
+          {loadingMore && (
+            <div className="flex justify-center py-4">
+              <Skeleton className="h-6 w-32" />
+            </div>
+          )}
+          {nextCursor && !loadingMore && (
+            <div className="py-2 text-center text-sm text-(--text-muted)">
+              Scroll for more
+            </div>
+          )}
         </div>
       )}
     </div>
