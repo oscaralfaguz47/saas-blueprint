@@ -1,10 +1,45 @@
 import type { PrismaClient } from "@prisma/client";
 
+/** A2 system role names (workspace). */
+export const TENANT_SYSTEM_ROLE_NAMES = [
+  "Primary Owner",
+  "Owner",
+  "Admin",
+  "Finance",
+  "Member",
+] as const;
+
+export type TenantSystemRoleName = (typeof TENANT_SYSTEM_ROLE_NAMES)[number];
+
 /**
  * Role → permission codes. Single source of truth for A2 (docs/epics/2-A2-Roles-And-Permissions.md).
  * Used by tenancy-bootstrap and by the sync script (no server-only here).
+ * Owner has the same permissions as Primary Owner; the difference is authority only (who can manage Owners / transfer Primary Ownership).
  */
-export const ROLE_PERMS: Record<"Owner" | "Admin" | "Finance" | "Member", string[]> = {
+export const ROLE_PERMS: Record<TenantSystemRoleName, string[]> = {
+  "Primary Owner": [
+    "tenant.audit.read",
+    "tenant.billing.manage",
+    "tenant.settings.manage",
+    "tenant.roles.read",
+    "tenant.roles.manage",
+    "tenant.users.read",
+    "tenant.users.invite",
+    "tenant.users.manage",
+    "tenant.users.disable",
+    "tenant.requests.create",
+    "tenant.requests.read_all",
+    "tenant.requests.close",
+    "tenant.requests.share",
+    "tenant.requests.link",
+    "tenant.requests.export",
+    "tenant.requests.comment",
+    "tenant.evidence.add",
+    "tenant.approvals.assign_internal",
+    "tenant.approvals.assign_external",
+    "tenant.approvals.remind",
+    "tenant.payments.manage",
+  ],
   Owner: [
     "tenant.audit.read",
     "tenant.billing.manage",
@@ -55,6 +90,7 @@ export const ROLE_PERMS: Record<"Owner" | "Admin" | "Finance" | "Member", string
     "tenant.settings.manage",
     "tenant.users.read",
     "tenant.users.invite",
+    "tenant.users.manage",
     "tenant.users.disable",
     "tenant.requests.create",
     "tenant.requests.read_all",
@@ -89,12 +125,12 @@ export async function ensureTenantRolesAndPermissionsWithPrisma(
   const { tenantId } = params;
 
   const roles = await prisma.tenantRole.findMany({
-    where: { tenantId, name: { in: ["Owner", "Admin", "Finance", "Member"] } },
+    where: { tenantId, name: { in: [...TENANT_SYSTEM_ROLE_NAMES] } },
     select: { id: true, name: true },
   });
 
   const roleIdByName = new Map(roles.map((r) => [r.name, r.id]));
-  if (!roleIdByName.get("Owner")) return;
+  if (!roleIdByName.get("Owner") && !roleIdByName.get("Primary Owner")) return;
 
   const neededCodes = Array.from(new Set(Object.values(ROLE_PERMS).flatMap((arr) => arr)));
   const perms = await prisma.permission.findMany({

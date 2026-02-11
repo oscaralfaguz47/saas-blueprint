@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { authOptions } from "@/server/auth-options";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { hasTenantPermission } from "@/server/security/tenant-authorization";
+import { getHighestRoleName } from "@/server/security/authority";
 import { prisma } from "@/server/db";
 import { writeAuditLog } from "@/server/services/audit";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
@@ -218,15 +219,19 @@ export const GET = withErrorHandler(async (req: Request) => {
     nextCursor = encodeCursor(last.id, sortValue);
   }
 
-  const items = slice.map((m) => ({
-    userId: m.user.id,
-    name: m.user.name ?? null,
-    email: m.user.email ?? null,
-    image: m.user.image ?? null,
-    role: (m.roles[0]?.role.name ?? "Member") as string,
-    status: m.status,
-    joinedAt: m.joinedAt,
-  }));
+  const items = slice.map((m) => {
+    const roleNames = m.roles.map((r) => r.role.name);
+    const displayRole = getHighestRoleName(roleNames) ?? "Member";
+    return {
+      userId: m.user.id,
+      name: m.user.name ?? null,
+      email: m.user.email ?? null,
+      image: m.user.image ?? null,
+      role: displayRole,
+      status: m.status,
+      joinedAt: m.joinedAt,
+    };
+  });
 
   await writeAuditLog({
     actorUserId: session.user.id,

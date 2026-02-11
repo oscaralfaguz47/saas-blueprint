@@ -54,7 +54,7 @@ export async function assertWorkspaceNameUniqueForUser(
 /**
  * v1 bootstrap (robust + fast):
  * - If user has no default tenant, create one
- * - Ensure system tenant roles exist: Owner/Admin/Member
+ * - Ensure system tenant roles exist: Primary Owner, Owner, Admin, Finance, Member (A2)
  * - Ensure minimal tenant permissions are attached to those roles
  *
  * IMPORTANT:
@@ -117,8 +117,14 @@ export async function ensureDefaultTenantForUser(params: {
         select: { id: true, tenantId: true },
       });
 
-      // Ensure system roles exist (idempotent). Aligned with A2: Owner, Admin, Finance, Member.
-      const [ownerRole, adminRole, financeRole, memberRole] = await Promise.all([
+      // Ensure system roles exist (idempotent). A2: Primary Owner, Owner, Admin, Finance, Member.
+      const [primaryOwnerRole] = await Promise.all([
+        tx.tenantRole.upsert({
+          where: { tenantId_name: { tenantId: tenant.id, name: "Primary Owner" } },
+          update: { isSystem: true },
+          create: { tenantId: tenant.id, name: "Primary Owner", isSystem: true },
+          select: { id: true, name: true },
+        }),
         tx.tenantRole.upsert({
           where: { tenantId_name: { tenantId: tenant.id, name: "Owner" } },
           update: { isSystem: true },
@@ -145,13 +151,13 @@ export async function ensureDefaultTenantForUser(params: {
         }),
       ]);
 
-      // Assign Owner role to the creator membership (idempotent)
+      // Assign Primary Owner role to the creator (exactly one per workspace, A2)
       await tx.tenantUserRole.upsert({
         where: {
-          membershipId_roleId: { membershipId: membership.id, roleId: ownerRole.id },
+          membershipId_roleId: { membershipId: membership.id, roleId: primaryOwnerRole.id },
         },
         update: {},
-        create: { membershipId: membership.id, roleId: ownerRole.id },
+        create: { membershipId: membership.id, roleId: primaryOwnerRole.id },
       });
 
       return {
@@ -261,12 +267,18 @@ export async function ensureDraftWorkspaceForUser(params: {
       select: { id: true, tenantId: true },
     });
 
-    const [ownerRole] = await Promise.all([
+    const [primaryOwnerRole] = await Promise.all([
+      tx.tenantRole.upsert({
+        where: { tenantId_name: { tenantId: tenant.id, name: "Primary Owner" } },
+        update: { isSystem: true },
+        create: { tenantId: tenant.id, name: "Primary Owner", isSystem: true },
+        select: { id: true, name: true },
+      }),
       tx.tenantRole.upsert({
         where: { tenantId_name: { tenantId: tenant.id, name: "Owner" } },
         update: { isSystem: true },
         create: { tenantId: tenant.id, name: "Owner", isSystem: true },
-        select: { id: true, name: true },
+        select: { id: true },
       }),
       tx.tenantRole.upsert({
         where: { tenantId_name: { tenantId: tenant.id, name: "Admin" } },
@@ -290,10 +302,10 @@ export async function ensureDraftWorkspaceForUser(params: {
 
     await tx.tenantUserRole.upsert({
       where: {
-        membershipId_roleId: { membershipId: membership.id, roleId: ownerRole.id },
+        membershipId_roleId: { membershipId: membership.id, roleId: primaryOwnerRole.id },
       },
       update: {},
-      create: { membershipId: membership.id, roleId: ownerRole.id },
+      create: { membershipId: membership.id, roleId: primaryOwnerRole.id },
     });
 
     return {
@@ -356,7 +368,7 @@ export async function claimWorkspaceBySlug(params: {
       tenant: { status: "DRAFT" },
       roles: {
         some: {
-          role: { name: "Owner" },
+          role: { name: { in: ["Primary Owner", "Owner"] } },
         },
       },
     },
@@ -445,7 +457,11 @@ export async function createTenantForUser(params: {
         select: { id: true, name: true, slug: true, status: true },
       });
 
-      const [ownerRole] = await Promise.all([
+      const [primaryOwnerRole] = await Promise.all([
+        tx.tenantRole.create({
+          data: { tenantId: tenant.id, name: "Primary Owner", isSystem: true },
+          select: { id: true, name: true },
+        }),
         tx.tenantRole.create({
           data: { tenantId: tenant.id, name: "Owner", isSystem: true },
           select: { id: true, name: true },
@@ -479,7 +495,7 @@ export async function createTenantForUser(params: {
       });
 
       await tx.tenantUserRole.create({
-        data: { membershipId: membership.id, roleId: ownerRole.id },
+        data: { membershipId: membership.id, roleId: primaryOwnerRole.id },
       });
 
       await tx.auditLog.create({

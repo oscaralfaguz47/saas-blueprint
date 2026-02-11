@@ -18,8 +18,9 @@ import { IconCopy, IconCheck, IconHelpCircle } from "@/components/ui/icons";
 
 const ROLE_HELP = (
   <div className="text-xs space-y-1.5">
-    <p><strong>Owner:</strong> Full control, billing, roles, workspace settings.</p>
-    <p><strong>Admin:</strong> Manage workspace and members (except billing if restricted).</p>
+    <p><strong>Primary Owner:</strong> Full control, billing, roles; exactly one per workspace. Only they can manage Owners or transfer Primary Ownership.</p>
+    <p><strong>Owner:</strong> Same permissions as Primary Owner; cannot manage Owners or transfer Primary Ownership.</p>
+    <p><strong>Admin:</strong> Manage workspace and members (no billing).</p>
     <p><strong>Finance:</strong> Finance-related workflows and approvals (per RBAC).</p>
     <p><strong>Member:</strong> Standard access, limited management rights.</p>
   </div>
@@ -28,11 +29,17 @@ import { useApiFetch } from "@/hooks/use-api-fetch";
 import { InviteMemberModal } from "./invite-member-modal";
 
 const PAGE_SIZE = 10;
-const ROLES = [
+/** Roles that can be assigned via the UI (Primary Owner is only via transfer). */
+const ROLES_ASSIGN = [
   { value: "Owner", label: "Owner" },
   { value: "Admin", label: "Admin" },
   { value: "Finance", label: "Finance" },
   { value: "Member", label: "Member" },
+];
+/** Role options for filter dropdown (includes Primary Owner). */
+const ROLES_FILTER = [
+  { value: "Primary Owner", label: "Primary Owner" },
+  ...ROLES_ASSIGN,
 ];
 const STATUSES = [
   { value: "ACTIVE", label: "Active" },
@@ -165,7 +172,9 @@ export function WorkspaceMembersTab({ tenant, permissions }: Props) {
     return () => el.removeEventListener("scroll", onScroll);
   }, [loadMore]);
 
-  const ownerCount = items.filter((u) => u.role === "Owner").length;
+  const ownerLevelCount = items.filter(
+    (u) => u.role === "Primary Owner" || u.role === "Owner"
+  ).length;
 
   const handleStatus = async (userId: string, status: "ACTIVE" | "DISABLED") => {
     setStatusLoadingId(userId);
@@ -287,7 +296,7 @@ export function WorkspaceMembersTab({ tenant, permissions }: Props) {
           />
         </div>
         <DropdownMultiSelect
-          options={ROLES}
+          options={ROLES_FILTER}
           selected={roles}
           onChange={setRoles}
           placeholder="Role"
@@ -384,8 +393,11 @@ export function WorkspaceMembersTab({ tenant, permissions }: Props) {
             </TableHeader>
             <TableBody>
               {items.map((m) => {
-                const isOwner = m.role === "Owner";
-                const isLastOwner = isOwner && ownerCount <= 1;
+                const isOwnerLevel =
+                  m.role === "Primary Owner" || m.role === "Owner";
+                const isPrimaryOwner = m.role === "Primary Owner";
+                const isLastOwnerLevel =
+                  isOwnerLevel && ownerLevelCount <= 1;
                 return (
                   <TableRow key={m.userId}>
                     <TableCell>
@@ -417,15 +429,21 @@ export function WorkspaceMembersTab({ tenant, permissions }: Props) {
                           >
                             <Spinner size="sm" />
                           </div>
-                        ) : canManageRoles && !isLastOwner ? (
+                        ) : canManageRoles &&
+                          !isLastOwnerLevel &&
+                          !isPrimaryOwner ? (
                           <select
                             value={m.role}
-                            onChange={(e) => handleRole(m.userId, e.target.value)}
+                            onChange={(e) =>
+                              handleRole(m.userId, e.target.value)
+                            }
                             disabled={roleLoadingId === m.userId}
                             className="min-h-[44px] min-w-[100px] cursor-pointer rounded border border-(--border-subtle) bg-(--bg-surface) px-2 py-1 text-xs text-(--text-primary) disabled:opacity-60"
                           >
-                            {ROLES.map((r) => (
-                              <option key={r.value} value={r.value}>{r.label}</option>
+                            {ROLES_ASSIGN.map((r) => (
+                              <option key={r.value} value={r.value}>
+                                {r.label}
+                              </option>
                             ))}
                           </select>
                         ) : (
@@ -466,28 +484,40 @@ export function WorkspaceMembersTab({ tenant, permissions }: Props) {
                           )}
                           <span className="hidden sm:inline">Copy Email</span>
                         </button>
-                        {!isLastOwner && (canDisable || canManage) && m.status === "ACTIVE" && (
+                        {!isLastOwnerLevel &&
+                          (canDisable || canManage) &&
+                          m.status === "ACTIVE" && (
                           <button
                             type="button"
-                            onClick={() => handleStatus(m.userId, "DISABLED")}
-                            disabled={statusLoadingId === m.userId || isLastOwner}
+                            onClick={() =>
+                              handleStatus(m.userId, "DISABLED")
+                            }
+                            disabled={
+                              statusLoadingId === m.userId ||
+                              isLastOwnerLevel
+                            }
                             className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded px-2 py-1 text-xs text-(--color-danger) hover:bg-(--bg-surface-elev) disabled:opacity-60 disabled:cursor-not-allowed"
                           >
                             {statusLoadingId === m.userId ? <Spinner size="sm" /> : "Disable"}
                           </button>
                         )}
-                        {!isLastOwner && canEnable && m.status !== "ACTIVE" && (
+                        {!isLastOwnerLevel && canEnable && m.status !== "ACTIVE" && (
                           <button
                             type="button"
-                            onClick={() => handleStatus(m.userId, "ACTIVE")}
+                            onClick={() =>
+                              handleStatus(m.userId, "ACTIVE")
+                            }
                             disabled={statusLoadingId === m.userId}
                             className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded px-2 py-1 text-xs text-(--color-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60 disabled:cursor-not-allowed"
                           >
                             {statusLoadingId === m.userId ? <Spinner size="sm" /> : "Enable"}
                           </button>
                         )}
-                        {isLastOwner && (
-                          <span className="text-xs text-(--text-muted)" title="Cannot change or disable the last owner">
+                        {isLastOwnerLevel && (
+                          <span
+                            className="text-xs text-(--text-muted)"
+                            title="Cannot change or disable the last owner-level user"
+                          >
                             —
                           </span>
                         )}

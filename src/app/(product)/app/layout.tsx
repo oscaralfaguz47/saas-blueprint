@@ -75,6 +75,16 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       </AppLayoutHydrationGate>
     );
   } catch (error) {
+    // Next.js redirect() throws a special error; rethrow so the redirect is honored
+    if (
+      error &&
+      typeof error === "object" &&
+      "digest" in error &&
+      typeof (error as { digest?: string }).digest === "string" &&
+      (error as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+    ) {
+      throw error;
+    }
     console.error("AppLayout data fetch error:", error);
     redirect("/api/auth/signout?callbackUrl=/auth/sign-in");
   }

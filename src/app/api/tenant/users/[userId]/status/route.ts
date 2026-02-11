@@ -2,6 +2,11 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { hasTenantPermission } from "@/server/security/tenant-authorization";
+import {
+  getHighestRoleName,
+  canManageTargetByRole,
+  isOwnerLevel,
+} from "@/server/security/authority";
 import { prisma } from "@/server/db";
 import { writeAuditLog } from "@/server/services/audit";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
@@ -10,14 +15,21 @@ import { z } from "zod";
 
 const paramsSchema = z.object({ userId: z.string().cuid() });
 
-async function getOwnerCount(tenantId: string): Promise<number> {
-  const ownerRole = await prisma.tenantRole.findUnique({
-    where: { tenantId_name: { tenantId, name: "Owner" } },
+/** Count ACTIVE memberships with Owner-level role (Primary Owner or Owner) in tenant. */
+async function getOwnerLevelCount(tenantId: string): Promise<number> {
+  const roles = await prisma.tenantRole.findMany({
+    where: {
+      tenantId,
+      name: { in: ["Primary Owner", "Owner"] },
+    },
     select: { id: true },
   });
-  if (!ownerRole) return 0;
+  if (roles.length === 0) return 0;
   return prisma.tenantUserRole.count({
-    where: { roleId: ownerRole.id, membership: { tenantId, status: "ACTIVE" } },
+    where: {
+      roleId: { in: roles.map((r) => r.id) },
+      membership: { tenantId, status: "ACTIVE" },
+    },
   });
 }
 
@@ -33,7 +45,9 @@ export const PATCH = withErrorHandler(async (
   if (!tenant) return ApiErrors.NO_TENANT();
 
   const body = await parseBody(req, updateMemberStatusSchema);
-  const [canManage, canDisable] = await Promise.all([
+  const { userId: targetUserId } = paramsSchema.parse(await context.params);
+
+  const [canManage, canDisable, actorMembership, targetMembership] = await Promise.all([
     hasTenantPermission({
       userId: session.user.id,
       tenantId: tenant.id,
@@ -44,29 +58,47 @@ export const PATCH = withErrorHandler(async (
       tenantId: tenant.id,
       permission: "tenant.users.disable",
     }),
+    prisma.tenantMembership.findUnique({
+      where: { tenantId_userId: { tenantId: tenant.id, userId: session.user.id } },
+      select: { roles: { select: { role: { select: { name: true } } } } },
+    }),
+    prisma.tenantMembership.findUnique({
+      where: { tenantId_userId: { tenantId: tenant.id, userId: targetUserId } },
+      select: {
+        id: true,
+        status: true,
+        roles: { select: { role: { select: { name: true } } } },
+      },
+    }),
   ]);
+
   const allowed = canManage || (body.status === "DISABLED" && canDisable);
   if (!allowed) return ApiErrors.FORBIDDEN();
 
-  const { userId: targetUserId } = paramsSchema.parse(await context.params);
+  if (!actorMembership || !targetMembership) return ApiErrors.NOT_FOUND("Member");
 
-  const targetMembership = await prisma.tenantMembership.findUnique({
-    where: { tenantId_userId: { tenantId: tenant.id, userId: targetUserId } },
-    select: {
-      id: true,
-      status: true,
-      roles: {
-        select: { role: { select: { name: true } } },
-      },
-    },
-  });
-  if (!targetMembership) return ApiErrors.NOT_FOUND("Member");
+  const actorRole = getHighestRoleName(
+    actorMembership.roles.map((r) => r.role.name)
+  ) ?? "Member";
+  const targetRole = getHighestRoleName(
+    targetMembership.roles.map((r) => r.role.name)
+  ) ?? "Member";
 
-  const isOwner = targetMembership.roles.some((r) => r.role.name === "Owner");
-  if (body.status === "DISABLED" && isOwner) {
-    const ownerCount = await getOwnerCount(tenant.id);
-    if (ownerCount <= 1) {
-      return ApiErrors.VALIDATION_ERROR("Cannot disable the last owner.");
+  if (targetRole === "Primary Owner") {
+    return ApiErrors.VALIDATION_ERROR(
+      "Transfer primary ownership before disabling the primary owner.",
+      { code: "USE_TRANSFER_PRIMARY_OWNERSHIP" }
+    );
+  }
+
+  if (!canManageTargetByRole(actorRole, targetRole)) {
+    return ApiErrors.FORBIDDEN();
+  }
+
+  if (body.status === "DISABLED" && isOwnerLevel(targetRole)) {
+    const ownerLevelCount = await getOwnerLevelCount(tenant.id);
+    if (ownerLevelCount <= 1) {
+      return ApiErrors.VALIDATION_ERROR("Cannot disable the last owner-level user.");
     }
   }
 
@@ -75,7 +107,6 @@ export const PATCH = withErrorHandler(async (
     data: { status: body.status },
   });
 
-  // When re-enabling, ensure at most one ACTIVE membership has isDefaultTenant true (fixes duplicate-default bug)
   if (body.status === "ACTIVE") {
     const activeWithDefault = await prisma.tenantMembership.findMany({
       where: {

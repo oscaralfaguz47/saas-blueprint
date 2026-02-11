@@ -2,6 +2,12 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { hasTenantPermission } from "@/server/security/tenant-authorization";
+import {
+  getHighestRoleName,
+  canManageTargetByRole,
+  onlyPrimaryOwnerCanChangeOwnerLevel,
+  isOwnerLevel,
+} from "@/server/security/authority";
 import { prisma } from "@/server/db";
 import { writeAuditLog } from "@/server/services/audit";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
@@ -10,14 +16,21 @@ import { z } from "zod";
 
 const paramsSchema = z.object({ userId: z.string().cuid() });
 
-async function getOwnerCount(tenantId: string): Promise<number> {
-  const ownerRole = await prisma.tenantRole.findUnique({
-    where: { tenantId_name: { tenantId, name: "Owner" } },
+/** Count ACTIVE memberships with Owner-level role (Primary Owner or Owner) in tenant. */
+async function getOwnerLevelCount(tenantId: string): Promise<number> {
+  const roles = await prisma.tenantRole.findMany({
+    where: {
+      tenantId,
+      name: { in: ["Primary Owner", "Owner"] },
+    },
     select: { id: true },
   });
-  if (!ownerRole) return 0;
+  if (roles.length === 0) return 0;
   return prisma.tenantUserRole.count({
-    where: { roleId: ownerRole.id, membership: { tenantId, status: "ACTIVE" } },
+    where: {
+      roleId: { in: roles.map((r) => r.id) },
+      membership: { tenantId, status: "ACTIVE" },
+    },
   });
 }
 
@@ -42,29 +55,59 @@ export const PATCH = withErrorHandler(async (
   const { userId: targetUserId } = paramsSchema.parse(await context.params);
   const body = await parseBody(req, updateMemberRoleSchema);
 
-  const targetMembership = await prisma.tenantMembership.findUnique({
-    where: { tenantId_userId: { tenantId: tenant.id, userId: targetUserId } },
-    select: {
-      id: true,
-      roles: {
-        select: { roleId: true, role: { select: { name: true } } },
+  const [actorMembership, targetMembership, roles] = await Promise.all([
+    prisma.tenantMembership.findUnique({
+      where: { tenantId_userId: { tenantId: tenant.id, userId: session.user.id } },
+      select: {
+        roles: { select: { role: { select: { name: true } } } },
       },
-    },
-  });
-  if (!targetMembership) return ApiErrors.NOT_FOUND("Member");
+    }),
+    prisma.tenantMembership.findUnique({
+      where: { tenantId_userId: { tenantId: tenant.id, userId: targetUserId } },
+      select: {
+        id: true,
+        roles: { select: { roleId: true, role: { select: { name: true } } } },
+      },
+    }),
+    prisma.tenantRole.findMany({
+      where: { tenantId: tenant.id, name: { in: ["Owner", "Admin", "Finance", "Member"] } },
+      select: { id: true, name: true },
+    }),
+  ]);
 
-  const currentRoleName = targetMembership.roles.map((r) => r.role.name)[0] ?? "Member";
-  if (currentRoleName === "Owner" && body.role !== "Owner") {
-    const ownerCount = await getOwnerCount(tenant.id);
-    if (ownerCount <= 1) {
-      return ApiErrors.VALIDATION_ERROR("Cannot remove the last owner.");
-    }
+  if (!actorMembership || !targetMembership) return ApiErrors.NOT_FOUND("Member");
+
+  const actorRoleNames = actorMembership.roles.map((r) => r.role.name);
+  const targetRoleNames = targetMembership.roles.map((r) => r.role.name);
+  const actorRole = getHighestRoleName(actorRoleNames) ?? "Member";
+  const currentTargetRole = getHighestRoleName(targetRoleNames) ?? "Member";
+
+  if (currentTargetRole === "Primary Owner") {
+    return ApiErrors.VALIDATION_ERROR(
+      "Use transfer primary ownership to change the primary owner.",
+      { code: "USE_TRANSFER_PRIMARY_OWNERSHIP" }
+    );
   }
 
-  const roles = await prisma.tenantRole.findMany({
-    where: { tenantId: tenant.id, name: { in: ["Owner", "Admin", "Finance", "Member"] } },
-    select: { id: true, name: true },
-  });
+  const isOwnerLevelChange =
+    body.role === "Owner" || isOwnerLevel(currentTargetRole);
+  if (isOwnerLevelChange && !onlyPrimaryOwnerCanChangeOwnerLevel(actorRole)) {
+    return ApiErrors.FORBIDDEN();
+  }
+
+  if (!canManageTargetByRole(actorRole, currentTargetRole)) {
+    return ApiErrors.FORBIDDEN();
+  }
+
+  const ownerLevelCount = await getOwnerLevelCount(tenant.id);
+  const targetHadOwnerLevel = isOwnerLevel(currentTargetRole);
+  const willAddOwner = body.role === "Owner";
+  const ownerLevelAfter =
+    ownerLevelCount - (targetHadOwnerLevel ? 1 : 0) + (willAddOwner ? 1 : 0);
+  if (ownerLevelAfter < 1) {
+    return ApiErrors.VALIDATION_ERROR("At least one owner-level user must remain.");
+  }
+
   const roleIdByName = new Map(roles.map((r) => [r.name, r.id]));
   const newRoleId = roleIdByName.get(body.role);
   if (!newRoleId) return ApiErrors.VALIDATION_ERROR("Invalid role.");
@@ -86,7 +129,7 @@ export const PATCH = withErrorHandler(async (
     targetType: "TenantMembership",
     targetId: targetMembership.id,
     targetUserId: targetUserId,
-    metadata: { previousRole: currentRoleName, newRole: body.role },
+    metadata: { previousRole: currentTargetRole, newRole: body.role },
     ipAddress: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
     userAgent: req.headers.get("user-agent") ?? null,
   });

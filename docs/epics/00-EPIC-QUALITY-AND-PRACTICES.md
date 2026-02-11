@@ -2,6 +2,8 @@
 
 This document defines **cross-cutting requirements** that apply to all epics. It complements the Naming & Permission Alignment and the `.cursor/rules` so that implementations enforce **quality**, **efficiency at scale**, **security**, and **structure**.
 
+This document also establishes the **minimum production-grade security baseline for a multi-tenant B2B SaaS**.
+
 ---
 
 ## 1. Relationship to rules
@@ -55,6 +57,146 @@ Use **shared helpers** (e.g. `canAccessRequest`, `resolveTenantPlan`, `tryConsum
 - **Secrets**: Never store raw tokens; store only hashed (e.g. invitation token, approval token). No secrets in logs or audit metadata.
 - **Output**: Do not expose cross-tenant data, internal IDs unless necessary, or token values. Escape/sanitize user-generated content (e.g. comments) for XSS.
 - **Rate limiting**: Apply to external-facing or abuse-prone endpoints (e.g. external approval link, manual reminder). Use 429 and standard error shape when limited.
+
+---
+
+### 3.1 SQL Injection Protection (Mandatory)
+
+- Use Prisma ORM for all database operations.
+- `$queryRaw` and `$executeRaw` are prohibited unless strictly necessary.
+- If raw SQL is used:
+  - Must use parameterized queries.
+  - String concatenation is forbidden.
+- Dynamic ORDER BY or filter fields must use allowlists.
+- Never interpolate user input into SQL strings.
+
+---
+
+### 3.2 Object-Level Security (IDOR Prevention)
+
+- Every resource fetch must validate:
+  - tenant isolation
+  - membership
+  - permission
+  - request-scoped access (when applicable)
+- Resource access must never rely solely on ID.
+- Prefer 404 over 403 when hiding resource existence.
+- Cross-tenant access must be impossible.
+
+---
+
+### 3.3 CSRF Protection
+
+If authentication is cookie-based:
+
+- CSRF protection must be enabled.
+- SameSite cookies must be enforced.
+- Mutating endpoints must require CSRF validation.
+
+If authentication uses Bearer tokens:
+
+- CORS policy must be strictly enforced (see 3.5).
+
+---
+
+### 3.4 XSS Protection (Strict)
+
+- React auto-escaping must not be bypassed.
+- `dangerouslySetInnerHTML` is prohibited unless explicitly reviewed.
+- If supporting markdown:
+  - Disable raw HTML.
+  - Use allowlisted sanitizer.
+- Never render raw HTML from DB without sanitization.
+
+---
+
+### 3.5 CORS Policy
+
+- Production must use explicit origin allowlist.
+- `*` is forbidden in production.
+- Allow only required HTTP methods.
+- Allow only required headers.
+
+---
+
+### 3.6 Security Headers (Production Required)
+
+Application must configure:
+
+- `Content-Security-Policy`
+- `X-Frame-Options` or `frame-ancestors`
+- `X-Content-Type-Options: nosniff`
+- `Referrer-Policy`
+- `Permissions-Policy`
+- `Strict-Transport-Security (HSTS)`
+
+HTTPS required outside local development.
+
+---
+
+### 3.7 File Upload Security (Evidence)
+
+- Validate MIME type server-side.
+- Enforce max file size.
+- Restrict allowed extensions.
+- Prevent zip bombs.
+- Scan files for malware (async recommended).
+- Store files in isolated storage.
+- Use signed URLs with expiration.
+- Never expose raw bucket URLs.
+
+---
+
+### 3.8 SSRF Protection
+
+If backend fetches URLs:
+
+- Allow only `https`.
+- Block private IP ranges.
+- Block localhost and metadata endpoints.
+- Enforce request timeout.
+- Enforce max response size.
+
+---
+
+### 3.9 Session Hardening
+
+- Cookies must be `HttpOnly`, `Secure`, `SameSite=Lax` or `Strict`.
+- Sessions must expire.
+- Sensitive actions (billing, ownership transfer, role change) require re-auth.
+- Login endpoints must be rate-limited.
+
+---
+
+### 3.10 Token Security (Invites / External Links)
+
+- Tokens must be hashed in DB.
+- Tokens must have expiration.
+- Support one-time use where applicable.
+- Token validation responses must be generic.
+- Rate limit token endpoints.
+
+---
+
+### 3.11 Data Protection & Privacy
+
+- All traffic must use HTTPS.
+- Database encryption at rest.
+- Object storage encryption at rest.
+- No secrets in logs.
+- PII must be redacted in logs.
+- Audit logs must be append-only.
+- Define log retention policy.
+
+---
+
+### 3.12 Supply Chain Security
+
+- Dependency vulnerability scanning enabled.
+- Block deploy on critical vulnerabilities.
+- Enable secret scanning in repository.
+- Keep dependencies updated.
+- Avoid unmaintained packages.
 
 ---
 
@@ -130,3 +272,35 @@ Epics that trigger these should reference the code by name (e.g. “Return 403 w
 - **Export / heavy operations (I1, I2)**: Async design note if sync would block for > few seconds; idempotency or rate limit to avoid double-click abuse.
 
 Adding one line at the top of each epic (e.g. “Implement per 00-EPIC-QUALITY-AND-PRACTICES.md and .cursor/rules.”) keeps these practices in scope for every implementation.
+
+## 9. Infrastructure & Environment Baseline
+
+- Separate dev, staging, production environments.
+- Secrets managed via secret manager or environment variables.
+- No secrets in repository.
+- Database access follows least privilege principle.
+- Backups must exist and restore must be tested.
+- Production logs must not expose sensitive data.
+- Monitoring and alerting must exist for:
+  - Error spikes
+  - Repeated failed logins
+  - Rate-limit abuse
+  - Unexpected 5xx increases
+
+---
+
+## 10. Security Definition of Done (Global)
+
+An epic is not complete unless:
+
+- Tenant isolation enforced
+- Object-level authorization enforced
+- No SQL injection risk
+- No XSS vectors
+- CSRF mitigated
+- Security headers configured
+- Required indexes exist
+- Pagination enforced
+- Rate limiting applied where needed
+- Sensitive actions audited
+- No privilege escalation possible
