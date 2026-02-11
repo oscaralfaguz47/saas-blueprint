@@ -72,10 +72,13 @@ export default function InviteClient({ hasActiveWorkspace = false }: InviteClien
       setValidateState("invalid");
       return;
     }
+    const controller = new AbortController();
+    const signal = controller.signal;
     setValidateState("loading");
-    apiFetch(`/api/tenant/invitations/validate?token=${encodeURIComponent(token)}`, { showToastOnError: false })
-      .then((r) => r.json())
+    apiFetch(`/api/tenant/invitations/validate?token=${encodeURIComponent(token)}`, { showToastOnError: false, signal })
+      .then((r) => (signal.aborted ? null : r.json()))
       .then((j: unknown) => {
+        if (signal.aborted) return;
         const d = isObject(j) && "data" in j ? (j as { data: ValidateResult }).data : (j as ValidateResult);
         if (d && typeof d.valid === "boolean") {
           setValidatePayload(d);
@@ -84,7 +87,10 @@ export default function InviteClient({ hasActiveWorkspace = false }: InviteClien
           setValidateState("invalid");
         }
       })
-      .catch(() => setValidateState("invalid"));
+      .catch(() => {
+        if (!signal.aborted) setValidateState("invalid");
+      });
+    return () => controller.abort();
   }, [token]);
 
   async function acceptInvitation() {

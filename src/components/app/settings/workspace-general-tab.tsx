@@ -91,10 +91,13 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
   }, [initialTenant]);
 
   useEffect(() => {
+    const controller = new AbortController();
+    const signal = controller.signal;
     setLoading(true);
-    apiFetch(`/api/tenant/${initialTenant.id}`)
-      .then((r) => r.json())
-      .then((j: { data?: { tenant?: Tenant } }) => {
+    apiFetch(`/api/tenant/${initialTenant.id}`, { signal })
+      .then((r) => (signal.aborted ? null : r.json()))
+      .then((j: { data?: { tenant?: Tenant } } | null) => {
+        if (!j || signal.aborted) return;
         const t = j.data?.tenant;
         if (t) {
           setTenant(t);
@@ -106,7 +109,10 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
         }
       })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
   }, [initialTenant.id]);
 
   const timeZoneOptions = useMemo(
