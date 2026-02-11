@@ -58,9 +58,14 @@ export function WorkspaceInvitesTab({ tenant, permissions }: Props) {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState<{ id: string; action: ActionType } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const loadingMoreRef = useRef(false);
 
   const fetchPage = useCallback(
-    async (cursor: string | null, append: boolean) => {
+    async (
+      cursor: string | null,
+      append: boolean,
+      signal?: AbortSignal | null
+    ) => {
       const params = new URLSearchParams();
       params.set("limit", String(PAGE_SIZE));
       if (cursor) params.set("cursor", cursor);
@@ -68,39 +73,63 @@ export function WorkspaceInvitesTab({ tenant, permissions }: Props) {
       params.set("sortDir", sortDir);
       if (searchSent.trim()) params.set("search", searchSent.trim());
       if (statuses.length) params.set("statuses", statuses.join(","));
-      const res = await apiFetch(
-        `/api/settings/workspace/invitations?${params.toString()}`
-      );
-      const data = (await res.json()) as {
-        data?: { items?: InvitationItem[]; nextCursor?: string | null };
-      };
-      const list = data.data?.items ?? [];
-      const next = data.data?.nextCursor ?? null;
-      if (append) {
-        setItems((prev) => [...prev, ...list]);
-      } else {
-        setItems(list);
+      try {
+        const res = await apiFetch(
+          `/api/settings/workspace/invitations?${params.toString()}`,
+          { signal }
+        );
+        if (signal?.aborted) return null;
+        const data = (await res.json()) as {
+          data?: { items?: InvitationItem[]; nextCursor?: string | null };
+        };
+        if (signal?.aborted) return null;
+        const list = data.data?.items ?? [];
+        const next = data.data?.nextCursor ?? null;
+        if (append) {
+          setItems((prev) => {
+            const existingIds = new Set(prev.map((i) => i.id));
+            const newItems = list.filter((item) => !existingIds.has(item.id));
+            return [...prev, ...newItems];
+          });
+        } else {
+          loadingMoreRef.current = false;
+          setItems(list);
+        }
+        setNextCursor(next);
+        return next;
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") return null;
+        throw err;
       }
-      setNextCursor(next);
-      return next;
     },
     [apiFetch, sortBy, sortDir, searchSent, statuses]
   );
 
-  const loadInitial = useCallback(() => {
-    setLoading(true);
-    fetchPage(null, false).finally(() => setLoading(false));
-  }, [fetchPage]);
+  const loadInitial = useCallback(
+    (signal?: AbortSignal | null) => {
+      setLoading(true);
+      fetchPage(null, false, signal).finally(() => {
+        if (!signal?.aborted) setLoading(false);
+      });
+    },
+    [fetchPage]
+  );
 
   useEffect(() => {
-    loadInitial();
+    const controller = new AbortController();
+    loadInitial(controller.signal);
+    return () => controller.abort();
   }, [sortBy, sortDir, searchSent, statuses.join(",")]);
 
   const loadMore = useCallback(() => {
-    if (!nextCursor || loadingMore) return;
+    if (!nextCursor || loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
     setLoadingMore(true);
-    fetchPage(nextCursor, true).finally(() => setLoadingMore(false));
-  }, [nextCursor, loadingMore, fetchPage]);
+    fetchPage(nextCursor, true).finally(() => {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+    });
+  }, [nextCursor, fetchPage]);
 
   useEffect(() => {
     const el = scrollRef.current;
