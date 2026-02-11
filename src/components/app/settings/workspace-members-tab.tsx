@@ -63,7 +63,7 @@ export function WorkspaceMembersTab({ tenant, permissions }: Props) {
   const canDisable = permSet.has("tenant.users.disable");
   const canManage = permSet.has("tenant.users.manage");
   const canChangeStatus = canManage || canDisable;
-  const canEnable = canManage;
+  const canEnable = canManage || canDisable;
   const apiFetch = useApiFetch();
   const [items, setItems] = useState<MemberItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
