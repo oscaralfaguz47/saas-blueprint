@@ -26,13 +26,20 @@ export function TenantPermissionsProvider({ children }: { children: React.ReactN
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiFetch("/api/tenant/permissions", { showToastOnError: false })
-      .then((r) => r.json())
-      .then((data: { data?: { permissions?: string[] } }) => {
-        setPermissions(data.data?.permissions ?? []);
+    const controller = new AbortController();
+    const signal = controller.signal;
+    apiFetch("/api/tenant/permissions", { showToastOnError: false, signal })
+      .then((r) => (signal.aborted ? null : r.json()))
+      .then((data: { data?: { permissions?: string[] } } | null) => {
+        if (data && !signal.aborted) setPermissions(data.data?.permissions ?? []);
       })
-      .catch(() => setPermissions([]))
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (!signal.aborted) setPermissions([]);
+      })
+      .finally(() => {
+        if (!signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
   }, [apiFetch]);
 
   const has = useCallback(

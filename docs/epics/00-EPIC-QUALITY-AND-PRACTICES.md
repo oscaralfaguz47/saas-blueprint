@@ -72,6 +72,12 @@ Use **shared helpers** (e.g. `canAccessRequest`, `resolveTenantPlan`, `tryConsum
   - **Do not cache** (without explicit design): Tenant-scoped list or detail responses (stale data risk); anything that must reflect immediate writes (mutations, access changes); raw tokens or secrets.
   - Prefer request-scoped or short-TTL caches; document invalidation and tenant isolation for any shared cache. Use platform primitives (e.g. React `cache()`, Next `unstable_cache`) where they respect request/tenant boundaries.
 
+- **Client-side fetch (React)** — keep best performance and avoid duplicate requests:
+  - In development, React Strict Mode double-mounts components, so any `useEffect` that fetches data runs twice. To avoid redundant network calls and flicker (e.g. empty state then data), **always cancel in-flight fetches on effect cleanup**.
+  - **Pattern**: In `useEffect`, create an `AbortController`, pass `controller.signal` to `fetch` (or to your API client that forwards it to `fetch`). In the effect cleanup, call `controller.abort()`. Only update state (e.g. set data, set loading false) when `!signal.aborted`, so the cancelled request does not change UI state.
+  - Apply this to every client-side data fetch triggered by `useEffect` (e.g. list loads, tenant/permissions providers, infinite scroll initial load). Use the same pattern for “load more” / pagination: guard with a ref (e.g. `loadingMoreRef`) to prevent concurrent requests with the same cursor, and deduplicate appended items by id when merging pages.
+  - This is standard React practice: cleanup side effects in the effect return; it reduces wasted work in dev and avoids updating unmounted components. Do not disable Strict Mode to avoid double fetches.
+
 ---
 
 ## 5. API contract (all API-facing epics)

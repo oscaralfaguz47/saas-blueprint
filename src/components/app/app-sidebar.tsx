@@ -86,13 +86,21 @@ export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps)
   useEffect(() => {
     const sidebarVisible = !isMobile || open;
     if (!sidebarVisible) return;
+    const controller = new AbortController();
+    const signal = controller.signal;
     queueMicrotask(() => setTenantsLoading(true));
-    apiFetch("/api/tenant", { showToastOnError: true })
-      .then((r) => r.json())
-      .then((json: { data?: { tenants?: TenantItem[] } }) => {
-        setTenants(json.data?.tenants ?? []);
+    apiFetch("/api/tenant", { showToastOnError: true, signal })
+      .then((r) => (signal.aborted ? null : r.json()))
+      .then((json: { data?: { tenants?: TenantItem[] } } | null) => {
+        if (json && !signal.aborted) setTenants(json.data?.tenants ?? []);
       })
-      .finally(() => setTenantsLoading(false));
+      .catch(() => {
+        if (!signal.aborted) setTenants([]);
+      })
+      .finally(() => {
+        if (!signal.aborted) setTenantsLoading(false);
+      });
+    return () => controller.abort();
   }, [isMobile, open]);
 
   const refetchTenants = () => {
