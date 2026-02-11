@@ -281,6 +281,8 @@ export function WorkspaceMembersTab({ tenant, permissions }: Props) {
             onKeyDown={onSearchKeyDown}
             onBlur={onSearchBlur}
             disabled={loading}
+            maxLength={200}
+            title="Max 200 characters"
             className="mt-1.5"
           />
         </div>
@@ -353,22 +355,13 @@ export function WorkspaceMembersTab({ tenant, permissions }: Props) {
       ) : isEmpty ? (
         <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface) p-8 text-center">
           <p className="text-sm text-(--text-secondary)">
-            Invite teammates to collaborate in this workspace.
+            No members found matching the filters.
           </p>
-          {canInvite ? (
-            <button
-              type="button"
-              onClick={() => setInviteOpen(true)}
-              className="mt-4 inline-flex h-10 min-h-[44px] cursor-pointer items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover)"
-            >
-              Invite people
-            </button>
-          ) : null}
         </div>
       ) : (
         <div
           ref={scrollRef}
-          className="overflow-auto rounded-lg border border-(--border-subtle) max-h-[60vh]"
+          className="overflow-auto rounded-lg border border-(--border-subtle) max-h-[72vh] min-h-[320px]"
         >
           <Table>
             <TableHeader>

@@ -102,7 +102,7 @@ export function TabsContent({ value, children, className = "" }: TabsContentProp
   return (
     <div
       className={
-        "rounded-b-lg rounded-t-none border border-t border-(--border-subtle) bg-(--bg-surface) shadow-sm -mt-px p-6 " +
+        "rounded-b-lg rounded-t-none border border-t border-(--border-subtle) bg-(--bg-surface) shadow-sm -mt-px p-8 " +
         className
       }
     >
