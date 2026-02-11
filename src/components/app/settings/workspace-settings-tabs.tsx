@@ -25,6 +25,8 @@ type Tenant = {
 type Props = {
   tenant: Tenant;
   permissions: string[];
+  currentUserId: string;
+  currentUserRole: string;
 };
 
 const ALL_TABS: { id: WorkspaceSettingsTab; label: string; permission: string }[] = [
@@ -34,7 +36,12 @@ const ALL_TABS: { id: WorkspaceSettingsTab; label: string; permission: string }[
   { id: "billing", label: "Billing", permission: "tenant.billing.manage" },
 ];
 
-export function WorkspaceSettingsTabs({ tenant, permissions }: Props) {
+export function WorkspaceSettingsTabs({
+  tenant,
+  permissions,
+  currentUserId,
+  currentUserRole,
+}: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const permSet = new Set(permissions);
@@ -76,7 +83,12 @@ export function WorkspaceSettingsTabs({ tenant, permissions }: Props) {
           <WorkspaceGeneralTab tenant={tenant} />
         </TabsContent>
         <TabsContent value="members">
-          <WorkspaceMembersTab tenant={tenant} permissions={permissions} />
+          <WorkspaceMembersTab
+            tenant={tenant}
+            permissions={permissions}
+            currentUserId={currentUserId}
+            currentUserRole={currentUserRole}
+          />
         </TabsContent>
         <TabsContent value="invites">
           <WorkspaceInvitesTab tenant={tenant} permissions={permissions} />

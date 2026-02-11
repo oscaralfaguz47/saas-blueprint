@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { authOptions } from "@/server/auth-options";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { getTenantPermissions } from "@/server/security/tenant-authorization";
+import { getHighestRoleName } from "@/server/security/authority";
 import { prisma } from "@/server/db";
 import { Container } from "@/components/ui/container";
 import Link from "next/link";
@@ -65,14 +66,25 @@ export default async function WorkspaceSettingsPage() {
     );
   }
 
-  const permissions = await getTenantPermissions({
-    userId: session.user.id,
-    tenantId: tenant.id,
-  });
+  const [permissions, currentUserMembership] = await Promise.all([
+    getTenantPermissions({
+      userId: session.user.id,
+      tenantId: tenant.id,
+    }),
+    prisma.tenantMembership.findUnique({
+      where: { tenantId_userId: { tenantId: tenant.id, userId: session.user.id } },
+      select: { roles: { select: { role: { select: { name: true } } } } },
+    }),
+  ]);
   const canAccessAnyTab = WORKSPACE_SETTINGS_PERMISSIONS.some((p) =>
     permissions.includes(p)
   );
   if (!canAccessAnyTab) redirect("/unauthorized");
+
+  const currentUserRole =
+    getHighestRoleName(
+      currentUserMembership?.roles.map((r) => r.role.name) ?? []
+    ) ?? "Member";
 
   return (
     <Suspense
@@ -94,7 +106,12 @@ export default async function WorkspaceSettingsPage() {
         </Container>
       }
     >
-      <WorkspaceSettingsTabs tenant={tenant} permissions={permissions} />
+      <WorkspaceSettingsTabs
+        tenant={tenant}
+        permissions={permissions}
+        currentUserId={session.user.id}
+        currentUserRole={currentUserRole}
+      />
     </Suspense>
   );
 }

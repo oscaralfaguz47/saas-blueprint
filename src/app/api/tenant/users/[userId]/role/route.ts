@@ -4,6 +4,7 @@ import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import {
   getHighestRoleName,
+  getRoleRank,
   canManageTargetByRole,
   onlyPrimaryOwnerCanChangeOwnerLevel,
   isOwnerLevel,
@@ -96,6 +97,10 @@ export const PATCH = withErrorHandler(async (
   }
 
   if (!canManageTargetByRole(actorRole, currentTargetRole)) {
+    return ApiErrors.FORBIDDEN();
+  }
+
+  if (getRoleRank(actorRole) <= getRoleRank(body.role)) {
     return ApiErrors.FORBIDDEN();
   }
 

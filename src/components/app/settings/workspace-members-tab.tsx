@@ -58,13 +58,47 @@ type MemberItem = {
   joinedAt: string | null;
 };
 
-type Props = { tenant: Tenant; permissions: string[] };
+type Props = {
+  tenant: Tenant;
+  permissions: string[];
+  currentUserId: string;
+  currentUserRole: string;
+};
+
+const ROLE_RANK: Record<string, number> = {
+  "Primary Owner": 5,
+  Owner: 4,
+  Admin: 3,
+  Finance: 2,
+  Member: 1,
+};
+
+function roleRank(name: string): number {
+  return ROLE_RANK[name] ?? 0;
+}
+
+/** Role options the current user can assign (only roles strictly below their rank). */
+function getAssignableRoles(currentUserRole: string): { value: string; label: string }[] {
+  const rank = roleRank(currentUserRole);
+  return ROLES_ASSIGN.filter((r) => roleRank(r.value) < rank);
+}
+
+/** Whether the current user can show Enable/Disable for a member with the given role (hierarchy: only for roles below current user). */
+function canShowStatusButtonsFor(currentUserRole: string, targetRole: string): boolean {
+  return roleRank(currentUserRole) > roleRank(targetRole);
+}
 
 type SortBy = "user" | "role" | "status" | "joined";
 type SortDir = "asc" | "desc";
 
-export function WorkspaceMembersTab({ tenant, permissions }: Props) {
+export function WorkspaceMembersTab({
+  tenant,
+  permissions,
+  currentUserId,
+  currentUserRole,
+}: Props) {
   const permSet = new Set(permissions);
+  const assignableRoles = getAssignableRoles(currentUserRole);
   const canManageRoles = permSet.has("tenant.roles.manage");
   const canInvite = permSet.has("tenant.users.invite");
   const canDisable = permSet.has("tenant.users.disable");
@@ -393,11 +427,22 @@ export function WorkspaceMembersTab({ tenant, permissions }: Props) {
             </TableHeader>
             <TableBody>
               {items.map((m) => {
+                const isCurrentUser = m.userId === currentUserId;
                 const isOwnerLevel =
                   m.role === "Primary Owner" || m.role === "Owner";
                 const isPrimaryOwner = m.role === "Primary Owner";
                 const isLastOwnerLevel =
                   isOwnerLevel && ownerLevelCount <= 1;
+                const showRoleSelect =
+                  canManageRoles &&
+                  !isLastOwnerLevel &&
+                  !isPrimaryOwner &&
+                  !isCurrentUser &&
+                  roleRank(currentUserRole) > roleRank(m.role) &&
+                  assignableRoles.length > 0;
+                const showStatusButtons =
+                  canShowStatusButtonsFor(currentUserRole, m.role) &&
+                  !isCurrentUser;
                 return (
                   <TableRow key={m.userId}>
                     <TableCell>
@@ -429,9 +474,7 @@ export function WorkspaceMembersTab({ tenant, permissions }: Props) {
                           >
                             <Spinner size="sm" />
                           </div>
-                        ) : canManageRoles &&
-                          !isLastOwnerLevel &&
-                          !isPrimaryOwner ? (
+                        ) : showRoleSelect ? (
                           <select
                             value={m.role}
                             onChange={(e) =>
@@ -440,7 +483,7 @@ export function WorkspaceMembersTab({ tenant, permissions }: Props) {
                             disabled={roleLoadingId === m.userId}
                             className="min-h-[44px] min-w-[100px] cursor-pointer rounded border border-(--border-subtle) bg-(--bg-surface) px-2 py-1 text-xs text-(--text-primary) disabled:opacity-60"
                           >
-                            {ROLES_ASSIGN.map((r) => (
+                            {assignableRoles.map((r) => (
                               <option key={r.value} value={r.value}>
                                 {r.label}
                               </option>
@@ -484,7 +527,8 @@ export function WorkspaceMembersTab({ tenant, permissions }: Props) {
                           )}
                           <span className="hidden sm:inline">Copy Email</span>
                         </button>
-                        {!isLastOwnerLevel &&
+                        {showStatusButtons &&
+                          !isLastOwnerLevel &&
                           (canDisable || canManage) &&
                           m.status === "ACTIVE" && (
                           <button
@@ -501,7 +545,10 @@ export function WorkspaceMembersTab({ tenant, permissions }: Props) {
                             {statusLoadingId === m.userId ? <Spinner size="sm" /> : "Disable"}
                           </button>
                         )}
-                        {!isLastOwnerLevel && canEnable && m.status !== "ACTIVE" && (
+                        {showStatusButtons &&
+                          !isLastOwnerLevel &&
+                          canEnable &&
+                          m.status !== "ACTIVE" && (
                           <button
                             type="button"
                             onClick={() =>

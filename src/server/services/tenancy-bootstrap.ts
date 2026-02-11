@@ -195,9 +195,9 @@ export async function ensureDefaultTenantForUser(params: {
 }
 
 /**
- * A5: Ensure user has a default workspace; if none, create a DRAFT workspace (to be claimed).
+ * A5: Ensure user has a default workspace; if none (or only disabled), create a DRAFT workspace (to be claimed).
  * Returns the default membership (and tenant) whether existing or newly created.
- * Used by app layout and setup page so first-time users get a DRAFT to claim.
+ * Only ACTIVE memberships count as "existing"; if the user's only default is DISABLED (e.g. disabled from invited workspace), we create a new DRAFT.
  */
 export async function ensureDraftWorkspaceForUser(params: {
   userId: string;
@@ -222,7 +222,7 @@ export async function ensureDraftWorkspaceForUser(params: {
   }
 
   const existing = await prisma.tenantMembership.findFirst({
-    where: { userId, isDefaultTenant: true },
+    where: { userId, isDefaultTenant: true, status: "ACTIVE" },
     select: {
       id: true,
       tenantId: true,
@@ -234,7 +234,7 @@ export async function ensureDraftWorkspaceForUser(params: {
 
   const result = await prisma.$transaction(async (tx) => {
     const again = await tx.tenantMembership.findFirst({
-      where: { userId, isDefaultTenant: true },
+      where: { userId, isDefaultTenant: true, status: "ACTIVE" },
       select: {
         id: true,
         tenantId: true,
@@ -254,6 +254,11 @@ export async function ensureDraftWorkspaceForUser(params: {
         createdByUserId: userId,
       },
       select: { id: true, name: true, slug: true, status: true },
+    });
+
+    await tx.tenantMembership.updateMany({
+      where: { userId },
+      data: { isDefaultTenant: false },
     });
 
     const membership = await tx.tenantMembership.create({
