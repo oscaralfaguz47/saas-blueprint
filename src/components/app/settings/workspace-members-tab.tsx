@@ -27,6 +27,7 @@ const ROLE_HELP = (
 );
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { InviteMemberModal } from "./invite-member-modal";
+import { TransferOwnershipModal } from "./transfer-ownership-modal";
 
 const PAGE_SIZE = 10;
 /** Roles that can be assigned via the UI (Primary Owner is only via transfer). */
@@ -46,7 +47,7 @@ const STATUSES = [
   { value: "DISABLED", label: "Disabled" },
 ];
 
-type Tenant = { id: string; name: string };
+type Tenant = { id: string; name: string; slug?: string };
 
 type MemberItem = {
   userId: string;
@@ -117,6 +118,7 @@ export function WorkspaceMembersTab({
   const [sortBy, setSortBy] = useState<SortBy>("joined");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
   const [statusLoadingId, setStatusLoadingId] = useState<string | null>(null);
   const [roleLoadingId, setRoleLoadingId] = useState<string | null>(null);
   const [copiedUserId, setCopiedUserId] = useState<string | null>(null);
@@ -301,15 +303,26 @@ export function WorkspaceMembersTab({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-medium text-(--text-primary)">Members</h2>
-        {canInvite ? (
-          <button
-            type="button"
-            onClick={() => setInviteOpen(true)}
-            className="inline-flex h-10 min-h-[44px] cursor-pointer items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover)"
-          >
-            Invite people
-          </button>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          {currentUserRole === "Primary Owner" && tenant.slug ? (
+            <button
+              type="button"
+              onClick={() => setTransferOpen(true)}
+              className="inline-flex h-10 min-h-[44px] cursor-pointer items-center justify-center rounded-lg border border-(--border-subtle) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev)"
+            >
+              Transfer ownership
+            </button>
+          ) : null}
+          {canInvite ? (
+            <button
+              type="button"
+              onClick={() => setInviteOpen(true)}
+              className="inline-flex h-10 min-h-[44px] cursor-pointer items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover)"
+            >
+              Invite people
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -369,6 +382,26 @@ export function WorkspaceMembersTab({
         workspaceName={tenant.name}
         onSuccess={loadInitial}
       />
+      {tenant.slug ? (
+        <TransferOwnershipModal
+          open={transferOpen}
+          onClose={() => setTransferOpen(false)}
+          workspaceName={tenant.name}
+          workspaceSlug={tenant.slug}
+          currentPrimaryOwnerName={
+            items.find((m) => m.userId === currentUserId)?.name ??
+            items.find((m) => m.userId === currentUserId)?.email ??
+            "You"
+          }
+          eligibleMembers={items.filter(
+            (m) =>
+              m.userId !== currentUserId &&
+              m.status === "ACTIVE" &&
+              (m.role === "Owner" || m.role === "Admin")
+          )}
+          onSuccess={loadInitial}
+        />
+      ) : null}
 
       {loading ? (
         <div className="overflow-hidden rounded-lg border border-(--border-subtle)">

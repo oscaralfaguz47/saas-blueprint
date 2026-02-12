@@ -87,10 +87,18 @@ export const authOptions: NextAuthOptions = {
   },
 
   callbacks: {
+    async jwt({ token }) {
+      // A7: Persist iat for step-up (recent auth window) on transfer primary ownership.
+      if (token.iat == null) {
+        token.iat = Math.floor(Date.now() / 1000);
+      }
+      return token;
+    },
     async session({ session, token }) {
       // Keep session callback pure: no DB writes / bootstraps here.
       if (session.user) {
         session.user.id = token.sub ?? session.user.id;
+        session.user.iat = token.iat ?? undefined;
       }
       return session;
     },

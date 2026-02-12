@@ -10,6 +10,8 @@ declare module "next-auth" {
       name?: string | null;
       email?: string | null;
       image?: string | null;
+      /** A7: JWT iat (seconds) for step-up / recent-auth checks (e.g. transfer ownership). */
+      iat?: number;
     };
   }
 
@@ -24,5 +26,7 @@ declare module "next-auth/jwt" {
     email?: string;
     role?: RoleKey;
     roleRefreshedAt?: number;
+    /** Issued-at (seconds); set in jwt callback for A7 step-up. */
+    iat?: number;
   }
 }

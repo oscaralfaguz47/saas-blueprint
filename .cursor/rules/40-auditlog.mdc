@@ -22,6 +22,7 @@ Invites/Users/Roles:
 - tenant.invite.revoked
 - tenant.user.disabled (if used)
 - tenant.role.changed (role assignment changes)
+- tenant.membership.primary_owner_transferred (A7 transfer primary ownership)
 Requests:
 - request.created
 - request.closed

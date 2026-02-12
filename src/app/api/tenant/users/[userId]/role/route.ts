@@ -83,6 +83,7 @@ export const PATCH = withErrorHandler(async (
   const actorRole = getHighestRoleName(actorRoleNames) ?? "Member";
   const currentTargetRole = getHighestRoleName(targetRoleNames) ?? "Member";
 
+  // A7: Generic role endpoint must not assign or demote Primary Owner; use dedicated transfer endpoint.
   if (currentTargetRole === "Primary Owner") {
     return ApiErrors.VALIDATION_ERROR(
       "Use transfer primary ownership to change the primary owner.",
