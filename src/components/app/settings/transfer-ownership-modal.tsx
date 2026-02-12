@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { IconCheck } from "@/components/ui/icons";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { useToast } from "@/components/ui/toast";
 
@@ -172,7 +173,7 @@ export function TransferOwnershipModal({
               maxLength={200}
             />
           </div>
-          <div className="max-h-[240px] overflow-auto rounded-lg border border-(--border-subtle)">
+          <div className="max-h-[240px] overflow-x-hidden overflow-y-auto rounded-lg border border-(--border-subtle)">
             {filteredMembers.length === 0 ? (
               <p className="p-4 text-sm text-(--text-muted)">
                 {eligibleMembers.length === 0
@@ -181,27 +182,45 @@ export function TransferOwnershipModal({
               </p>
             ) : (
               <ul className="divide-y divide-(--border-subtle)">
-                {filteredMembers.map((m) => (
-                  <li key={m.userId}>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedUserId(m.userId)}
-                      className={`flex w-full items-center gap-2 px-4 py-3 text-left text-sm transition-colors ${
-                        selectedUserId === m.userId
-                          ? "bg-(--color-primary/10) text-(--text-primary)"
-                          : "text-(--text-primary) hover:bg-(--bg-surface-elev)"
-                      }`}
-                    >
-                      <span className="font-medium">{m.name ?? m.email ?? "—"}</span>
-                      {m.email && m.name ? (
-                        <span className="text-(--text-muted)">{m.email}</span>
-                      ) : null}
-                      <span className="ml-auto rounded-full bg-(--bg-surface-elev) px-2 py-0.5 text-xs text-(--text-secondary)">
-                        {m.role}
-                      </span>
-                    </button>
-                  </li>
-                ))}
+                {filteredMembers.map((m) => {
+                  const isSelected = selectedUserId === m.userId;
+                  return (
+                    <li key={m.userId} className="min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedUserId(m.userId)}
+                        className={`flex w-full min-w-0 items-center gap-3 px-4 py-3 text-left text-sm transition-colors ${
+                          isSelected
+                            ? "border-l-4 border-l-(--color-primary) bg-(--color-primary)/15 text-(--text-primary) ring-1 ring-(--color-primary)/30"
+                            : "border-l-4 border-l-transparent text-(--text-primary) hover:bg-(--bg-surface-elev)"
+                        }`}
+                        aria-pressed={isSelected}
+                        aria-label={`Select ${m.name ?? m.email ?? "member"} as new Primary Owner`}
+                      >
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-(--bg-surface-elev)">
+                          {isSelected ? (
+                            <IconCheck size={14} className="text-(--color-primary)" aria-hidden />
+                          ) : (
+                            <span className="h-2.5 w-2.5 rounded-full border border-(--border-subtle)" aria-hidden />
+                          )}
+                        </span>
+                        <span className="min-w-0 flex-1 overflow-hidden">
+                          <span className="block truncate font-medium text-(--text-primary)">
+                            {m.name ?? m.email ?? "—"}
+                          </span>
+                          {m.email && m.name ? (
+                            <span className="block truncate text-(--text-muted)">
+                              {m.email}
+                            </span>
+                          ) : null}
+                        </span>
+                        <span className="shrink-0 rounded-full bg-(--bg-surface-elev) px-2 py-0.5 text-xs text-(--text-secondary)">
+                          {m.role}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>
