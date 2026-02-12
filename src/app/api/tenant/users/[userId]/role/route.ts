@@ -104,13 +104,17 @@ export const PATCH = withErrorHandler(async (
     return ApiErrors.FORBIDDEN();
   }
 
-  const ownerLevelCount = await getOwnerLevelCount(tenant.id);
-  const targetHadOwnerLevel = isOwnerLevel(currentTargetRole);
-  const willAddOwner = body.role === "Owner";
-  const ownerLevelAfter =
-    ownerLevelCount - (targetHadOwnerLevel ? 1 : 0) + (willAddOwner ? 1 : 0);
-  if (ownerLevelAfter < 1) {
-    return ApiErrors.VALIDATION_ERROR("At least one owner-level user must remain.");
+  // Primary Owner can always change others (including downgrading the last Owner); they remain owner-level.
+  const actorIsPrimaryOwner = actorRole === "Primary Owner";
+  if (!actorIsPrimaryOwner) {
+    const ownerLevelCount = await getOwnerLevelCount(tenant.id);
+    const targetHadOwnerLevel = isOwnerLevel(currentTargetRole);
+    const willAddOwner = body.role === "Owner";
+    const ownerLevelAfter =
+      ownerLevelCount - (targetHadOwnerLevel ? 1 : 0) + (willAddOwner ? 1 : 0);
+    if (ownerLevelAfter < 1) {
+      return ApiErrors.VALIDATION_ERROR("At least one owner-level user must remain.");
+    }
   }
 
   const roleIdByName = new Map(roles.map((r) => [r.name, r.id]));

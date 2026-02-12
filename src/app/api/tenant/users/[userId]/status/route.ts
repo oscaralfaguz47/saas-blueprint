@@ -96,9 +96,12 @@ export const PATCH = withErrorHandler(async (
   }
 
   if (body.status === "DISABLED" && isOwnerLevel(targetRole)) {
-    const ownerLevelCount = await getOwnerLevelCount(tenant.id);
-    if (ownerLevelCount <= 1) {
-      return ApiErrors.VALIDATION_ERROR("Cannot disable the last owner-level user.");
+    const actorIsPrimaryOwner = actorRole === "Primary Owner";
+    if (!actorIsPrimaryOwner) {
+      const ownerLevelCount = await getOwnerLevelCount(tenant.id);
+      if (ownerLevelCount <= 1) {
+        return ApiErrors.VALIDATION_ERROR("Cannot disable the last owner-level user.");
+      }
     }
   }
 
