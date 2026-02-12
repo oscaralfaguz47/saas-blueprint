@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
 import { writeAuditLog } from "@/server/services/audit";
+import { deleteUserDraftTenants } from "@/server/services/tenancy-bootstrap";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 
 function getIp(req: Request): string | null {
@@ -77,6 +78,11 @@ export const POST = withErrorHandler(async (
         data: { isDefaultTenant: true },
       }),
     ]);
+    await deleteUserDraftTenants({
+      userId: user.id,
+      ipAddress: getIp(req),
+      userAgent: getUserAgent(req),
+    });
     return apiSuccess({
       ok: true,
       alreadyMember: true,
@@ -180,6 +186,12 @@ export const POST = withErrorHandler(async (
       membershipId: result.membershipId,
       reenabled: result.reenabled,
     },
+    ipAddress: getIp(req),
+    userAgent: getUserAgent(req),
+  });
+
+  await deleteUserDraftTenants({
+    userId: session.user.id,
     ipAddress: getIp(req),
     userAgent: getUserAgent(req),
   });

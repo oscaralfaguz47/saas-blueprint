@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
 import { writeAuditLog } from "@/server/services/audit";
+import { deleteUserDraftTenants } from "@/server/services/tenancy-bootstrap";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { parseBody, acceptInvitationSchema } from "@/lib/validations";
 import crypto from "crypto";
@@ -70,6 +71,11 @@ export const POST = withErrorHandler(async (req: Request) => {
         data: { isDefaultTenant: true },
       }),
     ]);
+    await deleteUserDraftTenants({
+      userId: user.id,
+      ipAddress: getIp(req),
+      userAgent: getUserAgent(req),
+    });
     const res = apiSuccess({
       ok: true,
       alreadyMember: true,
@@ -200,6 +206,12 @@ export const POST = withErrorHandler(async (req: Request) => {
       userAgent: getUserAgent(req),
     });
   }
+
+  await deleteUserDraftTenants({
+    userId: session.user.id,
+    ipAddress: getIp(req),
+    userAgent: getUserAgent(req),
+  });
 
   const res = apiSuccess({
     ok: true,

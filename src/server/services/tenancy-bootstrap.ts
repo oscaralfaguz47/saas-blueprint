@@ -221,6 +221,7 @@ export async function ensureDraftWorkspaceForUser(params: {
     throw err;
   }
 
+  // Reuse existing default (ACTIVE or DRAFT).
   const existing = await prisma.tenantMembership.findFirst({
     where: { userId, isDefaultTenant: true, status: "ACTIVE" },
     select: {
@@ -229,12 +230,37 @@ export async function ensureDraftWorkspaceForUser(params: {
       tenant: { select: { id: true, name: true, slug: true, status: true } },
     },
   });
+  if (existing?.tenant) return existing as { id: string; tenantId: string; tenant: { id: string; name: string; slug: string; status: string } };
 
-  if (existing) return existing as { id: string; tenantId: string; tenant: { id: string; name: string; slug: string; status: string } };
+  // Reuse any existing DRAFT membership for this user (only one DRAFT per user).
+  const existingDraft = await prisma.tenantMembership.findFirst({
+    where: {
+      userId,
+      status: "ACTIVE",
+      tenant: { status: "DRAFT" },
+    },
+    select: {
+      id: true,
+      tenantId: true,
+      tenant: { select: { id: true, name: true, slug: true, status: true } },
+    },
+    orderBy: { joinedAt: "asc" },
+  });
+  if (existingDraft?.tenant) {
+    await prisma.tenantMembership.updateMany({
+      where: { userId },
+      data: { isDefaultTenant: false },
+    });
+    await prisma.tenantMembership.update({
+      where: { id: existingDraft.id },
+      data: { isDefaultTenant: true },
+    });
+    return existingDraft as { id: string; tenantId: string; tenant: { id: string; name: string; slug: string; status: string } };
+  }
 
   const result = await prisma.$transaction(async (tx) => {
     const again = await tx.tenantMembership.findFirst({
-      where: { userId, isDefaultTenant: true, status: "ACTIVE" },
+      where: { userId, status: "ACTIVE", tenant: { status: "DRAFT" } },
       select: {
         id: true,
         tenantId: true,
@@ -338,6 +364,40 @@ export async function ensureDraftWorkspaceForUser(params: {
   });
 
   return result;
+}
+
+/**
+ * A5: Delete all DRAFT tenants created by this user (e.g. after they accept an invite).
+ * Ensures only one logical "draft" per user and cleans up when they join another workspace.
+ */
+export async function deleteUserDraftTenants(params: {
+  userId: string;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+}): Promise<{ deletedCount: number }> {
+  const { userId, ipAddress, userAgent } = params;
+
+  const drafts = await prisma.tenant.findMany({
+    where: { status: "DRAFT", createdByUserId: userId },
+    select: { id: true, name: true, slug: true },
+  });
+
+  for (const tenant of drafts) {
+    await writeAuditLog({
+      actorUserId: userId,
+      actorContext: "TENANT",
+      tenantId: tenant.id,
+      action: "workspace.draft_deleted",
+      targetType: "Tenant",
+      targetId: tenant.id,
+      metadata: { tenantName: tenant.name, tenantSlug: tenant.slug, reason: "user_accepted_invite" },
+      ipAddress,
+      userAgent,
+    });
+    await prisma.tenant.delete({ where: { id: tenant.id } });
+  }
+
+  return { deletedCount: drafts.length };
 }
 
 /**
