@@ -17,17 +17,17 @@ export type PendingInvitationForSetup = {
 };
 
 /**
- * Look up the first valid pending invite for this user's email (server-side only).
- * Used to show Accept/Decline on the claim page instead of "use the link in your email".
+ * Look up all valid pending invites for this user's email (server-side only).
+ * Used to show Accept/Decline for each on the claim page.
  */
-async function getFirstPendingInvitation(
+async function getPendingInvitations(
   userEmail: string | null | undefined
-): Promise<PendingInvitationForSetup | null> {
-  if (!userEmail || typeof userEmail !== "string") return null;
+): Promise<PendingInvitationForSetup[]> {
+  if (!userEmail || typeof userEmail !== "string") return [];
   const normalized = userEmail.trim().toLowerCase();
-  if (!normalized) return null;
+  if (!normalized) return [];
 
-  const invite = await prisma.tenantInvitation.findFirst({
+  const invites = await prisma.tenantInvitation.findMany({
     where: {
       email: { equals: normalized, mode: "insensitive" },
       status: "PENDING",
@@ -43,13 +43,12 @@ async function getFirstPendingInvitation(
     orderBy: { createdAt: "desc" },
   });
 
-  if (!invite) return null;
-  return {
-    id: invite.id,
-    workspaceName: invite.tenant.name,
-    invitedByName: invite.invitedByUser?.name ?? null,
-    invitedByEmail: invite.invitedByUser?.email ?? null,
-  };
+  return invites.map((inv) => ({
+    id: inv.id,
+    workspaceName: inv.tenant.name,
+    invitedByName: inv.invitedByUser?.name ?? null,
+    invitedByEmail: inv.invitedByUser?.email ?? null,
+  }));
 }
 
 /**
@@ -98,14 +97,14 @@ export default async function SetupWorkspacePage() {
     throw err;
   }
 
-  const [pendingInvitation, lastInactiveWorkspaceName] = await Promise.all([
-    getFirstPendingInvitation(session.user.email),
+  const [pendingInvitations, lastInactiveWorkspaceName] = await Promise.all([
+    getPendingInvitations(session.user.email),
     getLastInactiveWorkspaceName(session.user.id),
   ]);
 
   return (
     <SetupWorkspaceClient
-      pendingInvitation={pendingInvitation}
+      pendingInvitations={pendingInvitations}
       lastInactiveWorkspaceName={lastInactiveWorkspaceName}
     />
   );

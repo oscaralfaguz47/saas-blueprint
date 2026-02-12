@@ -11,8 +11,8 @@ import { CLAIM_SLUG_MIN, CLAIM_SLUG_MAX } from "@/lib/validations";
 import type { PendingInvitationForSetup } from "./page";
 
 type SetupWorkspaceClientProps = {
-  /** When set, show Accept/Decline for this pending invite. */
-  pendingInvitation?: PendingInvitationForSetup | null;
+  /** Pending invites to show Accept/Decline for (all for this user's email). */
+  pendingInvitations?: PendingInvitationForSetup[];
   /** When set, user has no active workspace but was previously in this workspace (now disabled). Show "no longer active" message. */
   lastInactiveWorkspaceName?: string | null;
 };
@@ -20,14 +20,14 @@ type SetupWorkspaceClientProps = {
 const REVOKED_OR_EXPIRED_CODE = "INVITATION_REVOKED_OR_EXPIRED";
 
 export default function SetupWorkspaceClient({
-  pendingInvitation: initialPendingInvitation = null,
+  pendingInvitations: initialPendingInvitations = [],
   lastInactiveWorkspaceName = null,
 }: SetupWorkspaceClientProps) {
   const router = useRouter();
   const apiFetch = useApiFetch();
   const { addToast } = useToast();
-  const [pendingInvitation, setPendingInvitation] = useState<PendingInvitationForSetup | null>(
-    initialPendingInvitation
+  const [pendingInvitations, setPendingInvitations] = useState<PendingInvitationForSetup[]>(
+    initialPendingInvitations
   );
   const [slug, setSlug] = useState("");
   const [checking, setChecking] = useState(false);
@@ -52,7 +52,7 @@ export default function SetupWorkspaceClient({
       }
       const data = (await res.json().catch(() => ({}))) as { details?: { code?: string }; message?: string };
       if (res.status === 404 || data.details?.code === REVOKED_OR_EXPIRED_CODE) {
-        setPendingInvitation(null);
+        setPendingInvitations((prev) => prev.filter((inv) => inv.id !== id));
         addToast("info", "This invitation was revoked or has expired.");
         return;
       }
@@ -72,13 +72,12 @@ export default function SetupWorkspaceClient({
         showToastOnError: false,
       });
       if (res.ok) {
-        setPendingInvitation(null);
-        router.refresh();
+        setPendingInvitations((prev) => prev.filter((inv) => inv.id !== id));
         return;
       }
       const data = (await res.json().catch(() => ({}))) as { details?: { code?: string }; message?: string };
       if (res.status === 404 || data.details?.code === REVOKED_OR_EXPIRED_CODE) {
-        setPendingInvitation(null);
+        setPendingInvitations((prev) => prev.filter((inv) => inv.id !== id));
         addToast("info", "This invitation was revoked or has expired.");
         return;
       }
@@ -170,42 +169,47 @@ export default function SetupWorkspaceClient({
               continue, you can create a new workspace below.
             </div>
           )}
-          {pendingInvitation && (
-            <div
-              className="mb-4 rounded-lg border border-(--border-subtle) bg-(--bg-surface) p-4"
-              role="status"
-            >
-              <p className="font-medium text-(--text-primary)">{pendingInvitation.workspaceName}</p>
-              {(pendingInvitation.invitedByName ?? pendingInvitation.invitedByEmail) && (
-                <p className="mt-1 text-sm text-(--text-secondary)">
-                  Invited by {pendingInvitation.invitedByName ?? pendingInvitation.invitedByEmail ?? "Unknown"}
-                </p>
-              )}
-              <div className="mt-3 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleAcceptInvite(pendingInvitation.id)}
-                  disabled={!!acceptingId || !!decliningId}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-(--color-primary) px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
+          {pendingInvitations.length > 0 && (
+            <div className="mb-4 space-y-3">
+              {pendingInvitations.map((inv) => (
+                <div
+                  key={inv.id}
+                  className="rounded-lg border border-(--border-subtle) bg-(--bg-surface) p-4"
+                  role="status"
                 >
-                  {acceptingId === pendingInvitation.id ? (
-                    <Spinner size="sm" className="text-white" />
-                  ) : null}
-                  Accept
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDeclineInvite(pendingInvitation.id)}
-                  disabled={!!acceptingId || !!decliningId}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {decliningId === pendingInvitation.id ? <Spinner size="sm" /> : null}
-                  Decline
-                </button>
-              </div>
+                  <p className="font-medium text-(--text-primary)">{inv.workspaceName}</p>
+                  {(inv.invitedByName ?? inv.invitedByEmail) && (
+                    <p className="mt-1 text-sm text-(--text-secondary)">
+                      Invited by {inv.invitedByName ?? inv.invitedByEmail ?? "Unknown"}
+                    </p>
+                  )}
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleAcceptInvite(inv.id)}
+                      disabled={!!acceptingId || !!decliningId}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-(--color-primary) px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {acceptingId === inv.id ? (
+                        <Spinner size="sm" className="text-white" />
+                      ) : null}
+                      Accept
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeclineInvite(inv.id)}
+                      disabled={!!acceptingId || !!decliningId}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {decliningId === inv.id ? <Spinner size="sm" /> : null}
+                      Decline
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
-          {pendingInvitation && (
+          {pendingInvitations.length > 0 && (
             <p className="mb-2 text-sm font-medium text-(--text-secondary)">
               Or create your own workspace
             </p>
