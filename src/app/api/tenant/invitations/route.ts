@@ -6,6 +6,7 @@ import { prisma } from "@/server/db";
 import { writeAuditLog } from "@/server/services/audit";
 import { sendInvitationEmail } from "@/server/services/invitation-email";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
+import { getBaseUrlFromRequest } from "@/lib/request-utils";
 import { parseBody, createInvitationSchema } from "@/lib/validations";
 import crypto from "crypto";
 
@@ -148,7 +149,7 @@ export const POST = withErrorHandler(async (req: Request) => {
     userAgent: getUserAgent(req),
   });
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const baseUrl = getBaseUrlFromRequest(req);
   const inviteUrl = `${baseUrl.replace(/\/$/, "")}/invite?token=${encodeURIComponent(rawToken)}`;
 
   if (body.sendEmail !== false) {

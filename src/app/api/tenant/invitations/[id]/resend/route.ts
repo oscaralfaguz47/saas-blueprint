@@ -5,6 +5,7 @@ import { prisma } from "@/server/db";
 import { writeAuditLog } from "@/server/services/audit";
 import { sendInvitationEmail } from "@/server/services/invitation-email";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
+import { getBaseUrlFromRequest } from "@/lib/request-utils";
 import { z } from "zod";
 import crypto from "crypto";
 
@@ -85,7 +86,7 @@ export const POST = withErrorHandler(async (
     userAgent: req.headers.get("user-agent") ?? null,
   });
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const baseUrl = getBaseUrlFromRequest(req);
   await sendInvitationEmail({
     tenantName: invite.tenant.name,
     invitedEmail: invite.email,
