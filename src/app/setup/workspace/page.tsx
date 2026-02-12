@@ -19,6 +19,7 @@ async function getPendingInviteWorkspaceName(userEmail: string | null | undefine
   const invite = await prisma.tenantInvitation.findFirst({
     where: {
       email: { equals: normalized, mode: "insensitive" },
+      status: "PENDING",
       acceptedAt: null,
       revokedAt: null,
       expiresAt: { gt: new Date() },
@@ -27,6 +28,24 @@ async function getPendingInviteWorkspaceName(userEmail: string | null | undefine
   });
 
   return invite?.tenant?.name ?? null;
+}
+
+/**
+ * When user has no active workspace but has at least one DISABLED membership,
+ * return the name of the most recent such workspace (so we can show "You are no longer active in [Name]").
+ * Returns null for brand-new users who have never been in a workspace.
+ */
+async function getLastInactiveWorkspaceName(userId: string): Promise<string | null> {
+  const disabled = await prisma.tenantMembership.findFirst({
+    where: {
+      userId,
+      status: "DISABLED",
+      tenant: { status: "ACTIVE" },
+    },
+    orderBy: { joinedAt: "desc" },
+    select: { tenant: { select: { name: true } } },
+  });
+  return disabled?.tenant?.name ?? null;
 }
 
 export default async function SetupWorkspacePage() {
@@ -50,7 +69,15 @@ export default async function SetupWorkspacePage() {
     throw err;
   }
 
-  const pendingInviteWorkspaceName = await getPendingInviteWorkspaceName(session.user.email);
+  const [pendingInviteWorkspaceName, lastInactiveWorkspaceName] = await Promise.all([
+    getPendingInviteWorkspaceName(session.user.email),
+    getLastInactiveWorkspaceName(session.user.id),
+  ]);
 
-  return <SetupWorkspaceClient pendingInviteWorkspaceName={pendingInviteWorkspaceName} />;
+  return (
+    <SetupWorkspaceClient
+      pendingInviteWorkspaceName={pendingInviteWorkspaceName}
+      lastInactiveWorkspaceName={lastInactiveWorkspaceName}
+    />
+  );
 }

@@ -11,9 +11,14 @@ import { CLAIM_SLUG_MIN, CLAIM_SLUG_MAX } from "@/lib/validations";
 type SetupWorkspaceClientProps = {
   /** When set, user has a valid pending invite for this workspace (from server lookup by email). Show hint to use email link. */
   pendingInviteWorkspaceName?: string | null;
+  /** When set, user has no active workspace but was previously in this workspace (now disabled). Show "no longer active" message. */
+  lastInactiveWorkspaceName?: string | null;
 };
 
-export default function SetupWorkspaceClient({ pendingInviteWorkspaceName = null }: SetupWorkspaceClientProps) {
+export default function SetupWorkspaceClient({
+  pendingInviteWorkspaceName = null,
+  lastInactiveWorkspaceName = null,
+}: SetupWorkspaceClientProps) {
   const router = useRouter();
   const apiFetch = useApiFetch();
   const [slug, setSlug] = useState("");
@@ -94,6 +99,16 @@ export default function SetupWorkspaceClient({ pendingInviteWorkspaceName = null
           subtitle="Choose a URL for your workspace. You can use letters, numbers, and hyphens (3–80 characters)."
           badgeText="Setup"
         >
+          {lastInactiveWorkspaceName && (
+            <div
+              className="mb-4 rounded-lg border border-(--color-warning) bg-(--color-warning)/10 px-4 py-3 text-sm text-(--text-primary)"
+              role="status"
+            >
+              You are no longer active in{" "}
+              <span className="font-medium text-(--text-primary)">{lastInactiveWorkspaceName}</span>. If you want to
+              continue, you can create a new workspace below.
+            </div>
+          )}
           {pendingInviteWorkspaceName && (
             <div
               className="mb-4 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 py-3 text-sm text-(--text-secondary)"
