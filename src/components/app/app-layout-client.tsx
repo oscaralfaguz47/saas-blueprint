@@ -17,12 +17,15 @@ type AppLayoutClientProps = {
     image: string | null;
   };
   workspace: Workspace | null;
+  /** A5: Pending workspace invitations for header badge */
+  pendingInvitationsCount?: number;
   children: React.ReactNode;
 };
 
 export default function AppLayoutClient({
   user,
   workspace,
+  pendingInvitationsCount = 0,
   children,
 }: AppLayoutClientProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -47,6 +50,7 @@ export default function AppLayoutClient({
         <AppHeader
           user={user}
           workspace={workspace}
+          pendingInvitationsCount={pendingInvitationsCount}
           onMenuClick={isMobile ? () => setSidebarOpen(true) : undefined}
         />
         <main className="min-h-0 flex-1 w-full overflow-auto text-[var(--text-primary)]">

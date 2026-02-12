@@ -22,6 +22,8 @@ type AppLayoutHydrationGateProps = {
   };
   workspace: Workspace | null;
   tenantId: string | null;
+  /** A5: Pending workspace invitations for header badge */
+  pendingInvitationsCount?: number;
   children: React.ReactNode;
 };
 
@@ -38,6 +40,7 @@ export function AppLayoutHydrationGate({
   user,
   workspace,
   tenantId,
+  pendingInvitationsCount = 0,
   children,
 }: AppLayoutHydrationGateProps) {
   const mounted = useSyncExternalStore(
@@ -63,7 +66,7 @@ export function AppLayoutHydrationGate({
       <ThemeProvider>
         <TenantPermissionsProvider>
           <CreateWorkspaceModalProvider>
-            <AppLayoutClient user={user} workspace={workspace}>
+            <AppLayoutClient user={user} workspace={workspace} pendingInvitationsCount={pendingInvitationsCount}>
               {children}
             </AppLayoutClient>
           </CreateWorkspaceModalProvider>

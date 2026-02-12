@@ -1,323 +1,356 @@
-# A5 — First-Time Setup: Auto-Create OR Claim Workspace (Invite-Aware Onboarding)
+# A5 — First-Time Setup & Invitation Lifecycle (Zero-Friction, Multi-Workspace Aware)
 
 > Implement per **00-EPIC-QUALITY-AND-PRACTICES.md** and `.cursor/rules`.
 
-> This epic **adapts** existing:
-> - **A1** Workspace (Tenant) creation + slug rules + membership OWNER creation + audit
-> - **A3** Tenant Membership Invites (token-based) + members/roles + audit
+> This epic supersedes the previous "Invite-Aware Auto-Create" logic and restructures onboarding to:
+> - Separate **onboarding (no workspace)** from **membership lifecycle (invitations)**
+> - Eliminate unnecessary friction
+> - Remove email-blocked acceptance once authenticated
+> - Support multiple invitations
+> - Prevent accidental auto-workspace creation
 
 ---
 
-## 🎯 Epic Objective
+# 🎯 Epic Objective
 
-Deliver a professional, minimal-friction first-time onboarding system that ensures:
+Deliver a frictionless, production-grade onboarding and invitation system that guarantees:
 
-1) Every newly registered user ends up with a valid “home” context:
-- either an **invited workspace** (if they accept an invite),
-- or their **own auto-created workspace** in **DRAFT** state that must be claimed.
-
-2) Invite-first onboarding:
-- Invited users without an account should see the **Invite Acceptance** experience (not forced to create/claim their own workspace first).
-- If invite is rejected or revoked/invalid → user falls back to onboarding to create/claim their own workspace.
-
-3) Production access is blocked until:
-- the user is in an **ACTIVE** workspace (invited workspace is typically already ACTIVE), OR
-- they successfully **claim** their own DRAFT workspace to become ACTIVE.
+1. Users are never blocked unnecessarily.
+2. Invitations never force email-return if user is authenticated.
+3. Workspace creation only happens when truly needed.
+4. Multiple invitations are supported simultaneously.
+5. Onboarding and membership management are clearly separated.
+6. Users can belong to multiple workspaces.
+7. Zero ambiguity in routing logic.
 
 ---
 
-## ✅ Core Behavioral Requirements (Must Match Product Rules)
+# 🧠 Core UX Principle
 
-### Rule A — Non-invited new user
-- If user registers without an invite context:
-  - auto-create a workspace (status = `DRAFT`) + OWNER membership
-  - redirect to `/setup/workspace` to claim slug
+Onboarding answers:
+> “Do you have access to any workspace?”
 
-### Rule B — Invited new user (no account yet)
-- If user registers via a valid invite flow (invite token context exists):
-  - show invite acceptance UI (`/invite?token=...`) after authentication/signup
-  - if user **accepts**:
-    - attach membership to invited workspace
-    - set invited workspace as default (auto-switch)
-    - redirect to main app page: **Requests**
-    - DO NOT auto-create a workspace for them
-  - if user **rejects**:
-    - create their own auto workspace (status = DRAFT) + OWNER membership
-    - redirect to `/setup/workspace`
+Invitations answer:
+> “Do you want to join additional workspaces?”
 
-### Rule C — Invite revoked/invalid/expired
-- If invited user has no valid invite to accept (revoked/expired/invalid):
-  - fall back to onboarding (auto-create DRAFT workspace) + redirect to `/setup/workspace`
-
-### Rule D — Invite accepted (no auto-workspace)
-- If user accepts an invite and joins a workspace:
-  - do not auto-create their own workspace
-  - they can create additional workspaces later using existing A1 flow (manual create)
-
-### Rule E — Always auto-switch + redirect
-- Whenever invite is accepted successfully:
-  - auto-switch to that workspace
-  - redirect user to **Requests** as the default landing.
+These are different lifecycle states and must not be mixed.
 
 ---
 
-## 📦 Scope
+# 🧭 Global Decision Matrix (Server-Side Routing Logic)
 
-### ✅ Included
+After authentication, resolve:
 
-- Invite-aware onboarding decision logic (server-side)
-- Auto-create workspace on first registration **only if needed**
-- Temporary slug generation for auto-created workspaces
-- Workspace status = `DRAFT` for auto-created workspaces
-- Claim flow to transition `DRAFT → ACTIVE`
-- Invite acceptance UI flow that takes precedence over onboarding
-- Reject invite flow that triggers onboarding (auto workspace)
-- Revoked/invalid invite fallback to onboarding
-- Middleware + server-side guards:
-  - if pending invite → route to invite acceptance page
-  - else if current workspace is DRAFT → route to `/setup/workspace`
-- Standard errors (60-api-validation-errors.mdc)
-- Required indexes + constraints
-- Rate limiting on slug check endpoint
-- Canonical audit events for:
-  - auto-created workspace
-  - claimed workspace
-  - invite accepted
-  - invite rejected (new)
-  - onboarding fallback due to invalid invite (optional but recommended)
+- activeMembershipCount
+- pendingInvitationsCount
 
-### ❌ NOT Included
+### Decision Rules:
 
-- Multi-workspace onboarding wizard beyond the above rules
-- Slug change after activation (future epic)
-- Billing activation logic
-- Plan upgrades
-- Logo upload in onboarding (still supported by A1/A3 but blocked while DRAFT)
-- Member invitations management UI changes (A3 covers this)
+```
+IF activeMembershipCount === 0:
+    IF pendingInvitationsCount > 0:
+        → Redirect to /setup/choose
+    ELSE:
+        → Redirect to /setup/workspace
+ELSE:
+    → Redirect to /requests (main app)
+```
+
+Invitations NEVER block access if user already has at least one ACTIVE workspace.
 
 ---
 
-## 🧭 High-Level Flow Summary
+# 🧩 New Onboarding Structure
 
-### Entry Points
-- Standard registration: `/auth/signup`
-- OAuth callback: `/auth/callback/*`
-- Invite link: `/invite?token=RAW_TOKEN`
+We introduce a clean separation:
 
-### Post-auth routing priority (server-side enforced)
-1) If user has a **pending invite context** that is still valid → force `/invite?token=...`
-2) Else if user’s current/default workspace is `DRAFT` → force `/setup/workspace`
-3) Else → allow production routes (Requests is main landing)
-
----
-
-## 🧠 Key Concepts / Definitions
-
-### Workspace Status
-- `DRAFT`: workspace exists but cannot access production features; must be claimed (slug chosen).
-- `ACTIVE`: production-ready workspace.
-
-### Pending Invite Context (PIC)
-A short-lived server-side state indicating:
-- “This user is currently in an invite-acceptance journey.”
-
-It can be represented by:
-- secure HTTP-only cookie (recommended), OR
-- server session entry keyed by userId, OR
-- short-lived signed token stored in cookie
-
-Must include:
-- `rawInviteToken` OR a stable reference that can be used to validate the invite after login
-- `emailNormalized` (optional) for user feedback
-- expiration / TTL
-
-Never store raw token in logs.
-
----
-
-## 🗺 Routes / Pages
-
-### 1) Invite Acceptance Page
+## 1️⃣ Setup Choice Page
 Route:
-- `/invite?token=RAW_TOKEN`
-
-Behavior:
-- If unauthenticated → show “Sign in / Create account” and continue after auth
-- If authenticated:
-  - Validate token
-  - If valid and email matches authenticated user → show Accept / Reject
-  - If token invalid/expired/revoked → show fallback message + CTA “Continue setup” → `/setup/workspace`
-  - If already member → “You already belong” + “Go to Requests”
-
-Accept outcome:
-- join workspace
-- set as default
-- switch workspace
-- redirect to `/requests` (or your canonical main route)
-
-Reject outcome:
-- mark invite as rejected for auditing (does not need to revoke)
-- create own DRAFT workspace (if user has no ACTIVE memberships)
-- redirect to `/setup/workspace`
-
-### 2) Claim Workspace Page
-Route:
-- `/setup/workspace`
+`/setup/choose`
 
 Purpose:
-- Claim workspace slug for user’s DRAFT workspace.
+Displayed only when:
+- user has 0 active workspaces
+- AND has ≥1 pending invitations
 
-Outcome:
-- `DRAFT → ACTIVE`
-- auto-switch to claimed workspace
-- redirect to `/requests`
+This replaces forcing `/invite?token=...`
 
 ---
 
-## 🔐 Authorization / Security Rules
+### Setup Choice UI Requirements
 
-### Workspace Claim
+Title:
+**Choose how you want to start**
+
+Section 1 (Primary Block):
+List of pending invitations (cards)
+
+Each invitation card shows:
+- Workspace name
+- Invited by
+- Role offered
+- Accept button
+- Decline button
+
+Accept:
+- Attach membership
+- Set as default workspace
+- Redirect to `/requests`
+
+Decline:
+- Mark invite as rejected
+- Continue showing remaining invites
+- If no remaining invites → redirect to `/setup/workspace`
+
+Divider
+
+Section 2:
+“Or create your own workspace”
+
+CTA:
+Create Workspace → `/setup/workspace`
+
+---
+
+## 2️⃣ Claim Workspace Page
+Route:
+`/setup/workspace`
+
+Shown only when:
+- user has 0 active memberships
+- AND no pending invitations
+OR
+- user explicitly chooses to create workspace from choose screen
+
+Purpose:
+Claim slug for a DRAFT workspace.
+
+---
+
+# 🔁 Auto-Workspace Creation Logic (Rewritten)
+
+Auto-creation of DRAFT workspace happens ONLY when:
+
+```
+activeMembershipCount === 0
+AND
+pendingInvitationsCount === 0
+```
+
+It does NOT happen:
+- when user has pending invitations
+- when user has active memberships
+- when invite is accepted
+- when invite is declined (unless no other invites exist)
+
+---
+
+# 📨 Invitation Lifecycle (Rewritten)
+
+Invitations are no longer treated as onboarding.
+
+They are part of membership lifecycle.
+
+---
+
+## 1️⃣ Invite Acceptance via Link
+
+Route:
+`/invite?token=RAW_TOKEN`
+
+Behavior:
+
+If unauthenticated:
+→ Authenticate → then continue
+
+If authenticated:
+- Validate token
+- Validate email match
+- Show Accept / Decline
+
+Accept:
+- Attach membership
+- Switch workspace
+- Redirect to `/requests`
+
+Decline:
+- Mark rejected
+- If no active workspaces → redirect `/setup/choose` or `/setup/workspace`
+- If has active workspaces → redirect `/requests`
+
+---
+
+## 2️⃣ Invitations for Existing Users
+
+If user logs in and:
+- activeMembershipCount ≥ 1
+- pendingInvitationsCount ≥ 1
+
+DO NOT redirect.
+
+Instead:
+
+Display persistent notification in app layout:
+
+Header badge:
+"You have X pending workspace invitations"
+
+Click →
+Route:
+`/invitations`
+
+---
+
+# 📂 Invitations Management Page
+
+Route:
+`/invitations`
+
+Shows:
+Active Workspaces (top section)
+Pending Invitations (second section)
+
+Accept:
+- Join workspace
+- Optional: auto-switch
+- Toast confirmation
+
+Decline:
+- Mark rejected
+- Remove from list
+
+No forced redirects.
+
+---
+
+# 🏗 Workspace Status Model
+
+### Tenant Status
+
+- `DRAFT`
+- `ACTIVE`
+
+### DRAFT Meaning
+
+Workspace exists but:
+- cannot access production features
+- must be claimed (slug chosen)
+
+Only possible when:
+- auto-created for brand new user with no invites
+
+---
+
+# 🔐 Authorization Rules
+
+### Claim Workspace
+
+- Authenticated required
+- Must be OWNER of DRAFT workspace
+- Workspace resolved server-side
+- Never trust client tenantId
+
+Errors:
+- 401
+- 403
+- 404 (no DRAFT workspace)
+- 409 (slug taken)
+- 429 (rate limit)
+
+---
+
+### Accept Invitation
+
 - Must be authenticated
-- Must have `OWNER` role in the DRAFT workspace being claimed
-- Workspace resolved server-side from membership; never trust client workspaceId
-
-Return codes:
-- 401 unauthenticated
-- 403 not OWNER
-- 404 no DRAFT workspace found for user
-- 409 slug taken
-- 429 rate limited
-
-### Invite Acceptance
-- Token-based public entry is allowed to view invite page, but:
-  - acceptance requires authentication
-  - authenticated user email must match invite emailNormalized
-- If logged in with a different email:
-  - show mismatch UI
+- Email must match invite emailNormalized
+- If mismatch:
+  - show error
   - allow logout/switch
-  - do not accept
+- If already member:
+  - redirect `/requests`
 
 ---
 
-## 🧱 Data Model Requirements (Prisma / Postgres)
+# 🗃 Data Model Requirements
 
-### Tenant (Workspace)
-Required fields (ensure exist / add if missing):
-- `id`
-- `slug` (string, unique case-insensitively)
-- `name`
-- `status` (`DRAFT | ACTIVE`)
-- `createdByUserId` (required)
-- `claimedAt` (nullable)
-- `createdAt`
-- `updatedAt`
+## Tenant
 
-Constraints / Indexes:
-- Unique index on `lower(slug)` (case-insensitive)
-- `status NOT NULL`
-- `createdByUserId NOT NULL`
-- Indexes:
-  - `(createdByUserId)`
-  - `(status)`
-  - `(createdByUserId, status)`
+Required:
+- id
+- slug (unique CI)
+- name
+- status (DRAFT | ACTIVE)
+- createdByUserId
+- claimedAt
+- createdAt
+- updatedAt
 
-### TenantMembership
-- `tenantId`
-- `userId`
-- `status` (`ACTIVE | DISABLED`)
-- `role` (`OWNER | ADMIN | FINANCE | MEMBER`)
-- `isDefaultTenant` (boolean) (already in A1 rules)
-- `joinedAt`
-
-Constraints / Indexes:
-- UNIQUE `(tenantId, userId)`
-- Indexes:
-  - `(userId)`
-  - `(tenantId, status)`
-  - `(tenantId, role)`
-  - `(userId, status, isDefaultTenant, joinedAt)` (recommended; aligns with A1)
-
-### TenantInvitation (A3)
-No structural changes required, but W1 depends on:
-- ability to validate invite status: active vs revoked/expired/accepted
-- ability to accept/reject
-
-Recommended addition (optional but useful):
-- `rejectedAt` nullable timestamp
-- `rejectedByUserId` nullable (for auditing)
-If you do not add columns, rejection is tracked only in AuditLog.
+Indexes:
+- UNIQUE lower(slug)
+- (createdByUserId)
+- (status)
+- (createdByUserId, status)
 
 ---
 
-## 🧾 Audit Logging
+## TenantMembership
 
-Canonical action keys (append-only):
+Required:
+- tenantId
+- userId
+- role
+- status (ACTIVE | DISABLED)
+- isDefaultTenant
+- joinedAt
 
-- `WORKSPACE_AUTO_CREATED`
-- `WORKSPACE_CLAIMED`
-- `TENANT_INVITE_ACCEPTED` (maps to `tenant.invite.accepted` in A3 if you prefer)
-- `TENANT_INVITE_REJECTED` (new)
-- `ONBOARDING_FALLBACK_INVALID_INVITE` (optional but recommended)
-
-Required metadata:
-- `tenantId` where relevant
-- `actorUserId`
-- For claim:
-  - `previousSlug`
-  - `newSlug`
-  - `statusFrom`, `statusTo`
-- For invite accepted/rejected:
-  - `invitationId`
-  - `invitedEmail`
-  - `result: accepted|rejected`
-  - `reason` (if invalid invite fallback)
-
-Never store raw tokens.
+Indexes:
+- UNIQUE (tenantId, userId)
+- (userId)
+- (tenantId, status)
+- (tenantId, role)
+- (userId, status, isDefaultTenant, joinedAt)
 
 ---
 
-## 🔗 Slug Rules (Claim)
+## TenantInvitation
 
-Validation via Zod:
+Must support:
+- status (PENDING | ACCEPTED | REJECTED | REVOKED | EXPIRED)
+- rejectedAt (nullable)
+- rejectedByUserId (nullable)
 
-- min 3 chars
-- max 32 chars
-- lowercase only
-- letters, numbers, hyphens
-- no leading hyphen
-- no trailing hyphen
-- no consecutive hyphens
-- must not match reserved list
-
-Reserved slugs (minimum):
-- admin
-- api
-- app
-- billing
-- settings
-- support
-- www
-- setup
-- invite
-- workspace
-- requests
-
-On conflict:
-- HTTP 409
-- error code: `SLUG_TAKEN`
+Raw tokens must never be logged.
 
 ---
 
-## 🔌 API Endpoints
+# 🧾 Audit Events
 
-### 1) Check Slug Availability
-`GET /api/workspaces/check-slug?slug=abc`
+Canonical keys:
 
-Rules:
-- Zod validate query param
-- Rate limit (429 with `RATE_LIMITED`)
-- Return `{ available: true|false }`
-- Do not leak tenant details
+- WORKSPACE_AUTO_CREATED
+- WORKSPACE_CLAIMED
+- TENANT_INVITE_ACCEPTED
+- TENANT_INVITE_REJECTED
+- INVITE_EMAIL_MISMATCH
+- ONBOARDING_REDIRECTED_TO_CHOOSE
+
+Metadata:
+- tenantId
+- actorUserId
+- invitationId
+- result
+- previousSlug/newSlug (claim)
+
+---
+
+# 🔌 API Endpoints
+
+### GET /api/workspaces/check-slug
+
+- Zod validation
+- Rate limited
+- Returns:
+  `{ available: boolean }`
 
 Errors:
 - 400 VALIDATION_ERROR
@@ -325,109 +358,110 @@ Errors:
 
 ---
 
-### 2) Claim Workspace
-`POST /api/workspaces/claim`
+### POST /api/workspaces/claim
 
 Payload:
 ```json
 { "slug": "string" }
+```
 
+Transactional:
+- validate slug
+- ensure availability
+- DRAFT → ACTIVE
+- set claimedAt
+- ensure isDefaultTenant true
+- commit
 
-✅ Acceptance Criteria
-Non-invited registration
+---
 
-Given a new user (no invite)
-When registration completes
-Then a DRAFT workspace is auto-created
-And user is OWNER
-And user is redirected to /setup/workspace
+### POST /api/invitations/:id/accept
 
-Invited registration + accept
+Transactional:
+- validate invite
+- attach membership
+- set default workspace
+- mark invite ACCEPTED
 
-Given a user with no account who arrives via a valid invite
-When they create an account and accept the invite
-Then they join that workspace
-And the workspace becomes default (auto-switch)
-And they are redirected to /requests
-And no auto-workspace is created for them
+---
 
-Invited registration + reject
+### POST /api/invitations/:id/reject
 
-Given a user with no account who arrives via a valid invite
-When they create an account and reject the invite
-Then they are redirected to /setup/workspace
-And a DRAFT workspace is auto-created for them (OWNER)
+Transactional:
+- mark invite REJECTED
+- audit event
 
-Invited registration + revoked invite
+---
 
-Given a user with no account who arrives via an invite that is revoked/expired/invalid
-When they authenticate
-Then they are redirected to /setup/workspace
-And a DRAFT workspace is auto-created for them (OWNER)
+# ✅ Acceptance Criteria
 
-Claim workspace
+### New User, No Invitations
 
-Given a DRAFT workspace
-When user claims a valid available slug
-Then workspace becomes ACTIVE
-And redirect to /requests
+- Registers
+- DRAFT workspace auto-created
+- Redirect to `/setup/workspace`
+- Claims slug
+- Workspace ACTIVE
+- Redirect `/requests`
 
-✅ Definition of Done (DoD)
+---
 
-Invite-aware onboarding decision logic implemented server-side
+### New User With Invitations
 
-Non-invited users: auto-create DRAFT workspace on registration
+- Registers
+- No auto-workspace created
+- Redirect `/setup/choose`
+- Accept → join workspace → `/requests`
+- Decline all → `/setup/workspace` → auto-create DRAFT
 
-Invited users:
+---
 
-see invite acceptance flow first (after signup/auth)
+### Existing User With Invitations
 
-accept → join invited workspace, default switch, redirect /requests, no auto-workspace
+- Logs in
+- Goes directly to `/requests`
+- Sees invitation notification badge
+- Can manage via `/invitations`
+- No forced redirect
 
-reject → auto-create DRAFT workspace + redirect /setup/workspace
+---
 
-revoked/invalid → auto-create DRAFT workspace + redirect /setup/workspace
+### Invite Via Link
 
-Middleware + server guards enforce priority:
+- Authenticate
+- Accept → join + switch → `/requests`
+- Reject → fallback based on membership count
 
-pending invite → /invite
+---
 
-DRAFT workspace → /setup/workspace
+# 🧪 Tests Must Cover
 
-Claim flow:
+- 0 workspace + 0 invites
+- 0 workspace + 1 invite
+- 0 workspace + multiple invites
+- active workspace + pending invites
+- accept invite via link
+- decline invite via link
+- invite email mismatch
+- revoked invite
+- DRAFT claim
+- slug conflict
+- default workspace switching
 
-slug validation (Zod)
+---
 
-availability check with rate limiting
+# 🏁 Definition of Done
 
-DRAFT → ACTIVE transition in a single transaction
-
-Audit events created:
-
-WORKSPACE_AUTO_CREATED
-
-WORKSPACE_CLAIMED
-
-TENANT_INVITE_ACCEPTED
-
-TENANT_INVITE_REJECTED
-
-Required indexes created
-
-Standard error shapes and HTTP codes correct
-
-Tests cover:
-
-invite accept/reject flows
-
-revoked/expired invite fallback
-
-non-invited auto-create flow
-
-DRAFT redirect guards
-
-slug validation + conflict
-
-default workspace switching on invite accept
-
-Build passes, types pass, no unsafe client trust
+- Server-side routing logic updated
+- Onboarding separated from invitation lifecycle
+- `/setup/choose` implemented
+- Invitations notification system implemented
+- No forced email-return after authentication
+- Auto-workspace only created when strictly necessary
+- Audit events logged
+- All indexes present
+- No unsafe client trust
+- No token leakage
+- Build passes
+- Types pass
+- E2E flows validated

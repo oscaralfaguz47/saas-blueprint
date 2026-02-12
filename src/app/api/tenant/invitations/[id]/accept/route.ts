@@ -3,37 +3,44 @@ import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
 import { writeAuditLog } from "@/server/services/audit";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
-import { parseBody, acceptInvitationSchema } from "@/lib/validations";
-import crypto from "crypto";
 
-export const POST = withErrorHandler(async (req: Request) => {
+function getIp(req: Request): string | null {
+  return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+}
+
+function getUserAgent(req: Request): string | null {
+  return req.headers.get("user-agent") ?? null;
+}
+
+/** POST /api/tenant/invitations/[id]/accept — A5: in-app accept by invitation id (authenticated) */
+export const POST = withErrorHandler(async (
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) => {
   const session = await getServerSession(authOptions);
   if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 
-  const body = await parseBody(req, acceptInvitationSchema);
-  const token = body.token;
-  const tokenHash = sha256(token);
+  const { id: invitationId } = await params;
+  if (!invitationId?.trim()) return ApiErrors.VALIDATION_ERROR("Invitation id is required");
 
-  const invite = await prisma.tenantInvitation.findFirst({
-    where: {
-      tokenHash,
-      status: "PENDING",
-      acceptedAt: null,
-      revokedAt: null,
-      expiresAt: { gt: new Date() },
-    },
+  const invite = await prisma.tenantInvitation.findUnique({
+    where: { id: invitationId },
     select: {
       id: true,
       tenantId: true,
       email: true,
+      status: true,
+      acceptedAt: true,
+      revokedAt: true,
       expiresAt: true,
-      invitedByUserId: true,
     },
   });
 
-  if (!invite) {
-    return ApiErrors.NOT_FOUND("Invitation not found or expired");
-  }
+  if (!invite) return ApiErrors.NOT_FOUND("Invitation not found");
+  if (invite.status !== "PENDING") return ApiErrors.NOT_FOUND("Invitation not found or expired");
+  if (invite.revokedAt || invite.acceptedAt) return ApiErrors.NOT_FOUND("Invitation not found or expired");
+  const now = new Date();
+  if (invite.expiresAt <= now) return ApiErrors.NOT_FOUND("Invitation not found or expired");
 
   const userEmail = (session.user.email ?? "").toLowerCase();
   if (!userEmail || userEmail !== invite.email.toLowerCase()) {
@@ -42,14 +49,14 @@ export const POST = withErrorHandler(async (req: Request) => {
       {
         expectedEmail: invite.email,
         currentEmail: userEmail || null,
-        nextAction: "SIGN_OUT_AND_SIGN_IN_WITH_EXPECTED_EMAIL",
+        code: "INVITE_EMAIL_MISMATCH",
       }
     );
   }
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { id: true, email: true, isPlatformBlocked: true },
+    select: { id: true, isPlatformBlocked: true },
   });
   if (!user) return ApiErrors.NOT_FOUND("User");
   if (user.isPlatformBlocked) return ApiErrors.FORBIDDEN();
@@ -70,15 +77,13 @@ export const POST = withErrorHandler(async (req: Request) => {
         data: { isDefaultTenant: true },
       }),
     ]);
-    const res = apiSuccess({
+    return apiSuccess({
       ok: true,
       alreadyMember: true,
       invitationId: invite.id,
       tenantId: invite.tenantId,
       membershipId: existingMembership.id,
     });
-    res.cookies.set("pending_invite_token", "", { maxAge: 0, path: "/" });
-    return res;
   }
 
   let result: { membershipId: string; membershipCreated: boolean; reenabled: boolean };
@@ -94,64 +99,56 @@ export const POST = withErrorHandler(async (req: Request) => {
         },
         data: { acceptedAt: new Date(), status: "ACCEPTED" },
       });
+      if (updated.count !== 1) throw new Error("INVITATION_CONSUMED_OR_INVALID");
 
-      if (updated.count !== 1) {
-        throw new Error("INVITATION_CONSUMED_OR_INVALID");
+      if (existingMembership?.status === "DISABLED") {
+        await tx.tenantMembership.update({
+          where: { id: existingMembership.id },
+          data: { status: "ACTIVE" },
+        });
+        return {
+          membershipId: existingMembership.id,
+          membershipCreated: false,
+          reenabled: true,
+        };
       }
 
-    if (existingMembership && existingMembership.status === "DISABLED") {
-      await tx.tenantMembership.update({
-        where: { id: existingMembership.id },
-        data: { status: "ACTIVE" },
-      });
-      return {
-        membershipId: existingMembership.id,
-        membershipCreated: false,
-        reenabled: true,
-      };
-    }
-
-    const membership = await tx.tenantMembership.create({
-      data: {
-        tenantId: invite.tenantId,
-        userId: user.id,
-        status: "ACTIVE",
-        joinedAt: new Date(),
-        isDefaultTenant: false,
-      },
-      select: { id: true },
-    });
-
-    const memberRole = await tx.tenantRole.findUnique({
-      where: {
-        tenantId_name: { tenantId: invite.tenantId, name: "Member" },
-      },
-      select: { id: true },
-    });
-    const role =
-      memberRole ??
-      (await tx.tenantRole.create({
+      const membership = await tx.tenantMembership.create({
         data: {
           tenantId: invite.tenantId,
-          name: "Member",
-          isSystem: true,
+          userId: user.id,
+          status: "ACTIVE",
+          joinedAt: new Date(),
+          isDefaultTenant: false,
         },
         select: { id: true },
-      }));
+      });
 
-    await tx.tenantUserRole.create({
-      data: {
+      const memberRole = await tx.tenantRole.findUnique({
+        where: { tenantId_name: { tenantId: invite.tenantId, name: "Member" } },
+        select: { id: true },
+      });
+      const role =
+        memberRole ??
+        (await tx.tenantRole.create({
+          data: {
+            tenantId: invite.tenantId,
+            name: "Member",
+            isSystem: true,
+          },
+          select: { id: true },
+        }));
+
+      await tx.tenantUserRole.create({
+        data: { membershipId: membership.id, roleId: role.id },
+      });
+
+      return {
         membershipId: membership.id,
-        roleId: role.id,
-      },
+        membershipCreated: true,
+        reenabled: false,
+      };
     });
-
-    return {
-      membershipId: membership.id,
-      membershipCreated: true,
-      reenabled: false,
-    };
-  });
   } catch (err) {
     if (err instanceof Error && err.message === "INVITATION_CONSUMED_OR_INVALID") {
       return ApiErrors.NOT_FOUND("Invitation not found or expired");
@@ -201,7 +198,7 @@ export const POST = withErrorHandler(async (req: Request) => {
     });
   }
 
-  const res = apiSuccess({
+  return apiSuccess({
     ok: true,
     invitationId: invite.id,
     tenantId: invite.tenantId,
@@ -209,18 +206,4 @@ export const POST = withErrorHandler(async (req: Request) => {
     membershipId: result.membershipId,
     alreadyMember: false,
   });
-  res.cookies.set("pending_invite_token", "", { maxAge: 0, path: "/" });
-  return res;
 });
-
-function sha256(v: string): string {
-  return crypto.createHash("sha256").update(v).digest("hex");
-}
-
-function getIp(req: Request): string | null {
-  return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
-}
-
-function getUserAgent(req: Request): string | null {
-  return req.headers.get("user-agent") ?? null;
-}

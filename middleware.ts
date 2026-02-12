@@ -34,8 +34,11 @@ function isProtectedPath(pathname: string) {
   // Protect app UI
   if (pathname.startsWith("/app") || pathname.startsWith("/admin")) return true;
 
-  // A5: setup/workspace (claim flow) requires auth
+  // A5: setup (claim/choose) requires auth
   if (pathname.startsWith("/setup")) return true;
+
+  // A5: invitations management requires auth
+  if (pathname.startsWith("/invitations")) return true;
 
   // Protect APIs by default (except NextAuth)
   if (pathname.startsWith("/api") && !pathname.startsWith("/api/auth")) return true;

@@ -19,6 +19,7 @@ export const RESERVED_SLUGS = new Set([
   "www",
   "setup",
   "invite",
+  "invitations",
   "workspace",
   "requests",
 ]);

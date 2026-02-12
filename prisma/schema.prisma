@@ -27,6 +27,15 @@ enum MembershipStatus {
   DISABLED
 }
 
+/// A5: Invitation lifecycle (PENDING | ACCEPTED | REJECTED | REVOKED | EXPIRED)
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  REVOKED
+  EXPIRED
+}
+
 enum SubscriptionStatus {
   TRIAL
   ACTIVE
@@ -105,7 +114,8 @@ model User {
   auditLogsAsActor  AuditLog[] @relation("AuditActor")
   auditLogsAsTarget AuditLog[] @relation("AuditTargetUser")
 
-  tenantInvitationsSent TenantInvitation[] @relation("TenantInvitedByUser")
+  tenantInvitationsSent   TenantInvitation[] @relation("TenantInvitedByUser")
+  tenantInvitationsRejected TenantInvitation[] @relation("TenantInvitationRejectedByUser")
   recordsCreated Record[] @relation("RecordsCreatedByUser")
   tenantsCreated Tenant[] @relation("TenantCreatedByUser")
 
@@ -201,16 +211,25 @@ model TenantInvitation {
   tokenHash String   @unique @db.VarChar(191)
   expiresAt DateTime
 
+  /// A5: Canonical status; backfill from acceptedAt/revokedAt/expiresAt in migration
+  status InvitationStatus @default(PENDING)
+
   invitedByUserId String?
   revokedAt       DateTime?
 
   acceptedAt DateTime?
+
+  /// A5: Set when user declines invite (in-app or via link)
+  rejectedAt       DateTime?
+  rejectedByUserId String?
+  rejectedByUser   User?   @relation("TenantInvitationRejectedByUser", fields: [rejectedByUserId], references: [id], onDelete: SetNull)
 
   tenant        Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   invitedByUser User?  @relation("TenantInvitedByUser", fields: [invitedByUserId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, email])
   @@index([expiresAt])
+  @@index([status])
 }
 
 model Permission {

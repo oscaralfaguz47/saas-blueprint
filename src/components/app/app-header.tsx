@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import UserMenu from "@/components/app/user-menu";
 import { IconBell, IconMenu } from "@/components/ui/icons";
 
@@ -16,6 +17,8 @@ type AppHeaderProps = {
     image: string | null;
   };
   workspace: Workspace | null;
+  /** A5: Show "You have X pending workspace invitations" link to /invitations */
+  pendingInvitationsCount?: number;
   onMenuClick?: () => void;
 };
 
@@ -27,7 +30,7 @@ function workspaceInitials(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-export default function AppHeader({ user, workspace, onMenuClick }: AppHeaderProps) {
+export default function AppHeader({ user, workspace, pendingInvitationsCount = 0, onMenuClick }: AppHeaderProps) {
   return (
     <header className="flex h-14 shrink-0 items-center border-b border-[var(--border-subtle)] bg-[var(--bg-surface)]">
       <div className="flex min-w-0 flex-1 items-center justify-between gap-4 px-4">
@@ -66,8 +69,16 @@ export default function AppHeader({ user, workspace, onMenuClick }: AppHeaderPro
           )}
         </div>
 
-        {/* Right: Notifications + User menu */}
+        {/* Right: Pending invitations badge + Notifications + User menu */}
         <div className="flex shrink-0 items-center gap-2">
+          {pendingInvitationsCount > 0 ? (
+            <Link
+              href="/invitations"
+              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-[var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_12%,transparent)] transition-colors hover:bg-[color-mix(in_srgb,var(--color-primary)_18%,transparent)]"
+            >
+              {pendingInvitationsCount} pending invitation{pendingInvitationsCount !== 1 ? "s" : ""}
+            </Link>
+          ) : null}
           <button
             type="button"
             aria-label="Notifications"

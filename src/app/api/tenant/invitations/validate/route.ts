@@ -21,8 +21,11 @@ export const GET = withErrorHandler(async (req: Request) => {
   }
 
   const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-  const invite = await prisma.tenantInvitation.findUnique({
-    where: { tokenHash },
+  const invite = await prisma.tenantInvitation.findFirst({
+    where: {
+      tokenHash,
+      status: "PENDING",
+    },
     select: {
       id: true,
       tenantId: true,

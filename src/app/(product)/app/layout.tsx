@@ -1,15 +1,11 @@
 import { ReactNode } from "react";
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
-import crypto from "crypto";
 import { authOptions } from "@/server/auth-options";
-import { prisma } from "@/server/db";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
-import { ensureDraftWorkspaceForUser } from "@/server/services/tenancy-bootstrap";
+import { getOnboardingCounts } from "@/server/services/onboarding";
+import { writeAuditLog } from "@/server/services/audit";
 import { AppLayoutHydrationGate } from "@/components/app/app-layout-hydration-gate";
-
-const PENDING_INVITE_COOKIE = "pending_invite_token";
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const session = await getServerSession(authOptions);
@@ -18,37 +14,24 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const userId = session.user.id;
 
   try {
-    let membership = await getDefaultTenantForUser(userId);
+    const { activeMembershipCount, pendingInvitationsCount } =
+      await getOnboardingCounts(userId);
 
-    if (!membership) {
-      const cookieStore = await cookies();
-      const pendingToken = cookieStore.get(PENDING_INVITE_COOKIE)?.value;
-      if (pendingToken && pendingToken.length >= 20) {
-        const tokenHash = crypto
-          .createHash("sha256")
-          .update(pendingToken)
-          .digest("hex");
-        const invite = await prisma.tenantInvitation.findUnique({
-          where: { tokenHash },
-          select: { acceptedAt: true, revokedAt: true, expiresAt: true },
+    if (activeMembershipCount === 0) {
+      if (pendingInvitationsCount > 0) {
+        await writeAuditLog({
+          actorUserId: userId,
+          actorContext: "TENANT",
+          action: "onboarding.redirected_to_choose",
+          metadata: { pendingInvitationsCount },
         });
-        const now = new Date();
-        if (
-          invite &&
-          !invite.acceptedAt &&
-          !invite.revokedAt &&
-          invite.expiresAt > now
-        ) {
-          redirect(`/invite?token=${encodeURIComponent(pendingToken)}`);
-        }
+        redirect("/setup/choose");
       }
-
-      await ensureDraftWorkspaceForUser({
-        userId,
-        userEmail: session.user.email ?? undefined,
-      });
       redirect("/setup/workspace");
     }
+
+    const membership = await getDefaultTenantForUser(userId);
+    if (!membership) redirect("/setup/workspace");
 
     if (membership.tenant.status === "DRAFT") {
       redirect("/setup/workspace");
@@ -70,12 +53,12 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         }}
         workspace={workspace}
         tenantId={tenantId}
+        pendingInvitationsCount={pendingInvitationsCount}
       >
         {children}
       </AppLayoutHydrationGate>
     );
   } catch (error) {
-    // Next.js redirect() throws a special error; rethrow so the redirect is honored
     if (
       error &&
       typeof error === "object" &&
