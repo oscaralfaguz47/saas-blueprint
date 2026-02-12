@@ -30,6 +30,7 @@ export const POST = withErrorHandler(async (
       id: true,
       tenantId: true,
       email: true,
+      status: true,
       acceptedAt: true,
       revokedAt: true,
       expiresAt: true,
@@ -52,9 +53,9 @@ export const POST = withErrorHandler(async (
   if (!allowed) return ApiErrors.FORBIDDEN();
 
   const now = new Date();
-  const isActive = !invite.acceptedAt && !invite.revokedAt && invite.expiresAt > now;
-  if (!isActive) {
-    return ApiErrors.VALIDATION_ERROR("Only active invitations can be resent.");
+  const isAcceptable = invite.status !== "ACCEPTED" && !invite.revokedAt && invite.expiresAt > now;
+  if (!isAcceptable) {
+    return ApiErrors.VALIDATION_ERROR("Only non-accepted, non-revoked, non-expired invitations can be resent.");
   }
 
   const rawToken = crypto.randomBytes(32).toString("hex");
@@ -63,7 +64,13 @@ export const POST = withErrorHandler(async (
 
   await prisma.tenantInvitation.update({
     where: { id: invite.id },
-    data: { tokenHash, expiresAt },
+    data: {
+      tokenHash,
+      expiresAt,
+      status: "PENDING",
+      rejectedAt: null,
+      rejectedByUserId: null,
+    },
   });
 
   await writeAuditLog({

@@ -30,6 +30,7 @@ export const POST = withErrorHandler(async (
       id: true,
       tenantId: true,
       email: true,
+      status: true,
       acceptedAt: true,
       revokedAt: true,
       expiresAt: true,
@@ -51,13 +52,14 @@ export const POST = withErrorHandler(async (
   });
   if (!allowed) return ApiErrors.FORBIDDEN();
 
-  const now = new Date();
-  const isActive = !invite.acceptedAt && !invite.revokedAt && invite.expiresAt > now;
-  if (isActive) {
-    return ApiErrors.VALIDATION_ERROR("Use resend for active invitations.");
-  }
-  if (invite.acceptedAt) {
+  if (invite.status === "ACCEPTED" || invite.acceptedAt) {
     return ApiErrors.VALIDATION_ERROR("Cannot re-invite an accepted invitation.");
+  }
+
+  const now = new Date();
+  const isActive = invite.status === "PENDING" && !invite.revokedAt && invite.expiresAt > now;
+  if (isActive) {
+    return ApiErrors.VALIDATION_ERROR("Use resend for active (pending) invitations.");
   }
 
   const rawToken = crypto.randomBytes(32).toString("hex");
@@ -69,7 +71,10 @@ export const POST = withErrorHandler(async (
     data: {
       tokenHash,
       expiresAt,
+      status: "PENDING",
       revokedAt: null,
+      rejectedAt: null,
+      rejectedByUserId: null,
     },
   });
 
