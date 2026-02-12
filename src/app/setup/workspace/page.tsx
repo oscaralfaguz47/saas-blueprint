@@ -35,10 +35,20 @@ export default async function SetupWorkspacePage() {
     redirect(`/auth/sign-in?callbackUrl=${encodeURIComponent("/setup/workspace")}`);
   }
 
-  await ensureDraftWorkspaceForUser({
-    userId: session.user.id,
-    userEmail: session.user.email ?? undefined,
-  });
+  try {
+    await ensureDraftWorkspaceForUser({
+      userId: session.user.id,
+      userEmail: session.user.email ?? undefined,
+    });
+  } catch (err) {
+    const code = err && typeof err === "object" && "code" in err ? (err as { code?: string }).code : undefined;
+    if (code === "USER_NOT_FOUND") {
+      redirect(
+        `/auth/sign-out?callbackUrl=${encodeURIComponent("/auth/sign-in?error=SessionExpired")}`
+      );
+    }
+    throw err;
+  }
 
   const pendingInviteWorkspaceName = await getPendingInviteWorkspaceName(session.user.email);
 
