@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -80,6 +80,7 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
   const [logoStatus, setLogoStatus] = useState<"idle" | "uploading" | "error">("idle");
   const [logoError, setLogoError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setTenant(initialTenant);
@@ -155,18 +156,41 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
     }
   };
 
+  const clearLogoInput = () => {
+    if (logoInputRef.current) logoInputRef.current.value = "";
+  };
+
   const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    e.target.value = "";
     if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
       setLogoError("Use PNG, JPEG, or WebP.");
       setLogoStatus("error");
+      clearLogoInput();
       return;
     }
-    if (file.size > MAX_LOGO_BYTES) {
+    let size = Number(file.size);
+    if (typeof size !== "number" || Number.isNaN(size) || size < 1) {
+      try {
+        const buffer = await file.arrayBuffer();
+        size = buffer.byteLength;
+      } catch {
+        setLogoError("File is empty or size could not be determined. Please choose a valid image file.");
+        setLogoStatus("error");
+        clearLogoInput();
+        return;
+      }
+    }
+    if (size < 1) {
+      setLogoError("File is empty or size could not be determined. Please choose a valid image file.");
+      setLogoStatus("error");
+      clearLogoInput();
+      return;
+    }
+    if (size > MAX_LOGO_BYTES) {
       setLogoError("Max file size is 2MB.");
       setLogoStatus("error");
+      clearLogoInput();
       return;
     }
     setLogoError(null);
@@ -177,7 +201,7 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contentType: file.type,
-          contentLength: file.size,
+          contentLength: size,
           extension: file.name.split(".").pop()?.toLowerCase() === "jpg" ? "jpeg" : file.name.split(".").pop()?.toLowerCase() ?? "png",
         }),
       });
@@ -185,12 +209,14 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
       if (!resUrl.ok || !urlData.data?.uploadUrl || !urlData.data?.objectKey) {
         setLogoError((urlData as { message?: string }).message ?? "Failed to get upload URL.");
         setLogoStatus("error");
+        clearLogoInput();
         return;
       }
       const putRes = await fetch(urlData.data.uploadUrl, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
       if (!putRes.ok) {
         setLogoError("Upload failed.");
         setLogoStatus("error");
+        clearLogoInput();
         return;
       }
       const resConfirm = await apiFetch(`/api/tenant/${tenant.id}/logo/confirm`, {
@@ -201,14 +227,17 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
       if (!resConfirm.ok) {
         setLogoError("Could not confirm upload.");
         setLogoStatus("error");
+        clearLogoInput();
         return;
       }
       setTenant((t) => ({ ...t, logoObjectKey: urlData.data!.objectKey }));
       setLogoStatus("idle");
+      clearLogoInput();
       router.refresh();
     } catch {
       setLogoError("Something went wrong.");
       setLogoStatus("error");
+      clearLogoInput();
     }
   };
 
@@ -240,6 +269,7 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
           </div>
         ) : null}
         <input
+          ref={logoInputRef}
           type="file"
           accept="image/png,image/jpeg,image/webp"
           disabled={logoStatus === "uploading"}
