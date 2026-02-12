@@ -560,14 +560,6 @@ export function WorkspaceMembersTab({
                             {statusLoadingId === m.userId ? <Spinner size="sm" /> : "Enable"}
                           </button>
                         )}
-                        {isLastOwnerLevel && (
-                          <span
-                            className="text-xs text-(--text-muted)"
-                            title="Cannot change or disable the last owner-level user"
-                          >
-                            —
-                          </span>
-                        )}
                       </div>
                     </TableCell>
                   </TableRow>
