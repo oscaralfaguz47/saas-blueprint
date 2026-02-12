@@ -4,28 +4,89 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useApiFetch } from "@/hooks/use-api-fetch";
+import { useToast } from "@/components/ui/toast";
 import AuthCard from "@/components/auth/auth-card";
 import { Spinner } from "@/components/ui/spinner";
 import { CLAIM_SLUG_MIN, CLAIM_SLUG_MAX } from "@/lib/validations";
+import type { PendingInvitationForSetup } from "./page";
 
 type SetupWorkspaceClientProps = {
-  /** When set, user has a valid pending invite for this workspace (from server lookup by email). Show hint to use email link. */
-  pendingInviteWorkspaceName?: string | null;
+  /** When set, show Accept/Decline for this pending invite. */
+  pendingInvitation?: PendingInvitationForSetup | null;
   /** When set, user has no active workspace but was previously in this workspace (now disabled). Show "no longer active" message. */
   lastInactiveWorkspaceName?: string | null;
 };
 
+const REVOKED_OR_EXPIRED_CODE = "INVITATION_REVOKED_OR_EXPIRED";
+
 export default function SetupWorkspaceClient({
-  pendingInviteWorkspaceName = null,
+  pendingInvitation: initialPendingInvitation = null,
   lastInactiveWorkspaceName = null,
 }: SetupWorkspaceClientProps) {
   const router = useRouter();
   const apiFetch = useApiFetch();
+  const { addToast } = useToast();
+  const [pendingInvitation, setPendingInvitation] = useState<PendingInvitationForSetup | null>(
+    initialPendingInvitation
+  );
   const [slug, setSlug] = useState("");
   const [checking, setChecking] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [available, setAvailable] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [decliningId, setDecliningId] = useState<string | null>(null);
+
+  async function handleAcceptInvite(id: string) {
+    setAcceptingId(id);
+    try {
+      const res = await apiFetch(`/api/tenant/invitations/${id}/accept`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+        showToastOnError: false,
+      });
+      if (res.ok) {
+        router.replace("/app");
+        return;
+      }
+      const data = (await res.json().catch(() => ({}))) as { details?: { code?: string }; message?: string };
+      if (res.status === 404 || data.details?.code === REVOKED_OR_EXPIRED_CODE) {
+        setPendingInvitation(null);
+        addToast("info", "This invitation was revoked or has expired.");
+        return;
+      }
+      addToast("error", data.message ?? "Something went wrong. Please try again.");
+    } finally {
+      setAcceptingId(null);
+    }
+  }
+
+  async function handleDeclineInvite(id: string) {
+    setDecliningId(id);
+    try {
+      const res = await apiFetch(`/api/tenant/invitations/${id}/reject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+        showToastOnError: false,
+      });
+      if (res.ok) {
+        setPendingInvitation(null);
+        router.refresh();
+        return;
+      }
+      const data = (await res.json().catch(() => ({}))) as { details?: { code?: string }; message?: string };
+      if (res.status === 404 || data.details?.code === REVOKED_OR_EXPIRED_CODE) {
+        setPendingInvitation(null);
+        addToast("info", "This invitation was revoked or has expired.");
+        return;
+      }
+      addToast("error", data.message ?? "Something went wrong. Please try again.");
+    } finally {
+      setDecliningId(null);
+    }
+  }
 
   async function checkAvailability() {
     const raw = slug.trim().toLowerCase();
@@ -109,14 +170,45 @@ export default function SetupWorkspaceClient({
               continue, you can create a new workspace below.
             </div>
           )}
-          {pendingInviteWorkspaceName && (
+          {pendingInvitation && (
             <div
-              className="mb-4 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 py-3 text-sm text-(--text-secondary)"
+              className="mb-4 rounded-lg border border-(--border-subtle) bg-(--bg-surface) p-4"
               role="status"
             >
-              You have an invite to <span className="font-medium text-(--text-primary)">{pendingInviteWorkspaceName}</span>.
-              Use the link in your email to join, or create your own workspace below.
+              <p className="font-medium text-(--text-primary)">{pendingInvitation.workspaceName}</p>
+              {(pendingInvitation.invitedByName ?? pendingInvitation.invitedByEmail) && (
+                <p className="mt-1 text-sm text-(--text-secondary)">
+                  Invited by {pendingInvitation.invitedByName ?? pendingInvitation.invitedByEmail ?? "Unknown"}
+                </p>
+              )}
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleAcceptInvite(pendingInvitation.id)}
+                  disabled={!!acceptingId || !!decliningId}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-(--color-primary) px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {acceptingId === pendingInvitation.id ? (
+                    <Spinner size="sm" className="text-white" />
+                  ) : null}
+                  Accept
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDeclineInvite(pendingInvitation.id)}
+                  disabled={!!acceptingId || !!decliningId}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {decliningId === pendingInvitation.id ? <Spinner size="sm" /> : null}
+                  Decline
+                </button>
+              </div>
             </div>
+          )}
+          {pendingInvitation && (
+            <p className="mb-2 text-sm font-medium text-(--text-secondary)">
+              Or create your own workspace
+            </p>
           )}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>

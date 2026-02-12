@@ -2,16 +2,27 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
+import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { ensureDraftWorkspaceForUser } from "@/server/services/tenancy-bootstrap";
 import SetupWorkspaceClient from "./setup-workspace-client";
 
 export const dynamic = "force-dynamic";
 
+/** One pending invite for setup/workspace: show Accept/Decline. */
+export type PendingInvitationForSetup = {
+  id: string;
+  workspaceName: string;
+  invitedByName: string | null;
+  invitedByEmail: string | null;
+};
+
 /**
- * Look up a valid pending invite for this user's email (server-side only).
- * Returns at most one workspace name for UX; no tokens or invite IDs exposed.
+ * Look up the first valid pending invite for this user's email (server-side only).
+ * Used to show Accept/Decline on the claim page instead of "use the link in your email".
  */
-async function getPendingInviteWorkspaceName(userEmail: string | null | undefined): Promise<string | null> {
+async function getFirstPendingInvitation(
+  userEmail: string | null | undefined
+): Promise<PendingInvitationForSetup | null> {
   if (!userEmail || typeof userEmail !== "string") return null;
   const normalized = userEmail.trim().toLowerCase();
   if (!normalized) return null;
@@ -24,10 +35,21 @@ async function getPendingInviteWorkspaceName(userEmail: string | null | undefine
       revokedAt: null,
       expiresAt: { gt: new Date() },
     },
-    select: { tenant: { select: { name: true } } },
+    select: {
+      id: true,
+      tenant: { select: { name: true } },
+      invitedByUser: { select: { name: true, email: true } },
+    },
+    orderBy: { createdAt: "desc" },
   });
 
-  return invite?.tenant?.name ?? null;
+  if (!invite) return null;
+  return {
+    id: invite.id,
+    workspaceName: invite.tenant.name,
+    invitedByName: invite.invitedByUser?.name ?? null,
+    invitedByEmail: invite.invitedByUser?.email ?? null,
+  };
 }
 
 /**
@@ -54,6 +76,13 @@ export default async function SetupWorkspacePage() {
     redirect(`/auth/sign-in?callbackUrl=${encodeURIComponent("/setup/workspace")}`);
   }
 
+  // Only redirect to app when user has an ACTIVE workspace (re-enabled flow).
+  // Do not redirect when their only membership is a DRAFT (avoids loop: /app → DRAFT → /setup/workspace → 1 membership → /app).
+  const defaultMembership = await getDefaultTenantForUser(session.user.id);
+  if (defaultMembership?.tenant.status === "ACTIVE") {
+    redirect("/app");
+  }
+
   try {
     await ensureDraftWorkspaceForUser({
       userId: session.user.id,
@@ -69,14 +98,14 @@ export default async function SetupWorkspacePage() {
     throw err;
   }
 
-  const [pendingInviteWorkspaceName, lastInactiveWorkspaceName] = await Promise.all([
-    getPendingInviteWorkspaceName(session.user.email),
+  const [pendingInvitation, lastInactiveWorkspaceName] = await Promise.all([
+    getFirstPendingInvitation(session.user.email),
     getLastInactiveWorkspaceName(session.user.id),
   ]);
 
   return (
     <SetupWorkspaceClient
-      pendingInviteWorkspaceName={pendingInviteWorkspaceName}
+      pendingInvitation={pendingInvitation}
       lastInactiveWorkspaceName={lastInactiveWorkspaceName}
     />
   );
