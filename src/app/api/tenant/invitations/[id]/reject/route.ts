@@ -3,6 +3,7 @@ import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
 import { getOnboardingCounts } from "@/server/services/onboarding";
 import { writeAuditLog } from "@/server/services/audit";
+import { sendInvitationDeclinedNotificationToInviter } from "@/server/services/invitation-email";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 
 function getIp(req: Request): string | null {
@@ -33,14 +34,16 @@ export const POST = withErrorHandler(async (
       status: true,
       revokedAt: true,
       expiresAt: true,
+      tenant: { select: { name: true } },
+      invitedByUser: { select: { email: true } },
     },
   });
 
-  if (!invite) return ApiErrors.NOT_FOUND("Invitation not found");
-  if (invite.status !== "PENDING") return ApiErrors.NOT_FOUND("Invitation not found or expired");
-  if (invite.revokedAt) return ApiErrors.NOT_FOUND("Invitation not found or expired");
+  if (!invite) return ApiErrors.INVITATION_REVOKED_OR_EXPIRED();
+  if (invite.status !== "PENDING") return ApiErrors.INVITATION_REVOKED_OR_EXPIRED();
+  if (invite.revokedAt) return ApiErrors.INVITATION_REVOKED_OR_EXPIRED();
   const now = new Date();
-  if (invite.expiresAt <= now) return ApiErrors.NOT_FOUND("Invitation not found or expired");
+  if (invite.expiresAt <= now) return ApiErrors.INVITATION_REVOKED_OR_EXPIRED();
 
   const userEmail = (session.user.email ?? "").toLowerCase();
   if (!userEmail || userEmail !== invite.email.toLowerCase()) {
@@ -77,6 +80,12 @@ export const POST = withErrorHandler(async (
     ipAddress: getIp(req),
     userAgent: getUserAgent(req),
   });
+
+  sendInvitationDeclinedNotificationToInviter({
+    inviterEmail: invite.invitedByUser?.email ?? null,
+    workspaceName: invite.tenant.name,
+    declinedEmail: invite.email,
+  }).catch((err) => console.error("[reject] Declined notification email failed:", err));
 
   const { activeMembershipCount, pendingInvitationsCount } = await getOnboardingCounts(session.user.id);
   let redirectTo = "/app/requests";

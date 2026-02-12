@@ -59,6 +59,11 @@ export const ApiErrors = {
   /** Rate limited; 429 */
   RATE_LIMITED: (message?: string) =>
     apiError("RATE_LIMITED", 429, message ?? "Too many requests"),
+  /** Invitation no longer valid (revoked or expired); 404, client can show inline message and remove from list */
+  INVITATION_REVOKED_OR_EXPIRED: () =>
+    apiError("NOT_FOUND", 404, "This invitation was revoked or has expired.", {
+      code: "INVITATION_REVOKED_OR_EXPIRED",
+    }),
 } as const;
 
 /**

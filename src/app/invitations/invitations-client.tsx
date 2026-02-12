@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { useToast } from "@/components/ui/toast";
 import { Spinner } from "@/components/ui/spinner";
+import { IconX } from "@/components/ui/icons";
 
 type WorkspaceItem = {
   tenantId: string;
@@ -30,6 +31,8 @@ type Props = {
   pendingInvitations: PendingInvitationItem[];
 };
 
+const REVOKED_OR_EXPIRED_CODE = "INVITATION_REVOKED_OR_EXPIRED";
+
 export default function InvitationsClient({
   activeWorkspaces: initialWorkspaces,
   pendingInvitations: initialPending,
@@ -41,20 +44,33 @@ export default function InvitationsClient({
   const [pendingInvitations, setPendingInvitations] = useState(initialPending);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [decliningId, setDecliningId] = useState<string | null>(null);
+  const [revokedOrExpiredMessage, setRevokedOrExpiredMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   async function handleAccept(id: string) {
     setAcceptingId(id);
+    setRevokedOrExpiredMessage(null);
+    setSuccessMessage(null);
     try {
       const res = await apiFetch(`/api/tenant/invitations/${id}/accept`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
+        showToastOnError: false,
       });
       if (res.ok) {
-        addToast("success", "Joined workspace");
         setPendingInvitations((prev) => prev.filter((inv) => inv.id !== id));
+        setSuccessMessage("You joined the workspace.");
         router.refresh();
+        return;
       }
+      const data = (await res.json().catch(() => ({}))) as { details?: { code?: string }; message?: string };
+      if (res.status === 404 || data.details?.code === REVOKED_OR_EXPIRED_CODE) {
+        setPendingInvitations((prev) => prev.filter((inv) => inv.id !== id));
+        setRevokedOrExpiredMessage("This invitation was revoked or has expired and was removed from the list.");
+        return;
+      }
+      addToast("error", data.message ?? "Something went wrong. Please try again.");
     } finally {
       setAcceptingId(null);
     }
@@ -62,20 +78,39 @@ export default function InvitationsClient({
 
   async function handleDecline(id: string) {
     setDecliningId(id);
+    setRevokedOrExpiredMessage(null);
+    setSuccessMessage(null);
     try {
       const res = await apiFetch(`/api/tenant/invitations/${id}/reject`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
+        showToastOnError: false,
       });
       if (res.ok) {
-        addToast("success", "Invitation declined");
         setPendingInvitations((prev) => prev.filter((inv) => inv.id !== id));
+        setSuccessMessage("Invitation declined.");
         router.refresh();
+        return;
       }
+      const data = (await res.json().catch(() => ({}))) as { details?: { code?: string }; message?: string };
+      if (res.status === 404 || data.details?.code === REVOKED_OR_EXPIRED_CODE) {
+        setPendingInvitations((prev) => prev.filter((inv) => inv.id !== id));
+        setRevokedOrExpiredMessage("This invitation was revoked or has expired and was removed from the list.");
+        return;
+      }
+      addToast("error", data.message ?? "Something went wrong. Please try again.");
     } finally {
       setDecliningId(null);
     }
+  }
+
+  function dismissSuccess() {
+    setSuccessMessage(null);
+  }
+
+  function dismissRevokedOrExpired() {
+    setRevokedOrExpiredMessage(null);
   }
 
   const defaultWorkspace = activeWorkspaces.find((w) => w.isDefault) ?? activeWorkspaces[0];
@@ -127,6 +162,38 @@ export default function InvitationsClient({
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-(--text-secondary)">
             Pending invitations
           </h2>
+          {successMessage ? (
+            <div
+              className="mb-4 flex items-start gap-3 rounded-lg border border-(--color-success) bg-(--color-success)/10 px-4 py-3 text-sm text-(--text-primary)"
+              role="status"
+            >
+              <p className="flex-1">{successMessage}</p>
+              <button
+                type="button"
+                onClick={dismissSuccess}
+                className="shrink-0 rounded p-1 text-(--text-muted) hover:bg-black/5 hover:text-(--text-primary)"
+                aria-label="Dismiss"
+              >
+                <IconX size={16} />
+              </button>
+            </div>
+          ) : null}
+          {revokedOrExpiredMessage ? (
+            <div
+              className="mb-4 flex items-start gap-3 rounded-lg border border-(--color-warning) bg-(--color-warning)/10 px-4 py-3 text-sm text-(--text-primary)"
+              role="alert"
+            >
+              <p className="flex-1">{revokedOrExpiredMessage}</p>
+              <button
+                type="button"
+                onClick={dismissRevokedOrExpired}
+                className="shrink-0 rounded p-1 text-(--text-muted) hover:bg-black/5 hover:text-(--text-primary)"
+                aria-label="Dismiss"
+              >
+                <IconX size={16} />
+              </button>
+            </div>
+          ) : null}
           {pendingInvitations.length === 0 ? (
             <p className="rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 py-3 text-sm text-(--text-secondary)">
             No pending invitations.

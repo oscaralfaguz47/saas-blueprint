@@ -3,6 +3,7 @@ import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
 import { getOnboardingCounts } from "@/server/services/onboarding";
 import { writeAuditLog } from "@/server/services/audit";
+import { sendInvitationDeclinedNotificationToInviter } from "@/server/services/invitation-email";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { parseBody, acceptInvitationSchema } from "@/lib/validations";
 import crypto from "crypto";
@@ -35,7 +36,13 @@ export const POST = withErrorHandler(async (req: Request) => {
       revokedAt: null,
       expiresAt: { gt: new Date() },
     },
-    select: { id: true, tenantId: true, email: true },
+    select: {
+      id: true,
+      tenantId: true,
+      email: true,
+      tenant: { select: { name: true } },
+      invitedByUser: { select: { email: true } },
+    },
   });
 
   if (!invite) {
@@ -84,6 +91,12 @@ export const POST = withErrorHandler(async (req: Request) => {
     ipAddress: getIp(req),
     userAgent: getUserAgent(req),
   });
+
+  sendInvitationDeclinedNotificationToInviter({
+    inviterEmail: invite.invitedByUser?.email ?? null,
+    workspaceName: invite.tenant.name,
+    declinedEmail: invite.email,
+  }).catch((err) => console.error("[reject] Declined notification email failed:", err));
 
   const { activeMembershipCount, pendingInvitationsCount } = await getOnboardingCounts(session.user.id);
   let redirectTo = "/app/requests";

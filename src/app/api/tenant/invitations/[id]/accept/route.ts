@@ -36,11 +36,11 @@ export const POST = withErrorHandler(async (
     },
   });
 
-  if (!invite) return ApiErrors.NOT_FOUND("Invitation not found");
-  if (invite.status !== "PENDING") return ApiErrors.NOT_FOUND("Invitation not found or expired");
-  if (invite.revokedAt || invite.acceptedAt) return ApiErrors.NOT_FOUND("Invitation not found or expired");
+  if (!invite) return ApiErrors.INVITATION_REVOKED_OR_EXPIRED();
+  if (invite.status !== "PENDING") return ApiErrors.INVITATION_REVOKED_OR_EXPIRED();
+  if (invite.revokedAt || invite.acceptedAt) return ApiErrors.INVITATION_REVOKED_OR_EXPIRED();
   const now = new Date();
-  if (invite.expiresAt <= now) return ApiErrors.NOT_FOUND("Invitation not found or expired");
+  if (invite.expiresAt <= now) return ApiErrors.INVITATION_REVOKED_OR_EXPIRED();
 
   const userEmail = (session.user.email ?? "").toLowerCase();
   if (!userEmail || userEmail !== invite.email.toLowerCase()) {

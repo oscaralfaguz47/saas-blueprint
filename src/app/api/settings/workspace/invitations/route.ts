@@ -9,17 +9,20 @@ import {
   INVITATIONS_PAGE_SIZE,
 } from "@/lib/validations/workspace-invitations";
 
+/** A5: Use DB status when present; REJECTED shows so inviter knows the invitee declined. */
 function deriveInviteStatus(
   inv: {
+    status?: string;
     acceptedAt: Date | null;
     revokedAt: Date | null;
     expiresAt: Date;
   },
   now: Date
-): "ACTIVE" | "EXPIRED" | "REVOKED" | "ACCEPTED" {
-  if (inv.acceptedAt) return "ACCEPTED";
-  if (inv.revokedAt) return "REVOKED";
-  if (inv.expiresAt <= now) return "EXPIRED";
+): "ACTIVE" | "EXPIRED" | "REVOKED" | "REJECTED" | "ACCEPTED" {
+  if (inv.status === "ACCEPTED" || inv.acceptedAt) return "ACCEPTED";
+  if (inv.status === "REVOKED" || inv.revokedAt) return "REVOKED";
+  if (inv.status === "REJECTED") return "REJECTED";
+  if (inv.status === "EXPIRED" || inv.expiresAt <= now) return "EXPIRED";
   return "ACTIVE";
 }
 
@@ -111,22 +114,21 @@ export const GET = withErrorHandler(async (req: Request) => {
     const statuses = query.statuses;
     const orConditions: Array<Record<string, unknown>> = [];
     if (statuses.includes("ACCEPTED")) {
-      orConditions.push({ acceptedAt: { not: null } });
+      orConditions.push({ status: "ACCEPTED" });
     }
     if (statuses.includes("REVOKED")) {
-      orConditions.push({ revokedAt: { not: null } });
+      orConditions.push({ status: "REVOKED" });
+    }
+    if (statuses.includes("REJECTED")) {
+      orConditions.push({ status: "REJECTED" });
     }
     if (statuses.includes("EXPIRED")) {
-      orConditions.push({
-        expiresAt: { lte: now },
-        acceptedAt: null,
-        revokedAt: null,
-      });
+      orConditions.push({ status: "EXPIRED" });
     }
     if (statuses.includes("ACTIVE")) {
       orConditions.push({
+        status: "PENDING",
         expiresAt: { gt: now },
-        acceptedAt: null,
         revokedAt: null,
       });
     }
@@ -207,6 +209,7 @@ export const GET = withErrorHandler(async (req: Request) => {
     select: {
       id: true,
       email: true,
+      status: true,
       createdAt: true,
       expiresAt: true,
       acceptedAt: true,

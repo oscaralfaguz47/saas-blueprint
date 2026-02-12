@@ -19,6 +19,7 @@ import { InviteMemberModal } from "./invite-member-modal";
 const PAGE_SIZE = 10;
 const STATUSES = [
   { value: "ACTIVE", label: "Active" },
+  { value: "REJECTED", label: "Rejected" },
   { value: "EXPIRED", label: "Expired" },
   { value: "REVOKED", label: "Revoked" },
   { value: "ACCEPTED", label: "Accepted" },
@@ -348,7 +349,7 @@ export function WorkspaceInvitesTab({ tenant, permissions }: Props) {
                           </button>
                         </>
                       )}
-                      {canManageInvites && (inv.status === "EXPIRED" || inv.status === "REVOKED") && (
+                      {canManageInvites && (inv.status === "EXPIRED" || inv.status === "REVOKED" || inv.status === "REJECTED") && (
                         <button
                           type="button"
                           onClick={() => runAction(inv.id, "reinvite")}
