@@ -61,7 +61,7 @@ export function AccountSettingsTabs({ profile, loginMethod, security }: Props) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <h1 className="text-xl font-semibold text-(--text-primary)">
         Account Settings
       </h1>

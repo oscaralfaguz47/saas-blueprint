@@ -197,9 +197,9 @@ export function SecurityTab({ security: initialSecurity }: Props) {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       {/* Two-Factor Authentication */}
-      <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-6">
+      <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
         <h2 className="text-base font-semibold text-(--text-primary)">
           Two-Factor Authentication
         </h2>
@@ -232,7 +232,7 @@ export function SecurityTab({ security: initialSecurity }: Props) {
         )}
 
         {totpSetupStep === "qr" && setupData && (
-          <div className="mt-6 space-y-4">
+          <div className="mt-4 space-y-4 sm:mt-6">
             <p className="text-sm text-(--text-secondary)">
               Scan this QR code with your authenticator app (e.g. Google Authenticator), or enter
               the key manually:
@@ -283,7 +283,7 @@ export function SecurityTab({ security: initialSecurity }: Props) {
         )}
 
         {backupCodes && backupCodes.length > 0 && (
-          <div className="mt-4 rounded-lg border border-(--color-warning) bg-(--bg-surface-elev) p-4">
+          <div className="mt-4 rounded-lg border border-(--color-warning) bg-(--bg-surface-elev) p-3 sm:p-4">
             <p className="text-sm font-medium text-(--text-primary)">
               Save these backup codes. Each can be used once.
             </p>
@@ -300,7 +300,7 @@ export function SecurityTab({ security: initialSecurity }: Props) {
 
         {totpEnabled && (
           <>
-            <form onSubmit={handleDisable} className="mt-6 flex flex-wrap items-end gap-3">
+            <form onSubmit={handleDisable} className="mt-4 flex flex-wrap items-end gap-3 sm:mt-6">
               <div>
                 <label htmlFor="disable-code" className="block text-sm text-(--text-secondary)">
                   Disable 2FA (enter code)
@@ -354,7 +354,7 @@ export function SecurityTab({ security: initialSecurity }: Props) {
       </section>
 
       {/* Inactivity auto-logout */}
-      <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-6">
+      <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
         <h2 className="text-base font-semibold text-(--text-primary)">
           Inactivity auto-logout
         </h2>

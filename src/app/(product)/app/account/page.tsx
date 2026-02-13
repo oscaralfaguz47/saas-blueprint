@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
 import { getPresignedGetUrlProfilePhoto, isR2Configured } from "@/server/services/r2-profile-photo";
-import { Container } from "@/components/ui/container";
 import { AccountSettingsTabs } from "@/components/app/account/account-settings-tabs";
 
 export default async function AccountPage() {
@@ -70,12 +69,10 @@ export default async function AccountPage() {
   };
 
   return (
-    <Container>
-      <AccountSettingsTabs
-        profile={profile}
-        loginMethod={loginMethod}
-        security={securityFlags}
-      />
-    </Container>
+    <AccountSettingsTabs
+      profile={profile}
+      loginMethod={loginMethod}
+      security={securityFlags}
+    />
   );
 }

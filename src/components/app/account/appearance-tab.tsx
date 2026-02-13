@@ -48,19 +48,19 @@ export function AppearanceTab({ initialMode }: Props) {
   };
 
   return (
-    <div className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-6">
+    <div className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
       <h2 className="text-base font-semibold text-(--text-primary)">Appearance</h2>
       <p className="mt-1 text-sm text-(--text-secondary)">
         Choose how the interface looks. Changes apply immediately.
       </p>
-      <div className="mt-6 space-y-3">
+      <div className="mt-4 space-y-2 sm:mt-6 sm:space-y-3">
         {OPTIONS.map((opt) => {
           const checked = (theme ?? currentTheme) === opt.value;
           return (
             <label
               key={opt.value}
               className={[
-                "flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors",
+                "flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors sm:p-4",
                 checked
                   ? "border-(--color-primary) bg-(--bg-surface-elev)"
                   : "border-(--border-subtle) bg-(--bg-surface) hover:bg-(--bg-surface-elev)",

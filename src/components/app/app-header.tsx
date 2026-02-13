@@ -60,7 +60,10 @@ export default function AppHeader({ user, workspace, pendingInvitationsCount = 0
                   {workspaceInitials(workspace.name)}
                 </span>
               )}
-              <span className="min-w-0 truncate text-sm font-semibold text-[var(--text-primary)]">
+              <span
+                className="min-w-0 max-w-72 truncate text-sm font-semibold text-[var(--text-primary)]"
+                title={workspace.name}
+              >
                 {workspace.name}
               </span>
             </div>

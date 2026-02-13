@@ -146,12 +146,14 @@ export default function UserMenu({ user }: UserMenuProps) {
           </div>
         )}
 
-        <div className="hidden min-w-0 text-left sm:block">
-          <div className="truncate text-sm font-semibold text-[var(--text-primary)]">
+        <div className="hidden min-w-0 max-w-[12rem] text-left sm:block">
+          <div className="truncate text-sm font-semibold text-[var(--text-primary)]" title={label}>
             {label}
           </div>
           {secondary ? (
-            <div className="truncate text-xs text-[var(--text-muted)]">{secondary}</div>
+            <div className="truncate text-xs text-[var(--text-muted)]" title={secondary}>
+              {secondary}
+            </div>
           ) : null}
         </div>
 

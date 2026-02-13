@@ -144,14 +144,14 @@ export function ProfileTab({ profile: initialProfile, loginMethod }: Props) {
   };
 
   return (
-    <div className="space-y-8">
-      <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-6">
+    <div className="space-y-6 sm:space-y-8">
+      <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
         <h2 className="text-base font-semibold text-(--text-primary)">Profile photo</h2>
         <p className="mt-1 text-sm text-(--text-secondary)">
           Upload any image (JPEG, PNG, WebP, GIF, etc.) under 10MB. It will be compressed and stored
           for a lightweight display.
         </p>
-        <div className="mt-4 flex items-center gap-4">
+        <div className="mt-4 flex flex-wrap items-center gap-3 sm:gap-4">
           <div className="h-20 w-20 shrink-0 overflow-hidden rounded-full border border-(--border-subtle) bg-(--bg-surface-elev)">
             {initialProfile.avatarUrl ? (
               <img
@@ -186,13 +186,13 @@ export function ProfileTab({ profile: initialProfile, loginMethod }: Props) {
         </div>
       </section>
 
-      <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-6">
+      <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
         <h2 className="text-base font-semibold text-(--text-primary)">Profile</h2>
         <p className="mt-1 text-sm text-(--text-secondary)">
           Update your name, phone, and timezone.
         </p>
 
-        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+        <form onSubmit={handleSubmit} className="mt-4 space-y-4 sm:mt-6">
           <div>
             <label htmlFor="profile-name" className="block text-sm font-medium text-(--text-primary)">
               Name
@@ -273,7 +273,7 @@ export function ProfileTab({ profile: initialProfile, loginMethod }: Props) {
         </form>
       </section>
 
-      <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-6">
+      <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
         <h2 className="text-base font-semibold text-(--text-primary)">Login method</h2>
         <p className="mt-1 text-sm text-(--text-secondary)">{loginMethod}</p>
       </section>
