@@ -165,6 +165,7 @@ If backend fetches URLs:
 - Sessions must expire.
 - Sensitive actions (billing, ownership transfer, role change) require re-auth.
 - Login endpoints must be rate-limited.
+- Support per-user inactivity timeout (sliding) for accounts that enable it; enforce server-side using session lastActivityAt and force logout mechanism.
 
 ---
 

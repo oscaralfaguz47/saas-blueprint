@@ -54,6 +54,14 @@ enum ActorContext {
   TENANT
   VENDOR
 }
+
+/// L1 My Account: user appearance preference
+enum AppearanceMode {
+  LIGHT
+  DARK
+  SYSTEM
+}
+
 enum RecordType {
   SCOPE_CHANGE
   DECISION
@@ -88,6 +96,12 @@ model User {
   email         String?   @unique
   emailVerified DateTime?
   image         String?
+
+  // L1 My Account: profile and appearance
+  phone                 String?         @db.VarChar(30)
+  timezone              String?         @db.VarChar(64)
+  appearance           AppearanceMode   @default(SYSTEM)
+  profilePhotoObjectKey String?         @db.VarChar(512)
 
   // Legacy / compatibility role (keep for now)
   role RoleKey @default(MEMBER)
@@ -129,6 +143,18 @@ model UserSecurity {
   // For forced logout / session invalidation
   tokenVersion Int @default(0)
 
+  // L1: TOTP 2FA
+  totpEnabled          Boolean   @default(false)
+  totpEnabledAt        DateTime?
+  totpSecretEnc        String?   @db.VarChar(500)
+  totpPendingSecretEnc String?   @db.VarChar(500)
+  backupCodeHashes     String[]  @default([])
+
+  // L1: Inactivity auto-logout
+  autoLogoutEnabled Boolean @default(false)
+  autoLogoutHours   Int     @default(5)
+  forceLogoutAt     DateTime?
+
   // Mirror flags (actual MFA is typically enforced at IdP level)
   mfaEnabled  Boolean   @default(false)
   mfaEnforced Boolean   @default(false)
@@ -137,6 +163,9 @@ model UserSecurity {
   lockedUntil DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
+  @@index([totpEnabled])
+  @@index([autoLogoutEnabled])
 }
 
 model Tenant {
@@ -572,10 +601,15 @@ model Session {
   userId       String
   expires      DateTime
 
+  // L1: Inactivity check and 2FA challenge
+  lastActivityAt DateTime @default(now())
+  mfaVerifiedAt DateTime?
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expires])
+  @@index([lastActivityAt])
 }
 
 model VerificationToken {

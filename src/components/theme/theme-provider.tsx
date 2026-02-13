@@ -32,13 +32,22 @@ function applyThemeToDocument(theme: Theme) {
   document.documentElement.setAttribute("data-theme", theme);
 }
 
-export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  // Always start with "dark" so server and client first paint match (avoid hydration mismatch).
-  const [theme, setThemeState] = useState<Theme>("dark");
+type ThemeProviderProps = {
+  children: React.ReactNode;
+  /** L1: Server-driven appearance (from User.appearance). Used as initial value before localStorage. */
+  initialTheme?: Theme | null;
+};
+
+export function ThemeProvider({ children, initialTheme }: ThemeProviderProps) {
+  // Prefer initialTheme from server (L1), then localStorage, then "dark" for hydration.
+  const [theme, setThemeState] = useState<Theme>(
+    isTheme(initialTheme) ? initialTheme : "dark"
+  );
 
   useEffect(() => {
-    setThemeState(readThemeFromStorage());
-  }, []);
+    const fromServer = isTheme(initialTheme) ? initialTheme : null;
+    setThemeState(fromServer ?? readThemeFromStorage());
+  }, [initialTheme]);
 
   useEffect(() => {
     applyThemeToDocument(theme);

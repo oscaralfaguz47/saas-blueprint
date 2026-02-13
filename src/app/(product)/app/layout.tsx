@@ -1,10 +1,14 @@
 import { ReactNode } from "react";
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { authOptions } from "@/server/auth-options";
+import { prisma } from "@/server/db";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { getOnboardingCounts } from "@/server/services/onboarding";
 import { writeAuditLog } from "@/server/services/audit";
+import { checkAndUpdateSessionActivity } from "@/server/services/inactivity";
+import { getPresignedGetUrlProfilePhoto, isR2Configured } from "@/server/services/r2-profile-photo";
 import { AppLayoutHydrationGate } from "@/components/app/app-layout-hydration-gate";
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
@@ -12,6 +16,22 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   if (!session?.user?.id) redirect("/auth/sign-in");
 
   const userId = session.user.id;
+
+  // L1: Inactivity auto-logout — if session expired by inactivity, sign out
+  if (session.user.sessionToken) {
+    const activity = await checkAndUpdateSessionActivity(session.user.sessionToken);
+    if (activity.status === "expired" || activity.status === "session_not_found") {
+      redirect("/api/auth/signout?callbackUrl=/auth/sign-in");
+    }
+  }
+
+  // L1: 2FA challenge — require verification before app access (cookie fallback when JWT strategy doesn't use Session rows)
+  const cookieStore = await cookies();
+  const mfaJustVerified = cookieStore.get("mfa_just_verified")?.value;
+  if (session.user.totpEnabled && !session.user.mfaVerified && !mfaJustVerified) {
+    redirect("/auth/2fa");
+  }
+  // Cookie is read-only here; it expires on its own (maxAge 120s) so we don't clear it in the layout.
 
   try {
     const { activeMembershipCount, pendingInvitationsCount } =
@@ -44,12 +64,33 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       logoObjectKey: membership.tenant.logoObjectKey ?? null,
     };
 
+    const userRecord = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        name: true,
+        email: true,
+        image: true,
+        profilePhotoObjectKey: true,
+        appearance: true,
+      },
+    });
+    const appearanceMode = userRecord?.appearance ?? "SYSTEM";
+    const initialTheme =
+      appearanceMode === "LIGHT" ? "light" : appearanceMode === "DARK" ? "dark" : "system";
+
+    let avatarUrl: string | null = null;
+    if (userRecord?.profilePhotoObjectKey && isR2Configured()) {
+      avatarUrl = await getPresignedGetUrlProfilePhoto(userRecord.profilePhotoObjectKey);
+    }
+    if (!avatarUrl && userRecord?.image) avatarUrl = userRecord.image;
+
     return (
       <AppLayoutHydrationGate
+        initialTheme={initialTheme}
         user={{
-          name: session.user.name ?? null,
-          email: session.user.email ?? null,
-          image: session.user.image ?? null,
+          name: userRecord?.name ?? session.user.name ?? null,
+          email: userRecord?.email ?? session.user.email ?? null,
+          image: avatarUrl,
         }}
         workspace={workspace}
         tenantId={tenantId}

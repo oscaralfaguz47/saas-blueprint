@@ -87,18 +87,50 @@ export const authOptions: NextAuthOptions = {
   },
 
   callbacks: {
-    async jwt({ token }) {
+    async jwt({ token, user, trigger }) {
       // A7: Persist iat for step-up (recent auth window) on transfer primary ownership.
       if (token.iat == null) {
         token.iat = Math.floor(Date.now() / 1000);
       }
+      // L1: Store sessionToken in JWT for inactivity check and 2FA (set on sign-in).
+      if (user?.id && (trigger === "signIn" || !token.sessionToken)) {
+        const sessionRow = await prisma.session.findFirst({
+          where: { userId: user.id },
+          orderBy: { id: "desc" },
+          select: { sessionToken: true },
+        });
+        if (sessionRow) token.sessionToken = sessionRow.sessionToken;
+      }
+      // L1: Refresh mfaVerified from DB on every request so /app sees it right after 2FA challenge
+      if (token.sub) {
+        const anyVerified = await prisma.session.findFirst({
+          where: { userId: token.sub, mfaVerifiedAt: { not: null } },
+          select: { id: true },
+        });
+        token.mfaVerified = anyVerified != null;
+      }
       return token;
     },
     async session({ session, token }) {
-      // Keep session callback pure: no DB writes / bootstraps here.
       if (session.user) {
         session.user.id = token.sub ?? session.user.id;
         session.user.iat = token.iat ?? undefined;
+        session.user.sessionToken = token.sessionToken ?? undefined;
+        // L1: mfaVerified and totpEnabled — always read from DB (jwt callback does not run on every request)
+        if (token.sub) {
+          const [anyMfaVerified, security] = await Promise.all([
+            prisma.session.findFirst({
+              where: { userId: token.sub, mfaVerifiedAt: { not: null } },
+              select: { id: true },
+            }),
+            prisma.userSecurity.findUnique({
+              where: { userId: token.sub },
+              select: { totpEnabled: true },
+            }),
+          ]);
+          session.user.mfaVerified = anyMfaVerified != null;
+          session.user.totpEnabled = security?.totpEnabled ?? false;
+        }
       }
       return session;
     },

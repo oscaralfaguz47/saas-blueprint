@@ -186,8 +186,8 @@ export default function UserMenu({ user }: UserMenuProps) {
 
           <div className="py-1">
             <MenuItem
-              href="/app/settings"
-              label="Account Settings"
+              href="/app/account"
+              label="My Account"
               icon={<IconSettings size={16} />}
               onSelect={() => setOpen(false)}
             />

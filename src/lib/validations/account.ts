@@ -1,0 +1,45 @@
+import { z } from "zod";
+
+/** L1 My Account: profile patch (name, phone, timezone). */
+export const profilePatchSchema = z.object({
+  name: z.string().min(1).max(120).trim().optional(),
+  phone: z.string().max(30).trim().optional().nullable(),
+  timezone: z.string().max(64).trim().optional().nullable(),
+});
+
+/** L1: appearance mode. */
+export const appearanceModeSchema = z.enum(["LIGHT", "DARK", "SYSTEM"]);
+export const appearancePatchSchema = z.object({
+  mode: appearanceModeSchema,
+});
+
+/** L1: profile photo upload URL request (same shape as logo). */
+export const photoUploadUrlSchema = z.object({
+  contentType: z.enum(["image/png", "image/jpeg", "image/webp"]),
+  contentLength: z
+    .number()
+    .int()
+    .min(1)
+    .max(5 * 1024 * 1024), // 5MB for profile photo
+  extension: z.enum(["png", "jpeg", "jpg", "webp"]),
+});
+
+/** L1: confirm profile photo upload. */
+export const photoConfirmSchema = z.object({
+  objectKey: z.string().min(1).max(512),
+});
+
+/** L1: 6-digit TOTP or backup code. */
+export const twoFaCodeSchema = z.object({
+  code: z.string().length(6).regex(/^[0-9]+$/, "Must be 6 digits"),
+});
+
+/** L1: optional backup code (8 chars) for 2FA. */
+export const twoFaVerifySchema = z.object({
+  code: z.string().min(6).max(10).trim(),
+});
+
+/** L1: auto-logout toggle. */
+export const autoLogoutPatchSchema = z.object({
+  enabled: z.boolean(),
+});

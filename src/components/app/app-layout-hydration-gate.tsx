@@ -14,6 +14,8 @@ type Workspace = {
   logoObjectKey?: string | null;
 };
 
+type Theme = "light" | "dark" | "system";
+
 type AppLayoutHydrationGateProps = {
   user: {
     name: string | null;
@@ -24,6 +26,8 @@ type AppLayoutHydrationGateProps = {
   tenantId: string | null;
   /** A5: Pending workspace invitations for header badge */
   pendingInvitationsCount?: number;
+  /** L1: Initial theme from User.appearance */
+  initialTheme?: Theme | null;
   children: React.ReactNode;
 };
 
@@ -41,6 +45,7 @@ export function AppLayoutHydrationGate({
   workspace,
   tenantId,
   pendingInvitationsCount = 0,
+  initialTheme = null,
   children,
 }: AppLayoutHydrationGateProps) {
   const mounted = useSyncExternalStore(
@@ -63,7 +68,7 @@ export function AppLayoutHydrationGate({
     <>
       <ThemeBootstrap />
       <WorkspaceReadyNotifier tenantId={tenantId} />
-      <ThemeProvider>
+      <ThemeProvider initialTheme={initialTheme}>
         <TenantPermissionsProvider>
           <CreateWorkspaceModalProvider>
             <AppLayoutClient user={user} workspace={workspace} pendingInvitationsCount={pendingInvitationsCount}>

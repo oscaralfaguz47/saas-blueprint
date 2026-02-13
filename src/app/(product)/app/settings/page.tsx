@@ -1,18 +1,8 @@
-import ThemeSelect from "@/components/settings/theme-select";
+import { redirect } from "next/navigation";
 
+/**
+ * Legacy route: redirect to My Account (L1).
+ */
 export default function SettingsPage() {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-(--text-primary)">
-          Settings
-        </h1>
-        <p className="mt-1 text-sm text-(--text-secondary)">
-          Manage preferences for your workspace and account.
-        </p>
-      </div>
-
-      <ThemeSelect />
-    </div>
-  );
+  redirect("/app/account");
 }

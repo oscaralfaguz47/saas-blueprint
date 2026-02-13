@@ -30,6 +30,14 @@ export function useApiFetch() {
             message?: string;
             details?: { code?: string };
           };
+          // Skip toast for validation and rate-limit errors; they are shown inline in the form.
+          if (
+            res.status === 400 ||
+            res.status === 429 ||
+            data.error === "VALIDATION_ERROR" ||
+            data.error === "RATE_LIMITED"
+          )
+            return res;
           toast.addToast("error", getApiErrorMessage(res, data));
         } catch {
           toast.addToast("error", "Something went wrong. Please try again.");
