@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ValidationError } from "@/lib/validations/common";
 
 /**
  * Standardized API error response
@@ -80,9 +81,11 @@ export function withErrorHandler<T extends unknown[]>(
 
       // Handle known error types
       if (error instanceof Error) {
-        // Validation errors from parseBody
-        if (error.message.startsWith("Validation failed:")) {
+        if (error instanceof ValidationError) {
           return ApiErrors.VALIDATION_ERROR(error.message);
+        }
+        if (error.message.startsWith("Validation failed:")) {
+          return ApiErrors.VALIDATION_ERROR("Please check the value and try again.");
         }
         if (error.message === "Invalid JSON in request body") {
           return ApiErrors.VALIDATION_ERROR("Invalid request body format");
