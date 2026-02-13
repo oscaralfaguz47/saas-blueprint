@@ -39,7 +39,7 @@ export const GET = withErrorHandler(async () => {
       select: {
         totpEnabled: true,
         autoLogoutEnabled: true,
-        autoLogoutHours: true,
+        autoLogoutMinutes: true,
       },
     }),
   ]);
@@ -69,7 +69,7 @@ export const GET = withErrorHandler(async () => {
     security: {
       totpEnabled: security?.totpEnabled ?? false,
       autoLogoutEnabled: security?.autoLogoutEnabled ?? false,
-      autoLogoutHours: security?.autoLogoutHours ?? 5,
+      autoLogoutMinutes: security?.autoLogoutMinutes ?? 300,
     },
   });
 });

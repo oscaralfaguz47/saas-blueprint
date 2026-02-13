@@ -39,7 +39,18 @@ export const twoFaVerifySchema = z.object({
   code: z.string().min(6).max(10).trim(),
 });
 
-/** L1: auto-logout toggle. */
-export const autoLogoutPatchSchema = z.object({
-  enabled: z.boolean(),
-});
+/** L1: auto-logout toggle and duration (minutes). When enabled, minutes is required. */
+export const AUTO_LOGOUT_MINUTES_OPTIONS = [15, 30, 60, 300, 480] as const; // 15m, 30m, 1h, 5h, 8h
+export const autoLogoutPatchSchema = z
+  .object({
+    enabled: z.boolean(),
+    minutes: z
+      .number()
+      .int()
+      .refine((n) => [15, 30, 60, 300, 480].includes(n), "Select 15 minutes, 30 minutes, 1 hour, 5 hours, or 8 hours.")
+      .optional(),
+  })
+  .refine((data) => !data.enabled || (data.minutes !== undefined && data.minutes !== null), {
+    message: "Select an inactivity time when enabling auto-logout.",
+    path: ["minutes"],
+  });

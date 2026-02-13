@@ -23,7 +23,7 @@ export type AccountSecurity = {
   totpEnabled: boolean;
   totpPendingSetup: boolean;
   autoLogoutEnabled: boolean;
-  autoLogoutHours: number;
+  autoLogoutMinutes: number;
 };
 
 const ALL_TABS: { id: AccountTab; label: string }[] = [

@@ -150,10 +150,10 @@ model UserSecurity {
   totpPendingSecretEnc String?   @db.VarChar(500)
   backupCodeHashes     String[]  @default([])
 
-  // L1: Inactivity auto-logout
-  autoLogoutEnabled Boolean @default(false)
-  autoLogoutHours   Int     @default(5)
-  forceLogoutAt     DateTime?
+  // L1: Inactivity auto-logout (minutes: 15, 30, 60, 300, 480)
+  autoLogoutEnabled   Boolean @default(false)
+  autoLogoutMinutes   Int     @default(300)
+  forceLogoutAt       DateTime?
 
   // Mirror flags (actual MFA is typically enforced at IdP level)
   mfaEnabled  Boolean   @default(false)

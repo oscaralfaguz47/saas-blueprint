@@ -35,7 +35,7 @@ export default async function AccountPage() {
         totpEnabled: true,
         totpPendingSecretEnc: true,
         autoLogoutEnabled: true,
-        autoLogoutHours: true,
+        autoLogoutMinutes: true,
       },
     }),
   ]);
@@ -65,7 +65,7 @@ export default async function AccountPage() {
     totpEnabled: security?.totpEnabled ?? false,
     totpPendingSetup: !!security?.totpPendingSecretEnc,
     autoLogoutEnabled: security?.autoLogoutEnabled ?? false,
-    autoLogoutHours: security?.autoLogoutHours ?? 5,
+    autoLogoutMinutes: security?.autoLogoutMinutes ?? 300,
   };
 
   return (

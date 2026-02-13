@@ -9,7 +9,8 @@ const STEP_UP_WINDOW_SECONDS = 10 * 60;
 
 /**
  * PATCH /api/account/auto-logout
- * Toggle inactivity auto-logout (5h). Step-up required.
+ * Toggle inactivity auto-logout and set duration (15m, 30m, 1h, 5h, 8h). Step-up required.
+ * When enabled, minutes is required (15, 30, 60, 300, 480).
  */
 export const PATCH = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
@@ -34,14 +35,19 @@ export const PATCH = withErrorHandler(async (req: Request) => {
 
   const body = await parseBody(req, autoLogoutPatchSchema);
 
+  const minutes = body.enabled && body.minutes != null ? body.minutes : 300;
+
   await prisma.userSecurity.upsert({
     where: { userId: session.user.id },
     create: {
       userId: session.user.id,
       autoLogoutEnabled: body.enabled,
-      autoLogoutHours: 5,
+      autoLogoutMinutes: minutes,
     },
-    update: { autoLogoutEnabled: body.enabled },
+    update: {
+      autoLogoutEnabled: body.enabled,
+      autoLogoutMinutes: minutes,
+    },
   });
 
   await writeAuditLog({
@@ -52,7 +58,8 @@ export const PATCH = withErrorHandler(async (req: Request) => {
     targetType: "User",
     targetId: session.user.id,
     targetUserId: session.user.id,
+    metadata: body.enabled ? { minutes } : undefined,
   });
 
-  return apiSuccess({ enabled: body.enabled });
+  return apiSuccess({ enabled: body.enabled, minutes });
 });

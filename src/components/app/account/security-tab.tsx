@@ -8,6 +8,32 @@ import { useApiFetch } from "@/hooks/use-api-fetch";
 import { getApiErrorMessage } from "@/lib/api-client";
 import type { AccountSecurity } from "./account-settings-tabs";
 
+/** Human-readable label for auto-logout duration (e.g. "15 minutes", "1 hour"). */
+function formatAutoLogoutLabel(minutes: number): string {
+  switch (minutes) {
+    case 15:
+      return "15 minutes";
+    case 30:
+      return "30 minutes";
+    case 60:
+      return "1 hour";
+    case 300:
+      return "5 hours";
+    case 480:
+      return "8 hours";
+    default:
+      return "5 hours";
+  }
+}
+
+const AUTO_LOGOUT_OPTIONS: { value: number; label: string }[] = [
+  { value: 15, label: "15 minutes" },
+  { value: 30, label: "30 minutes" },
+  { value: 60, label: "1 hour" },
+  { value: 300, label: "5 hours" },
+  { value: 480, label: "8 hours" },
+];
+
 type Props = { security: AccountSecurity };
 
 export function SecurityTab({ security: initialSecurity }: Props) {
@@ -25,6 +51,10 @@ export function SecurityTab({ security: initialSecurity }: Props) {
   const [loadingDisable, setLoadingDisable] = useState(false);
   const [loadingRegenerate, setLoadingRegenerate] = useState(false);
   const [autoLogoutEnabled, setAutoLogoutEnabled] = useState(initialSecurity.autoLogoutEnabled);
+  /** When enabled from server: server value. When user just turned on: null until they select. */
+  const [autoLogoutMinutes, setAutoLogoutMinutes] = useState<number | null>(
+    initialSecurity.autoLogoutEnabled ? initialSecurity.autoLogoutMinutes : null
+  );
   const [autoLogoutLoading, setAutoLogoutLoading] = useState(false);
   const [autoLogoutError, setAutoLogoutError] = useState<string | null>(null);
 
@@ -170,32 +200,62 @@ export function SecurityTab({ security: initialSecurity }: Props) {
     }
   };
 
-  const handleAutoLogoutToggle = async (enabled: boolean) => {
+  const handleAutoLogoutToggle = (enabled: boolean) => {
+    setAutoLogoutError(null);
+    if (enabled) {
+      setAutoLogoutEnabled(true);
+      setAutoLogoutMinutes(null);
+      return;
+    }
+    setAutoLogoutLoading(true);
+    apiFetch("/api/account/auto-logout", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: false }),
+    })
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) {
+          setAutoLogoutError(
+            (data as { details?: { code?: string } }).details?.code === "NEED_STEP_UP"
+              ? "Sign in again to change this setting."
+              : getApiErrorMessage(res, data as { error?: string; message?: string })
+          );
+          return;
+        }
+        setAutoLogoutEnabled(false);
+        setAutoLogoutMinutes(null);
+        router.refresh();
+      })
+      .catch(() => setAutoLogoutError("Something went wrong."))
+      .finally(() => setAutoLogoutLoading(false));
+  };
+
+  const handleAutoLogoutDurationChange = (minutes: number) => {
+    setAutoLogoutMinutes(minutes);
     setAutoLogoutError(null);
     setAutoLogoutLoading(true);
-    try {
-      const res = await apiFetch("/api/account/auto-logout", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setAutoLogoutError(
-          (data as { details?: { code?: string } }).details?.code === "NEED_STEP_UP"
-            ? "Sign in again to change this setting."
-            : getApiErrorMessage(res, data as { error?: string; message?: string })
-        );
-        setAutoLogoutLoading(false);
-        return;
-      }
-      setAutoLogoutEnabled(enabled);
-      setAutoLogoutLoading(false);
-      router.refresh();
-    } catch {
-      setAutoLogoutError("Something went wrong.");
-      setAutoLogoutLoading(false);
-    }
+    apiFetch("/api/account/auto-logout", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: true, minutes }),
+    })
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) {
+          setAutoLogoutError(
+            (data as { details?: { code?: string } }).details?.code === "NEED_STEP_UP"
+              ? "Sign in again to change this setting."
+              : getApiErrorMessage(res, data as { error?: string; message?: string })
+          );
+          return;
+        }
+        setAutoLogoutEnabled(true);
+        setAutoLogoutMinutes(minutes);
+        router.refresh();
+      })
+      .catch(() => setAutoLogoutError("Something went wrong."))
+      .finally(() => setAutoLogoutLoading(false));
   };
 
   return (
@@ -361,9 +421,15 @@ export function SecurityTab({ security: initialSecurity }: Props) {
           Inactivity auto-logout
         </h2>
         <p className="mt-1 text-sm text-(--text-secondary)">
-          Log me out after {initialSecurity.autoLogoutHours} hours of inactivity.
+          Log me out after{" "}
+          {autoLogoutEnabled && autoLogoutMinutes != null
+            ? formatAutoLogoutLabel(autoLogoutMinutes)
+            : !autoLogoutEnabled && initialSecurity.autoLogoutMinutes
+              ? formatAutoLogoutLabel(initialSecurity.autoLogoutMinutes)
+              : "…"}{" "}
+          of inactivity.
         </p>
-        <div className="mt-4 flex items-center gap-3">
+        <div className="mt-4 flex flex-wrap items-center gap-3">
           <button
             type="button"
             role="switch"
@@ -385,6 +451,26 @@ export function SecurityTab({ security: initialSecurity }: Props) {
           <span className="text-sm text-(--text-secondary)">
             {autoLogoutEnabled ? "On" : "Off"}
           </span>
+          {autoLogoutEnabled && (
+            <select
+              value={autoLogoutMinutes ?? ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "") return;
+                handleAutoLogoutDurationChange(Number(v));
+              }}
+              disabled={autoLogoutLoading}
+              className="ml-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2 text-sm text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-60"
+              aria-label="Inactivity duration"
+            >
+              <option value="">Select time</option>
+              {AUTO_LOGOUT_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         {autoLogoutError && (
           <p className="mt-2 text-sm text-(--color-danger)">{autoLogoutError}</p>
