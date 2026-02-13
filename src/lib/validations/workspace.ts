@@ -93,14 +93,14 @@ export const workspaceSettingsSchema = z.object({
   description: z.string().max(500).optional(),
 });
 
-/** Request upload URL: client declares intent (MIME, size). Server authorizes. */
+/** Request upload URL: client sends compressed image size/type (max 10MB). */
 export const logoUploadUrlSchema = z.object({
   contentType: z.enum(["image/png", "image/jpeg", "image/webp"]),
   contentLength: z
     .number()
     .int()
-    .min(1, { message: "File is empty or size could not be determined. Please choose a valid image file." })
-    .max(2 * 1024 * 1024), // 2MB
+    .min(1, { message: "File is empty or invalid." })
+    .max(10 * 1024 * 1024), // 10MB max
   extension: z.enum(["png", "jpeg", "jpg", "webp"]),
 });
 

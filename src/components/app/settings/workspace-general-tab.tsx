@@ -10,6 +10,11 @@ import { Spinner } from "@/components/ui/spinner";
 import { IconCheck } from "@/components/ui/icons";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { getApiErrorMessage } from "@/lib/api-client";
+import {
+  compressImageForProfile,
+  getCompressErrorMessage,
+  type CompressError,
+} from "@/lib/image-utils";
 
 const CURRENCY_OPTIONS: { value: string; label: string }[] = [
   { value: "USD", label: "USD — United States Dollar" },
@@ -49,8 +54,6 @@ function getTimeZones(): string[] {
   }
   return ["UTC", "America/New_York", "Europe/London", "Asia/Tokyo"];
 }
-
-const MAX_LOGO_BYTES = 2 * 1024 * 1024;
 
 type Tenant = {
   id: string;
@@ -156,67 +159,42 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
     }
   };
 
-  const clearLogoInput = () => {
-    if (logoInputRef.current) logoInputRef.current.value = "";
-  };
-
   const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
-      setLogoError("Use PNG, JPEG, or WebP.");
-      setLogoStatus("error");
-      clearLogoInput();
-      return;
-    }
-    let size = Number(file.size);
-    if (typeof size !== "number" || Number.isNaN(size) || size < 1) {
-      try {
-        const buffer = await file.arrayBuffer();
-        size = buffer.byteLength;
-      } catch {
-        setLogoError("File is empty or size could not be determined. Please choose a valid image file.");
-        setLogoStatus("error");
-        clearLogoInput();
-        return;
-      }
-    }
-    if (size < 1) {
-      setLogoError("File is empty or size could not be determined. Please choose a valid image file.");
-      setLogoStatus("error");
-      clearLogoInput();
-      return;
-    }
-    if (size > MAX_LOGO_BYTES) {
-      setLogoError("Max file size is 2MB.");
-      setLogoStatus("error");
-      clearLogoInput();
-      return;
-    }
     setLogoError(null);
     setLogoStatus("uploading");
     try {
+      const { blob, contentType, extension } = await compressImageForProfile(file);
       const resUrl = await apiFetch(`/api/tenant/${tenant.id}/logo/upload-url`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contentType: file.type,
-          contentLength: size,
-          extension: file.name.split(".").pop()?.toLowerCase() === "jpg" ? "jpeg" : file.name.split(".").pop()?.toLowerCase() ?? "png",
+          contentType,
+          contentLength: blob.size,
+          extension,
         }),
       });
-      const urlData = (await resUrl.json()) as { data?: { uploadUrl?: string; objectKey?: string }; error?: string; message?: string };
+      const urlData = (await resUrl.json()) as {
+        data?: { uploadUrl?: string; objectKey?: string };
+        error?: string;
+        message?: string;
+      };
       if (!resUrl.ok || !urlData.data?.uploadUrl || !urlData.data?.objectKey) {
-        setLogoError((urlData as { message?: string }).message ?? "Failed to get upload URL.");
+        setLogoError(urlData.message ?? "Failed to get upload URL.");
         setLogoStatus("error");
-        clearLogoInput();
+        e.target.value = "";
         return;
       }
-      const putRes = await fetch(urlData.data.uploadUrl, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+      const putRes = await fetch(urlData.data.uploadUrl, {
+        method: "PUT",
+        body: blob,
+        headers: { "Content-Type": contentType },
+      });
       if (!putRes.ok) {
-        setLogoError("Upload failed.");
+        setLogoError("Upload failed. Please try again.");
         setLogoStatus("error");
-        clearLogoInput();
+        e.target.value = "";
         return;
       }
       const resConfirm = await apiFetch(`/api/tenant/${tenant.id}/logo/confirm`, {
@@ -225,19 +203,27 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
         body: JSON.stringify({ objectKey: urlData.data.objectKey }),
       });
       if (!resConfirm.ok) {
-        setLogoError("Could not confirm upload.");
+        const confirmData = (await resConfirm.json()) as { message?: string };
+        setLogoError(confirmData.message ?? "Could not confirm upload.");
         setLogoStatus("error");
-        clearLogoInput();
+        e.target.value = "";
         return;
       }
       setTenant((t) => ({ ...t, logoObjectKey: urlData.data!.objectKey }));
       setLogoStatus("idle");
-      clearLogoInput();
       router.refresh();
-    } catch {
-      setLogoError("Something went wrong.");
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("workspace-updated"));
+      }
+      e.target.value = "";
+    } catch (err) {
+      if (err && typeof err === "object" && "code" in err) {
+        setLogoError(getCompressErrorMessage(err as CompressError));
+      } else {
+        setLogoError("Something went wrong. Try a JPEG, PNG, or WebP under 10MB.");
+      }
       setLogoStatus("error");
-      clearLogoInput();
+      e.target.value = "";
     }
   };
 
@@ -257,31 +243,44 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
   return (
     <form onSubmit={handleSubmit} className="max-w-xl space-y-4">
       <div>
-        <label className="block text-sm font-medium text-(--text-primary)">Logo</label>
-        {tenant.logoObjectKey ? (
-          <div className="mt-1.5 flex items-center gap-3">
-            <img
-              src={`/api/tenant/${tenant.id}/logo?v=${encodeURIComponent(tenant.logoObjectKey ?? "")}`}
-              alt="Workspace logo"
-              className="h-14 w-14 rounded-lg border border-(--border-subtle) object-cover"
-            />
-            <span className="text-sm text-(--text-muted)">Upload a new image to replace.</span>
+        <label className="block text-sm font-medium text-(--text-primary)">Workspace logo</label>
+        <p className="mt-1 text-sm text-(--text-secondary)">
+          Upload any image (JPEG, PNG, WebP, GIF, etc.) under 10MB. It will be compressed and stored
+          for a lightweight display.
+        </p>
+        <div className="mt-4 flex items-center gap-4">
+          <div className="h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev)">
+            {tenant.logoObjectKey ? (
+              <img
+                src={`/api/tenant/${tenant.id}/logo?v=${encodeURIComponent(tenant.logoObjectKey)}`}
+                alt="Workspace logo"
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center text-2xl font-semibold text-(--text-muted)">
+                {tenant.name.slice(0, 1).toUpperCase()}
+              </div>
+            )}
           </div>
-        ) : null}
-        <input
-          ref={logoInputRef}
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          disabled={logoStatus === "uploading"}
-          className="mt-1.5 block w-full text-sm text-(--text-secondary) file:mr-2 file:rounded-lg file:border-0 file:bg-(--bg-surface-elev) file:px-3 file:py-2 file:text-sm file:font-medium file:text-(--text-primary)"
-          onChange={handleLogoChange}
-        />
-        {logoError ? <p className="mt-1 text-sm text-(--color-danger)">{logoError}</p> : null}
-        {logoStatus === "uploading" ? (
-          <p className="mt-1 flex items-center gap-1.5 text-sm text-(--text-muted)">
-            <Spinner size="sm" /> Uploading…
-          </p>
-        ) : null}
+          <div>
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleLogoChange}
+            />
+            <button
+              type="button"
+              onClick={() => logoInputRef.current?.click()}
+              disabled={logoStatus === "uploading"}
+              className="inline-flex h-10 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60"
+            >
+              {logoStatus === "uploading" ? "Uploading…" : "Upload logo"}
+            </button>
+            {logoError && <p className="mt-2 text-sm text-(--color-danger)">{logoError}</p>}
+          </div>
+        </div>
       </div>
       <div>
         <label htmlFor="ws-name" className="block text-sm font-medium text-(--text-primary)">Name</label>
@@ -349,7 +348,7 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
         <button
           type="submit"
           disabled={saveStatus === "submitting"}
-          className="inline-flex h-10 min-w-[120px] cursor-pointer items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-60 disabled:cursor-not-allowed"
+          className="inline-flex h-11 min-w-[140px] cursor-pointer items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {saveStatus === "submitting" ? (
             <>
@@ -359,7 +358,7 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
           ) : saveStatus === "success" ? (
             <>
               <IconCheck size={18} className="mr-2" />
-              Saved
+              Changes saved
             </>
           ) : (
             "Save changes"

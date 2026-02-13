@@ -4,8 +4,15 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { Spinner } from "@/components/ui/spinner";
+import { IconCheck } from "@/components/ui/icons";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { getApiErrorMessage } from "@/lib/api-client";
+import {
+  compressImageForProfile,
+  getCompressErrorMessage,
+  type CompressError,
+} from "@/lib/image-utils";
 import type { AccountProfile } from "./account-settings-tabs";
 
 function getTimeZones(): string[] {
@@ -69,6 +76,7 @@ export function ProfileTab({ profile: initialProfile, loginMethod }: Props) {
       }
       setSaveStatus("success");
       router.refresh();
+      setTimeout(() => setSaveStatus("idle"), 3000);
     } catch {
       setSaveStatus("error");
       setSaveError("Something went wrong.");
@@ -81,20 +89,14 @@ export function ProfileTab({ profile: initialProfile, loginMethod }: Props) {
     setPhotoError(null);
     setPhotoStatus("uploading");
     try {
-      const ext = file.name.split(".").pop()?.toLowerCase() ?? "png";
-      const contentType =
-        ext === "jpg" || ext === "jpeg"
-          ? "image/jpeg"
-          : ext === "webp"
-            ? "image/webp"
-            : "image/png";
+      const { blob, contentType, extension } = await compressImageForProfile(file);
       const uploadRes = await apiFetch("/api/account/photo/upload-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contentType,
-          contentLength: file.size,
-          extension: ext === "jpg" ? "jpeg" : ext,
+          contentLength: blob.size,
+          extension,
         }),
       });
       const uploadData = (await uploadRes.json()) as {
@@ -109,11 +111,11 @@ export function ProfileTab({ profile: initialProfile, loginMethod }: Props) {
       }
       const putRes = await fetch(uploadData.data.uploadUrl, {
         method: "PUT",
-        body: file,
+        body: blob,
         headers: { "Content-Type": contentType },
       });
       if (!putRes.ok) {
-        setPhotoError("Upload failed.");
+        setPhotoError("Upload failed. Please try again.");
         setPhotoStatus("error");
         return;
       }
@@ -123,15 +125,19 @@ export function ProfileTab({ profile: initialProfile, loginMethod }: Props) {
         body: JSON.stringify({ objectKey: uploadData.data.objectKey }),
       });
       if (!confirmRes.ok) {
-        const confirmData = await confirmRes.json();
-        setPhotoError((confirmData as { message?: string }).message ?? "Failed to save photo.");
+        const confirmData = (await confirmRes.json()) as { message?: string };
+        setPhotoError(confirmData.message ?? "Failed to save photo.");
         setPhotoStatus("error");
         return;
       }
       setPhotoStatus("idle");
       router.refresh();
-    } catch {
-      setPhotoError("Something went wrong.");
+    } catch (err) {
+      if (err && typeof err === "object" && "code" in err) {
+        setPhotoError(getCompressErrorMessage(err as CompressError));
+      } else {
+        setPhotoError("Something went wrong. Try a JPEG, PNG, or WebP under 10MB.");
+      }
       setPhotoStatus("error");
     }
     e.target.value = "";
@@ -139,6 +145,47 @@ export function ProfileTab({ profile: initialProfile, loginMethod }: Props) {
 
   return (
     <div className="space-y-8">
+      <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-6">
+        <h2 className="text-base font-semibold text-(--text-primary)">Profile photo</h2>
+        <p className="mt-1 text-sm text-(--text-secondary)">
+          Upload any image (JPEG, PNG, WebP, GIF, etc.) under 10MB. It will be compressed and stored
+          for a lightweight display.
+        </p>
+        <div className="mt-4 flex items-center gap-4">
+          <div className="h-20 w-20 shrink-0 overflow-hidden rounded-full border border-(--border-subtle) bg-(--bg-surface-elev)">
+            {initialProfile.avatarUrl ? (
+              <img
+                src={initialProfile.avatarUrl}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center text-2xl font-semibold text-(--text-muted)">
+                {(initialProfile.name ?? initialProfile.email ?? "U").slice(0, 1).toUpperCase()}
+              </div>
+            )}
+          </div>
+          <div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handlePhotoChange}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={photoStatus === "uploading"}
+              className="inline-flex h-10 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60"
+            >
+              {photoStatus === "uploading" ? "Uploading…" : "Upload photo"}
+            </button>
+            {photoError && <p className="mt-2 text-sm text-(--color-danger)">{photoError}</p>}
+          </div>
+        </div>
+      </section>
+
       <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-6">
         <h2 className="text-base font-semibold text-(--text-primary)">Profile</h2>
         <p className="mt-1 text-sm text-(--text-secondary)">
@@ -199,62 +246,31 @@ export function ProfileTab({ profile: initialProfile, loginMethod }: Props) {
               className="mt-1"
             />
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <button
               type="submit"
               disabled={saveStatus === "submitting"}
-              className="inline-flex h-11 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-60"
+              className="inline-flex h-11 min-w-[140px] items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {saveStatus === "submitting" ? "Saving…" : "Save changes"}
+              {saveStatus === "submitting" ? (
+                <>
+                  <Spinner size="sm" className="mr-2" />
+                  Saving…
+                </>
+              ) : saveStatus === "success" ? (
+                <>
+                  <IconCheck size={18} className="mr-2" />
+                  Changes saved
+                </>
+              ) : (
+                "Save changes"
+              )}
             </button>
-            {saveStatus === "success" && (
-              <span className="text-sm text-(--color-success)">Saved.</span>
-            )}
             {saveStatus === "error" && saveError && (
               <span className="text-sm text-(--color-danger)">{saveError}</span>
             )}
           </div>
         </form>
-      </section>
-
-      <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-6">
-        <h2 className="text-base font-semibold text-(--text-primary)">Profile photo</h2>
-        <p className="mt-1 text-sm text-(--text-secondary)">
-          Upload a photo. It will be stored securely.
-        </p>
-        <div className="mt-4 flex items-center gap-4">
-          <div className="h-20 w-20 shrink-0 overflow-hidden rounded-full border border-(--border-subtle) bg-(--bg-surface-elev)">
-            {initialProfile.avatarUrl ? (
-              <img
-                src={initialProfile.avatarUrl}
-                alt=""
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center text-2xl font-semibold text-(--text-muted)">
-                {(initialProfile.name ?? initialProfile.email ?? "U").slice(0, 1).toUpperCase()}
-              </div>
-            )}
-          </div>
-          <div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              className="hidden"
-              onChange={handlePhotoChange}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={photoStatus === "uploading"}
-              className="inline-flex h-10 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60"
-            >
-              {photoStatus === "uploading" ? "Uploading…" : "Upload photo"}
-            </button>
-            {photoError && <p className="mt-2 text-sm text-(--color-danger)">{photoError}</p>}
-          </div>
-        </div>
       </section>
 
       <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-6">

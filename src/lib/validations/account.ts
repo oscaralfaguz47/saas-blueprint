@@ -13,14 +13,14 @@ export const appearancePatchSchema = z.object({
   mode: appearanceModeSchema,
 });
 
-/** L1: profile photo upload URL request (same shape as logo). */
+/** L1: profile photo upload URL request. Client sends compressed image size/type (max 10MB). */
 export const photoUploadUrlSchema = z.object({
   contentType: z.enum(["image/png", "image/jpeg", "image/webp"]),
   contentLength: z
     .number()
     .int()
-    .min(1)
-    .max(5 * 1024 * 1024), // 5MB for profile photo
+    .min(1, "File is empty or invalid.")
+    .max(10 * 1024 * 1024), // 10MB max for profile photo
   extension: z.enum(["png", "jpeg", "jpg", "webp"]),
 });
 
