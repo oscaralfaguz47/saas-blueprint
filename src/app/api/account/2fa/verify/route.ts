@@ -145,13 +145,14 @@ export const POST = withErrorHandler(async (req: Request) => {
       where: { userId: session.user.id },
       data: { mfaVerifiedAt: new Date() },
     });
-    // Cookie fallback: with JWT strategy NextAuth may not create Session rows, so the next /app load might still see mfaVerified false. Set a short-lived cookie so layout treats the user as verified and allows access.
+    // Cookie fallback: store current user id so layout can allow this user but reject stale cookie from another user.
+    const MFA_COOKIE_MAX_AGE_SECONDS = 8 * 60 * 60;
     const res = apiSuccess({ verified: true });
-    res.cookies.set("mfa_just_verified", "1", {
+    res.cookies.set("mfa_just_verified", session.user.id, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 120,
+      maxAge: MFA_COOKIE_MAX_AGE_SECONDS,
       path: "/",
     });
     return res;

@@ -25,13 +25,20 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     }
   }
 
-  // L1: 2FA challenge — require verification before app access (cookie fallback when JWT strategy doesn't use Session rows)
+  // L1: 2FA challenge — require verification before app access
   const cookieStore = await cookies();
-  const mfaJustVerified = cookieStore.get("mfa_just_verified")?.value;
-  if (session.user.totpEnabled && !session.user.mfaVerified && !mfaJustVerified) {
-    redirect("/auth/2fa");
+  const mfaJustVerifiedValue = cookieStore.get("mfa_just_verified")?.value;
+  const mfaCookieIsForCurrentUser = mfaJustVerifiedValue === session.user.id;
+  if (session.user.totpEnabled && !session.user.mfaVerified) {
+    if (mfaCookieIsForCurrentUser) {
+      // Same user just verified; cookie was set by 2FA verify. Allow access.
+    } else if (mfaJustVerifiedValue) {
+      // Cookie set but for another user (stale). Clear it and force 2FA.
+      redirect("/api/clear-mfa-and-redirect?to=/auth/2fa");
+    } else {
+      redirect("/auth/2fa");
+    }
   }
-  // Cookie is read-only here; it expires on its own (maxAge 120s) so we don't clear it in the layout.
 
   try {
     const { activeMembershipCount, pendingInvitationsCount } =

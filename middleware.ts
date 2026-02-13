@@ -76,6 +76,23 @@ export async function middleware(req: NextRequest) {
       res.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
       return res;
     }
+    // Clear MFA cookie so a previous user's verification cannot allow another user to skip 2FA:
+    // - on sign-in/sign-out pages (when user visits those URLs)
+    // - on NextAuth callback (when user completes magic link or OAuth — they may never hit /auth/sign-in)
+    const shouldClearMfaCookie =
+      pathname === "/auth/sign-in" ||
+      pathname === "/auth/sign-out" ||
+      pathname.startsWith("/api/auth/callback/");
+    if (shouldClearMfaCookie) {
+      const res = NextResponse.next();
+      res.cookies.set("mfa_just_verified", "", {
+        maxAge: 0,
+        path: "/",
+        httpOnly: true,
+        sameSite: "lax",
+      });
+      return res;
+    }
     return NextResponse.next();
   }
 
