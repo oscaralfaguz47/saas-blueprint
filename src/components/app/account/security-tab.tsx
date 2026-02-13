@@ -22,6 +22,8 @@ export function SecurityTab({ security: initialSecurity }: Props) {
   const [regenerateCode, setRegenerateCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingDisable, setLoadingDisable] = useState(false);
+  const [loadingRegenerate, setLoadingRegenerate] = useState(false);
   const [autoLogoutEnabled, setAutoLogoutEnabled] = useState(initialSecurity.autoLogoutEnabled);
   const [autoLogoutLoading, setAutoLogoutLoading] = useState(false);
   const [autoLogoutError, setAutoLogoutError] = useState<string | null>(null);
@@ -109,7 +111,7 @@ export function SecurityTab({ security: initialSecurity }: Props) {
     e.preventDefault();
     if (!disableCode.trim()) return;
     setError(null);
-    setLoading(true);
+    setLoadingDisable(true);
     try {
       const res = await apiFetch("/api/account/2fa/disable", {
         method: "POST",
@@ -122,15 +124,15 @@ export function SecurityTab({ security: initialSecurity }: Props) {
         if ((data as { details?: { code?: string } }).details?.code === "NEED_STEP_UP") {
           setError("Sign in again to disable 2FA.");
         }
-        setLoading(false);
+        setLoadingDisable(false);
         return;
       }
       setDisableCode("");
-      setLoading(false);
+      setLoadingDisable(false);
       router.refresh();
     } catch {
       setError("Something went wrong.");
-      setLoading(false);
+      setLoadingDisable(false);
     }
   };
 
@@ -138,7 +140,7 @@ export function SecurityTab({ security: initialSecurity }: Props) {
     e.preventDefault();
     if (!regenerateCode.trim()) return;
     setError(null);
-    setLoading(true);
+    setLoadingRegenerate(true);
     try {
       const res = await apiFetch("/api/account/2fa/backup-codes/regenerate", {
         method: "POST",
@@ -155,16 +157,16 @@ export function SecurityTab({ security: initialSecurity }: Props) {
         if ((data as { details?: { code?: string } }).details?.code === "NEED_STEP_UP") {
           setError("Sign in again to regenerate backup codes.");
         }
-        setLoading(false);
+        setLoadingRegenerate(false);
         return;
       }
       if (data.data?.backupCodes) setBackupCodes(data.data.backupCodes);
       setRegenerateCode("");
-      setLoading(false);
+      setLoadingRegenerate(false);
       router.refresh();
     } catch {
       setError("Something went wrong.");
-      setLoading(false);
+      setLoadingRegenerate(false);
     }
   };
 
@@ -317,10 +319,10 @@ export function SecurityTab({ security: initialSecurity }: Props) {
               </div>
               <button
                 type="submit"
-                disabled={loading || !disableCode.trim()}
+                disabled={loadingDisable || loadingRegenerate || !disableCode.trim()}
                 className="inline-flex h-10 items-center justify-center rounded-lg border border-(--border-subtle) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60"
               >
-                {loading ? "Disabling…" : "Disable 2FA"}
+                {loadingDisable ? "Disabling…" : "Disable 2FA"}
               </button>
             </form>
             <form onSubmit={handleRegenerateBackupCodes} className="mt-4 flex flex-wrap items-end gap-3">
@@ -341,10 +343,10 @@ export function SecurityTab({ security: initialSecurity }: Props) {
               </div>
               <button
                 type="submit"
-                disabled={loading || regenerateCode.length !== 6}
+                disabled={loadingDisable || loadingRegenerate || regenerateCode.length !== 6}
                 className="inline-flex h-10 items-center justify-center rounded-lg border border-(--border-subtle) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60"
               >
-                {loading ? "Regenerating…" : "Regenerate codes"}
+                {loadingRegenerate ? "Regenerating…" : "Regenerate codes"}
               </button>
             </form>
           </>

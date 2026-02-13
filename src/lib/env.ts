@@ -13,6 +13,7 @@ const requiredEnvVars = {
 } as const;
 
 const optionalEnvVars = {
+  APP_NAME: process.env.APP_NAME,
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
   GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID,

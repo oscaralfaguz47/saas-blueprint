@@ -233,6 +233,17 @@ If backend fetches URLs:
 - **HTTP codes**: 400 validation, 401 unauthenticated, 403 forbidden, 404 not found / no access, 409 conflict (e.g. duplicate slug), 429 rate-limited, 500 server error.
 - **Standard error codes**: Use consistent `code` values so clients and support can rely on them (see Section 6).
 
+### 5.1 Validation error messages (user-facing)
+
+Validation errors (400, `VALIDATION_ERROR`) must expose **only short, user-friendly text** in the `message` field. The UI must never show raw Zod output or internal wording.
+
+- **Do not expose**: `"Validation failed:"`, field paths (e.g. `code:`), or Zod defaults like `"expected string to have <=10 characters"`.
+- **Do expose**: A single, human-readable sentence the user can act on (e.g. `"Must be 10 characters or less."`, `"Must be at least 6 characters."`, `"Please enter a valid email address."`).
+- **Implementation**: Use the shared `parseBody` and `ValidationError` from `@/lib/validations/common`. `parseBody` turns the first Zod issue into a formatted message (see `formatValidationMessage`). Route handlers must not catch Zod and rethrow with the raw message; let `withErrorHandler` map `ValidationError` to the API error shape.
+- **Fallback**: If a legacy or unknown validation message is caught (e.g. string starting with `"Validation failed:"`), return the generic `"Please check the value and try again."` instead of forwarding the technical text.
+
+Apply this for all new and updated API validation so every feature shows the same clean format in the UI.
+
 ---
 
 ## 6. Standard error codes

@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
+import { getOptionalEnv } from "@/lib/env";
 import { writeAuditLog } from "@/server/services/audit";
 import { generateTotpSecret, buildOtpauthUri } from "@/server/services/totp";
 import { encryptTotpSecret } from "@/server/services/account-encryption";
@@ -68,10 +69,11 @@ export const POST = withErrorHandler(async () => {
   });
 
   const accountName = user.email ?? user.name ?? user.id;
+  const totpIssuer = getOptionalEnv("APP_NAME")?.trim() || "Account";
   const otpauthUri = buildOtpauthUri({
     secretBase32: base32,
     accountName,
-    issuer: "Account",
+    issuer: totpIssuer,
   });
 
   return apiSuccess({
