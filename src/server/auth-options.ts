@@ -1,5 +1,6 @@
 import "server-only";
 
+import { randomBytes } from "node:crypto";
 import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import EmailProvider from "next-auth/providers/email";
@@ -166,6 +167,17 @@ export const authOptions: NextAuthOptions = {
     async signIn({ user }) {
       if (!user?.id) return;
       await runUserBootstraps({ userId: user.id, email: user.email });
+
+      // With JWT strategy the adapter does not create Session rows; create one so we have
+      // a row for mfaVerifiedAt and inactivity (sessionToken is then picked up in jwt callback).
+      const expires = new Date(Date.now() + JWT_MAX_AGE_SECONDS * 1000);
+      await prisma.session.create({
+        data: {
+          sessionToken: randomBytes(32).toString("base64url"),
+          userId: user.id,
+          expires,
+        },
+      });
     },
   },
 };
