@@ -1,7 +1,6 @@
 import { ReactNode } from "react";
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
@@ -25,19 +24,12 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     }
   }
 
-  // L1: 2FA challenge — require verification before app access
-  const cookieStore = await cookies();
-  const mfaJustVerifiedValue = cookieStore.get("mfa_just_verified")?.value;
-  const mfaCookieIsForCurrentUser = mfaJustVerifiedValue === session.user.id;
-  if (session.user.totpEnabled && !session.user.mfaVerified) {
-    if (mfaCookieIsForCurrentUser) {
-      // Same user just verified; cookie was set by 2FA verify. Allow access.
-    } else if (mfaJustVerifiedValue) {
-      // Cookie set but for another user (stale). Clear it and force 2FA.
-      redirect("/api/clear-mfa-and-redirect?to=/auth/2fa");
-    } else {
-      redirect("/auth/2fa");
-    }
+  // L1: 2FA challenge — require verification before app access (PENDING_MFA or FULL but not yet MFA-verified)
+  const needsMfa =
+    session.user.authLevel === "PENDING_MFA" ||
+    (session.user.totpEnabled && !session.user.mfaVerified);
+  if (needsMfa) {
+    redirect("/auth/2fa");
   }
 
   try {

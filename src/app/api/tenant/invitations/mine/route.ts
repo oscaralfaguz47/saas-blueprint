@@ -1,12 +1,14 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
+import { requireFullSession } from "@/server/require-full-session";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 
 /** GET /api/tenant/invitations/mine — A5: active workspaces + pending invitations for current user */
 export const GET = withErrorHandler(async () => {
   const session = await getServerSession(authOptions);
-  if (!session?.user) return ApiErrors.UNAUTHENTICATED();
+  const mfaError = requireFullSession(session);
+  if (mfaError) return mfaError;
 
   const emailNormalized = (session.user.email ?? "").trim().toLowerCase();
   const now = new Date();

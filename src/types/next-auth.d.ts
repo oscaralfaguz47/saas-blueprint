@@ -18,6 +18,8 @@ declare module "next-auth" {
       mfaVerified?: boolean;
       /** L1: User has TOTP 2FA enabled (needed to redirect to challenge). */
       totpEnabled?: boolean;
+      /** Security 2FA/sessions: FULL or PENDING_MFA. */
+      authLevel?: "FULL" | "PENDING_MFA";
     };
   }
 
@@ -38,5 +40,7 @@ declare module "next-auth/jwt" {
     sessionToken?: string;
     /** L1: Set in jwt callback from DB so layout sees 2FA verified after challenge. */
     mfaVerified?: boolean;
+    /** Security 2FA/sessions: FULL or PENDING_MFA. */
+    authLevel?: "FULL" | "PENDING_MFA";
   }
 }

@@ -1,16 +1,19 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
+import { requireFullSession } from "@/server/require-full-session";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { getPresignedGetUrlProfilePhoto, isR2Configured } from "@/server/services/r2-profile-photo";
 
 /**
  * GET /api/account/me
  * Returns current user profile, login provider, and security flags (no secrets).
+ * Requires full session (MFA completed when 2FA is enabled).
  */
 export const GET = withErrorHandler(async () => {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.id) return ApiErrors.UNAUTHENTICATED();
+  const mfaError = requireFullSession(session);
+  if (mfaError) return mfaError;
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
@@ -40,6 +43,7 @@ export const GET = withErrorHandler(async () => {
         totpEnabled: true,
         autoLogoutEnabled: true,
         autoLogoutMinutes: true,
+        backupCodesGeneratedAt: true,
       },
     }),
   ]);
@@ -70,6 +74,7 @@ export const GET = withErrorHandler(async () => {
       totpEnabled: security?.totpEnabled ?? false,
       autoLogoutEnabled: security?.autoLogoutEnabled ?? false,
       autoLogoutMinutes: security?.autoLogoutMinutes ?? 300,
+      backupCodesGeneratedAt: security?.backupCodesGeneratedAt?.toISOString() ?? null,
     },
   });
 });

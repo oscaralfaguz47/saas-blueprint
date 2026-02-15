@@ -4,10 +4,11 @@ import { prisma } from "@/server/db";
 import { writeAuditLog } from "@/server/services/audit";
 import { verifyTotpCode, hashBackupCode } from "@/server/services/totp";
 import { decryptTotpSecret } from "@/server/services/account-encryption";
-import { apiError, ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
+import { isStepUpEligible } from "@/server/services/step-up";
+import { requireFullSession } from "@/server/require-full-session";
+import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { parseBody, twoFaVerifySchema } from "@/lib/validations";
 
-const STEP_UP_WINDOW_SECONDS = 10 * 60;
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX = 5;
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -30,17 +31,16 @@ function checkRateLimit(userId: string): boolean {
 
 /**
  * POST /api/account/2fa/disable
- * Step-up required. Validate TOTP or backup code, then clear 2FA.
+ * Step-up required. Validate TOTP or backup code, then clear 2FA. Revokes all remembered devices and forces logout.
  */
 export const POST = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.id) return ApiErrors.UNAUTHENTICATED();
+  const mfaError = requireFullSession(session);
+  if (mfaError) return mfaError;
 
-  const iat = session.user.iat ?? 0;
-  if (iat <= 0 || Date.now() / 1000 - iat > STEP_UP_WINDOW_SECONDS) {
-    return apiError("FORBIDDEN", 403, "Recent authentication required to disable 2FA.", {
-      code: "NEED_STEP_UP",
-    });
+  const sessionToken = session!.user.sessionToken;
+  if (!sessionToken || !(await isStepUpEligible(sessionToken, session.user.id))) {
+    return ApiErrors.STEP_UP_REQUIRED("Recent authentication required to disable 2FA.");
   }
 
   const user = await prisma.user.findUnique({
@@ -79,26 +79,54 @@ export const POST = withErrorHandler(async (req: Request) => {
     }
   }
   if (!valid) {
-    return ApiErrors.VALIDATION_ERROR("Invalid or expired code.");
+    return ApiErrors.INVALID_2FA_CODE();
   }
 
-  await prisma.userSecurity.update({
-    where: { userId: session.user.id },
-    data: {
-      totpEnabled: false,
-      totpEnabledAt: null,
-      totpSecretEnc: null,
-      totpPendingSecretEnc: null,
-      backupCodeHashes: [],
-      mfaEnabled: false,
-    },
-  });
+  const now = new Date();
+
+  await prisma.$transaction([
+    prisma.userSecurity.update({
+      where: { userId: session.user.id },
+      data: {
+        totpEnabled: false,
+        totpEnabledAt: null,
+        totpSecretEnc: null,
+        totpPendingSecretEnc: null,
+        backupCodeHashes: [],
+        backupCodesGeneratedAt: null,
+        mfaEnabled: false,
+        forceLogoutAt: now,
+      },
+    }),
+    prisma.rememberedDevice.updateMany({
+      where: { userId: session.user.id },
+      data: { revokedAt: now },
+    }),
+  ]);
 
   await writeAuditLog({
     actorUserId: session.user.id,
     actorContext: "TENANT",
     tenantId: null,
     action: "account.2fa.disabled",
+    targetType: "User",
+    targetId: session.user.id,
+    targetUserId: session.user.id,
+  });
+  await writeAuditLog({
+    actorUserId: session.user.id,
+    actorContext: "TENANT",
+    tenantId: null,
+    action: "account.remember_device.revoked_all",
+    targetType: "User",
+    targetId: session.user.id,
+    targetUserId: session.user.id,
+  });
+  await writeAuditLog({
+    actorUserId: session.user.id,
+    actorContext: "TENANT",
+    tenantId: null,
+    action: "account.sessions.forced_logout",
     targetType: "User",
     targetId: session.user.id,
     targetUserId: session.user.id,

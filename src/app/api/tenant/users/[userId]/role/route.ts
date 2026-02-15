@@ -10,6 +10,7 @@ import {
   isOwnerLevel,
 } from "@/server/security/authority";
 import { prisma } from "@/server/db";
+import { requireFullSession } from "@/server/require-full-session";
 import { writeAuditLog } from "@/server/services/audit";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { parseBody, updateMemberRoleSchema } from "@/lib/validations";
@@ -40,7 +41,8 @@ export const PATCH = withErrorHandler(async (
   context: { params: Promise<{ userId: string }> }
 ) => {
   const session = await getServerSession(authOptions);
-  if (!session?.user) return ApiErrors.UNAUTHENTICATED();
+  const mfaError = requireFullSession(session);
+  if (mfaError) return mfaError;
 
   const membership = await getDefaultTenantForUser(session.user.id);
   const tenant = membership?.tenant;

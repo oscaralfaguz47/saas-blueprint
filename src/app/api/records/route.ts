@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
+import { requireFullSession } from "@/server/require-full-session";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { writeAuditLog } from "@/server/services/audit";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
@@ -8,7 +9,8 @@ import { parseBody, createRecordSchema } from "@/lib/validations";
 
 export const GET = withErrorHandler(async () => {
   const session = await getServerSession(authOptions);
-  if (!session?.user) return ApiErrors.UNAUTHENTICATED();
+  const mfaError = requireFullSession(session);
+  if (mfaError) return mfaError;
 
   const membership = await getDefaultTenantForUser(session.user.id);
   if (!membership?.tenant) return ApiErrors.NO_TENANT();
@@ -25,7 +27,8 @@ export const GET = withErrorHandler(async () => {
 
 export const POST = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
-  if (!session?.user) return ApiErrors.UNAUTHENTICATED();
+  const mfaError = requireFullSession(session);
+  if (mfaError) return mfaError;
 
   const membership = await getDefaultTenantForUser(session.user.id);
   if (!membership?.tenant) return ApiErrors.NO_TENANT();

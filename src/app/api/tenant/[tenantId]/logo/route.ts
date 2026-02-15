@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
+import { requireFullSession } from "@/server/require-full-session";
 import { getPresignedGetUrl } from "@/server/services/r2-logo";
 import { ApiErrors, withErrorHandler } from "@/lib/api-response";
 import { z } from "zod";
@@ -18,7 +19,8 @@ export const GET = withErrorHandler(async (
   context: { params: Promise<{ tenantId: string }> }
 ) => {
   const session = await getServerSession(authOptions);
-  if (!session?.user) return ApiErrors.UNAUTHENTICATED();
+  const mfaError = requireFullSession(session);
+  if (mfaError) return mfaError;
 
   const { tenantId } = tenantIdParamSchema.parse(await context.params);
 

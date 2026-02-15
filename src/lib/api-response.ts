@@ -65,6 +65,31 @@ export const ApiErrors = {
     apiError("NOT_FOUND", 404, "This invitation was revoked or has expired.", {
       code: "INVITATION_REVOKED_OR_EXPIRED",
     }),
+  /** Step-up required (re-authenticate within 10 min); 403 */
+  STEP_UP_REQUIRED: (message?: string) =>
+    apiError("FORBIDDEN", 403, message ?? "Recent authentication required.", {
+      code: "STEP_UP_REQUIRED",
+    }),
+  /** MFA challenge expired; 401 */
+  MFA_CHALLENGE_EXPIRED: (message?: string) =>
+    apiError("UNAUTHORIZED", 401, message ?? "MFA challenge expired. Please sign in again.", {
+      code: "MFA_CHALLENGE_EXPIRED",
+    }),
+  /** No pending 2FA setup; 409 */
+  NO_PENDING_2FA_SETUP: (message?: string) =>
+    apiError("CONFLICT", 409, message ?? "No pending 2FA setup.", {
+      code: "NO_PENDING_2FA_SETUP",
+    }),
+  /** Invalid TOTP or backup code; 400 */
+  INVALID_2FA_CODE: (message?: string) =>
+    apiError("VALIDATION_ERROR", 400, message ?? "Invalid or expired code.", {
+      code: "INVALID_2FA_CODE",
+    }),
+  /** MFA required — session is PENDING_MFA or 2FA not yet verified; 401 */
+  MFA_REQUIRED: (message?: string) =>
+    apiError("UNAUTHORIZED", 401, message ?? "Complete two-factor authentication to continue.", {
+      code: "MFA_REQUIRED",
+    }),
 } as const;
 
 /**

@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
+import { requireFullSession } from "@/server/require-full-session";
 import { SlugTakenError, claimWorkspaceBySlug } from "@/server/services/tenancy-bootstrap";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { parseBody, claimWorkspaceSchema } from "@/lib/validations";
@@ -16,7 +17,8 @@ function getUserAgent(req: Request): string | null {
 /** POST /api/workspaces/claim — A5: claim DRAFT workspace with chosen slug */
 export const POST = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
-  if (!session?.user) return ApiErrors.UNAUTHENTICATED();
+  const mfaError = requireFullSession(session);
+  if (mfaError) return mfaError;
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },

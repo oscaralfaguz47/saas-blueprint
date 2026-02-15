@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
 import { getOptionalEnv } from "@/lib/env";
+import { requireFullSession } from "@/server/require-full-session";
 import { writeAuditLog } from "@/server/services/audit";
 import { generateTotpSecret, buildOtpauthUri } from "@/server/services/totp";
 import { encryptTotpSecret } from "@/server/services/account-encryption";
@@ -33,7 +34,8 @@ function checkRateLimit(userId: string): boolean {
  */
 export const POST = withErrorHandler(async () => {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.id) return ApiErrors.UNAUTHENTICATED();
+  const mfaError = requireFullSession(session);
+  if (mfaError) return mfaError;
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },

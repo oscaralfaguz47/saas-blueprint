@@ -116,7 +116,13 @@ export const authOptions: NextAuthOptions = {
             token.sessionToken
               ? prisma.session.findUnique({
                   where: { sessionToken: token.sessionToken },
-                  select: { mfaVerifiedAt: true },
+                  select: {
+                    mfaVerifiedAt: true,
+                    authLevel: true,
+                    revokedAt: true,
+                    mfaChallengeExpiresAt: true,
+                    expires: true,
+                  },
                 })
               : prisma.session.findFirst({
                   where: { userId: token.sub, mfaVerifiedAt: { not: null } },
@@ -127,7 +133,25 @@ export const authOptions: NextAuthOptions = {
               select: { totpEnabled: true },
             }),
           ]);
+
+          const now = new Date();
+          const isRevoked =
+            sessionRow && "revokedAt" in sessionRow && sessionRow.revokedAt != null;
+          const isPendingMfaExpired =
+            sessionRow &&
+            "authLevel" in sessionRow &&
+            sessionRow.authLevel === "PENDING_MFA" &&
+            ((sessionRow.mfaChallengeExpiresAt != null &&
+              now > sessionRow.mfaChallengeExpiresAt) ||
+              (sessionRow.expires != null && now > sessionRow.expires));
+
+          session.user.authLevel =
+            sessionRow && "authLevel" in sessionRow
+              ? sessionRow.authLevel
+              : "FULL";
           session.user.mfaVerified =
+            !isRevoked &&
+            !isPendingMfaExpired &&
             (sessionRow && "mfaVerifiedAt" in sessionRow
               ? sessionRow.mfaVerifiedAt != null
               : sessionRow != null);
@@ -168,16 +192,38 @@ export const authOptions: NextAuthOptions = {
       if (!user?.id) return;
       await runUserBootstraps({ userId: user.id, email: user.email });
 
-      // With JWT strategy the adapter does not create Session rows; create one so we have
-      // a row for mfaVerifiedAt and inactivity (sessionToken is then picked up in jwt callback).
-      const expires = new Date(Date.now() + JWT_MAX_AGE_SECONDS * 1000);
-      await prisma.session.create({
-        data: {
-          sessionToken: randomBytes(32).toString("base64url"),
-          userId: user.id,
-          expires,
-        },
+      const security = await prisma.userSecurity.findUnique({
+        where: { userId: user.id },
+        select: { totpEnabled: true },
       });
+
+      const now = new Date();
+      const sessionToken = randomBytes(32).toString("base64url");
+
+      if (security?.totpEnabled) {
+        const challengeExpires = new Date(now.getTime() + 10 * 60 * 1000);
+        const expires = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour for PENDING_MFA
+        await prisma.session.create({
+          data: {
+            sessionToken,
+            userId: user.id,
+            expires,
+            authLevel: "PENDING_MFA",
+            mfaChallengeExpiresAt: challengeExpires,
+          },
+        });
+      } else {
+        const expires = new Date(Date.now() + JWT_MAX_AGE_SECONDS * 1000);
+        await prisma.session.create({
+          data: {
+            sessionToken,
+            userId: user.id,
+            expires,
+            authLevel: "FULL",
+            mfaVerifiedAt: now,
+          },
+        });
+      }
     },
   },
 };

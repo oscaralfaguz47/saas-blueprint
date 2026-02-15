@@ -3,6 +3,7 @@ import { authOptions } from "@/server/auth-options";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { prisma } from "@/server/db";
+import { requireFullSession } from "@/server/require-full-session";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import {
   invitationsListQuerySchema,
@@ -73,7 +74,8 @@ function encodeCursor(
 
 export const GET = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
-  if (!session?.user) return ApiErrors.UNAUTHENTICATED();
+  const mfaError = requireFullSession(session);
+  if (mfaError) return mfaError;
 
   const membership = await getDefaultTenantForUser(session.user.id);
   const tenant = membership?.tenant;

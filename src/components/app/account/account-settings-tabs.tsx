@@ -24,6 +24,7 @@ export type AccountSecurity = {
   totpPendingSetup: boolean;
   autoLogoutEnabled: boolean;
   autoLogoutMinutes: number;
+  backupCodesGeneratedAt: string | null;
 };
 
 const ALL_TABS: { id: AccountTab; label: string }[] = [

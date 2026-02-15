@@ -1,5 +1,6 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
+import { requireFullSession } from "@/server/require-full-session";
 import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { getPresignedPutUrl, buildLogoObjectKey, isR2Configured } from "@/server/services/r2-logo";
 import { apiError, ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
@@ -18,7 +19,8 @@ export const POST = withErrorHandler(async (
   context: { params: Promise<{ tenantId: string }> }
 ) => {
   const session = await getServerSession(authOptions);
-  if (!session?.user) return ApiErrors.UNAUTHENTICATED();
+  const mfaError = requireFullSession(session);
+  if (mfaError) return mfaError;
 
   const { tenantId } = tenantIdParamSchema.parse(await context.params);
 

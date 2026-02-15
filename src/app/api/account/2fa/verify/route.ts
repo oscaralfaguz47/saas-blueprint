@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
 import { writeAuditLog } from "@/server/services/audit";
+import { requireFullSession } from "@/server/require-full-session";
 import {
   verifyTotpCode,
   generateBackupCodes,
@@ -38,7 +39,8 @@ function checkRateLimit(userId: string): boolean {
  */
 export const POST = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.id) return ApiErrors.UNAUTHENTICATED();
+  const mfaError = requireFullSession(session);
+  if (mfaError) return mfaError;
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
@@ -76,6 +78,7 @@ export const POST = withErrorHandler(async (req: Request) => {
     const backupCodes = generateBackupCodes();
     const backupCodeHashes = backupCodes.map((c) => hashBackupCode(c, session.user.id));
 
+    const now = new Date();
     await prisma.$transaction([
       prisma.userSecurity.upsert({
         where: { userId: session.user.id },
@@ -84,17 +87,19 @@ export const POST = withErrorHandler(async (req: Request) => {
           totpSecretEnc: security.totpPendingSecretEnc,
           totpPendingSecretEnc: null,
           totpEnabled: true,
-          totpEnabledAt: new Date(),
+          totpEnabledAt: now,
           mfaEnabled: true,
           backupCodeHashes,
+          backupCodesGeneratedAt: now,
         },
         update: {
           totpSecretEnc: security.totpPendingSecretEnc,
           totpPendingSecretEnc: null,
           totpEnabled: true,
-          totpEnabledAt: new Date(),
+          totpEnabledAt: now,
           mfaEnabled: true,
           backupCodeHashes,
+          backupCodesGeneratedAt: now,
         },
       }),
     ]);
@@ -118,7 +123,8 @@ export const POST = withErrorHandler(async (req: Request) => {
     return apiSuccess({ backupCodes, verified: true });
   }
 
-  // Case 2: Login challenge — verify and set mfaVerifiedAt on session
+  // Case 2: Already enabled — login challenge should use POST /api/auth/2fa/verify (session rotation).
+  // This path supports in-app re-verify only (e.g. after session refresh); we just set mfaVerifiedAt on current session.
   if (security.totpEnabled && security.totpSecretEnc) {
     let valid = false;
     if (isSixDigits) {
@@ -138,25 +144,21 @@ export const POST = withErrorHandler(async (req: Request) => {
       }
     }
     if (!valid) {
-      return ApiErrors.VALIDATION_ERROR("Invalid or expired code.");
+      return ApiErrors.INVALID_2FA_CODE();
     }
-    // Mark ALL sessions for this user as 2FA-verified so the session callback sees it regardless of which row it reads
-    await prisma.session.updateMany({
-      where: { userId: session.user.id },
-      data: { mfaVerifiedAt: new Date() },
-    });
-    // Cookie fallback: store current user id so layout can allow this user but reject stale cookie from another user.
-    const MFA_COOKIE_MAX_AGE_SECONDS = 8 * 60 * 60;
-    const res = apiSuccess({ verified: true });
-    res.cookies.set("mfa_just_verified", session.user.id, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: MFA_COOKIE_MAX_AGE_SECONDS,
-      path: "/",
-    });
-    return res;
+    if (session.user.sessionToken) {
+      await prisma.session.updateMany({
+        where: { sessionToken: session.user.sessionToken },
+        data: { mfaVerifiedAt: new Date() },
+      });
+    } else {
+      await prisma.session.updateMany({
+        where: { userId: session.user.id },
+        data: { mfaVerifiedAt: new Date() },
+      });
+    }
+    return apiSuccess({ verified: true });
   }
 
-  return ApiErrors.VALIDATION_ERROR("No pending 2FA setup or challenge.");
+  return ApiErrors.NO_PENDING_2FA_SETUP();
 });

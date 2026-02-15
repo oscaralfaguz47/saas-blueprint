@@ -48,5 +48,6 @@ export {
   photoConfirmSchema,
   twoFaCodeSchema,
   twoFaVerifySchema,
+  auth2FaVerifySchema,
   autoLogoutPatchSchema,
 } from "./account";

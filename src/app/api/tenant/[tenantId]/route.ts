@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
+import { requireFullSession } from "@/server/require-full-session";
 import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { assertWorkspaceNameUniqueForUser, WorkspaceNameTakenError } from "@/server/services/tenancy-bootstrap";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
@@ -15,7 +16,8 @@ export const GET = withErrorHandler(async (
   context: { params: Promise<{ tenantId: string }> }
 ) => {
   const session = await getServerSession(authOptions);
-  if (!session?.user) return ApiErrors.UNAUTHENTICATED();
+  const mfaError = requireFullSession(session);
+  if (mfaError) return mfaError;
 
   const { tenantId } = tenantIdParamSchema.parse(await context.params);
 
@@ -50,7 +52,8 @@ export const PATCH = withErrorHandler(async (
   context: { params: Promise<{ tenantId: string }> }
 ) => {
   const session = await getServerSession(authOptions);
-  if (!session?.user) return ApiErrors.UNAUTHENTICATED();
+  const mfaError = requireFullSession(session);
+  if (mfaError) return mfaError;
 
   const { tenantId } = tenantIdParamSchema.parse(await context.params);
 

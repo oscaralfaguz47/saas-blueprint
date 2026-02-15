@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { prisma } from "@/server/db";
+import { requireFullSession } from "@/server/require-full-session";
 import { writeAuditLog } from "@/server/services/audit";
 import { sendInvitationEmail } from "@/server/services/invitation-email";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
@@ -21,7 +22,8 @@ export const POST = withErrorHandler(async (
   context: { params: Promise<{ id: string }> }
 ) => {
   const session = await getServerSession(authOptions);
-  if (!session?.user) return ApiErrors.UNAUTHENTICATED();
+  const mfaError = requireFullSession(session);
+  if (mfaError) return mfaError;
 
   const { id: invitationId } = paramsSchema.parse(await context.params);
 

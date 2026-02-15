@@ -34,6 +34,16 @@ const AUTO_LOGOUT_OPTIONS: { value: number; label: string }[] = [
   { value: 480, label: "8 hours" },
 ];
 
+function formatBackupCodesDate(isoDate: string | null | undefined): string | null {
+  if (!isoDate) return null;
+  try {
+    const d = new Date(isoDate);
+    return d.toLocaleDateString(undefined, { dateStyle: "medium" });
+  } catch {
+    return null;
+  }
+}
+
 type Props = { security: AccountSecurity };
 
 export function SecurityTab({ security: initialSecurity }: Props) {
@@ -151,7 +161,7 @@ export function SecurityTab({ security: initialSecurity }: Props) {
       const data = await res.json();
       if (!res.ok) {
         setError(getApiErrorMessage(res, data as { error?: string; message?: string }));
-        if ((data as { details?: { code?: string } }).details?.code === "NEED_STEP_UP") {
+        if ((data as { details?: { code?: string } }).details?.code === "STEP_UP_REQUIRED") {
           setError("Sign in again to disable 2FA.");
         }
         setLoadingDisable(false);
@@ -184,7 +194,7 @@ export function SecurityTab({ security: initialSecurity }: Props) {
       };
       if (!res.ok) {
         setError(getApiErrorMessage(res, data));
-        if ((data as { details?: { code?: string } }).details?.code === "NEED_STEP_UP") {
+        if ((data as { details?: { code?: string } }).details?.code === "STEP_UP_REQUIRED") {
           setError("Sign in again to regenerate backup codes.");
         }
         setLoadingRegenerate(false);
@@ -217,7 +227,7 @@ export function SecurityTab({ security: initialSecurity }: Props) {
         const data = await res.json();
         if (!res.ok) {
           setAutoLogoutError(
-            (data as { details?: { code?: string } }).details?.code === "NEED_STEP_UP"
+            (data as { details?: { code?: string } }).details?.code === "STEP_UP_REQUIRED"
               ? "Sign in again to change this setting."
               : getApiErrorMessage(res, data as { error?: string; message?: string })
           );
@@ -244,7 +254,7 @@ export function SecurityTab({ security: initialSecurity }: Props) {
         const data = await res.json();
         if (!res.ok) {
           setAutoLogoutError(
-            (data as { details?: { code?: string } }).details?.code === "NEED_STEP_UP"
+            (data as { details?: { code?: string } }).details?.code === "STEP_UP_REQUIRED"
               ? "Sign in again to change this setting."
               : getApiErrorMessage(res, data as { error?: string; message?: string })
           );
@@ -412,6 +422,12 @@ export function SecurityTab({ security: initialSecurity }: Props) {
           </>
         )}
 
+        {formatBackupCodesDate(initialSecurity.backupCodesGeneratedAt) && (
+          <p className="mt-2 text-sm text-(--text-muted)">
+            Backup codes generated:{" "}
+            {formatBackupCodesDate(initialSecurity.backupCodesGeneratedAt)}
+          </p>
+        )}
         {error && <p className="mt-4 text-sm text-(--color-danger)">{error}</p>}
       </section>
 
@@ -421,7 +437,7 @@ export function SecurityTab({ security: initialSecurity }: Props) {
           Inactivity auto-logout
         </h2>
         <p className="mt-1 text-sm text-(--text-secondary)">
-          Log me out after{" "}
+          Global for your account (all devices). Log me out after{" "}
           {autoLogoutEnabled && autoLogoutMinutes != null
             ? formatAutoLogoutLabel(autoLogoutMinutes)
             : !autoLogoutEnabled && initialSecurity.autoLogoutMinutes

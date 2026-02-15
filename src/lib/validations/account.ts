@@ -39,6 +39,12 @@ export const twoFaVerifySchema = z.object({
   code: z.string().min(6).max(10).trim(),
 });
 
+/** Security 2FA/sessions: login MFA verify with optional remember device. */
+export const auth2FaVerifySchema = twoFaVerifySchema.extend({
+  rememberDevice: z.boolean().optional(),
+  rememberDays: z.enum(["30", "60", "90"]).optional(),
+});
+
 /** L1: auto-logout toggle and duration (minutes). When enabled, minutes is required. */
 export const AUTO_LOGOUT_MINUTES_OPTIONS = [15, 30, 60, 300, 480] as const; // 15m, 30m, 1h, 5h, 8h
 export const autoLogoutPatchSchema = z

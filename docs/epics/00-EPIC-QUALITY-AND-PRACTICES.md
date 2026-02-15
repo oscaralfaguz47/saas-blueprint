@@ -51,6 +51,7 @@ Use **shared helpers** (e.g. `canAccessRequest`, `resolveTenantPlan`, `tryConsum
 ## 3. Security (all epics)
 
 - **Auth**: Every API handler must validate session; reject unauthenticated with 401.
+- **MFA gating (2FA)**: Every **protected** API route (any route that requires an authenticated session) must enforce **full session** before returning data or performing mutations. A session is not full when the user has 2FA enabled and has not yet completed the MFA challenge (e.g. session is `PENDING_MFA` or `totpEnabled && !mfaVerified`). Use the shared helper `requireFullSession(session)` from `@/server/require-full-session` immediately after `getServerSession(authOptions)`; if it returns a response, return it (401 with `details.code: "MFA_REQUIRED"`). **Exceptions**: Only endpoints that explicitly must accept a PENDING_MFA session (e.g. `POST /api/auth/2fa/verify` to submit the MFA code, or `POST /api/auth/2fa/cancel` to sign out from the 2FA screen) may skip this check. All other `/api/*` routes under account, tenant, records, settings, workspaces, etc. must use `requireFullSession`. When adding **new** API routes that require authentication, always add the MFA gate unless the route is one of the documented exceptions.
 - **Tenant**: Resolve tenant from membership server-side; never trust client `tenantId`. Filter every query by `tenantId`.
 - **Authorization**: Check permission and, for request-scoped actions, **C1 access** (e.g. `canAccessRequest`). Return 403 or 404 (prefer 404 when hiding existence).
 - **Input**: Validate all inputs with **Zod** (body and query params). Reject invalid with 400 and consistent error shape.
@@ -92,6 +93,7 @@ If authentication is cookie-based:
 - CSRF protection must be enabled.
 - SameSite cookies must be enforced.
 - Mutating endpoints must require CSRF validation.
+- Do not disable built-in CSRF protections from the auth provider (e.g., NextAuth).
 
 If authentication uses Bearer tokens:
 
@@ -110,7 +112,28 @@ If authentication uses Bearer tokens:
 
 ---
 
-### 3.5 CORS Policy
+### 3.5 MFA Gating on Protected API Routes (Mandatory)
+
+All API routes that require an authenticated session must also require a **full** session (2FA completed when the user has 2FA enabled). Otherwise a user who has signed in but not yet completed the 2FA challenge could call those APIs and access or mutate data.
+
+**Rule:**
+
+- Immediately after `getServerSession(authOptions)` in any protected route handler, call `requireFullSession(session)` from `@/server/require-full-session`.
+- If it returns a non-null response, return it (401 with message and `details.code: "MFA_REQUIRED"`).
+- Apply this to **every** new authenticated API route (account, tenant, records, settings, workspaces, and any future domains).
+
+**Exceptions (do not use `requireFullSession`):**
+
+- `POST /api/auth/2fa/verify` — must accept PENDING_MFA so the user can submit the MFA code and complete login.
+- `POST /api/auth/2fa/cancel` — accepts any session state so the user can sign out from the 2FA screen.
+
+**Public or unauthenticated routes** (e.g. `/api/health`, `/api/tenant/invitations/validate`, NextAuth callback) are unchanged.
+
+See also: **Security 2FA and Sessions** epic (`docs/epics/security/security-2fa-sessions.md`).
+
+---
+
+### 3.6 CORS Policy
 
 - Production must use explicit origin allowlist.
 - `*` is forbidden in production.
@@ -119,7 +142,7 @@ If authentication uses Bearer tokens:
 
 ---
 
-### 3.6 Security Headers (Production Required)
+### 3.7 Security Headers (Production Required)
 
 Application must configure:
 
@@ -134,7 +157,7 @@ HTTPS required outside local development.
 
 ---
 
-### 3.7 File Upload Security (Evidence)
+### 3.8 File Upload Security (Evidence)
 
 - Validate MIME type server-side.
 - Enforce max file size.
@@ -147,7 +170,7 @@ HTTPS required outside local development.
 
 ---
 
-### 3.8 SSRF Protection
+### 3.9 SSRF Protection
 
 If backend fetches URLs:
 
@@ -159,27 +182,38 @@ If backend fetches URLs:
 
 ---
 
-### 3.9 Session Hardening
+### 3.10 Session Hardening
 
 - Cookies must be `HttpOnly`, `Secure`, `SameSite=Lax` or `Strict`.
 - Sessions must expire.
 - Sensitive actions (billing, ownership transfer, role change) require re-auth.
 - Login endpoints must be rate-limited.
 - Support per-user inactivity timeout (sliding) for accounts that enable it; enforce server-side using session lastActivityAt and force logout mechanism.
+- MFA gating / step-up (sesión PENDING_MFA vs FULL, y “step-up ≤10 min” para acciones sensibles).
+- Session rotation after completing MFA (new token/session).
+- Remembered device tokens como una segunda cookie separada de sesión (hash en DB + expiración 30/60/90 + revocación en “security reset”).
+- Server-side revocation con revokedAt y forced logout con forceLogoutAt.
+- Throttle writes de lastActivityAt (no escribir en cada request).
+- Cookie naming hardening: usar prefijo __Host- para el token de “remember device”.
 
 ---
 
-### 3.10 Token Security (Invites / External Links)
+### 3.11 Token Security (Invites / External Links)
 
 - Tokens must be hashed in DB.
 - Tokens must have expiration.
 - Support one-time use where applicable.
 - Token validation responses must be generic.
 - Rate limit token endpoints.
+- strong random token
+- hash SHA-256 en DB
+- explicit expiration
+- revocable
+- generic responses
 
 ---
 
-### 3.11 Data Protection & Privacy
+### 3.12 Data Protection & Privacy
 
 - All traffic must use HTTPS.
 - Database encryption at rest.
@@ -191,7 +225,7 @@ If backend fetches URLs:
 
 ---
 
-### 3.12 Supply Chain Security
+### 3.13 Supply Chain Security
 
 - Dependency vulnerability scanning enabled.
 - Block deploy on critical vulnerabilities.
@@ -261,6 +295,9 @@ Use these `error.code` values where applicable so clients can handle them consis
 | `REJECTION_COMMENT_REQUIRED` | 400 | Reject action requires a non-empty comment |
 | `REMINDER_RATE_LIMITED` | 429 | Reminder sent too recently |
 | `RATE_LIMITED` | 429 | Generic rate limit (e.g. token validation) |
+| `STEP_UP_REQUIRED` | 403 | Recent MFA required |
+| `MFA_CHALLENGE_EXPIRED` | 401 | Pending MFA expired |
+| `NO_PENDING_2FA_SETUP` | 409 | Verify called without setup |
 
 Epics that trigger these should reference the code by name (e.g. “Return 403 with code `UPGRADE_REQUIRED`”).
 

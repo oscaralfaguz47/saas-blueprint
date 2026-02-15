@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
+import { requireFullSession } from "@/server/require-full-session";
 import { getOnboardingCounts } from "@/server/services/onboarding";
 import { writeAuditLog } from "@/server/services/audit";
 import { sendInvitationDeclinedNotificationToInviter } from "@/server/services/invitation-email";
@@ -23,7 +24,8 @@ function getUserAgent(req: Request): string | null {
 /** POST /api/tenant/invitations/reject — A5: reject invite by token (link); no auto-create DRAFT */
 export const POST = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
-  if (!session?.user) return ApiErrors.UNAUTHENTICATED();
+  const mfaError = requireFullSession(session);
+  if (mfaError) return mfaError;
 
   const body = await parseBody(req, acceptInvitationSchema);
   const tokenHash = sha256(body.token);

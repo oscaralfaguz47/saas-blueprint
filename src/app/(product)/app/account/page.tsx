@@ -36,6 +36,7 @@ export default async function AccountPage() {
         totpPendingSecretEnc: true,
         autoLogoutEnabled: true,
         autoLogoutMinutes: true,
+        backupCodesGeneratedAt: true,
       },
     }),
   ]);
@@ -66,6 +67,7 @@ export default async function AccountPage() {
     totpPendingSetup: !!security?.totpPendingSecretEnc,
     autoLogoutEnabled: security?.autoLogoutEnabled ?? false,
     autoLogoutMinutes: security?.autoLogoutMinutes ?? 300,
+    backupCodesGeneratedAt: security?.backupCodesGeneratedAt?.toISOString() ?? null,
   };
 
   return (

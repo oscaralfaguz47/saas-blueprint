@@ -3,6 +3,7 @@ import { authOptions } from "@/server/auth-options";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { prisma } from "@/server/db";
 import { Prisma } from "@prisma/client";
+import { requireFullSession } from "@/server/require-full-session";
 import { writeAuditLog } from "@/server/services/audit";
 import { apiError, ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { parseBody } from "@/lib/validations";
@@ -47,7 +48,8 @@ function checkTransferRateLimit(tenantId: string): boolean {
  */
 export const POST = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
-  if (!session?.user) return ApiErrors.UNAUTHENTICATED();
+  const mfaError = requireFullSession(session);
+  if (mfaError) return mfaError;
 
   const iat = session.user.iat ?? 0;
   if (iat <= 0 || Date.now() / 1000 - iat > STEP_UP_WINDOW_SECONDS) {
