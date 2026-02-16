@@ -39,7 +39,7 @@ export const POST = withErrorHandler(async (req: Request) => {
   if (mfaError) return mfaError;
 
   const sessionToken = session!.user.sessionToken;
-  if (!sessionToken || !(await isStepUpEligible(sessionToken, session.user.id))) {
+  if (!(await isStepUpEligible(sessionToken, session.user.id))) {
     return ApiErrors.STEP_UP_REQUIRED("Recent authentication required to disable 2FA.");
   }
 
