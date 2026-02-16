@@ -37,8 +37,9 @@ export const POST = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
   const mfaError = requireFullSession(session);
   if (mfaError) return mfaError;
+  if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 
-  const sessionToken = session!.user.sessionToken;
+  const sessionToken = session.user.sessionToken;
   if (!(await isStepUpEligible(sessionToken, session.user.id))) {
     return ApiErrors.STEP_UP_REQUIRED("Recent authentication required to regenerate backup codes.");
   }
