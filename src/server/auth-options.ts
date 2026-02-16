@@ -88,18 +88,72 @@ export const authOptions: NextAuthOptions = {
   },
 
   callbacks: {
+    // Run before jwt callback so the new session exists when we attach sessionToken (avoids sign-out loop).
+    async signIn({ user }) {
+      if (!user?.id) return false;
+      await runUserBootstraps({ userId: user.id, email: user.email });
+
+      const security = await prisma.userSecurity.findUnique({
+        where: { userId: user.id },
+        select: { totpEnabled: true },
+      });
+
+      const now = new Date();
+      const sessionToken = randomBytes(32).toString("base64url");
+
+      await prisma.session.updateMany({
+        where: { userId: user.id },
+        data: { revokedAt: now },
+      });
+      if (security?.totpEnabled) {
+        const challengeExpires = new Date(now.getTime() + 10 * 60 * 1000);
+        const expires = new Date(now.getTime() + 60 * 60 * 1000);
+        await prisma.session.create({
+          data: {
+            sessionToken,
+            userId: user.id,
+            expires,
+            authLevel: "PENDING_MFA",
+            mfaChallengeExpiresAt: challengeExpires,
+          },
+        });
+      } else {
+        const expires = new Date(Date.now() + JWT_MAX_AGE_SECONDS * 1000);
+        await prisma.session.create({
+          data: {
+            sessionToken,
+            userId: user.id,
+            expires,
+            authLevel: "FULL",
+            mfaVerifiedAt: now,
+          },
+        });
+      }
+      return true;
+    },
     async jwt({ token, user, trigger }) {
       // A7: Persist iat for step-up (recent auth window) on transfer primary ownership.
       if (token.iat == null) {
         token.iat = Math.floor(Date.now() / 1000);
       }
       // L1: Store sessionToken in JWT for inactivity check and 2FA (set on sign-in).
+      // Only attach non-revoked sessions so we never bind a revoked session (avoids sign-out loop).
       if (user?.id && (trigger === "signIn" || !token.sessionToken)) {
-        const sessionRow = await prisma.session.findFirst({
+        const security = await prisma.userSecurity.findUnique({
           where: { userId: user.id },
-          orderBy: { id: "desc" },
-          select: { sessionToken: true },
+          select: { totpEnabled: true },
         });
+        const sessionRow = security?.totpEnabled
+          ? await prisma.session.findFirst({
+              where: { userId: user.id, revokedAt: null, authLevel: "PENDING_MFA" },
+              orderBy: { id: "desc" },
+              select: { sessionToken: true },
+            })
+          : await prisma.session.findFirst({
+              where: { userId: user.id, revokedAt: null },
+              orderBy: { id: "desc" },
+              select: { sessionToken: true },
+            });
         if (sessionRow) token.sessionToken = sessionRow.sessionToken;
       }
       return token;
@@ -125,8 +179,15 @@ export const authOptions: NextAuthOptions = {
                   },
                 })
               : prisma.session.findFirst({
-                  where: { userId: token.sub, mfaVerifiedAt: { not: null } },
-                  select: { id: true },
+                  where: { userId: token.sub, revokedAt: null },
+                  orderBy: { id: "desc" },
+                  select: {
+                    mfaVerifiedAt: true,
+                    authLevel: true,
+                    revokedAt: true,
+                    mfaChallengeExpiresAt: true,
+                    expires: true,
+                  },
                 }),
             prisma.userSecurity.findUnique({
               where: { userId: token.sub },
@@ -188,42 +249,10 @@ export const authOptions: NextAuthOptions = {
       });
     },
 
+    // Session create/revoke moved to callbacks.signIn so it runs before jwt callback.
     async signIn({ user }) {
       if (!user?.id) return;
       await runUserBootstraps({ userId: user.id, email: user.email });
-
-      const security = await prisma.userSecurity.findUnique({
-        where: { userId: user.id },
-        select: { totpEnabled: true },
-      });
-
-      const now = new Date();
-      const sessionToken = randomBytes(32).toString("base64url");
-
-      if (security?.totpEnabled) {
-        const challengeExpires = new Date(now.getTime() + 10 * 60 * 1000);
-        const expires = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour for PENDING_MFA
-        await prisma.session.create({
-          data: {
-            sessionToken,
-            userId: user.id,
-            expires,
-            authLevel: "PENDING_MFA",
-            mfaChallengeExpiresAt: challengeExpires,
-          },
-        });
-      } else {
-        const expires = new Date(Date.now() + JWT_MAX_AGE_SECONDS * 1000);
-        await prisma.session.create({
-          data: {
-            sessionToken,
-            userId: user.id,
-            expires,
-            authLevel: "FULL",
-            mfaVerifiedAt: now,
-          },
-        });
-      }
     },
   },
 };

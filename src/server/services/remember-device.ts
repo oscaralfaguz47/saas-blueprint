@@ -56,7 +56,8 @@ export function getRememberDeviceExpiry(days: RememberDays): Date {
 }
 
 /**
- * Build cookie options for __Host-rmd (HttpOnly, Secure, SameSite=Lax, Path=/).
+ * Build cookie options for remember-device (HttpOnly, Secure in prod, SameSite=Lax, Path=/).
+ * Caller must use getRememberDeviceCookieName() as the cookie name so set and read match (e.g. "rmd" in dev, "__Host-rmd" in prod).
  */
 export function rememberDeviceCookieOptions(maxAgeSeconds: number) {
   const isProd = process.env.NODE_ENV === "production";
@@ -66,7 +67,6 @@ export function rememberDeviceCookieOptions(maxAgeSeconds: number) {
     sameSite: "lax" as const,
     path: "/",
     maxAge: maxAgeSeconds,
-    ...(isProd ? {} : { name: COOKIE_NAME }), // __Host- prefix requires Secure in most browsers
   };
 }
 
