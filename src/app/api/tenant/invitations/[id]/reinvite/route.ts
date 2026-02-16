@@ -24,6 +24,7 @@ export const POST = withErrorHandler(async (
   const session = await getServerSession(authOptions);
   const mfaError = requireFullSession(session);
   if (mfaError) return mfaError;
+  if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 
   const { id: invitationId } = paramsSchema.parse(await context.params);
 

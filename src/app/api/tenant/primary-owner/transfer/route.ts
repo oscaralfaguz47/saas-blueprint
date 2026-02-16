@@ -50,6 +50,7 @@ export const POST = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
   const mfaError = requireFullSession(session);
   if (mfaError) return mfaError;
+  if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 
   const iat = session.user.iat ?? 0;
   if (iat <= 0 || Date.now() / 1000 - iat > STEP_UP_WINDOW_SECONDS) {

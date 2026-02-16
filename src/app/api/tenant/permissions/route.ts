@@ -10,6 +10,7 @@ export const GET = withErrorHandler(async () => {
   const session = await getServerSession(authOptions);
   const mfaError = requireFullSession(session);
   if (mfaError) return mfaError;
+  if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 
   const membership = await getDefaultTenantForUser(session.user.id);
   const tenantId = membership?.tenantId;

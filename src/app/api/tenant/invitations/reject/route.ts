@@ -26,6 +26,7 @@ export const POST = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
   const mfaError = requireFullSession(session);
   if (mfaError) return mfaError;
+  if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 
   const body = await parseBody(req, acceptInvitationSchema);
   const tokenHash = sha256(body.token);

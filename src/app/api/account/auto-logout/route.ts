@@ -16,6 +16,7 @@ export const PATCH = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
   const mfaError = requireFullSession(session);
   if (mfaError) return mfaError;
+  if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 
   const sessionToken = session.user.sessionToken;
   if (!(await isStepUpEligible(sessionToken, session.user.id))) {
