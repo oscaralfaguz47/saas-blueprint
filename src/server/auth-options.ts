@@ -91,6 +91,18 @@ export const authOptions: NextAuthOptions = {
     // Run before jwt callback so the new session exists when we attach sessionToken (avoids sign-out loop).
     async signIn({ user }) {
       if (!user?.id) return false;
+
+      // Adapter may not have persisted the user yet (e.g. first OAuth sign-in). Wait for user to exist to avoid Session_userId_fkey.
+      let userExists: { id: string } | null = null;
+      for (let i = 0; i < 3; i++) {
+        userExists = await prisma.user.findUnique({ where: { id: user.id }, select: { id: true } });
+        if (userExists) break;
+        if (i < 2) await new Promise((r) => setTimeout(r, 100));
+      }
+      if (!userExists) {
+        return true; // allow sign-in; session created on next request when jwt runs with !token.sessionToken
+      }
+
       await runUserBootstraps({ userId: user.id, email: user.email });
 
       const security = await prisma.userSecurity.findUnique({
