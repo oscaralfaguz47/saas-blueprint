@@ -22,7 +22,7 @@ export const POST = withErrorHandler(async (
   context: { params: Promise<{ id: string }> }
 ) => {
   const session = await getServerSession(authOptions);
-  const mfaError = requireFullSession(session);
+  const mfaError = await requireFullSession(session);
   if (mfaError) return mfaError;
   if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 

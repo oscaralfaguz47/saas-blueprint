@@ -12,7 +12,7 @@ import { getPresignedGetUrlProfilePhoto, isR2Configured } from "@/server/service
  */
 export const GET = withErrorHandler(async () => {
   const session = await getServerSession(authOptions);
-  const mfaError = requireFullSession(session);
+  const mfaError = await requireFullSession(session);
   if (mfaError) return mfaError;
   if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 
@@ -74,7 +74,7 @@ export const GET = withErrorHandler(async () => {
     security: {
       totpEnabled: security?.totpEnabled ?? false,
       autoLogoutEnabled: security?.autoLogoutEnabled ?? false,
-      autoLogoutMinutes: security?.autoLogoutMinutes ?? 300,
+      autoLogoutMinutes: security?.autoLogoutMinutes ?? 21600,
       backupCodesGeneratedAt: security?.backupCodesGeneratedAt?.toISOString() ?? null,
     },
   });

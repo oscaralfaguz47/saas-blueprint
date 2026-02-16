@@ -39,7 +39,7 @@ export const PATCH = withErrorHandler(async (
   context: { params: Promise<{ userId: string }> }
 ) => {
   const session = await getServerSession(authOptions);
-  const mfaError = requireFullSession(session);
+  const mfaError = await requireFullSession(session);
   if (mfaError) return mfaError;
   if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 

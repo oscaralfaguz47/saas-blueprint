@@ -9,12 +9,12 @@ import { parseBody, autoLogoutPatchSchema } from "@/lib/validations";
 
 /**
  * PATCH /api/account/auto-logout
- * Toggle inactivity auto-logout and set duration (15m, 30m, 1h, 5h, 8h). Step-up required.
- * When enabled, minutes is required (15, 30, 60, 300, 480).
+ * Toggle inactivity auto-logout and set duration (15m, 30m, 1h, 8h, 7d). Default 21600 (15 days).
+ * When enabled, minutes is required (15, 30, 60, 480, 10080, or 21600).
  */
 export const PATCH = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
-  const mfaError = requireFullSession(session);
+  const mfaError = await requireFullSession(session);
   if (mfaError) return mfaError;
   if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 
@@ -32,7 +32,7 @@ export const PATCH = withErrorHandler(async (req: Request) => {
 
   const body = await parseBody(req, autoLogoutPatchSchema);
 
-  const minutes = body.enabled && body.minutes != null ? body.minutes : 300;
+  const minutes = body.enabled && body.minutes != null ? body.minutes : 21600;
 
   const existing = await prisma.userSecurity.findUnique({
     where: { userId: session.user.id },

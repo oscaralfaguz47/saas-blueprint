@@ -118,8 +118,8 @@ All API routes that require an authenticated session must also require a **full*
 
 **Rule:**
 
-- Immediately after `getServerSession(authOptions)` in any protected route handler, call `requireFullSession(session)` from `@/server/require-full-session`.
-- If it returns a non-null response, return it (401 with message and `details.code: "MFA_REQUIRED"`).
+- Immediately after `getServerSession(authOptions)` in any protected route handler, call `await requireFullSession(session)` from `@/server/require-full-session`.
+- If it returns a non-null response, return it (401 with message and `details.code: "MFA_REQUIRED"` or unauthenticated when session is expired/revoked).
 - Apply this to **every** new authenticated API route (account, tenant, records, settings, workspaces, and any future domains).
 
 **Exceptions (do not use `requireFullSession`):**
@@ -205,6 +205,7 @@ If backend fetches URLs:
 - Sensitive actions (billing, ownership transfer, role change) require re-auth.
 - Login endpoints must be rate-limited.
 - Support per-user inactivity timeout (sliding) for accounts that enable it; enforce server-side using session lastActivityAt and force logout mechanism.
+- **Expired session on every request:** Inactivity/expiry (revoked, idle timeout, forceLogoutAt) must be enforced on **every** protected API request (GET and POST), not only when the app layout runs. Use `requireFullSession(session)` (async), which calls `checkAndUpdateSessionActivity`; if the session is expired or revoked, return 401 so the client can redirect to sign-out. This prevents “session expired but GETs still succeed until a POST triggers a refresh.”
 - MFA gating / step-up (sesión PENDING_MFA vs FULL, y “step-up ≤10 min” para acciones sensibles).
 - Session rotation after completing MFA (new token/session).
 - Remembered device tokens como una segunda cookie separada de sesión (hash en DB + expiración 30/60/90 + revocación en “security reset”).

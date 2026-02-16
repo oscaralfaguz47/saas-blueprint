@@ -16,11 +16,11 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
   const userId = session.user.id;
 
-  // L1: Inactivity auto-logout — if session expired by inactivity, sign out
+  // L1: Inactivity auto-logout — redirect to our sign-out page with reason so UI shows "session expired" and auto sign-out clears cookie (NextAuth GET does not pass callbackUrl to the page).
   if (session.user.sessionToken) {
     const activity = await checkAndUpdateSessionActivity(session.user.sessionToken);
     if (activity.status === "expired" || activity.status === "session_not_found") {
-      redirect("/api/auth/signout?callbackUrl=/auth/sign-in");
+      redirect("/auth/sign-out?callbackUrl=/auth/sign-in&reason=session_expired");
     }
   }
 
@@ -109,6 +109,6 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       throw error;
     }
     console.error("AppLayout data fetch error:", error);
-    redirect("/api/auth/signout?callbackUrl=/auth/sign-in");
+    redirect("/auth/sign-out?callbackUrl=/auth/sign-in&reason=session_expired");
   }
 }

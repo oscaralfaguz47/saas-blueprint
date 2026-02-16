@@ -8,9 +8,11 @@ import { useApiFetch } from "@/hooks/use-api-fetch";
 import { getApiErrorMessage } from "@/lib/api-client";
 import type { AccountSecurity } from "./account-settings-tabs";
 
-/** Human-readable label for auto-logout duration (e.g. "15 minutes", "1 hour"). */
+/** Human-readable label for auto-logout duration. Includes legacy values (1, 300) for display only. */
 function formatAutoLogoutLabel(minutes: number): string {
   switch (minutes) {
+    case 1:
+      return "1 minute";
     case 15:
       return "15 minutes";
     case 30:
@@ -21,17 +23,22 @@ function formatAutoLogoutLabel(minutes: number): string {
       return "5 hours";
     case 480:
       return "8 hours";
+    case 10080:
+      return "7 days";
+    case 21600:
+      return "15 days";
     default:
-      return "5 hours";
+      return "15 days";
   }
 }
 
+/** Select options only (15m, 30m, 1h, 8h, 7d). Default 15 days (21600) is not in the list. */
 const AUTO_LOGOUT_OPTIONS: { value: number; label: string }[] = [
   { value: 15, label: "15 minutes" },
   { value: 30, label: "30 minutes" },
   { value: 60, label: "1 hour" },
-  { value: 300, label: "5 hours" },
   { value: 480, label: "8 hours" },
+  { value: 10080, label: "7 days" },
 ];
 
 function formatBackupCodesDate(isoDate: string | null | undefined): string | null {
@@ -213,7 +220,14 @@ export function SecurityTab({ security: initialSecurity }: Props) {
   const handleAutoLogoutToggle = (enabled: boolean) => {
     setAutoLogoutError(null);
     if (enabled) {
+      // Only update local state; API is called when they select a duration (handleAutoLogoutDurationChange).
       setAutoLogoutEnabled(true);
+      setAutoLogoutMinutes(null);
+      return;
+    }
+    // Turning off: if they never selected a duration, just revert local state; otherwise call API.
+    if (autoLogoutMinutes == null && !initialSecurity.autoLogoutEnabled) {
+      setAutoLogoutEnabled(false);
       setAutoLogoutMinutes(null);
       return;
     }
@@ -437,13 +451,11 @@ export function SecurityTab({ security: initialSecurity }: Props) {
           Inactivity auto-logout
         </h2>
         <p className="mt-1 text-sm text-(--text-secondary)">
-          Global for your account (all devices). Log me out after{" "}
-          {autoLogoutEnabled && autoLogoutMinutes != null
-            ? formatAutoLogoutLabel(autoLogoutMinutes)
-            : !autoLogoutEnabled && initialSecurity.autoLogoutMinutes
-              ? formatAutoLogoutLabel(initialSecurity.autoLogoutMinutes)
-              : "…"}{" "}
-          of inactivity.
+          {autoLogoutEnabled
+            ? autoLogoutMinutes != null
+              ? `Log me out after ${formatAutoLogoutLabel(autoLogoutMinutes)} of inactivity.`
+              : "Select a duration below to enable auto-logout."
+            : "The default auto-logout is 15 days. Turn on the switch to change it."}
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <button
@@ -469,7 +481,11 @@ export function SecurityTab({ security: initialSecurity }: Props) {
           </span>
           {autoLogoutEnabled && (
             <select
-              value={autoLogoutMinutes ?? ""}
+              value={
+                autoLogoutMinutes != null && AUTO_LOGOUT_OPTIONS.some((o) => o.value === autoLogoutMinutes)
+                  ? autoLogoutMinutes
+                  : ""
+              }
               onChange={(e) => {
                 const v = e.target.value;
                 if (v === "") return;

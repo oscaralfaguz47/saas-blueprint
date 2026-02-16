@@ -45,15 +45,19 @@ export const auth2FaVerifySchema = twoFaVerifySchema.extend({
   rememberDays: z.enum(["30", "60", "90"]).optional(),
 });
 
-/** L1: auto-logout toggle and duration (minutes). When enabled, minutes is required. */
-export const AUTO_LOGOUT_MINUTES_OPTIONS = [15, 30, 60, 300, 480] as const; // 15m, 30m, 1h, 5h, 8h
+/** L1: auto-logout. Selectable options: 15m, 30m, 1h, 8h, 7d. Default 21600 = 15 days (not in select). */
+export const AUTO_LOGOUT_MINUTES_OPTIONS = [15, 30, 60, 480, 10080] as const; // 15m, 30m, 1h, 8h, 7d
+const ALLOWED_AUTO_LOGOUT_MINUTES = [15, 30, 60, 480, 10080, 21600] as const; // + 21600 for default 15 days
 export const autoLogoutPatchSchema = z
   .object({
     enabled: z.boolean(),
     minutes: z
       .number()
       .int()
-      .refine((n) => [15, 30, 60, 300, 480].includes(n), "Select 15 minutes, 30 minutes, 1 hour, 5 hours, or 8 hours.")
+      .refine(
+        (n) => (ALLOWED_AUTO_LOGOUT_MINUTES as readonly number[]).includes(n),
+        "Select a valid inactivity duration (e.g. 15 minutes, 1 hour, 7 days)."
+      )
       .optional(),
   })
   .refine((data) => !data.enabled || (data.minutes !== undefined && data.minutes !== null), {

@@ -108,13 +108,13 @@ export function getAuthErrorCopy(error?: string | null): AuthErrorCopy {
           "You must be signed in to access this page. Please sign in and try again.",
       };
 
-    // Session references a user that no longer exists (e.g. after DB reset)
+    // Session expired (inactivity, revoked, or user no longer exists)
     case "SessionExpired":
       return {
         code,
-        title: "Your session is no longer valid",
+        title: "Session expired",
         description:
-          "Your account may have been reset or you were signed out. Please sign in again.",
+          "Your session expired due to inactivity or was signed out. Please sign in again.",
       };
 
     default:

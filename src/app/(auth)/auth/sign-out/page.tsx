@@ -4,7 +4,7 @@ import SignOutForm from "./sign-out-form";
 const DEFAULT_CALLBACK_URL = "/auth/sign-in";
 
 type Props = {
-  searchParams?: Promise<{ callbackUrl?: string }>;
+  searchParams?: Promise<{ callbackUrl?: string; reason?: string }>;
 };
 
 function isSessionExpiredCallback(callbackUrl: string): boolean {
@@ -21,16 +21,15 @@ export default async function SignOutPage({ searchParams }: Props) {
   const params = await searchParams;
   const rawCallback = params?.callbackUrl?.trim();
   const callbackUrl = rawCallback && rawCallback.startsWith("/") ? rawCallback : DEFAULT_CALLBACK_URL;
-  const sessionExpired = isSessionExpiredCallback(callbackUrl);
+  const sessionExpired =
+    params?.reason === "session_expired" || isSessionExpiredCallback(callbackUrl);
 
   return (
     <AuthCard
-      title={sessionExpired ? "Sign out to continue" : "Sign out"}
+      title={sessionExpired ? "Session expired" : "Sign out"}
       subtitle={
         sessionExpired ? (
-          <>
-            Your session is no longer valid. You must sign out to continue, then sign in again.
-          </>
+          <>Your session has expired. You’ll be signed out and taken to the sign-in page.</>
         ) : (
           <>Are you sure you want to sign out?</>
         )
@@ -40,9 +39,9 @@ export default async function SignOutPage({ searchParams }: Props) {
         sessionExpired
           ? {
               tone: "warning",
-              title: "Session no longer valid",
+              title: "Session expired",
               description:
-                "Your account may have been reset or your session expired. Sign out below, then sign in again to continue.",
+                "You were inactive too long or your session is no longer valid. Sign in again to continue.",
             }
           : undefined
       }
@@ -50,6 +49,7 @@ export default async function SignOutPage({ searchParams }: Props) {
       <SignOutForm
         callbackUrl={callbackUrl}
         buttonLabel="Sign out"
+        sessionExpired={sessionExpired}
       />
     </AuthCard>
   );

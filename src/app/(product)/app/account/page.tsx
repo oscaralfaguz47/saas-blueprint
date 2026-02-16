@@ -66,7 +66,7 @@ export default async function AccountPage() {
     totpEnabled: security?.totpEnabled ?? false,
     totpPendingSetup: !!security?.totpPendingSecretEnc,
     autoLogoutEnabled: security?.autoLogoutEnabled ?? false,
-    autoLogoutMinutes: security?.autoLogoutMinutes ?? 300,
+    autoLogoutMinutes: security?.autoLogoutMinutes ?? 21600,
     backupCodesGeneratedAt: security?.backupCodesGeneratedAt?.toISOString() ?? null,
   };
 

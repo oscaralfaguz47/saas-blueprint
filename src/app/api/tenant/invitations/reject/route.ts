@@ -24,7 +24,7 @@ function getUserAgent(req: Request): string | null {
 /** POST /api/tenant/invitations/reject — A5: reject invite by token (link); no auto-create DRAFT */
 export const POST = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
-  const mfaError = requireFullSession(session);
+  const mfaError = await requireFullSession(session);
   if (mfaError) return mfaError;
   if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 

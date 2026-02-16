@@ -17,7 +17,7 @@ function getUserAgent(req: Request): string | null {
 /** GET /api/tenant — list workspaces (tenants) for the current user */
 export const GET = withErrorHandler(async () => {
   const session = await getServerSession(authOptions);
-  const mfaError = requireFullSession(session);
+  const mfaError = await requireFullSession(session);
   if (mfaError) return mfaError;
   if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 
@@ -49,7 +49,7 @@ export const GET = withErrorHandler(async () => {
 /** POST /api/tenant — create a new workspace (tenant) */
 export const POST = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
-  const mfaError = requireFullSession(session);
+  const mfaError = await requireFullSession(session);
   if (mfaError) return mfaError;
   if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 
@@ -82,7 +82,7 @@ export const POST = withErrorHandler(async (req: Request) => {
 /** PATCH /api/tenant — set default workspace (tenant) for the current user */
 export const PATCH = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
-  const mfaError = requireFullSession(session);
+  const mfaError = await requireFullSession(session);
   if (mfaError) return mfaError;
   if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 

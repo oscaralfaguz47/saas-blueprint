@@ -1,13 +1,15 @@
 import type { Session } from "next-auth";
 import { NextResponse } from "next/server";
 import { ApiErrors } from "@/lib/api-response";
+import { checkAndUpdateSessionActivity } from "@/server/services/inactivity";
 
 /**
  * Enforce that the session is a full session (not PENDING_MFA, and if 2FA is enabled, MFA must be verified).
+ * Also enforces inactivity/expiry: if the Session row is revoked or past idle timeout, returns 401.
  * Use on all API routes except POST /api/auth/2fa/verify and POST /api/auth/2fa/cancel.
- * Returns a 401 NextResponse if the session must complete 2FA first; otherwise returns null.
+ * Returns a 401 NextResponse if the session must complete 2FA, is expired, or is invalid; otherwise returns null.
  */
-export function requireFullSession(session: Session | null): NextResponse | null {
+export async function requireFullSession(session: Session | null): Promise<NextResponse | null> {
   if (!session?.user?.id) return ApiErrors.UNAUTHENTICATED();
 
   const needsMfa =
@@ -15,5 +17,14 @@ export function requireFullSession(session: Session | null): NextResponse | null
     (session.user.totpEnabled === true && !session.user.mfaVerified);
 
   if (needsMfa) return ApiErrors.MFA_REQUIRED();
+
+  // L1: Inactivity/expiry — reject expired or revoked sessions on every API request (not only on layout).
+  if (session.user.sessionToken) {
+    const activity = await checkAndUpdateSessionActivity(session.user.sessionToken);
+    if (activity.status === "expired" || activity.status === "session_not_found") {
+      return ApiErrors.UNAUTHENTICATED();
+    }
+  }
+
   return null;
 }

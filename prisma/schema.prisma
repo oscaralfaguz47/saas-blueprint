@@ -158,9 +158,9 @@ model UserSecurity {
   backupCodeHashes     String[]  @default([])
   backupCodesGeneratedAt DateTime?
 
-  // L1: Inactivity auto-logout (minutes: 15, 30, 60, 300, 480)
+  // L1: Inactivity auto-logout (minutes: 15, 30, 60, 480, 10080, 21600). Default 21600 = 15 days.
   autoLogoutEnabled   Boolean @default(false)
-  autoLogoutMinutes   Int     @default(300)
+  autoLogoutMinutes   Int     @default(21600)
   forceLogoutAt       DateTime?
 
   // Mirror flags (actual MFA is typically enforced at IdP level)

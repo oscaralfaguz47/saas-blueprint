@@ -17,7 +17,7 @@ function getUserAgent(req: Request): string | null {
 /** POST /api/workspaces/claim — A5: claim DRAFT workspace with chosen slug */
 export const POST = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
-  const mfaError = requireFullSession(session);
+  const mfaError = await requireFullSession(session);
   if (mfaError) return mfaError;
   if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 

@@ -74,7 +74,7 @@ function encodeCursor(
 
 export const GET = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
-  const mfaError = requireFullSession(session);
+  const mfaError = await requireFullSession(session);
   if (mfaError) return mfaError;
   if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 
