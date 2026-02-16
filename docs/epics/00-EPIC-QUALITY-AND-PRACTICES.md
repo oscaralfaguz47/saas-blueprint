@@ -133,7 +133,23 @@ See also: **Security 2FA and Sessions** epic (`docs/epics/security/security-2fa-
 
 ---
 
-### 3.6 CORS Policy
+### 3.6 Session null-safety in protected API routes (TypeScript)
+
+After `getServerSession(authOptions)` and `requireFullSession(session)`, TypeScript still types `session` as possibly `null`. Using `session.user` (e.g. `session.user.id`) without narrowing can cause strict build failures (e.g. on Vercel): **`'session' is possibly 'null'`**.
+
+**Rule (mandatory for all new protected routes):**
+
+- Immediately after the `requireFullSession(session)` check (and returning its response when non-null), add an explicit guard:
+  ```ts
+  if (!session?.user) return ApiErrors.UNAUTHENTICATED();
+  ```
+- Then use `session.user` and related properties in the rest of the handler. The guard narrows the type so `session` and `session.user` are defined.
+
+Apply this in **every** authenticated API route that uses `session` after `requireFullSession` (account, tenant, records, settings, workspaces, and any future domains). This keeps strict TypeScript builds passing and avoids redundant non-null assertions.
+
+---
+
+### 3.7 CORS Policy
 
 - Production must use explicit origin allowlist.
 - `*` is forbidden in production.
@@ -142,7 +158,7 @@ See also: **Security 2FA and Sessions** epic (`docs/epics/security/security-2fa-
 
 ---
 
-### 3.7 Security Headers (Production Required)
+### 3.8 Security Headers (Production Required)
 
 Application must configure:
 
@@ -157,7 +173,7 @@ HTTPS required outside local development.
 
 ---
 
-### 3.8 File Upload Security (Evidence)
+### 3.9 File Upload Security (Evidence)
 
 - Validate MIME type server-side.
 - Enforce max file size.
@@ -170,7 +186,7 @@ HTTPS required outside local development.
 
 ---
 
-### 3.9 SSRF Protection
+### 3.10 SSRF Protection
 
 If backend fetches URLs:
 
@@ -182,7 +198,7 @@ If backend fetches URLs:
 
 ---
 
-### 3.10 Session Hardening
+### 3.11 Session Hardening
 
 - Cookies must be `HttpOnly`, `Secure`, `SameSite=Lax` or `Strict`.
 - Sessions must expire.
@@ -198,7 +214,7 @@ If backend fetches URLs:
 
 ---
 
-### 3.11 Token Security (Invites / External Links)
+### 3.12 Token Security (Invites / External Links)
 
 - Tokens must be hashed in DB.
 - Tokens must have expiration.
@@ -213,7 +229,7 @@ If backend fetches URLs:
 
 ---
 
-### 3.12 Data Protection & Privacy
+### 3.13 Data Protection & Privacy
 
 - All traffic must use HTTPS.
 - Database encryption at rest.
@@ -225,7 +241,7 @@ If backend fetches URLs:
 
 ---
 
-### 3.13 Supply Chain Security
+### 3.14 Supply Chain Security
 
 - Dependency vulnerability scanning enabled.
 - Block deploy on critical vulnerabilities.
