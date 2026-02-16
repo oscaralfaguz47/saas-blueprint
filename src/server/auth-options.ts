@@ -113,10 +113,7 @@ export const authOptions: NextAuthOptions = {
       const now = new Date();
       const sessionToken = randomBytes(32).toString("base64url");
 
-      await prisma.session.updateMany({
-        where: { userId: user.id },
-        data: { revokedAt: now },
-      });
+      // Create a new session; do not revoke existing sessions so the user can stay signed in on multiple devices.
       if (security?.totpEnabled) {
         const challengeExpires = new Date(now.getTime() + 10 * 60 * 1000);
         const expires = new Date(now.getTime() + 60 * 60 * 1000);
