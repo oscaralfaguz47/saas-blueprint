@@ -82,6 +82,10 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
   const [transferUserId, setTransferUserId] = useState("");
   const [transferSlugConfirm, setTransferSlugConfirm] = useState("");
   const [transferSubmitting, setTransferSubmitting] = useState(false);
+  const [membersSearch, setMembersSearch] = useState("");
+  const [membersSearchSent, setMembersSearchSent] = useState("");
+  const [invitesSearch, setInvitesSearch] = useState("");
+  const [invitesSearchSent, setInvitesSearchSent] = useState("");
 
   const fetchWorkspace = useCallback(async () => {
     setWorkspaceLoading(true);
@@ -104,30 +108,46 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
   const fetchMembers = useCallback(async () => {
     setMembersLoading(true);
     try {
-      const res = await apiFetch(`/api/admin/workspaces/${tenantId}/members?limit=50`);
+      const params = new URLSearchParams();
+      params.set("limit", "50");
+      if (membersSearchSent.trim()) params.set("search", membersSearchSent.trim());
+      const res = await apiFetch(`/api/admin/workspaces/${tenantId}/members?${params.toString()}`);
       if (!res.ok) return;
       const data = (await res.json()) as { data: { items: MemberItem[] } };
       setMembers(data.data?.items ?? []);
     } finally {
       setMembersLoading(false);
     }
-  }, [tenantId, apiFetch]);
+  }, [tenantId, apiFetch, membersSearchSent]);
 
   const fetchInvites = useCallback(async () => {
     setInvitesLoading(true);
     try {
-      const res = await apiFetch(`/api/admin/workspaces/${tenantId}/invites?limit=50`);
+      const params = new URLSearchParams();
+      params.set("limit", "50");
+      if (invitesSearchSent.trim()) params.set("search", invitesSearchSent.trim());
+      const res = await apiFetch(`/api/admin/workspaces/${tenantId}/invites?${params.toString()}`);
       if (!res.ok) return;
       const data = (await res.json()) as { data: { items: InviteItem[] } };
       setInvites(data.data?.items ?? []);
     } finally {
       setInvitesLoading(false);
     }
-  }, [tenantId, apiFetch]);
+  }, [tenantId, apiFetch, invitesSearchSent]);
 
   useEffect(() => {
     fetchWorkspace();
   }, [fetchWorkspace]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setMembersSearchSent(membersSearch), 300);
+    return () => clearTimeout(t);
+  }, [membersSearch]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setInvitesSearchSent(invitesSearch), 300);
+    return () => clearTimeout(t);
+  }, [invitesSearch]);
 
   useEffect(() => {
     if (tab === "members") fetchMembers();
@@ -292,7 +312,10 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
       </div>
 
       {workspaceLoading ? (
-        <Skeleton className="h-32 w-full" />
+        <div className="flex flex-col items-center justify-center gap-3 py-12">
+          <Spinner size="md" />
+          <p className="text-sm text-[var(--text-muted)]">Loading workspace…</p>
+        </div>
       ) : workspaceError || !workspace ? (
         <p className="text-sm text-red-600">{workspaceError ?? "Workspace not found"}</p>
       ) : (
@@ -342,6 +365,14 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
         </TabsList>
 
         <TabsContent value="members" className="mt-4">
+          <div className="mb-4">
+            <Input
+              placeholder="Search by name or email"
+              value={membersSearch}
+              onChange={(e) => setMembersSearch(e.target.value)}
+              className="max-w-xs"
+            />
+          </div>
           {membersLoading ? (
             <Skeleton className="h-40 w-full" />
           ) : (
@@ -484,7 +515,14 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
         </TabsContent>
 
         <TabsContent value="invites" className="mt-4">
-          <div className="mb-3 flex justify-end">
+          <div className="mb-3 flex flex-wrap items-center gap-3">
+            <Input
+              placeholder="Search by email"
+              value={invitesSearch}
+              onChange={(e) => setInvitesSearch(e.target.value)}
+              className="max-w-xs"
+            />
+            <div className="flex-1" />
             <button
               type="button"
               onClick={() => setInviteOpen(true)}

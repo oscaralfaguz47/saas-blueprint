@@ -240,6 +240,7 @@ model Tenant {
   @@index([status])
   @@index([createdByUserId])
   @@index([createdByUserId, status])
+  @@index([createdAt, id])
 }
 
 model TenantMembership {
