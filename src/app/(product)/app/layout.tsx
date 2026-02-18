@@ -10,6 +10,8 @@ import { checkAndUpdateSessionActivity } from "@/server/services/inactivity";
 import { getPresignedGetUrlProfilePhoto, isR2Configured } from "@/server/services/r2-profile-photo";
 import { AppLayoutHydrationGate } from "@/components/app/app-layout-hydration-gate";
 
+export const dynamic = "force-dynamic";
+
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) redirect("/auth/sign-in");
@@ -24,11 +26,18 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     }
   }
 
-  // L1: 2FA challenge — require verification before app access (PENDING_MFA or FULL but not yet MFA-verified)
+  // L1 / E6: 2FA challenge — require verification or setup before app access
   const needsMfa =
     session.user.authLevel === "PENDING_MFA" ||
     (session.user.totpEnabled && !session.user.mfaVerified);
   if (needsMfa) {
+    // E6: Admin-forced 2FA not yet set up → send to dedicated setup page (avoids redirect loop; account requires full session)
+    if (
+      session.user.mfaEnforced &&
+      !session.user.totpEnabled
+    ) {
+      redirect("/auth/setup-2fa");
+    }
     redirect("/auth/2fa");
   }
 

@@ -380,6 +380,17 @@ tokens, codes, secrets
   On POST /api/auth/2fa/cancel, server must clear session cookie via Set-Cookie with Max-Age=0 (even if session already expired/revoked)
 
 ---
+## 6) Workspace-Enforced 2FA (mfaEnforced)
+
+If `UserSecurity.mfaEnforced = true` AND `totpEnabled = false`:
+
+- After successful primary authentication
+- Do NOT create FULL session
+- Redirect to mandatory 2FA setup flow
+- Block access to app routes until configured
+
+This enforcement is server-side only.
+---
 
 # 🧪 Edge Cases
 

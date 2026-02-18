@@ -139,6 +139,7 @@ model User {
   tenantInvitationsRejected TenantInvitation[] @relation("TenantInvitationRejectedByUser")
   recordsCreated Record[] @relation("RecordsCreatedByUser")
   tenantsCreated Tenant[] @relation("TenantCreatedByUser")
+  workspaceMemberSecurity WorkspaceMemberSecurity[] @relation("WorkspaceMemberSecurity")
 
   @@index([identityProvider, identityId])
 }
@@ -166,6 +167,7 @@ model UserSecurity {
   // Mirror flags (actual MFA is typically enforced at IdP level)
   mfaEnabled  Boolean   @default(false)
   mfaEnforced Boolean   @default(false)
+  mfaEnforcedByUserId String?  // E6: admin who forced 2FA
   mfaResetAt  DateTime?
 
   lockedUntil DateTime?
@@ -174,6 +176,28 @@ model UserSecurity {
 
   @@index([totpEnabled])
   @@index([autoLogoutEnabled])
+  @@index([mfaEnforced])
+}
+
+/// E6: Per-workspace 2FA enforcement (decouples from global UserSecurity).
+model WorkspaceMemberSecurity {
+  id        String   @id @default(cuid())
+  tenantId  String
+  userId    String
+
+  mfaEnforced      Boolean   @default(false)
+  enforcedByUserId  String?
+  enforcedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation("WorkspaceMemberSecurity", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@index([tenantId])
+  @@index([userId])
 }
 
 model Tenant {
@@ -210,6 +234,8 @@ model Tenant {
   featureFlags TenantFeatureFlag[]
 
   billingEvents BillingEvent[]
+
+  workspaceMemberSecurity WorkspaceMemberSecurity[]
 
   @@index([status])
   @@index([createdByUserId])

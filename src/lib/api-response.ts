@@ -80,6 +80,12 @@ export const ApiErrors = {
     apiError("CONFLICT", 409, message ?? "No pending 2FA setup.", {
       code: "NO_PENDING_2FA_SETUP",
     }),
+  /** E6: Governance constraint (e.g. last Owner-level, exactly one Primary Owner); 409 */
+  GOVERNANCE_CONSTRAINT_VIOLATION: (message?: string, details?: Record<string, unknown>) =>
+    apiError("CONFLICT", 409, message ?? "Action would violate workspace governance.", {
+      code: "GOVERNANCE_CONSTRAINT_VIOLATION",
+      ...details,
+    }),
   /** Invalid TOTP or backup code; 400 */
   INVALID_2FA_CODE: (message?: string) =>
     apiError("VALIDATION_ERROR", 400, message ?? "Invalid or expired code.", {

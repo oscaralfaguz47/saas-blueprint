@@ -2,7 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
 import { getOptionalEnv } from "@/lib/env";
-import { requireFullSession } from "@/server/require-full-session";
+import { requireFullSessionOrForcedMfaSetup } from "@/server/require-full-session";
 import { buildOtpauthUri, rawSecretToBase32 } from "@/server/services/totp";
 import { decryptTotpSecret } from "@/server/services/account-encryption";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
@@ -14,7 +14,7 @@ import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
  */
 export const GET = withErrorHandler(async () => {
   const session = await getServerSession(authOptions);
-  const mfaError = await requireFullSession(session);
+  const mfaError = await requireFullSessionOrForcedMfaSetup(session);
   if (mfaError) return mfaError;
   if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 

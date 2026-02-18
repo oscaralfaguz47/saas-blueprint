@@ -26,6 +26,7 @@ const ROLE_HELP = (
   </div>
 );
 import { useApiFetch } from "@/hooks/use-api-fetch";
+import { useToast } from "@/components/ui/toast";
 import { InviteMemberModal } from "./invite-member-modal";
 import { TransferOwnershipModal } from "./transfer-ownership-modal";
 
@@ -57,6 +58,9 @@ type MemberItem = {
   role: string;
   status: string;
   joinedAt: string | null;
+  /** E6: 2FA status for security dropdown visibility and table column */
+  mfaEnforced?: boolean;
+  totpEnabled?: boolean;
 };
 
 type Props = {
@@ -89,6 +93,14 @@ function canShowStatusButtonsFor(currentUserRole: string, targetRole: string): b
   return roleRank(currentUserRole) > roleRank(targetRole);
 }
 
+/** E6: Same authority as status — can manage member security (Force 2FA, Reset 2FA, etc.). */
+function canShowSecurityActionsFor(currentUserRole: string, targetRole: string): boolean {
+  if (targetRole === "Primary Owner" || targetRole === "Owner") {
+    return currentUserRole === "Primary Owner";
+  }
+  return roleRank(currentUserRole) > roleRank(targetRole);
+}
+
 type SortBy = "user" | "role" | "status" | "joined";
 type SortDir = "asc" | "desc";
 
@@ -107,6 +119,7 @@ export function WorkspaceMembersTab({
   const canChangeStatus = canManage || canDisable;
   const canEnable = canManage || canDisable;
   const apiFetch = useApiFetch();
+  const toast = useToast();
   const [items, setItems] = useState<MemberItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -122,6 +135,8 @@ export function WorkspaceMembersTab({
   const [statusLoadingId, setStatusLoadingId] = useState<string | null>(null);
   const [roleLoadingId, setRoleLoadingId] = useState<string | null>(null);
   const [copiedUserId, setCopiedUserId] = useState<string | null>(null);
+  const [securityMenuUserId, setSecurityMenuUserId] = useState<string | null>(null);
+  const [securityLoadingId, setSecurityLoadingId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const loadingMoreRef = useRef(false);
 
@@ -257,6 +272,68 @@ export function WorkspaceMembersTab({
       setCopiedUserId(userId);
     } catch {
       // ignore
+    }
+  };
+
+  const baseSecurityUrl = "/api/settings/workspace/members";
+  const runSecurityAction = async (
+    userId: string,
+    action: "force-2fa" | "reset-2fa" | "disable-2fa" | "revoke-sessions" | "revoke-remembered-devices"
+  ) => {
+    setSecurityLoadingId(userId);
+    try {
+      const path =
+        action === "force-2fa"
+          ? `${baseSecurityUrl}/${userId}/security/force-2fa`
+          : action === "reset-2fa"
+            ? `${baseSecurityUrl}/${userId}/security/reset-2fa`
+            : action === "disable-2fa"
+              ? `${baseSecurityUrl}/${userId}/security/disable-2fa`
+              : action === "revoke-sessions"
+                ? `${baseSecurityUrl}/${userId}/security/revoke-sessions`
+                : `${baseSecurityUrl}/${userId}/security/revoke-remembered-devices`;
+      const res = await apiFetch(path, { method: "PATCH" });
+      if (res.ok) {
+        setSecurityMenuUserId(null);
+        let message: string;
+        try {
+          const data = (await res.clone().json()) as {
+            data?: { alreadyEnforced?: boolean; skipped?: boolean; alreadyDisabled?: boolean };
+          };
+          if (action === "force-2fa" && data.data?.alreadyEnforced) {
+            message = "Member is already required to use 2FA.";
+          } else if (action === "force-2fa") {
+            message = "2FA enforcement has been applied. The member must set up 2FA at next sign-in.";
+          } else if (action === "reset-2fa" && data.data?.skipped) {
+            message = "No 2FA to reset for this member.";
+          } else if (action === "reset-2fa") {
+            message = "2FA has been reset for this member. They will need to set it up again at next sign-in.";
+          } else if (action === "disable-2fa" && data.data?.alreadyDisabled) {
+            message = "2FA was already disabled for this member.";
+          } else if (action === "disable-2fa") {
+            message = "2FA has been disabled for this member.";
+          } else if (action === "revoke-sessions") {
+            message = "All sessions have been revoked for this member.";
+          } else {
+            message = "All remembered devices have been revoked for this member.";
+          }
+        } catch {
+          message =
+            action === "force-2fa"
+              ? "2FA enforcement has been applied."
+              : action === "reset-2fa"
+                ? "2FA has been reset for this member."
+                : action === "disable-2fa"
+                  ? "2FA has been disabled for this member."
+                  : action === "revoke-sessions"
+                    ? "All sessions have been revoked."
+                    : "All remembered devices have been revoked.";
+        }
+        toast.addToast("success", message);
+        loadInitial();
+      }
+    } finally {
+      setSecurityLoadingId(null);
     }
   };
 
@@ -411,6 +488,7 @@ export function WorkspaceMembersTab({
                 <TableHead>User</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>2FA</TableHead>
                 <TableHead>Joined</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -421,6 +499,7 @@ export function WorkspaceMembersTab({
                   <TableCell><Skeleton className="h-5 w-32" /></TableCell>
                   <TableCell><Skeleton className="h-5 w-16" /></TableCell>
                   <TableCell><Skeleton className="h-5 w-14" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-16" /></TableCell>
                   <TableCell><Skeleton className="h-5 w-20" /></TableCell>
                   <TableCell><Skeleton className="h-5 w-24 ml-auto" /></TableCell>
                 </TableRow>
@@ -454,6 +533,7 @@ export function WorkspaceMembersTab({
                   </button>
                 </TableHead>
                 <SortHeader col="status" label="Status" />
+                <TableHead className="whitespace-nowrap">2FA</TableHead>
                 <SortHeader col="joined" label="Joined" />
                 <TableHead className="text-right min-w-[120px]">Actions</TableHead>
               </TableRow>
@@ -476,6 +556,12 @@ export function WorkspaceMembersTab({
                 const showStatusButtons =
                   canShowStatusButtonsFor(currentUserRole, m.role) &&
                   !isCurrentUser;
+                const showSecurityActions =
+                  canManage &&
+                  canShowSecurityActionsFor(currentUserRole, m.role) &&
+                  !isCurrentUser;
+                const securityMenuOpen = securityMenuUserId === m.userId;
+                const securityLoading = securityLoadingId === m.userId;
                 return (
                   <TableRow key={m.userId}>
                     <TableCell>
@@ -539,6 +625,13 @@ export function WorkspaceMembersTab({
                     </TableCell>
                     <TableCell className="text-(--text-secondary)">{m.status}</TableCell>
                     <TableCell className="text-(--text-muted)">
+                      {m.mfaEnforced
+                        ? "Enforced"
+                        : m.totpEnabled
+                          ? "Enabled"
+                          : "Off"}
+                    </TableCell>
+                    <TableCell className="text-(--text-muted)">
                       {m.joinedAt ? new Date(m.joinedAt).toLocaleDateString() : "—"}
                     </TableCell>
                     <TableCell className="text-right">
@@ -593,6 +686,98 @@ export function WorkspaceMembersTab({
                             {statusLoadingId === m.userId ? <Spinner size="sm" /> : "Enable"}
                           </button>
                         )}
+                        {showSecurityActions ? (
+                          <div className="relative inline-block">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSecurityMenuUserId((id) =>
+                                  id === m.userId ? null : m.userId
+                                )
+                              }
+                              disabled={securityLoading}
+                              className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded px-2 py-1 text-xs text-(--text-primary) bg-(--bg-surface-elev) hover:bg-[color-mix(in_srgb,var(--border-subtle)_30%,transparent)] disabled:opacity-60 disabled:cursor-not-allowed"
+                              aria-expanded={securityMenuOpen}
+                              aria-haspopup="true"
+                            >
+                              {securityLoading ? (
+                                <Spinner size="sm" />
+                              ) : (
+                                "Security ▼"
+                              )}
+                            </button>
+                            {securityMenuOpen ? (
+                              <>
+                                <div
+                                  className="fixed inset-0 z-10"
+                                  aria-hidden="true"
+                                  onClick={() => setSecurityMenuUserId(null)}
+                                />
+                                <div
+                                  className="absolute right-0 top-full z-20 mt-1 min-w-[180px] rounded-lg border border-(--border-subtle) bg-(--bg-surface) py-1 shadow-md"
+                                  role="menu"
+                                >
+                                  {!m.mfaEnforced && (
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      className="block w-full px-3 py-2 text-left text-sm text-(--text-primary) hover:bg-(--bg-surface-elev)"
+                                      onClick={() =>
+                                        runSecurityAction(m.userId, "force-2fa")
+                                      }
+                                    >
+                                      Force 2FA
+                                    </button>
+                                  )}
+                                  {(m.totpEnabled || m.mfaEnforced) && (
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      className="block w-full px-3 py-2 text-left text-sm text-(--text-primary) hover:bg-(--bg-surface-elev)"
+                                      onClick={() =>
+                                        runSecurityAction(m.userId, "reset-2fa")
+                                      }
+                                    >
+                                      Reset 2FA
+                                    </button>
+                                  )}
+                                  {m.totpEnabled && (
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      className="block w-full px-3 py-2 text-left text-sm text-(--text-primary) hover:bg-(--bg-surface-elev)"
+                                      onClick={() =>
+                                        runSecurityAction(m.userId, "disable-2fa")
+                                      }
+                                    >
+                                      Disable 2FA
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    className="block w-full px-3 py-2 text-left text-sm text-(--text-primary) hover:bg-(--bg-surface-elev)"
+                                    onClick={() =>
+                                      runSecurityAction(m.userId, "revoke-sessions")
+                                    }
+                                  >
+                                    Revoke sessions
+                                  </button>
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    className="block w-full px-3 py-2 text-left text-sm text-(--text-primary) hover:bg-(--bg-surface-elev)"
+                                    onClick={() =>
+                                      runSecurityAction(m.userId, "revoke-remembered-devices")
+                                    }
+                                  >
+                                    Revoke remembered devices
+                                  </button>
+                                </div>
+                              </>
+                            ) : null}
+                          </div>
+                        ) : null}
                       </div>
                     </TableCell>
                   </TableRow>

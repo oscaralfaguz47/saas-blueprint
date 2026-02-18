@@ -18,6 +18,8 @@ declare module "next-auth" {
       mfaVerified?: boolean;
       /** L1: User has TOTP 2FA enabled (needed to redirect to challenge). */
       totpEnabled?: boolean;
+      /** E6: Admin-forced 2FA; must complete setup before app access. */
+      mfaEnforced?: boolean;
       /** Security 2FA/sessions: FULL or PENDING_MFA. */
       authLevel?: "FULL" | "PENDING_MFA";
     };

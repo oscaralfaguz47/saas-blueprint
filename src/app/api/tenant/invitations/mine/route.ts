@@ -11,7 +11,13 @@ export const GET = withErrorHandler(async () => {
   if (mfaError) return mfaError;
   if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 
-  const emailNormalized = (session.user.email ?? "").trim().toLowerCase();
+  const userRecord = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { email: true },
+  });
+  const emailNormalized = (
+    session.user.email ?? userRecord?.email ?? ""
+  ).trim().toLowerCase();
   const now = new Date();
 
   const [activeWorkspaces, pendingInvitations] = await Promise.all([

@@ -39,24 +39,25 @@ export const POST = withErrorHandler(async (req: Request) => {
     return ApiErrors.NOT_FOUND("Invitation not found or expired");
   }
 
-  const userEmail = (session.user.email ?? "").toLowerCase();
-  if (!userEmail || userEmail !== invite.email.toLowerCase()) {
-    return ApiErrors.VALIDATION_ERROR(
-      "This invitation was issued for a different email address",
-      {
-        expectedEmail: invite.email,
-        currentEmail: userEmail || null,
-        nextAction: "SIGN_OUT_AND_SIGN_IN_WITH_EXPECTED_EMAIL",
-      }
-    );
-  }
-
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
     select: { id: true, email: true, isPlatformBlocked: true },
   });
   if (!user) return ApiErrors.NOT_FOUND("User");
   if (user.isPlatformBlocked) return ApiErrors.FORBIDDEN();
+
+  const userEmail = (user.email ?? "").trim().toLowerCase();
+  const inviteEmailNormalized = invite.email.trim().toLowerCase();
+  if (!userEmail || userEmail !== inviteEmailNormalized) {
+    return ApiErrors.VALIDATION_ERROR(
+      "This invitation was issued for a different email address",
+      {
+        expectedEmail: invite.email,
+        currentEmail: user.email ?? null,
+        nextAction: "SIGN_OUT_AND_SIGN_IN_WITH_EXPECTED_EMAIL",
+      }
+    );
+  }
 
   const existingMembership = await prisma.tenantMembership.findUnique({
     where: { tenantId_userId: { tenantId: invite.tenantId, userId: user.id } },

@@ -10,6 +10,7 @@ import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { prisma } from "@/server/db";
 
 import { ensureBootstrapPlatformOwner } from "@/server/services/platform-bootstrap";
+import { isMfaEnforcedForUser } from "@/server/security/member-security-governance";
 
 // ---- Tunables (performance + security) ----
 // JWT max age (seconds). 8 hours.
@@ -105,16 +106,24 @@ export const authOptions: NextAuthOptions = {
 
       await runUserBootstraps({ userId: user.id, email: user.email });
 
-      const security = await prisma.userSecurity.findUnique({
-        where: { userId: user.id },
-        select: { totpEnabled: true },
-      });
+      const [security, mfaEnforced] = await Promise.all([
+        prisma.userSecurity.findUnique({
+          where: { userId: user.id },
+          select: { totpEnabled: true },
+        }),
+        isMfaEnforcedForUser(user.id),
+      ]);
 
       const now = new Date();
       const sessionToken = randomBytes(32).toString("base64url");
 
+      // E6: If 2FA is enforced by any workspace but not yet set up, create PENDING_MFA so user is sent to setup.
+      const needsMfaChallenge =
+        security?.totpEnabled ||
+        (mfaEnforced && !security?.totpEnabled);
+
       // Create a new session; do not revoke existing sessions so the user can stay signed in on multiple devices.
-      if (security?.totpEnabled) {
+      if (needsMfaChallenge) {
         const challengeExpires = new Date(now.getTime() + 10 * 60 * 1000);
         const expires = new Date(now.getTime() + 60 * 60 * 1000);
         await prisma.session.create({
@@ -126,7 +135,8 @@ export const authOptions: NextAuthOptions = {
             mfaChallengeExpiresAt: challengeExpires,
           },
         });
-      } else {
+      }
+      if (!needsMfaChallenge) {
         const expires = new Date(Date.now() + JWT_MAX_AGE_SECONDS * 1000);
         await prisma.session.create({
           data: {
@@ -148,11 +158,17 @@ export const authOptions: NextAuthOptions = {
       // L1: Store sessionToken in JWT for inactivity check and 2FA (set on sign-in).
       // Only attach non-revoked sessions so we never bind a revoked session (avoids sign-out loop).
       if (user?.id && (trigger === "signIn" || !token.sessionToken)) {
-        const security = await prisma.userSecurity.findUnique({
-          where: { userId: user.id },
-          select: { totpEnabled: true },
-        });
-        const sessionRow = security?.totpEnabled
+        const [security, mfaEnforced] = await Promise.all([
+          prisma.userSecurity.findUnique({
+            where: { userId: user.id },
+            select: { totpEnabled: true },
+          }),
+          isMfaEnforcedForUser(user.id),
+        ]);
+        const needsMfa =
+          security?.totpEnabled ||
+          (mfaEnforced && !security?.totpEnabled);
+        const sessionRow = needsMfa
           ? await prisma.session.findFirst({
               where: { userId: user.id, revokedAt: null, authLevel: "PENDING_MFA" },
               orderBy: { id: "desc" },
@@ -175,7 +191,7 @@ export const authOptions: NextAuthOptions = {
         // L1: mfaVerified and totpEnabled — read from DB every time. Use the current session (sessionToken)
         // so 2FA verification persists for the life of the session (no expiration).
         if (token.sub) {
-          const [sessionRow, security] = await Promise.all([
+          const [sessionRow, security, mfaEnforced, userRecord] = await Promise.all([
             token.sessionToken
               ? prisma.session.findUnique({
                   where: { sessionToken: token.sessionToken },
@@ -202,6 +218,11 @@ export const authOptions: NextAuthOptions = {
               where: { userId: token.sub },
               select: { totpEnabled: true },
             }),
+            isMfaEnforcedForUser(token.sub),
+            prisma.user.findUnique({
+              where: { id: token.sub },
+              select: { email: true, name: true },
+            }),
           ]);
 
           const now = new Date();
@@ -226,6 +247,9 @@ export const authOptions: NextAuthOptions = {
               ? sessionRow.mfaVerifiedAt != null
               : sessionRow != null);
           session.user.totpEnabled = security?.totpEnabled ?? false;
+          session.user.mfaEnforced = mfaEnforced ?? false;
+          session.user.email = userRecord?.email ?? session.user.email ?? null;
+          session.user.name = userRecord?.name ?? session.user.name ?? null;
         }
       }
       return session;

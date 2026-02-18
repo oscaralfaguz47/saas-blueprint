@@ -2,7 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
 import { writeAuditLog } from "@/server/services/audit";
-import { requireFullSession } from "@/server/require-full-session";
+import { requireFullSessionOrForcedMfaSetup } from "@/server/require-full-session";
 import {
   verifyTotpCode,
   generateBackupCodes,
@@ -39,7 +39,7 @@ function checkRateLimit(userId: string): boolean {
  */
 export const POST = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
-  const mfaError = await requireFullSession(session);
+  const mfaError = await requireFullSessionOrForcedMfaSetup(session);
   if (mfaError) return mfaError;
   if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 

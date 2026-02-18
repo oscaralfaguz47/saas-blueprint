@@ -11,11 +11,18 @@ import {
   validateRememberedDevice,
 } from "@/server/services/remember-device";
 
+export const dynamic = "force-dynamic";
+
 export default async function TwoFaPage() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) redirect("/auth/sign-in");
-  if (!session.user.totpEnabled) redirect("/app");
-  if (session.user.mfaVerified) redirect("/app");
+  if (!session.user.totpEnabled) redirect("/auth/setup-2fa");
+  if (
+    session.user.mfaVerified &&
+    session.user.authLevel === "FULL"
+  ) {
+    redirect("/app");
+  }
 
   // If PENDING_MFA and valid remember-device cookie for this user, upgrade session to FULL and redirect.
   if (

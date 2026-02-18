@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
-import { requireFullSession } from "@/server/require-full-session";
+import { requireFullSessionOrForcedMfaSetup } from "@/server/require-full-session";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { getPresignedGetUrlProfilePhoto, isR2Configured } from "@/server/services/r2-profile-photo";
 
@@ -12,7 +12,7 @@ import { getPresignedGetUrlProfilePhoto, isR2Configured } from "@/server/service
  */
 export const GET = withErrorHandler(async () => {
   const session = await getServerSession(authOptions);
-  const mfaError = await requireFullSession(session);
+  const mfaError = await requireFullSessionOrForcedMfaSetup(session);
   if (mfaError) return mfaError;
   if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 

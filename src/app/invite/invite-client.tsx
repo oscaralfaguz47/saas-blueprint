@@ -174,7 +174,8 @@ export default function InviteClient({ hasActiveWorkspace = false }: InviteClien
   }
 
   const workspaceName = validatePayload?.workspaceName ?? "this workspace";
-  const currentEmail = session?.user?.email ?? null;
+  const currentEmail =
+    session?.user?.email ?? session?.user?.name ?? null;
 
   const callbackUrl = `/invite?token=${encodeURIComponent(token)}`;
   const signInHref = `/auth/sign-in?callbackUrl=${encodeURIComponent(callbackUrl)}`;
@@ -310,13 +311,15 @@ export default function InviteClient({ hasActiveWorkspace = false }: InviteClien
   }
 
   if (result.kind === "email_mismatch") {
+    const displayCurrent =
+      result.data.currentEmail ?? currentEmail ?? "Unknown";
     return (
       <AuthCard
         title="Wrong account"
         subtitle={
           <>
             This invite was sent to <strong className="font-semibold text-(--text-primary)">{result.data.expectedEmail}</strong>, but you&apos;re signed in as{" "}
-            <strong className="font-semibold text-(--text-primary)">{currentEmail ?? "Unknown"}</strong>.
+            <strong className="font-semibold text-(--text-primary)">{displayCurrent}</strong>.
           </>
         }
         badgeText="Invitation"
@@ -350,7 +353,7 @@ export default function InviteClient({ hasActiveWorkspace = false }: InviteClien
         subtitle={
           <>
             This invite was sent to <strong className="font-semibold text-(--text-primary)">{validatePayload!.invitedEmail}</strong>, but you&apos;re signed in as{" "}
-            <strong className="font-semibold text-(--text-primary)">{currentEmail ?? "Unknown"}</strong>.
+            <strong className="font-semibold text-(--text-primary)">{currentEmail ?? "Unknown"}</strong>. If this is your account, try refreshing the page.
           </>
         }
         badgeText="Invitation"

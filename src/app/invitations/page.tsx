@@ -30,7 +30,13 @@ export default async function InvitationsPage() {
     redirect(`/auth/sign-in?callbackUrl=${encodeURIComponent("/invitations")}`);
   }
 
-  const emailNormalized = (session.user.email ?? "").trim().toLowerCase();
+  const userRecord = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { email: true },
+  });
+  const emailNormalized = (
+    session.user.email ?? userRecord?.email ?? ""
+  ).trim().toLowerCase();
   const now = new Date();
 
   const [memberships, pendingInvitations] = await Promise.all([

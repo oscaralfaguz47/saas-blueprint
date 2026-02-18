@@ -193,6 +193,9 @@ export const GET = withErrorHandler(async (req: Request) => {
           email: true,
           name: true,
           image: true,
+          security: {
+            select: { totpEnabled: true },
+          },
         },
       },
       roles: {
@@ -208,6 +211,19 @@ export const GET = withErrorHandler(async (req: Request) => {
   const hasMore = rows.length > limit;
   const slice = hasMore ? rows.slice(0, limit) : rows;
   const last = slice[slice.length - 1];
+
+  // E6: Workspace-level mfaEnforced from WorkspaceMemberSecurity (per-workspace).
+  const userIds = slice.map((m) => m.user.id);
+  const workspaceSecurity =
+    userIds.length > 0
+      ? await prisma.workspaceMemberSecurity.findMany({
+          where: { tenantId: tenant.id, userId: { in: userIds } },
+          select: { userId: true, mfaEnforced: true },
+        })
+      : [];
+  const mfaEnforcedByUserId = new Map(
+    workspaceSecurity.map((s) => [s.userId, s.mfaEnforced])
+  );
 
   let nextCursor: string | null = null;
   if (hasMore && last) {
@@ -225,6 +241,7 @@ export const GET = withErrorHandler(async (req: Request) => {
   const items = slice.map((m) => {
     const roleNames = m.roles.map((r) => r.role.name);
     const displayRole = getHighestRoleName(roleNames) ?? "Member";
+    const security = m.user.security;
     return {
       userId: m.user.id,
       name: m.user.name ?? null,
@@ -233,6 +250,8 @@ export const GET = withErrorHandler(async (req: Request) => {
       role: displayRole,
       status: m.status,
       joinedAt: m.joinedAt,
+      mfaEnforced: mfaEnforcedByUserId.get(m.user.id) ?? false,
+      totpEnabled: security?.totpEnabled ?? false,
     };
   });
 
