@@ -33,16 +33,31 @@ export default async function PlatformAdminLayout({ children }: { children: Reac
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { isPlatformBlocked: true, name: true, email: true, image: true, profilePhotoObjectKey: true, appearance: true },
+    select: {
+      isPlatformBlocked: true,
+      name: true,
+      email: true,
+      image: true,
+      profilePhotoObjectKey: true,
+      appearance: true,
+      role: true,
+    },
   });
-  if (!user || user.isPlatformBlocked) notFound();
+  if (!user || user.isPlatformBlocked) redirect("/unauthorized");
+
+  // Platform Admin requires 2FA to be enabled (security policy)
+  const security = await prisma.userSecurity.findUnique({
+    where: { userId: session.user.id },
+    select: { totpEnabled: true },
+  });
+  if (!security?.totpEnabled) redirect("/unauthorized");
 
   const canAccess = await hasVendorPermission({
     userId: session.user.id,
-    legacyRole: session.user.role,
+    legacyRole: user.role ?? undefined,
     permission: "admin.tenants.read",
   });
-  if (!canAccess) notFound();
+  if (!canAccess) redirect("/unauthorized");
 
   const appearanceMode = user.appearance ?? "SYSTEM";
   const initialTheme = appearanceMode === "LIGHT" ? "light" : appearanceMode === "DARK" ? "dark" : "system";
