@@ -9,6 +9,7 @@ import {
   IconChevronRight,
   IconFileText,
   IconPlus,
+  IconSettings,
   IconWorkspace,
   IconX,
 } from "@/components/ui/icons";
@@ -30,6 +31,8 @@ type AppSidebarProps = {
   onClose: () => void;
   /** When true, sidebar is shown as overlay (mobile). */
   isMobile: boolean;
+  /** When true, show Platform Admin link (vendor permission admin.tenants.read). */
+  canAccessPlatformAdmin?: boolean;
 };
 
 function isRequestsActive(pathname: string) {
@@ -40,7 +43,7 @@ const hoverBg = "hover:bg-[color-mix(in_srgb,var(--text-primary)_6%,transparent)
 const activeBg = "bg-[color-mix(in_srgb,var(--text-primary)_10%,transparent)]";
 const brandBoxBg = "bg-[color-mix(in_srgb,var(--bg-surface-elev)_85%,transparent)]";
 
-export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps) {
+export default function AppSidebar({ open, onClose, isMobile, canAccessPlatformAdmin = false }: AppSidebarProps) {
   const pathname = usePathname() ?? "";
   const router = useRouter();
   const apiFetch = useApiFetch();
@@ -180,6 +183,7 @@ export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps)
 
   const requestsActive = isRequestsActive(pathname);
   const workspaceSettingsActive = pathname === "/app/settings/workspace" || pathname.startsWith("/app/settings/workspace?");
+  const platformAdminActive = pathname.startsWith("/admin");
 
   const showLabels = !collapsed;
   const content = (
@@ -222,6 +226,18 @@ export default function AppSidebar({ open, onClose, isMobile }: AppSidebarProps)
           <IconFileText size={18} className="shrink-0" />
           {showLabels ? <span>Requests</span> : null}
         </Link>
+        {canAccessPlatformAdmin ? (
+          <Link
+            href="/admin/workspaces"
+            onClick={() => isMobile && onClose()}
+            aria-current={platformAdminActive ? "page" : undefined}
+            title="Platform Admin"
+            className={`flex items-center rounded-lg py-2.5 text-sm font-medium transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} ${platformAdminActive ? `${activeBg} text-[var(--text-primary)]` : `text-[var(--text-secondary)] ${hoverBg} hover:text-[var(--text-primary)]`}`}
+          >
+            <IconSettings size={18} className="shrink-0" />
+            {showLabels ? <span>Platform Admin</span> : null}
+          </Link>
+        ) : null}
       </nav>
 
       {/* Workspace section — separator, label, scrollable list */}

@@ -8,6 +8,7 @@ import { getOnboardingCounts } from "@/server/services/onboarding";
 import { writeAuditLog } from "@/server/services/audit";
 import { checkAndUpdateSessionActivity } from "@/server/services/inactivity";
 import { getPresignedGetUrlProfilePhoto, isR2Configured } from "@/server/services/r2-profile-photo";
+import { hasVendorPermission } from "@/server/security/vendor-authorization";
 import { AppLayoutHydrationGate } from "@/components/app/app-layout-hydration-gate";
 
 export const dynamic = "force-dynamic";
@@ -92,6 +93,12 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     }
     if (!avatarUrl && userRecord?.image) avatarUrl = userRecord.image;
 
+    const canAccessPlatformAdmin = await hasVendorPermission({
+      userId,
+      legacyRole: session.user.role,
+      permission: "admin.tenants.read",
+    });
+
     return (
       <AppLayoutHydrationGate
         initialTheme={initialTheme}
@@ -103,6 +110,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         workspace={workspace}
         tenantId={tenantId}
         pendingInvitationsCount={pendingInvitationsCount}
+        canAccessPlatformAdmin={canAccessPlatformAdmin}
       >
         {children}
       </AppLayoutHydrationGate>

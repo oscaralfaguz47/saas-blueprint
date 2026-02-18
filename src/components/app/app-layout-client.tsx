@@ -19,6 +19,8 @@ type AppLayoutClientProps = {
   workspace: Workspace | null;
   /** A5: Pending workspace invitations for header badge */
   pendingInvitationsCount?: number;
+  /** Platform Admin: show sidebar entry when true */
+  canAccessPlatformAdmin?: boolean;
   children: React.ReactNode;
 };
 
@@ -26,6 +28,7 @@ export default function AppLayoutClient({
   user,
   workspace,
   pendingInvitationsCount = 0,
+  canAccessPlatformAdmin = false,
   children,
 }: AppLayoutClientProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -45,6 +48,7 @@ export default function AppLayoutClient({
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         isMobile={isMobile}
+        canAccessPlatformAdmin={canAccessPlatformAdmin}
       />
       <div className="flex min-w-0 flex-1 flex-col border-l border-[var(--border-subtle)] w-full overflow-hidden">
         <AppHeader

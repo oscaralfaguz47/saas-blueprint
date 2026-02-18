@@ -28,6 +28,8 @@ type AppLayoutHydrationGateProps = {
   pendingInvitationsCount?: number;
   /** L1: Initial theme from User.appearance */
   initialTheme?: Theme | null;
+  /** Platform Admin: show sidebar entry when true */
+  canAccessPlatformAdmin?: boolean;
   children: React.ReactNode;
 };
 
@@ -46,6 +48,7 @@ export function AppLayoutHydrationGate({
   tenantId,
   pendingInvitationsCount = 0,
   initialTheme = null,
+  canAccessPlatformAdmin = false,
   children,
 }: AppLayoutHydrationGateProps) {
   const mounted = useSyncExternalStore(
@@ -71,7 +74,7 @@ export function AppLayoutHydrationGate({
       <ThemeProvider initialTheme={initialTheme}>
         <TenantPermissionsProvider>
           <CreateWorkspaceModalProvider>
-            <AppLayoutClient user={user} workspace={workspace} pendingInvitationsCount={pendingInvitationsCount}>
+            <AppLayoutClient user={user} workspace={workspace} pendingInvitationsCount={pendingInvitationsCount} canAccessPlatformAdmin={canAccessPlatformAdmin}>
               {children}
             </AppLayoutClient>
           </CreateWorkspaceModalProvider>
