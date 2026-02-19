@@ -24,6 +24,27 @@ function getPriceId(planCode: PlanCode): string {
 }
 
 /**
+ * List customers by exact email (GET /customers?email=...).
+ * Official API: https://developer.paddle.com/api-reference/customers/list-customers
+ */
+async function findPaddleCustomerByEmail(email: string): Promise<{ id: string } | null> {
+  const url = new URL(`${PADDLE_API_BASE}/customers`);
+  url.searchParams.set("email", email);
+  url.searchParams.set("per_page", "1");
+  const res = await fetch(url.toString(), {
+    method: "GET",
+    headers: { Authorization: `Bearer ${getApiKey()}` },
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Paddle List Customers failed: ${res.status} ${err}`);
+  }
+  const json = (await res.json()) as { data?: Array<{ id: string }> };
+  const first = json?.data?.[0];
+  return first ? { id: first.id } : null;
+}
+
+/**
  * Create Paddle customer (POST /customers).
  * Official API: https://developer.paddle.com/api-reference/customers/create-customer
  */
@@ -54,6 +75,20 @@ async function createPaddleCustomer(params: {
 }
 
 /**
+ * Get existing Paddle customer by email, or create one. Avoids 409 customer_already_exists
+ * when the same user (email) checks out again (e.g. different workspace or retry).
+ */
+async function getOrCreatePaddleCustomer(params: {
+  email: string;
+  name: string | null;
+  customData: Record<string, string>;
+}): Promise<{ id: string }> {
+  const existing = await findPaddleCustomerByEmail(params.email);
+  if (existing) return existing;
+  return createPaddleCustomer(params);
+}
+
+/**
  * Create Paddle transaction (POST /transactions) and return checkout URL.
  * Official API: https://developer.paddle.com/api-reference/transactions/create-transaction
  * Response includes checkout.url for automatically-collected transactions.
@@ -80,8 +115,20 @@ async function createPaddleTransaction(params: {
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Paddle Create Transaction failed: ${res.status} ${err}`);
+    const errText = await res.text();
+    let errJson: { error?: { code?: string; detail?: string } } | null = null;
+    try {
+      errJson = JSON.parse(errText) as { error?: { code?: string; detail?: string } };
+    } catch {
+      // ignore
+    }
+    const code = errJson?.error?.code;
+    if (res.status === 400 && code === "transaction_default_checkout_url_not_set") {
+      throw new Error(
+        "Checkout is not fully configured. Set the Default Payment Link in Paddle Dashboard under Checkout settings (Developer Tools or Checkout)."
+      );
+    }
+    throw new Error(`Paddle Create Transaction failed: ${res.status} ${errText}`);
   }
   const json = (await res.json()) as {
     data?: { checkout?: { url?: string }; id?: string };
@@ -129,7 +176,7 @@ export async function createCheckoutSession(
     throw new Error("Already have an active subscription for this plan");
   }
 
-  const customer = await createPaddleCustomer({
+  const customer = await getOrCreatePaddleCustomer({
     email: params.customerEmail,
     name: params.customerName,
     customData: { tenantId: params.tenantId },

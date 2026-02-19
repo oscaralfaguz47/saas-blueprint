@@ -90,7 +90,8 @@ This section reflects the **implemented** behavior and official Paddle APIs used
 
 ## Checkout
 
-- **Create Customer:** `POST https://api.paddle.com/customers` (or `https://sandbox-api.paddle.com/customers`). Body: `email`, `name`, `custom_data` (e.g. `tenantId`). Response: `data.id` (customer id).
+- **Default payment link page:** The app provides a `/checkout` page (route `(public)/checkout`) that loads Paddle.js and initializes it with `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN`. Set Default Payment Link in Paddle Dashboard to `https://yourdomain.com/checkout` (or `http://localhost:3000/checkout` for sandbox). When customers are sent to `/checkout?_ptxn=txn_xxx`, Paddle.js opens the checkout overlay; on `checkout.completed` they are redirected to `/app/settings/workspace?tab=billing`.
+- **Get or create customer:** To avoid 409 `customer_already_exists` when the same email checks out again (e.g. different workspace or retry), first **List customers** by email: `GET https://api.paddle.com/customers?email=<email>&per_page=1`. If `data[0]` exists, use that customer id; otherwise **Create Customer:** `POST https://api.paddle.com/customers`. Body: `email`, `name`, `custom_data` (e.g. `tenantId`). Response: `data.id` (customer id).
 - **Create Transaction:** `POST https://api.paddle.com/transactions`. Body: `customer_id`, `items` (array of `{ price_id, quantity: 1 }`), `custom_data: { tenantId, planCode }`, `collection_mode: "automatic"`, `currency_code` (e.g. `"USD"`). Response: `data.checkout.url` — **this is the hosted checkout URL returned to the client.** Price IDs come from env: `PADDLE_PRICE_ID_STARTER`, `PADDLE_PRICE_ID_PRO`.
 - Subscription record is **not** created in our DB at checkout; it is created/updated only via webhook.
 
