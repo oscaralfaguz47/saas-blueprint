@@ -181,7 +181,7 @@ export default function TermsPage() {
               </p>
 
               <h2 className="text-base font-semibold text-(--text-primary)">
-                10. Termination
+                10. Termination.
               </h2>
               <p>
                 You may stop using the Service at any time. We may suspend or
