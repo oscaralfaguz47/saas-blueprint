@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Table,
@@ -72,6 +72,8 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
   const [roleLoadingId, setRoleLoadingId] = useState<string | null>(null);
   const [statusLoadingId, setStatusLoadingId] = useState<string | null>(null);
   const [revokeLoadingId, setRevokeLoadingId] = useState<string | null>(null);
+  const [resendLoadingId, setResendLoadingId] = useState<string | null>(null);
+  const [reinviteLoadingId, setReinviteLoadingId] = useState<string | null>(null);
   const [breakGlassOpen, setBreakGlassOpen] = useState(false);
   const [breakGlassConfirm, setBreakGlassConfirm] = useState("");
   const [breakGlassSubmitting, setBreakGlassSubmitting] = useState(false);
@@ -135,9 +137,16 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
     }
   }, [tenantId, apiFetch, invitesSearchSent]);
 
+  const fetchWorkspaceRef = useRef(fetchWorkspace);
+  const fetchMembersRef = useRef(fetchMembers);
+  const fetchInvitesRef = useRef(fetchInvites);
+  fetchWorkspaceRef.current = fetchWorkspace;
+  fetchMembersRef.current = fetchMembers;
+  fetchInvitesRef.current = fetchInvites;
+
   useEffect(() => {
-    fetchWorkspace();
-  }, [fetchWorkspace]);
+    fetchWorkspaceRef.current();
+  }, [tenantId]);
 
   useEffect(() => {
     const t = setTimeout(() => setMembersSearchSent(membersSearch), 300);
@@ -150,12 +159,12 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
   }, [invitesSearch]);
 
   useEffect(() => {
-    if (tab === "members") fetchMembers();
-  }, [tab, fetchMembers]);
+    if (tab === "members") fetchMembersRef.current();
+  }, [tenantId, tab, membersSearchSent]);
 
   useEffect(() => {
-    if (tab === "invites") fetchInvites();
-  }, [tab, fetchInvites]);
+    if (tab === "invites") fetchInvitesRef.current();
+  }, [tenantId, tab, invitesSearchSent]);
 
   const handleRoleChange = async (membershipId: string, role: string) => {
     setRoleLoadingId(membershipId);
@@ -204,6 +213,44 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
       }
     } finally {
       setRevokeLoadingId(null);
+    }
+  };
+
+  const handleResendInvite = async (inviteId: string) => {
+    setResendLoadingId(inviteId);
+    try {
+      const res = await apiFetch(
+        `/api/admin/workspaces/${tenantId}/invites/${inviteId}/resend`,
+        { method: "POST" }
+      );
+      if (res.ok) {
+        toast.addToast("success", "Invitation resent");
+        fetchInvites();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.addToast("error", data?.message ?? "Failed to resend");
+      }
+    } finally {
+      setResendLoadingId(null);
+    }
+  };
+
+  const handleReinvite = async (inviteId: string) => {
+    setReinviteLoadingId(inviteId);
+    try {
+      const res = await apiFetch(
+        `/api/admin/workspaces/${tenantId}/invites/${inviteId}/reinvite`,
+        { method: "POST" }
+      );
+      if (res.ok) {
+        toast.addToast("success", "Re-invitation sent");
+        fetchInvites();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.addToast("error", data?.message ?? "Failed to re-invite");
+      }
+    } finally {
+      setReinviteLoadingId(null);
     }
   };
 
@@ -517,6 +564,9 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
         <TabsContent value="invites" className="mt-4">
           <div className="mb-3 flex flex-wrap items-center gap-3">
             <Input
+              id="admin-invites-search"
+              name="invites-search"
+              autoComplete="off"
               placeholder="Search by email"
               value={invitesSearch}
               onChange={(e) => setInvitesSearch(e.target.value)}
@@ -541,7 +591,7 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
                     <TableHead>Email</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Expires</TableHead>
-                    <TableHead className="w-[100px]">Actions</TableHead>
+                    <TableHead className="w-[200px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -553,16 +603,38 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
                         {new Date(inv.expiresAt).toLocaleDateString()}
                       </TableCell>
                       <TableCell>
+                        <div className="flex flex-wrap items-center gap-2">
                           {inv.status === "ACTIVE" && (
-                          <button
-                            type="button"
-                            disabled={revokeLoadingId === inv.id}
-                            onClick={() => handleRevokeInvite(inv.id)}
-                            className="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-subtle)] px-3 text-sm font-medium hover:bg-[var(--bg-surface-elev)] disabled:opacity-60"
-                          >
-                            {revokeLoadingId === inv.id ? <Spinner size="sm" /> : "Revoke"}
-                          </button>
-                        )}
+                            <>
+                              <button
+                                type="button"
+                                disabled={resendLoadingId === inv.id}
+                                onClick={() => handleResendInvite(inv.id)}
+                                className="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-subtle)] px-3 text-sm font-medium hover:bg-[var(--bg-surface-elev)] disabled:opacity-60"
+                              >
+                                {resendLoadingId === inv.id ? <Spinner size="sm" /> : "Resend"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={revokeLoadingId === inv.id}
+                                onClick={() => handleRevokeInvite(inv.id)}
+                                className="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-subtle)] px-3 text-sm font-medium hover:bg-[var(--bg-surface-elev)] disabled:opacity-60"
+                              >
+                                {revokeLoadingId === inv.id ? <Spinner size="sm" /> : "Revoke"}
+                              </button>
+                            </>
+                          )}
+                          {(inv.status === "REVOKED" || inv.status === "EXPIRED" || inv.status === "REJECTED") && (
+                            <button
+                              type="button"
+                              disabled={reinviteLoadingId === inv.id}
+                              onClick={() => handleReinvite(inv.id)}
+                              className="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-subtle)] px-3 text-sm font-medium hover:bg-[var(--bg-surface-elev)] disabled:opacity-60"
+                            >
+                              {reinviteLoadingId === inv.id ? <Spinner size="sm" /> : "Re-invite"}
+                            </button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -627,11 +699,14 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
       )}
 
       {inviteOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" key="invite-modal">
           <div className="w-full max-w-md rounded-lg bg-[var(--bg-surface-elev)] p-4 shadow-lg">
             <h3 className="font-semibold text-[var(--text-primary)]">Invite member</h3>
             <Input
+              id="admin-invite-modal-email"
+              name="invite-email"
               type="email"
+              autoComplete="off"
               className="mt-3"
               placeholder="Email"
               value={inviteEmail}

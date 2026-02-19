@@ -564,3 +564,141 @@ export async function executeRevokeInvitation(params: {
   });
   return { ok: true };
 }
+
+/** Resend invitation (active/pending only): new token, extend expiry, send email. */
+export async function executeResendInvitation(params: {
+  tenantId: string;
+  inviteId: string;
+  actorUserId: string;
+  actorContext: ActorContext;
+  req: Request;
+  auditMeta: AuditMeta;
+}): Promise<
+  | { ok: true }
+  | { error: "NOT_FOUND"; message: string }
+  | { error: "VALIDATION"; message: string }
+> {
+  const { tenantId, inviteId, actorUserId, actorContext, req, auditMeta } = params;
+  const now = new Date();
+
+  const invite = await prisma.tenantInvitation.findFirst({
+    where: { id: inviteId, tenantId },
+    select: { id: true, email: true, acceptedAt: true, revokedAt: true, expiresAt: true },
+  });
+  if (!invite) return { error: "NOT_FOUND", message: "Invitation not found" };
+
+  const isActive = !invite.acceptedAt && !invite.revokedAt && invite.expiresAt > now;
+  if (!isActive) {
+    return { error: "VALIDATION", message: "Only active (pending) invitations can be resent." };
+  }
+
+  const rawToken = crypto.randomBytes(32).toString("hex");
+  const tokenHash = sha256(rawToken);
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7);
+
+  await prisma.tenantInvitation.update({
+    where: { id: invite.id },
+    data: { tokenHash, expiresAt },
+  });
+
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { name: true },
+  });
+  const action = actorContext === "VENDOR" ? "admin.workspace.invite.resent" : "tenant.invite.resent";
+  await writeAuditLog({
+    actorUserId,
+    actorContext: actorContext === "VENDOR" ? "VENDOR" : "TENANT",
+    tenantId,
+    action,
+    targetType: "TenantInvitation",
+    targetId: invite.id,
+    metadata: { email: invite.email },
+    ...auditMeta,
+  });
+
+  if (tenant) {
+    const baseUrl = getBaseUrlFromRequest(req);
+    await sendInvitationEmail({
+      tenantName: tenant.name,
+      invitedEmail: invite.email,
+      rawToken,
+      baseUrl,
+    });
+  }
+  return { ok: true };
+}
+
+/** Re-invite (revoked/expired/rejected): reset invite to pending, new token, send email. */
+export async function executeReinviteInvitation(params: {
+  tenantId: string;
+  inviteId: string;
+  actorUserId: string;
+  actorContext: ActorContext;
+  req: Request;
+  auditMeta: AuditMeta;
+}): Promise<
+  | { ok: true }
+  | { error: "NOT_FOUND"; message: string }
+  | { error: "VALIDATION"; message: string }
+> {
+  const { tenantId, inviteId, actorUserId, actorContext, req, auditMeta } = params;
+  const now = new Date();
+
+  const invite = await prisma.tenantInvitation.findFirst({
+    where: { id: inviteId, tenantId },
+    select: { id: true, email: true, acceptedAt: true, revokedAt: true, expiresAt: true },
+  });
+  if (!invite) return { error: "NOT_FOUND", message: "Invitation not found" };
+
+  if (invite.acceptedAt) {
+    return { error: "VALIDATION", message: "Cannot re-invite an accepted invitation." };
+  }
+
+  const isActive = !invite.revokedAt && invite.expiresAt > now;
+  if (isActive) {
+    return { error: "VALIDATION", message: "Use resend for active (pending) invitations." };
+  }
+
+  const rawToken = crypto.randomBytes(32).toString("hex");
+  const tokenHash = sha256(rawToken);
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7);
+
+  await prisma.tenantInvitation.update({
+    where: { id: invite.id },
+    data: {
+      tokenHash,
+      expiresAt,
+      revokedAt: null,
+      rejectedAt: null,
+      rejectedByUserId: null,
+    },
+  });
+
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { name: true },
+  });
+  const action = actorContext === "VENDOR" ? "admin.workspace.invite.reinvited" : "tenant.user.invited";
+  await writeAuditLog({
+    actorUserId,
+    actorContext: actorContext === "VENDOR" ? "VENDOR" : "TENANT",
+    tenantId,
+    action,
+    targetType: "TenantInvitation",
+    targetId: invite.id,
+    metadata: { email: invite.email, reinvite: true, expiresAt: expiresAt.toISOString() },
+    ...auditMeta,
+  });
+
+  if (tenant) {
+    const baseUrl = getBaseUrlFromRequest(req);
+    await sendInvitationEmail({
+      tenantName: tenant.name,
+      invitedEmail: invite.email,
+      rawToken,
+      baseUrl,
+    });
+  }
+  return { ok: true };
+}
