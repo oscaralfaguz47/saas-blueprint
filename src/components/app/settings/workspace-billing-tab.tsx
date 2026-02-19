@@ -202,15 +202,41 @@ export function WorkspaceBillingTab() {
           </div>
         )}
 
-        {(summary.planCode === "free" || summary.threshold80) && (
-          <div className="pt-2">
+        <div className="flex flex-wrap items-center gap-2 pt-2">
+          {/* Upgrade: show for Free and Starter */}
+          {(summary.planCode === "free" || summary.planCode === "starter") && (
             <ButtonLink href="/app/settings/workspace?tab=billing">
               Upgrade plan
             </ButtonLink>
-            <p className="mt-1 text-xs text-(--text-muted)">
-              Contact support or use the upgrade flow when available to change plan.
-            </p>
-          </div>
+          )}
+          {/* Downgrade: show for Starter and Pro */}
+          {(summary.planCode === "starter" || summary.planCode === "pro") && (
+            <ButtonLink
+              href="/app/settings/workspace?tab=billing"
+              variant="secondary"
+            >
+              Downgrade plan
+            </ButtonLink>
+          )}
+        </div>
+        {(summary.planCode === "free" || summary.planCode === "starter") && (
+          <p className="pt-1 text-xs text-(--text-muted)">
+            Contact support or use the upgrade flow when available to change plan.
+          </p>
+        )}
+        {/* Cancel subscription: paid plans only; flow TBD (e.g. Paddle/Stripe) */}
+        {(summary.planCode === "starter" || summary.planCode === "pro") && (
+          <p className="pt-2 text-xs text-(--text-muted)">
+            <button
+              type="button"
+              className="underline hover:no-underline"
+              onClick={() => {}}
+              aria-label="Cancel subscription (available when billing provider is connected)"
+            >
+              Cancel subscription
+            </button>
+            {" "}— available when billing is connected.
+          </p>
         )}
       </div>
     </div>

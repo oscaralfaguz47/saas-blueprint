@@ -56,9 +56,12 @@ export async function computeUsageSummary(
     }),
   ]);
 
-  const rolloverAvailable = billingState?.rolloverRequests ?? 0;
+  const rawRollover = billingState?.rolloverRequests ?? 0;
   const reqLimits = resolved.requestsLimits;
   const reqIncluded = reqLimits.included;
+  /** Free plan has rollover disabled (rolloverMonths: 0); do not show or use stored rollover. */
+  const rolloverAvailable =
+    reqLimits.rolloverMonths === 0 ? 0 : rawRollover;
   const reqUsed =
     counters.find((c) => c.meter === "REQUESTS")?.usedCount ?? 0;
   const reqOverageUnits = Math.max(
