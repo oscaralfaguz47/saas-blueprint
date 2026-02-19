@@ -96,6 +96,11 @@ export const ApiErrors = {
     apiError("UNAUTHORIZED", 401, message ?? "Complete two-factor authentication to continue.", {
       code: "MFA_REQUIRED",
     }),
+  /** Plan limit reached or subscription blocked; 403 */
+  UPGRADE_REQUIRED: (message?: string) =>
+    apiError("FORBIDDEN", 403, message ?? "Plan limit reached or subscription inactive. Upgrade to continue.", {
+      code: "UPGRADE_REQUIRED",
+    }),
 } as const;
 
 /**
@@ -112,6 +117,9 @@ export function withErrorHandler<T extends unknown[]>(
 
       // Handle known error types
       if (error instanceof Error) {
+        if (error.name === "UpgradeRequiredError") {
+          return ApiErrors.UPGRADE_REQUIRED(error.message);
+        }
         if (error instanceof ValidationError) {
           return ApiErrors.VALIDATION_ERROR(error.message);
         }

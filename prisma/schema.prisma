@@ -79,6 +79,17 @@ enum RecordVisibility {
   RESTRICTED
 }
 
+enum MeterKey {
+  REQUESTS
+  PDF_EXPORTS
+  ZIP_EXPORTS
+}
+
+enum BillingPeriodStatus {
+  OPEN
+  CLOSED
+}
+
 enum RecordStatus {
   DRAFT
   PENDING_APPROVAL
@@ -236,6 +247,10 @@ model Tenant {
   billingEvents BillingEvent[]
 
   workspaceMemberSecurity WorkspaceMemberSecurity[]
+
+  tenantBillingStates   TenantBillingState[]
+  tenantUsageCounters   TenantUsageCounter[]
+  tenantUsageLedgers    TenantUsageLedger[]
 
   @@index([status])
   @@index([createdByUserId])
@@ -422,6 +437,59 @@ model Subscription {
 }
 
 
+model TenantBillingState {
+  tenantId   String
+  periodStart DateTime
+  tenant     Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  periodEnd DateTime
+  status    BillingPeriodStatus @default(OPEN)
+
+  rolloverRequests Int @default(0)
+
+  planCode String @db.VarChar(50)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([tenantId, periodStart])
+  @@index([periodStart])
+  @@index([periodEnd])
+}
+
+model TenantUsageCounter {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  periodStart DateTime
+  meter       MeterKey
+  usedCount   Int      @default(0)
+  version     Int      @default(0)
+
+  @@unique([tenantId, periodStart, meter])
+  @@index([tenantId, meter, periodStart])
+}
+
+model TenantUsageLedger {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  periodStart   DateTime
+  meter         MeterKey
+  delta         Int
+
+  idempotencyKey String @unique
+  sourceType     String
+  sourceId       String?
+  actorUserId    String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, periodStart, meter])
+}
+
 model BillingEvent {
   id             String  @id @default(cuid())
   tenantId       String?
@@ -515,6 +583,8 @@ model Record {
   isSensitive Boolean @default(false)
 
   status RecordStatus @default(DRAFT)
+
+  submitCount Int @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

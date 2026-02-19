@@ -120,6 +120,101 @@ async function ensurePlan() {
       featuresJson: { seatsLimit: 5 },
     },
   });
+
+  // J1 Workspace Billing Core: free / starter / pro
+  const freeFeatures = {
+    requests: {
+      included: 10,
+      hardCap: true,
+      rolloverMonths: 0,
+      maxAvailable: 10,
+      overageCentsPerUnit: null,
+      overageCapCents: null,
+    },
+    pdf: { included: 1, hardCap: true, watermark: true },
+    zip: { enabled: false },
+    search: false,
+    manualReminders: false,
+    paymentStatus: false,
+    auditLog: "basic",
+  };
+  await prisma.plan.upsert({
+    where: { code: "free" },
+    update: { name: "Free", isActive: true, priceMonthly: 0, featuresJson: freeFeatures },
+    create: {
+      code: "free",
+      name: "Free",
+      isActive: true,
+      priceMonthly: 0,
+      featuresJson: freeFeatures,
+    },
+  });
+
+  const starterFeatures = {
+    requests: {
+      included: 200,
+      hardCap: false,
+      rolloverMonths: 2,
+      maxAvailable: 400,
+      overageCentsPerUnit: 25,
+      overageCapCents: 7900,
+    },
+    pdf: { included: 50, hardCap: true, watermark: false },
+    zip: { enabled: false },
+    search: true,
+    manualReminders: true,
+    paymentStatus: true,
+    auditLog: 90,
+  };
+  await prisma.plan.upsert({
+    where: { code: "starter" },
+    update: {
+      name: "Starter",
+      isActive: true,
+      priceMonthly: 5900,
+      featuresJson: starterFeatures,
+    },
+    create: {
+      code: "starter",
+      name: "Starter",
+      isActive: true,
+      priceMonthly: 5900,
+      featuresJson: starterFeatures,
+    },
+  });
+
+  const proFeatures = {
+    requests: {
+      included: 2000,
+      hardCap: false,
+      rolloverMonths: 1,
+      maxAvailable: 4000,
+      overageCentsPerUnit: 5,
+      overageCapCents: null,
+    },
+    pdf: { included: -1, hardCap: false, watermark: false },
+    zip: { enabled: true },
+    search: true,
+    manualReminders: true,
+    paymentStatus: true,
+    auditLog: "full",
+  };
+  await prisma.plan.upsert({
+    where: { code: "pro" },
+    update: {
+      name: "Pro",
+      isActive: true,
+      priceMonthly: 19900,
+      featuresJson: proFeatures,
+    },
+    create: {
+      code: "pro",
+      name: "Pro",
+      isActive: true,
+      priceMonthly: 19900,
+      featuresJson: proFeatures,
+    },
+  });
 }
 
 async function main() {
