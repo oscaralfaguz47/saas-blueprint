@@ -84,6 +84,34 @@ All must:
 
 ---
 
+# 📌 Implementation Notes (Actual Behavior)
+
+This section reflects the **implemented** behavior and official Paddle APIs used. No SDK; native `fetch` and Node `crypto` only.
+
+## Checkout
+
+- **Create Customer:** `POST https://api.paddle.com/customers` (or `https://sandbox-api.paddle.com/customers`). Body: `email`, `name`, `custom_data` (e.g. `tenantId`). Response: `data.id` (customer id).
+- **Create Transaction:** `POST https://api.paddle.com/transactions`. Body: `customer_id`, `items` (array of `{ price_id, quantity: 1 }`), `custom_data: { tenantId, planCode }`, `collection_mode: "automatic"`, `currency_code` (e.g. `"USD"`). Response: `data.checkout.url` — **this is the hosted checkout URL returned to the client.** Price IDs come from env: `PADDLE_PRICE_ID_STARTER`, `PADDLE_PRICE_ID_PRO`.
+- Subscription record is **not** created in our DB at checkout; it is created/updated only via webhook.
+
+## Customer Portal
+
+- **Create Customer Portal Session:** `POST https://api.paddle.com/customers/{customer_id}/portal-sessions`. Body (optional): `subscription_ids` array. Response: portal URL in `data.url` or `data.urls.general` or `data.urls.customer_portal` (implementation tries these in order).
+
+## Webhook
+
+- **Raw body first:** Read request body with `request.text()` (no JSON parse before verification).
+- **Signature:** Header `Paddle-Signature` format `ts=<unix>;h1=<hex>`. Signed payload = `ts:rawBody`. HMAC-SHA256 with webhook secret; compare with timing-safe equality. Support `PADDLE_WEBHOOK_SECRET_CURRENT` and `PADDLE_WEBHOOK_SECRET_PREVIOUS` for rotation.
+- **Replay:** Timestamp `ts` must be within ±5 minutes of current time.
+- **After verification:** Parse JSON, validate envelope and subscription data with Zod. Idempotency: if `BillingEvent` with same `providerEventId` exists, return 200 and do not mutate.
+- **Method:** POST only (405 otherwise). **Content-Type:** `application/json` (415 otherwise). **Body size:** max 2 MB (413 otherwise).
+
+## Subscription sync (J4 only)
+
+- J4 **only** upserts `Subscription`, inserts `BillingEvent` (sanitized payload, no PII), and writes `AuditLog` when `BILLING_WEBHOOK_ACTOR_USER_ID` is set. J4 does **not** modify usage counters, enforce limits, or compute overage (those remain in J3).
+
+---
+
 # 🔐 Security Requirements (MANDATORY)
 
 ## Webhook Signature Verification

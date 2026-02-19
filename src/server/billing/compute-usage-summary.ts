@@ -14,6 +14,8 @@ export type UsageSummaryResult = {
   subscriptionStatus: string;
   periodStart: Date;
   periodEnd: Date;
+  cancelAtPeriodEnd: boolean;
+  graceUntil: Date | null;
   /** Per-meter: included, rolloverAvailable, used, overageUnits, overageEstimateCents. */
   meters: {
     requests: MeterSummary;
@@ -99,6 +101,8 @@ export async function computeUsageSummary(
     subscriptionStatus: resolved.subscriptionStatus,
     periodStart,
     periodEnd,
+    cancelAtPeriodEnd: resolved.cancelAtPeriodEnd,
+    graceUntil: resolved.graceUntil,
     meters: {
       requests: {
         included: reqIncluded,

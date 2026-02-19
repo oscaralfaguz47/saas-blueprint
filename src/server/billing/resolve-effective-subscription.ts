@@ -14,6 +14,7 @@ export type EffectiveSubscription = {
   currentPeriodStart: Date | null;
   currentPeriodEnd: Date | null;
   graceUntil: Date | null;
+  cancelAtPeriodEnd: boolean;
   /** If true, operations should be blocked (UPGRADE_REQUIRED). */
   isBlocked: boolean;
 };
@@ -37,6 +38,7 @@ export async function resolveEffectiveSubscription(
       currentPeriodStart: true,
       currentPeriodEnd: true,
       graceUntil: true,
+      cancelAtPeriodEnd: true,
       plan: { select: { code: true } },
     },
   });
@@ -57,6 +59,7 @@ export async function resolveEffectiveSubscription(
     currentPeriodStart: sub.currentPeriodStart,
     currentPeriodEnd: sub.currentPeriodEnd,
     graceUntil: sub.graceUntil,
+    cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
     isBlocked,
   };
 }

@@ -12,6 +12,8 @@ export type ResolvedTenantPlan = {
   subscriptionStatus: string;
   currentPeriodStart: Date | null;
   currentPeriodEnd: Date | null;
+  graceUntil: Date | null;
+  cancelAtPeriodEnd: boolean;
   isBlocked: boolean;
 };
 
@@ -86,6 +88,8 @@ export async function resolveTenantPlan(
       subscriptionStatus: "none",
       currentPeriodStart: null,
       currentPeriodEnd: null,
+      graceUntil: null,
+      cancelAtPeriodEnd: false,
       isBlocked: false,
     };
   }
@@ -107,6 +111,8 @@ export async function resolveTenantPlan(
     subscriptionStatus: effective.status,
     currentPeriodStart: effective.currentPeriodStart,
     currentPeriodEnd: effective.currentPeriodEnd,
+    graceUntil: effective.graceUntil,
+    cancelAtPeriodEnd: effective.cancelAtPeriodEnd,
     isBlocked: effective.isBlocked,
   };
 }

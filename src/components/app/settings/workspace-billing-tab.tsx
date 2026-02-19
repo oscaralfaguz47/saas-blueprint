@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Spinner } from "@/components/ui/spinner";
-import { ButtonLink } from "@/components/ui/button";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 
 type BillingSummary = {
@@ -10,6 +9,8 @@ type BillingSummary = {
   subscriptionStatus: string;
   periodStart: string;
   periodEnd: string;
+  cancelAtPeriodEnd?: boolean;
+  graceUntil?: string | null;
   included: number;
   rolloverAvailable: number;
   used: number;
@@ -43,6 +44,8 @@ export function WorkspaceBillingTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<BillingSummary | null>(null);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [portalLoading, setPortalLoading] = useState(false);
   const apiFetch = useApiFetch();
 
   const fetchSummary = useCallback(
@@ -81,6 +84,43 @@ export function WorkspaceBillingTab() {
     fetchSummary(controller.signal);
     return () => controller.abort();
   }, [fetchSummary]);
+
+  const handleUpgrade = useCallback(
+    async (planCode: "starter" | "pro") => {
+      setCheckoutLoading(true);
+      try {
+        const res = await apiFetch("/api/billing/paddle/checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ planCode }),
+          showToastOnError: true,
+        });
+        if (!res.ok) return;
+        const json = await res.json();
+        const url = (json.data as { checkoutUrl?: string })?.checkoutUrl;
+        if (url) window.location.href = url;
+      } finally {
+        setCheckoutLoading(false);
+      }
+    },
+    [apiFetch]
+  );
+
+  const handleManageSubscription = useCallback(async () => {
+    setPortalLoading(true);
+    try {
+      const res = await apiFetch("/api/billing/paddle/portal", {
+        method: "POST",
+        showToastOnError: true,
+      });
+      if (!res.ok) return;
+      const json = await res.json();
+      const url = (json.data as { url?: string })?.url;
+      if (url) window.location.href = url;
+    } finally {
+      setPortalLoading(false);
+    }
+  }, [apiFetch]);
 
   if (loading) {
     return (
@@ -140,12 +180,38 @@ export function WorkspaceBillingTab() {
             </p>
             <p className="text-xs text-(--text-muted)">
               Status: {summary.subscriptionStatus}
+              {summary.cancelAtPeriodEnd && " · Canceling at period end"}
             </p>
           </div>
           <p className="text-xs text-(--text-muted)">
             {formatPeriod(summary.periodStart, summary.periodEnd)}
           </p>
         </div>
+        {summary.subscriptionStatus === "PAST_DUE" && (
+          <div className="rounded border border-amber-500/50 bg-amber-500/10 p-2 text-sm text-amber-700 dark:text-amber-400">
+            Payment is past due. Please update your payment method to avoid access changes.
+            {summary.graceUntil && (
+              <p className="mt-1 text-xs">
+                Grace period until{" "}
+                {new Date(summary.graceUntil).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </p>
+            )}
+          </div>
+        )}
+        {summary.graceUntil && summary.subscriptionStatus !== "PAST_DUE" && (
+          <p className="text-xs text-(--text-muted)">
+            Grace period until{" "}
+            {new Date(summary.graceUntil).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            })}
+          </p>
+        )}
 
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
@@ -203,39 +269,42 @@ export function WorkspaceBillingTab() {
         )}
 
         <div className="flex flex-wrap items-center gap-2 pt-2">
-          {/* Upgrade: show for Free and Starter */}
-          {(summary.planCode === "free" || summary.planCode === "starter") && (
-            <ButtonLink href="/app/settings/workspace?tab=billing">
-              Upgrade plan
-            </ButtonLink>
-          )}
-          {/* Downgrade: show for Starter and Pro */}
-          {(summary.planCode === "starter" || summary.planCode === "pro") && (
-            <ButtonLink
-              href="/app/settings/workspace?tab=billing"
-              variant="secondary"
-            >
-              Downgrade plan
-            </ButtonLink>
-          )}
-        </div>
-        {(summary.planCode === "free" || summary.planCode === "starter") && (
-          <p className="pt-1 text-xs text-(--text-muted)">
-            Contact support or use the upgrade flow when available to change plan.
-          </p>
-        )}
-        {/* Cancel subscription: paid plans only; flow TBD (e.g. Paddle/Stripe) */}
-        {(summary.planCode === "starter" || summary.planCode === "pro") && (
-          <p className="pt-2 text-xs text-(--text-muted)">
+          {/* Upgrade: Free → Starter; Starter → Pro */}
+          {summary.planCode === "free" && (
             <button
               type="button"
-              className="underline hover:no-underline"
-              onClick={() => {}}
-              aria-label="Cancel subscription (available when billing provider is connected)"
+              onClick={() => handleUpgrade("starter")}
+              disabled={checkoutLoading}
+              className="inline-flex h-9 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-50"
             >
-              Cancel subscription
+              {checkoutLoading ? "Loading…" : "Upgrade to Starter"}
             </button>
-            {" "}— available when billing is connected.
+          )}
+          {summary.planCode === "starter" && (
+            <button
+              type="button"
+              onClick={() => handleUpgrade("pro")}
+              disabled={checkoutLoading}
+              className="inline-flex h-9 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-50"
+            >
+              {checkoutLoading ? "Loading…" : "Upgrade to Pro"}
+            </button>
+          )}
+          {/* Manage Subscription: paid plans with Paddle */}
+          {(summary.planCode === "starter" || summary.planCode === "pro") && (
+            <button
+              type="button"
+              onClick={handleManageSubscription}
+              disabled={portalLoading}
+              className="inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
+            >
+              {portalLoading ? "Loading…" : "Manage subscription"}
+            </button>
+          )}
+        </div>
+        {(summary.planCode === "starter" || summary.planCode === "pro") && (
+          <p className="pt-1 text-xs text-(--text-muted)">
+            Manage payment method and subscription in the billing portal.
           </p>
         )}
       </div>

@@ -1,5 +1,8 @@
+// app/privacy/page.tsx (or wherever your route lives)
 import Link from "next/link";
 import { Container } from "@/components/ui/container";
+
+const LAST_UPDATED = "2026-02-19"; // update when you change this policy
 
 export default function PrivacyPage() {
   return (
@@ -8,10 +11,7 @@ export default function PrivacyPage() {
       <header className="border-b border-(--border-subtle) bg-(--bg-main)">
         <Container>
           <div className="flex h-16 items-center justify-between">
-            <Link
-              href="/"
-              className="text-sm font-medium text-(--text-primary)"
-            >
+            <Link href="/" className="text-sm font-medium text-(--text-primary)">
               ATL
             </Link>
 
@@ -48,65 +48,153 @@ export default function PrivacyPage() {
             </h1>
 
             <p className="mt-4 text-sm text-(--text-muted)">
-              Last updated: {new Date().toLocaleDateString()}
+              Last updated: {LAST_UPDATED}
             </p>
 
             <div className="mt-8 space-y-6 text-sm leading-relaxed text-(--text-secondary)">
               <p>
-                This Privacy Policy explains how ATL collects, uses, and protects
-                your information when you use the Service.
+                This Privacy Policy explains how ATL (&quot;we&quot;,
+                &quot;us&quot;) collects, uses, and protects information when you
+                use our B2B SaaS platform (the &quot;Service&quot;).
               </p>
 
               <h2 className="text-base font-semibold text-(--text-primary)">
-                Information We Collect
+                1. Who we are (roles)
               </h2>
               <p>
-                We collect information you provide directly, such as email
-                addresses, workspace data, records, evidence files, and approval
-                actions.
+                In most cases, our customers (the workspace owner/organization)
+                are the <strong>data controller</strong> for Customer Content.
+                ATL acts as a <strong>data processor</strong> and processes
+                Customer Content only to provide and secure the Service.
               </p>
 
               <h2 className="text-base font-semibold text-(--text-primary)">
-                How We Use Information
+                2. Information we collect
               </h2>
               <p>
-                Information is used solely to operate, secure, and improve the
-                Service, including authentication, approvals, notifications,
-                and audit trails.
+                We collect the following categories of information:
+              </p>
+              <ul className="list-disc pl-5 space-y-2">
+                <li>
+                  <strong>Account and workspace information</strong>: name,
+                  email, authentication details, workspace name/settings,
+                  role/permissions.
+                </li>
+                <li>
+                  <strong>Customer Content</strong>: records, descriptions,
+                  metadata, approval requests, comments, and related workflow
+                  data you submit to the Service.
+                </li>
+                <li>
+                  <strong>Evidence and attachments</strong>: files and links you
+                  upload or attach to records (including file metadata such as
+                  size and type).
+                </li>
+                <li>
+                  <strong>External approver data</strong>: approver email (and
+                  optional name) used to deliver approval requests and display
+                  the limited content you choose to share.
+                </li>
+                <li>
+                  <strong>Usage and security data</strong>: IP address,
+                  device/user agent, logs, and audit trails needed for security,
+                  fraud prevention, and troubleshooting.
+                </li>
+              </ul>
+
+              <h2 className="text-base font-semibold text-(--text-primary)">
+                3. How we use information
+              </h2>
+              <p>
+                We use information to:
+              </p>
+              <ul className="list-disc pl-5 space-y-2">
+                <li>Provide, operate, and maintain the Service.</li>
+                <li>
+                  Authenticate users, enforce access controls, and prevent abuse.
+                </li>
+                <li>
+                  Deliver workflow notifications (e.g., approval emails) and
+                  enable audit-ready records and logs.
+                </li>
+                <li>
+                  Improve performance, reliability, and user experience.
+                </li>
+                <li>
+                  Comply with legal obligations and enforce our terms.
+                </li>
+              </ul>
+
+              <h2 className="text-base font-semibold text-(--text-primary)">
+                4. External approvers
+              </h2>
+              <p>
+                External approvers only see information that is explicitly
+                shared with them through secure links. Links are time-limited
+                and may be revoked by internal users. We recommend sharing only
+                the minimum necessary information.
               </p>
 
               <h2 className="text-base font-semibold text-(--text-primary)">
-                External Approvers
+                5. Billing and payments (Merchant of Record)
               </h2>
               <p>
-                External approvers only see the information explicitly shared
-                with them via secure links. Links expire and can be revoked by
-                internal users.
+                Payments may be processed by a Merchant of Record or payment
+                provider (e.g., Paddle). We do not store full payment card
+                details. Billing providers may collect and process payment
+                information under their own privacy policies.
               </p>
 
               <h2 className="text-base font-semibold text-(--text-primary)">
-                Data Security
+                6. Data retention
               </h2>
               <p>
-                We implement reasonable technical and organizational measures to
-                protect your data. However, no system is 100% secure.
+                We retain Customer Content for as long as your workspace remains
+                active, subject to your plan features and workspace settings.
+                You may delete records and attachments within the Service.
+                After cancellation, we may retain data for a limited period for
+                backup, compliance, and dispute resolution, and then delete or
+                anonymize it in accordance with our retention practices.
               </p>
 
               <h2 className="text-base font-semibold text-(--text-primary)">
-                Data Retention
+                7. Security
               </h2>
               <p>
-                Data is retained according to your plan and workspace settings.
-                You may delete records or cancel your subscription at any time.
+                We implement technical and organizational measures designed to
+                protect your information, including access controls, encryption
+                in transit, and audit logging for sensitive actions. No system
+                is 100% secure, and you are responsible for maintaining the
+                confidentiality of your credentials.
               </p>
 
               <h2 className="text-base font-semibold text-(--text-primary)">
-                Contact
+                8. International transfers
               </h2>
               <p>
-                If you have questions about this Privacy Policy, contact us at
-                privacy@yourdomain.com.
+                The Service may process and store data in regions where we and
+                our service providers operate. We use reputable providers and
+                reasonable safeguards for cross-border processing.
               </p>
+
+              <h2 className="text-base font-semibold text-(--text-primary)">
+                9. Your rights
+              </h2>
+              <p>
+                Depending on your location, you may have rights to access,
+                correct, delete, or export personal information. Workspace
+                admins may also manage user access and content within their
+                workspace.
+              </p>
+
+              <h2 className="text-base font-semibold text-(--text-primary)">
+                10. Contact
+              </h2>
+              <p>
+                If you have questions about this Privacy Policy, contact us at{" "}
+                <strong>privacy@PENDING_DOMAIN.com</strong>.
+              </p>
+
             </div>
           </div>
         </Container>

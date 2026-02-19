@@ -1,12 +1,20 @@
 import { getServerSession } from "next-auth";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 import { authOptions } from "@/server/auth-options";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { requireFullSession } from "@/server/require-full-session";
-import { computeUsageSummary } from "@/server/billing/compute-usage-summary";
+import { writeAuditLog } from "@/server/services/audit";
+import { createCheckoutSession } from "@/server/billing/providers/paddle/create-checkout-session";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
+import { parseBody } from "@/lib/validations/common";
 
-export const GET = withErrorHandler(async () => {
+const checkoutBodySchema = z.object({
+  planCode: z.enum(["starter", "pro"]),
+});
+
+export const POST = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
   const mfaError = await requireFullSession(session);
   if (mfaError) return mfaError;
@@ -23,26 +31,23 @@ export const GET = withErrorHandler(async () => {
   });
   if (!allowed) return ApiErrors.FORBIDDEN();
 
-  const summary = await computeUsageSummary(tenantId);
+  const body = await parseBody(req, checkoutBodySchema);
 
-  const req = summary.meters.requests;
-  return apiSuccess({
-    planCode: summary.planCode,
-    subscriptionStatus: summary.subscriptionStatus,
-    periodStart: summary.periodStart.toISOString(),
-    periodEnd: summary.periodEnd.toISOString(),
-    cancelAtPeriodEnd: summary.cancelAtPeriodEnd,
-    graceUntil: summary.graceUntil?.toISOString() ?? null,
-    included: req.included,
-    rolloverAvailable: req.rolloverAvailable,
-    used: req.used,
-    overageEstimate: req.overageEstimateCents,
-    threshold80: summary.threshold80,
-    threshold100: summary.threshold100,
-    overageCapReached: summary.overageCapReached,
-    meters: {
-      pdfExports: summary.meters.pdfExports,
-      zipExports: summary.meters.zipExports,
-    },
+  const { checkoutUrl } = await createCheckoutSession({
+    tenantId,
+    planCode: body.planCode,
+    customerEmail: session.user.email ?? "",
+    customerName: session.user.name ?? null,
   });
+
+  await writeAuditLog({
+    actorUserId: session.user.id,
+    actorContext: "TENANT",
+    tenantId,
+    action: "tenant.billing.checkout_initiated",
+    targetType: "Subscription",
+    metadata: { planCode: body.planCode },
+  });
+
+  return apiSuccess({ checkoutUrl });
 });
