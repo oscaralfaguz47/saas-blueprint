@@ -457,18 +457,48 @@ Must:
 - Generate Paddle customer portal link
 - Return URL
 
-🖥️ UI Changes in BillingTab
+🖥️ UI Integration Contract (This EPIC provides APIs + states only; UX implemented in Epic 3)
 
-Add:
+This Epic does **NOT** implement Billing UX. This epic only provides:
 
-- “Upgrade” button → calls checkout endpoint
-- “Manage Subscription” → calls portal endpoint
-- Show subscription status
-- Show next billing date
-- Show cancelAtPeriodEnd flag
-- Show past_due warning
-- Show graceUntil date
-No provider logic in UI.
+- Authenticated API routes used by the in-app billing UI
+- Subscription state + lifecycle fields in the internal DB
+- Webhook-driven truth sync into `Subscription` and `BillingEvent`
+
+All user-facing plan management UX (plan selector modal, confirmation step, change/upgrade/downgrade flows, banners, CTAs, loading & error UX, and checkout handoff) is implemented in:
+
+➡️ **Epic 3 — In-App Billing UX (Enterprise Plan Management System)**
+
+#### UI Contract (what Epic 3 can rely on from this epic)
+
+Epic 3 UI must only depend on these this owned capabilities:
+
+1) Checkout URL creation
+- **POST** `/api/billing/paddle/checkout`
+- Input: `{ planCode: "starter" | "pro" }`
+- Output: `{ url: string }` (hosted checkout url OR `/checkout?_ptxn=...` redirect url depending on implementation)
+- Errors: consistent error shape; no PII.
+
+2) Customer portal session URL creation
+- **POST** `/api/billing/paddle/portal`
+- Output: `{ url: string }`
+
+3) Subscription truth state
+- The UI reads subscription state from DB (via existing app data loader / query),
+  populated by webhook sync:
+  - `status` (ACTIVE/TRIAL/PAST_DUE/SUSPENDED/CANCELED)
+  - `currentPeriodStart`, `currentPeriodEnd`
+  - `cancelAtPeriodEnd` (boolean)
+  - `graceUntil` (nullable datetime)
+  - `planCode` (free/starter/pro)
+  - `provider` ("paddle")
+  - `providerSubscriptionId`, `providerCustomerId` (server-only usage)
+
+#### Non-Goals (This epic 2-Paddle-Integration UI)
+- This epic must not design or implement plan comparison UI, modals, confirmation steps, pricing copy, or state-based CTA logic.
+- This epic must not include marketing pricing page reuse in the app UI.
+- This epic must not implement downgrade scheduling UX or “recommended plan” highlighting.
+- This epic must not implement UI-level analytics beyond existing audit events.
 
 ⚡ Performance
 
