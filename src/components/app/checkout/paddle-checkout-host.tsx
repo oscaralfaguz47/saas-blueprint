@@ -33,6 +33,10 @@ type Props = {
  * Loads Paddle.js and initializes it so that when the user lands on this page with
  * ?_ptxn=txn_xxx (from Paddle's checkout.url), the checkout overlay opens automatically.
  * On checkout.completed, redirects to workspace billing tab.
+ *
+ * Note: The "transaction-checkout" request (and 403 "Failed to retrieve JWT") is made by
+ * Paddle.js to Paddle's API, not by our code. We only call Paddle.Initialize({ token }).
+ * Initialize runs in the script's onLoad so the token is set before Paddle.js reads _ptxn.
  */
 export function PaddleCheckoutHost({ clientToken }: Props) {
   const [scriptReady, setScriptReady] = useState(false);
@@ -44,15 +48,20 @@ export function PaddleCheckoutHost({ clientToken }: Props) {
     }
   }, []);
 
-  useEffect(() => {
-    if (!scriptReady || !clientToken || typeof window === "undefined") return;
-    const Paddle = window.Paddle;
+  const handleScriptLoad = useCallback(() => {
+    const Paddle = typeof window !== "undefined" ? window.Paddle : undefined;
     if (!Paddle) {
       setInitError("Paddle.js failed to load.");
+      setScriptReady(true);
+      return;
+    }
+    const token = clientToken?.trim();
+    if (!token) {
+      setInitError("Checkout is not configured. Set NEXT_PUBLIC_PADDLE_CLIENT_TOKEN.");
+      setScriptReady(true);
       return;
     }
     try {
-      const token = clientToken.trim();
       Paddle.Initialize({
         token,
         eventCallback,
@@ -64,10 +73,12 @@ export function PaddleCheckoutHost({ clientToken }: Props) {
           },
         },
       });
+      setScriptReady(true);
     } catch (e) {
       setInitError(e instanceof Error ? e.message : "Failed to initialize checkout.");
+      setScriptReady(true);
     }
-  }, [scriptReady, clientToken, eventCallback]);
+  }, [clientToken, eventCallback]);
 
   if (!clientToken) {
     return (
@@ -108,7 +119,7 @@ export function PaddleCheckoutHost({ clientToken }: Props) {
       <Script
         src={PADDLE_SCRIPT_URL}
         strategy="afterInteractive"
-        onLoad={() => setScriptReady(true)}
+        onLoad={handleScriptLoad}
       />
       <div className="flex min-h-[40vh] flex-col items-center justify-center gap-4 p-6 text-center">
         <Spinner size="lg" />
