@@ -134,11 +134,19 @@ export function PaddleCheckoutHost({ clientToken }: Props) {
             Getting &quot;Failed to retrieve JWT&quot; or &quot;Something went wrong&quot;?
           </summary>
           <p className="mt-2 font-medium text-(--text-primary)">
-            Paddle does not support localhost for checkout (even with HTTPS). You must use a public URL.
+            Paddle only allows checkout on approved domains. The domain of this page must be approved in Paddle and set as the Default payment link.
           </p>
-          <p className="mt-2">
-            Use a tunnel (e.g. ngrok): run <code className="rounded bg-(--muted) px-1">ngrok http 3000</code> in a separate terminal, then in Paddle sandbox: (1) Checkout → Request website approval → add your <code className="rounded bg-(--muted) px-1">https://xxxx.ngrok-free.app</code> domain; (2) Checkout → Checkout settings → Default payment link = <code className="rounded bg-(--muted) px-1">https://xxxx.ngrok-free.app/checkout</code>. Open your app via the ngrok URL and try checkout again.
-          </p>
+          <ul className="mt-2 list-inside list-disc space-y-1">
+            <li>
+              <strong>Deployed app:</strong> Domain must be approved in Paddle and set as Default payment link. Use a <strong>sandbox</strong> client token (<code className="rounded bg-(--muted) px-1">test_</code>…) from the same Paddle sandbox account; check for typos (e.g. <code className="rounded bg-(--muted) px-1">saas</code> not <code className="rounded bg-(--muted) px-1">sass</code>). See <code className="rounded bg-(--muted) px-1">docs/PADDLE-DEPLOYMENT-CHECKLIST.md</code>.
+            </li>
+            <li>
+              <strong>Local dev:</strong> Paddle does not support localhost. Use a tunnel (e.g. ngrok) and add that URL in Paddle; see <code className="rounded bg-(--muted) px-1">docs/PADDLE-LOCAL-CHECKOUT.md</code>.
+            </li>
+            <li>
+              <strong>Verify config:</strong> Open <code className="rounded bg-(--muted) px-1">/api/billing/paddle/checkout-config</code> to confirm the app has a client token set and correct prefix (test_/live_).
+            </li>
+          </ul>
         </details>
       </div>
     </>
