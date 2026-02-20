@@ -12,6 +12,7 @@ type PaddleEventData = { name: string };
 declare global {
   interface Window {
     Paddle?: {
+      Environment?: { set: (env: "sandbox" | "production") => void };
       Initialize: (config: {
         token: string;
         eventCallback?: (data: PaddleEventData) => void;
@@ -34,8 +35,8 @@ type Props = {
  * ?_ptxn=txn_xxx (from Paddle's checkout.url), the checkout overlay opens automatically.
  * On checkout.completed, redirects to workspace billing tab.
  *
- * Note: The "transaction-checkout" request (and 403 "Failed to retrieve JWT") is made by
- * Paddle.js to Paddle's API, not by our code. We only call Paddle.Initialize({ token }).
+ * For sandbox (test_ token) we call Paddle.Environment.set("sandbox") before Initialize;
+ * otherwise Paddle defaults to production and the sandbox token gets 403.
  * Initialize runs in the script's onLoad so the token is set before Paddle.js reads _ptxn.
  */
 export function PaddleCheckoutHost({ clientToken }: Props) {
@@ -62,6 +63,10 @@ export function PaddleCheckoutHost({ clientToken }: Props) {
       return;
     }
     try {
+      // Sandbox token must be used with sandbox environment; otherwise Paddle defaults to production and returns 403.
+      if (token.startsWith("test_") && Paddle.Environment?.set) {
+        Paddle.Environment.set("sandbox");
+      }
       Paddle.Initialize({
         token,
         eventCallback,

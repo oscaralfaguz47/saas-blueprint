@@ -33,6 +33,8 @@ export async function GET() {
       ? "Set NEXT_PUBLIC_PADDLE_CLIENT_TOKEN in your deployment env and redeploy."
       : tokenPrefix === null
         ? "Client token should start with test_ (sandbox) or live_ (production)."
-        : null,
+        : environment && tokenPrefix === "test_" && environment !== "sandbox"
+          ? "Using test_ token with PADDLE_ENVIRONMENT not sandbox — use sandbox for test transactions."
+          : null,
   });
 }
