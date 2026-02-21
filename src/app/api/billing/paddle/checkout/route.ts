@@ -7,6 +7,7 @@ import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { requireFullSession } from "@/server/require-full-session";
 import { writeAuditLog } from "@/server/services/audit";
 import { createCheckoutSession } from "@/server/billing/providers/paddle/create-checkout-session";
+import { logCheckoutInitiated } from "@/server/billing/billing-log";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { parseBody } from "@/lib/validations/common";
 
@@ -39,6 +40,8 @@ export const POST = withErrorHandler(async (req: Request) => {
     customerEmail: session.user.email ?? "",
     customerName: session.user.name ?? null,
   });
+
+  logCheckoutInitiated({ tenantId, planCode: body.planCode });
 
   await writeAuditLog({
     actorUserId: session.user.id,

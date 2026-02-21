@@ -14,6 +14,7 @@ export type ResolvedTenantPlan = {
   currentPeriodEnd: Date | null;
   graceUntil: Date | null;
   cancelAtPeriodEnd: boolean;
+  pendingPlanCode: string | null;
   isBlocked: boolean;
 };
 
@@ -90,6 +91,7 @@ export async function resolveTenantPlan(
       currentPeriodEnd: null,
       graceUntil: null,
       cancelAtPeriodEnd: false,
+      pendingPlanCode: null,
       isBlocked: false,
     };
   }
@@ -113,6 +115,7 @@ export async function resolveTenantPlan(
     currentPeriodEnd: effective.currentPeriodEnd,
     graceUntil: effective.graceUntil,
     cancelAtPeriodEnd: effective.cancelAtPeriodEnd,
+    pendingPlanCode: effective.pendingPlanCode,
     isBlocked: effective.isBlocked,
   };
 }

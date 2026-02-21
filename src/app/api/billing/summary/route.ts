@@ -32,6 +32,7 @@ export const GET = withErrorHandler(async () => {
     periodStart: summary.periodStart.toISOString(),
     periodEnd: summary.periodEnd.toISOString(),
     cancelAtPeriodEnd: summary.cancelAtPeriodEnd,
+    pendingPlanCode: summary.pendingPlanCode ?? null,
     graceUntil: summary.graceUntil?.toISOString() ?? null,
     included: req.included,
     rolloverAvailable: req.rolloverAvailable,

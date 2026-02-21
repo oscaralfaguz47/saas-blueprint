@@ -415,6 +415,8 @@ model Subscription {
   currentPeriodEnd   DateTime?
   graceUntil         DateTime?
   cancelAtPeriodEnd  Boolean   @default(false)
+  /** Target plan when cancelAtPeriodEnd is true; applied at period end by period-close/cron. */
+  pendingPlanCode    String?   @db.VarChar(50)
 
   provider               String? @db.VarChar(30) // stripe, paddle, manual
   providerCustomerId     String? @db.VarChar(191)

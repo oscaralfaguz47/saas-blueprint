@@ -8,6 +8,16 @@ import type {
 } from "./paddle-types";
 import { paddleMetadataSchema, paddleSubscriptionDataSchema } from "./paddle-types";
 
+/** Resolve planCode from Paddle price_id (fallback when custom_data missing). */
+export function getPlanCodeFromPriceId(priceId: string | null | undefined): PaddlePlanCode | null {
+  if (!priceId || typeof priceId !== "string") return null;
+  const starter = process.env.PADDLE_PRICE_ID_STARTER;
+  const pro = process.env.PADDLE_PRICE_ID_PRO;
+  if (starter && priceId === starter) return "starter";
+  if (pro && priceId === pro) return "pro";
+  return null;
+}
+
 /** Configurable grace period (days) when status is past_due. */
 const GRACE_DAYS = Number(process.env.PADDLE_GRACE_DAYS) || 7;
 

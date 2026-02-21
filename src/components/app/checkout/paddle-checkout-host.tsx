@@ -22,8 +22,12 @@ declare global {
   }
 }
 
-/** Default redirect after successful checkout (workspace billing tab). */
-const CHECKOUT_SUCCESS_REDIRECT = "/app/settings/workspace?tab=billing";
+/** Redirect after successful checkout (EPIC 3: billing tab with refetch hint). */
+const CHECKOUT_SUCCESS_REDIRECT =
+  "/app/settings/workspace?tab=billing&billing=updated";
+/** Redirect when user closes/cancels checkout (EPIC 3). */
+const CHECKOUT_CANCELED_REDIRECT =
+  "/app/settings/workspace?tab=billing&billing=canceled";
 
 type Props = {
   /** Paddle client-side token (test_ or live_ from Paddle Dashboard > Developer tools > Authentication). */
@@ -46,6 +50,10 @@ export function PaddleCheckoutHost({ clientToken }: Props) {
   const eventCallback = useCallback((data: PaddleEventData) => {
     if (data.name === "checkout.completed") {
       window.location.href = CHECKOUT_SUCCESS_REDIRECT;
+    }
+    // Paddle may fire checkout.closed when overlay is closed without completing
+    if (data.name === "checkout.closed") {
+      window.location.href = CHECKOUT_CANCELED_REDIRECT;
     }
   }, []);
 

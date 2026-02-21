@@ -3,9 +3,9 @@ import { verifyPaddleWebhookSignature } from "@/server/billing/providers/paddle/
 import {
   handleWebhookEvent,
   isEventAlreadyProcessed,
-  validateWebhookPayload,
 } from "@/server/billing/providers/paddle/handle-webhook-event";
 import { paddleWebhookEnvelopeSchema } from "@/server/billing/providers/paddle/paddle-types";
+import { logWebhookReceived } from "@/server/billing/billing-log";
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024; // 2 MB
 const CONTENT_TYPE_JSON = "application/json";
@@ -63,6 +63,11 @@ export async function POST(req: Request) {
   try {
     verifyPaddleWebhookSignature(rawBody, signatureHeader);
   } catch {
+    logWebhookReceived({
+      eventType: "unknown",
+      providerEventId: "unknown",
+      result: "signature_invalid",
+    });
     return NextResponse.json(
       { error: "BAD_REQUEST", message: "Webhook signature verification failed" },
       { status: 400 }
@@ -101,6 +106,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ received: true }, { status: 200 });
   } catch (err) {
     if (err instanceof Error && err.message === "Invalid webhook payload schema") {
+      const envelope = envelopeResult?.data;
+      logWebhookReceived({
+        eventType: envelope?.event_type ?? "unknown",
+        providerEventId: envelope?.event_id ?? "unknown",
+        result: "validation_error",
+      });
       return NextResponse.json(
         { error: "VALIDATION_ERROR", message: "Invalid webhook payload schema" },
         { status: 400 }

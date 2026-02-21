@@ -41,12 +41,18 @@ export const paddleBillingPeriodSchema = z
     { message: "Period start must be before period end" }
   );
 
+/** Subscription item (optional; for price_id fallback when custom_data missing). */
+const subscriptionItemSchema = z.object({
+  price_id: z.string().optional(),
+});
+
 /** Subscription data shape in Paddle webhook (only fields we use). */
 export const paddleSubscriptionDataSchema = z.object({
   id: z.string().min(1).max(191),
   status: z.string().min(1).max(50),
   customer_id: z.string().min(1).max(191),
   custom_data: z.record(z.string(), z.unknown()).nullable().optional(),
+  items: z.array(subscriptionItemSchema).optional(),
   current_billing_period: paddleBillingPeriodSchema.nullable().optional(),
   scheduled_change: z
     .object({

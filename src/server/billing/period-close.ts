@@ -13,6 +13,9 @@ import { writeAuditLog } from "@/server/services/audit";
  * Close billing periods that have ended (periodEnd in the past) and open next period with rollover.
  * Idempotent and batch-safe: safe to run daily for all tenants.
  * Optionally pass actorUserId for audit (e.g. when triggered by admin); when run by cron, use system actor if configured.
+ *
+ * TODO (Epic 1/2 or cron): When closing a period, apply Subscription.pendingPlanCode for tenants
+ * where cancelAtPeriodEnd is true and currentPeriodEnd has passed (switch plan, clear cancelAtPeriodEnd + pendingPlanCode).
  */
 export async function runPeriodClose(params?: {
   actorUserId?: string | null;

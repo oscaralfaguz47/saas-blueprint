@@ -2,6 +2,7 @@ import "server-only";
 
 import { prisma } from "@/server/db";
 import { writeAuditLog } from "@/server/services/audit";
+import { logWebhookReceived } from "@/server/billing/billing-log";
 import {
   isSupportedPaddleEventType,
   paddleWebhookEnvelopeSchema,
@@ -10,6 +11,7 @@ import {
 import {
   buildSanitizedPayload,
   getGraceUntilForPastDue,
+  getPlanCodeFromPriceId,
   isCancelAtPeriodEnd,
   mapPaddleStatusToInternal,
   parseMetadataFromCustomData,
@@ -70,21 +72,59 @@ export async function handleWebhookEvent(params: {
   envelope: unknown;
 }): Promise<{ processed: boolean; tenantMismatch?: boolean }> {
   const { envelope } = params;
-  const { eventId, eventType, subscriptionData, metadata } = validateWebhookPayload(envelope);
+  let { eventId, eventType, subscriptionData, metadata } = validateWebhookPayload(envelope);
 
   if (!isSupportedPaddleEventType(eventType)) {
+    logWebhookReceived({
+      eventType,
+      providerEventId: eventId,
+      result: "ignored",
+    });
     return { processed: false };
   }
 
   if (!subscriptionData) {
+    logWebhookReceived({
+      eventType,
+      providerEventId: eventId,
+      result: "ignored",
+    });
     return { processed: false };
   }
 
+  const providerSubscriptionId = subscriptionData.id;
+
   if (!metadata) {
+    const priceId = subscriptionData.items?.[0]?.price_id;
+    const planCodeFromPrice = getPlanCodeFromPriceId(priceId);
+    const existingBySub = await prisma.subscription.findFirst({
+      where: { provider: "paddle", providerSubscriptionId },
+      select: { tenantId: true },
+    });
+    if (existingBySub && planCodeFromPrice && planCodeFromPrice !== "free") {
+      metadata = { tenantId: existingBySub.tenantId, planCode: planCodeFromPrice };
+    }
+  }
+
+  if (!metadata) {
+    logWebhookReceived({
+      eventType,
+      providerEventId: eventId,
+      providerSubscriptionId,
+      result: "ignored",
+    });
     return { processed: false };
   }
 
   if (metadata.planCode === "free") {
+    logWebhookReceived({
+      eventType,
+      providerEventId: eventId,
+      providerSubscriptionId,
+      extractedTenantId: metadata.tenantId,
+      extractedPlanCode: metadata.planCode,
+      result: "ignored",
+    });
     return { processed: false };
   }
 
@@ -94,18 +134,41 @@ export async function handleWebhookEvent(params: {
     select: { id: true, status: true },
   });
   if (!tenant) {
+    logWebhookReceived({
+      eventType,
+      providerEventId: eventId,
+      providerSubscriptionId,
+      extractedTenantId: tenantId,
+      extractedPlanCode: metadata.planCode,
+      result: "ignored",
+    });
     return { processed: false };
   }
   if (tenant.status !== "ACTIVE" && tenant.status !== "SUSPENDED") {
+    logWebhookReceived({
+      eventType,
+      providerEventId: eventId,
+      providerSubscriptionId,
+      extractedTenantId: tenantId,
+      extractedPlanCode: metadata.planCode,
+      result: "ignored",
+    });
     return { processed: false };
   }
 
-  const providerSubscriptionId = subscriptionData.id;
   const existingSub = await prisma.subscription.findFirst({
     where: { provider: "paddle", providerSubscriptionId },
     select: { tenantId: true, id: true },
   });
   if (existingSub && existingSub.tenantId !== tenantId) {
+    logWebhookReceived({
+      eventType,
+      providerEventId: eventId,
+      providerSubscriptionId,
+      extractedTenantId: tenantId,
+      extractedPlanCode: metadata.planCode,
+      result: "tenant_mismatch",
+    });
     return { processed: true, tenantMismatch: true };
   }
 
@@ -114,6 +177,14 @@ export async function handleWebhookEvent(params: {
     select: { id: true },
   });
   if (!plan) {
+    logWebhookReceived({
+      eventType,
+      providerEventId: eventId,
+      providerSubscriptionId,
+      extractedTenantId: tenantId,
+      extractedPlanCode: metadata.planCode,
+      result: "ignored",
+    });
     return { processed: false };
   }
 
@@ -221,6 +292,15 @@ export async function handleWebhookEvent(params: {
         },
       });
     }
+  });
+
+  logWebhookReceived({
+    eventType,
+    providerEventId: eventId,
+    providerSubscriptionId,
+    extractedTenantId: tenantId,
+    extractedPlanCode: metadata.planCode,
+    result: "success",
   });
 
   return { processed: true };
