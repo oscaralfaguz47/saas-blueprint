@@ -42,25 +42,25 @@ export async function getCustomerPortalLink(params: {
   }
   const json = (await res.json()) as {
     data?: {
-      url?: string;
       urls?: {
-        general?: string | { url?: string };
-        customer_portal?: string;
+        general?: { overview?: string };
+        subscriptions?: Array<{
+          update_subscription_payment_method?: string;
+          cancel_subscription?: string;
+        }>;
       };
     };
   };
   const d = json?.data;
   let url: string | null = null;
-  if (d?.url) url = d.url;
-  else if (d?.urls?.customer_portal) url = d.urls.customer_portal;
-  else if (d?.urls?.general)
-    url =
-      typeof d.urls.general === "string"
-        ? d.urls.general
-        : d.urls.general?.url ?? null;
+  if (d?.urls?.general?.overview) url = d.urls.general.overview;
+  else if (d?.urls?.subscriptions?.[0]?.update_subscription_payment_method)
+    url = d.urls.subscriptions[0].update_subscription_payment_method;
+  else if (d?.urls?.subscriptions?.[0]?.cancel_subscription)
+    url = d.urls.subscriptions[0].cancel_subscription;
   if (!url || typeof url !== "string") {
     throw new Error(
-      "Paddle Create Customer Portal Session: missing url in response (data.url or data.urls.general or data.urls.customer_portal)"
+      "Paddle Create Customer Portal Session: missing url in response (data.urls.general.overview or data.urls.subscriptions)"
     );
   }
   return { url };

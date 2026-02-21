@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useApiFetch } from "@/hooks/use-api-fetch";
@@ -149,10 +149,16 @@ export function WorkspaceBillingTab() {
   >("idle");
   const pollAttemptsRef = useRef(0);
   const postCheckoutPollStartedRef = useRef(false);
+  const postCheckoutGotDataRef = useRef(false);
+  const canceledToastShownRef = useRef(false);
   const apiFetch = useApiFetch();
   const toast = useToast();
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
+  const pathname = usePathname();
 
   const billingState = useBillingState(summary);
+  const billingParam = searchParams.get("billing");
 
   const fetchSummary = useCallback(
     async (signal?: AbortSignal) => {
@@ -210,23 +216,35 @@ export function WorkspaceBillingTab() {
   );
 
   useEffect(() => {
+    if (billingParam === "updated") {
+      setLoading(false);
+      return;
+    }
+    if (postCheckoutGotDataRef.current) {
+      postCheckoutGotDataRef.current = false;
+      return;
+    }
     const controller = new AbortController();
     fetchSummary(controller.signal);
     return () => controller.abort();
-  }, [fetchSummary]);
-
-  const billingParam = searchParams.get("billing");
+  }, [fetchSummary, billingParam]);
 
   useEffect(() => {
-    if (billingParam === "canceled") {
-      toast.addToast("info", "Checkout canceled.");
-      fetchSummary();
-    }
-  }, [billingParam, toast, fetchSummary]);
-
-  useEffect(() => {
-    if (billingParam !== "updated" || loading || postCheckoutPollStartedRef.current)
+    if (billingParam !== "canceled") {
+      canceledToastShownRef.current = false;
       return;
+    }
+    if (canceledToastShownRef.current) return;
+    canceledToastShownRef.current = true;
+    toast.addToast("info", "Checkout canceled.");
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("billing");
+    const qs = params.toString();
+    router.replace(pathname + (qs ? `?${qs}` : ""), { scroll: false });
+  }, [billingParam, pathname, router, searchParams, toast]);
+
+  useEffect(() => {
+    if (billingParam !== "updated" || postCheckoutPollStartedRef.current) return;
     postCheckoutPollStartedRef.current = true;
 
     const expectedPlan = (): PlanCode | null => {
@@ -251,6 +269,7 @@ export function WorkspaceBillingTab() {
     };
 
     setPostCheckoutState("polling");
+    setLoading(true);
     pollAttemptsRef.current = 0;
 
     const callReconcile = async () => {
@@ -269,21 +288,24 @@ export function WorkspaceBillingTab() {
       await callReconcile();
       const data = await refetchBillingState(true);
       if (!mounted) return;
+      setLoading(false);
       pollAttemptsRef.current += 1;
       if (data && isResolved(data)) {
         setPostCheckoutState("resolved");
         const planLabel = PLAN_LABELS[data.planCode] ?? data.planCode;
-        toast.addToast("success", `Plan updated to ${planLabel}.`);
+        toastRef.current.addToast("success", `Plan updated to ${planLabel}.`);
         try {
           sessionStorage.removeItem("billing:postCheckoutPlan");
         } catch {
           // ignore
         }
+        postCheckoutGotDataRef.current = true;
         router.replace("/app/settings/workspace?tab=billing", { scroll: false });
         return;
       }
       if (pollAttemptsRef.current >= MAX_POLL_ATTEMPTS) {
         setPostCheckoutState("timeout");
+        setLoading(false);
         return;
       }
       setTimeout(poll, POLL_INTERVAL_MS);
@@ -293,7 +315,34 @@ export function WorkspaceBillingTab() {
     return () => {
       mounted = false;
     };
-  }, [billingParam, loading, apiFetch, toast, router]);
+  }, [billingParam, apiFetch, router]);
+
+  // When summary already shows paid+active while polling (e.g. webhook beat us), transition to resolved so the banner hides
+  useEffect(() => {
+    if (
+      billingParam !== "updated" ||
+      postCheckoutState !== "polling" ||
+      !summary
+    )
+      return;
+    const plan = (summary.planCode?.toLowerCase() || "free") as PlanCode;
+    const status = summary.subscriptionStatus?.toUpperCase() ?? "";
+    if (
+      (plan === "starter" || plan === "pro") &&
+      status === "ACTIVE"
+    ) {
+      setPostCheckoutState("resolved");
+      const planLabel = PLAN_LABELS[summary.planCode] ?? summary.planCode;
+      toastRef.current.addToast("success", `Plan updated to ${planLabel}.`);
+      try {
+        sessionStorage.removeItem("billing:postCheckoutPlan");
+      } catch {
+        // ignore
+      }
+      postCheckoutGotDataRef.current = true;
+      router.replace("/app/settings/workspace?tab=billing", { scroll: false });
+    }
+  }, [billingParam, postCheckoutState, summary, router]);
 
   const handleOpenChangePlan = useCallback(() => {
     setChangePlanOpen(true);
@@ -481,12 +530,12 @@ export function WorkspaceBillingTab() {
         </p>
       </div>
 
-      {/* Post-checkout: finalizing or timeout */}
+      {/* Post-checkout: finalizing (hides when we transition to resolved or timeout) */}
       {postCheckoutState === "polling" && (
         <Alert
           variant="info"
           title="Finalizing your subscription…"
-          description="This can take a few seconds."
+          description="We're confirming your plan with the payment provider. This usually takes a few seconds."
         />
       )}
       {postCheckoutState === "timeout" && (
@@ -649,14 +698,6 @@ export function WorkspaceBillingTab() {
               {portalLoading ? "Loading…" : "Manage subscription"}
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => refetchBillingState()}
-            disabled={isRefreshing}
-            className="inline-flex h-9 items-center justify-center rounded-lg border-0 bg-transparent px-3 text-sm font-medium text-(--text-muted) hover:bg-(--bg-surface-elev) hover:text-(--text-primary) disabled:opacity-50"
-          >
-            {isRefreshing ? "Refreshing…" : "Refresh status"}
-          </button>
         </CardFooter>
       </CardRoot>
 
