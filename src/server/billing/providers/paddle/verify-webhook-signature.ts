@@ -14,6 +14,11 @@ function getWebhookSecrets(): string[] {
   return out;
 }
 
+/** Whether webhook secret is configured (for startup/diagnostic logs; never log the secret). */
+export function isWebhookSecretConfigured(): boolean {
+  return getWebhookSecrets().length > 0;
+}
+
 /**
  * Parse Paddle-Signature header: "ts=1671552777;h1=hex..."
  * Returns { ts, h1 } or null if invalid.
@@ -53,6 +58,8 @@ export function verifyPaddleWebhookSignature(
 ): void {
   const secrets = getWebhookSecrets();
   if (secrets.length === 0) {
+    // eslint-disable-next-line no-console
+    console.warn("[billing] webhook_secret_configured: false");
     throw new Error("Paddle webhook secret not configured");
   }
 

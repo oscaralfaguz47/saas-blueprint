@@ -7,8 +7,15 @@ import {
 import { paddleWebhookEnvelopeSchema } from "@/server/billing/providers/paddle/paddle-types";
 import { logWebhookReceived } from "@/server/billing/billing-log";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 const MAX_BODY_BYTES = 2 * 1024 * 1024; // 2 MB
-const CONTENT_TYPE_JSON = "application/json";
+/** Paddle may send application/json or application/json; charset=utf-8 (with or without space). */
+function isJsonContentType(header: string | null): boolean {
+  const v = header?.trim().toLowerCase() ?? "";
+  return v === "application/json" || v.startsWith("application/json;");
+}
 
 export async function GET() {
   return NextResponse.json(
@@ -25,8 +32,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const contentType = req.headers.get("content-type")?.split(";")[0]?.trim();
-  if (contentType !== CONTENT_TYPE_JSON) {
+  if (!isJsonContentType(req.headers.get("content-type"))) {
     return NextResponse.json(
       { error: "UNSUPPORTED_MEDIA_TYPE", message: "Content-Type must be application/json" },
       { status: 415 }
@@ -92,24 +98,33 @@ export async function POST(req: Request) {
     );
   }
 
-  const { event_id } = envelopeResult.data;
+  const validatedEnvelope = envelopeResult.data;
+  const { event_id, event_type } = validatedEnvelope;
+
   const alreadyProcessed = await isEventAlreadyProcessed(event_id);
   if (alreadyProcessed) {
+    logWebhookReceived({
+      eventType: event_type,
+      providerEventId: event_id,
+      result: "ignored",
+    });
     return NextResponse.json({ received: true }, { status: 200 });
   }
 
   try {
-    const result = await handleWebhookEvent({ rawBody, envelope });
+    const result = await handleWebhookEvent({
+      rawBody,
+      envelope: validatedEnvelope,
+    });
     if (result.tenantMismatch) {
       return NextResponse.json({ received: true }, { status: 200 });
     }
     return NextResponse.json({ received: true }, { status: 200 });
   } catch (err) {
     if (err instanceof Error && err.message === "Invalid webhook payload schema") {
-      const envelope = envelopeResult?.data;
       logWebhookReceived({
-        eventType: envelope?.event_type ?? "unknown",
-        providerEventId: envelope?.event_id ?? "unknown",
+        eventType: event_type,
+        providerEventId: event_id,
         result: "validation_error",
       });
       return NextResponse.json(
@@ -117,6 +132,12 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-    throw err;
+    logWebhookReceived({
+      eventType: event_type,
+      providerEventId: event_id,
+      result: "process_failure",
+    });
+    // Return 200 to prevent Paddle retry storms; event is logged for investigation
+    return NextResponse.json({ received: true }, { status: 200 });
   }
 }
