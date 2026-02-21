@@ -39,14 +39,13 @@ export const POST = withErrorHandler(async () => {
   });
 
   if (!sub?.providerSubscriptionId) {
-    return ApiErrors.VALIDATION_ERROR(
-      "No Paddle subscription found for this workspace."
-    );
+    // No subscription yet (e.g. webhook not received). Return 200 so client keeps polling.
+    return apiSuccess({ ok: false, noSubscription: true });
   }
 
   const paddleSub = await fetchPaddleSubscription(sub.providerSubscriptionId);
   if (!paddleSub) {
-    return ApiErrors.NOT_FOUND("Subscription not found at provider.");
+    return apiSuccess({ ok: false, notFoundAtProvider: true });
   }
 
   const resolved = resolvePlanFromPaddleSubscription(paddleSub, sub.tenantId);
