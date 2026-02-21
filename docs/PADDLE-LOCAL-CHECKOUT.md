@@ -1,43 +1,79 @@
-# Paddle checkout on local dev (ngrok)
+# Paddle checkout and webhooks on local dev (ngrok)
 
-Paddle **does not support localhost** for checkout. The "Failed to retrieve JWT" / "Something went wrong" overlay happens because Paddle requires a **public, approved domain** for the page that loads Paddle.js.
+Paddle **does not support localhost**. Checkout and webhooks need a **public URL**. Use ngrok to expose your local app over HTTPS.
 
-Use a tunnel (e.g. ngrok) to expose your local app and point Paddle at that URL.
+This project runs the dev server with **HTTPS** (`next dev --experimental-https`), so the app is at **https://localhost:3000**. The tunnel must point at that HTTPS URL.
 
 ## 1. Run your app and ngrok
 
+**Terminal 1 — app (HTTPS on port 3000):**
+
 ```bash
-# Terminal 1: start the app (HTTP is fine; ngrok will expose it over HTTPS)
 pnpm dev
 ```
 
+**Terminal 2 — tunnel (forwards to https://localhost:3000):**
+
 ```bash
-# Terminal 2: expose port 3000 (install ngrok first: https://ngrok.com/download)
-ngrok http 3000
+# Option A: use the project script (connects to local HTTPS)
+pnpm tunnel
 ```
 
-Note the public URL ngrok shows, e.g. `https://abc123.ngrok-free.app`.
+Or install ngrok and run it directly:
+
+```bash
+# Option B: install from https://ngrok.com/download then:
+ngrok http https://localhost:3000
+```
+
+Note the **Forwarding** URL ngrok prints, e.g. `https://abc123.ngrok-free.app`. Use this as `YOUR-NGROK-URL` below.
 
 ## 2. Paddle sandbox setup
 
-1. Open **Paddle sandbox**: https://sandbox-vendors.paddle.com/
-2. **Website approval**  
-   Go to **Checkout** → **Request website approval** (or similar).  
-   Add your ngrok domain, e.g. `https://abc123.ngrok-free.app` (or just the host `abc123.ngrok-free.app` if the form asks for a domain). Save.
-3. **Default payment link**  
-   Go to **Checkout** → **Checkout settings**.  
-   Set **Default payment link** to:  
-   `https://YOUR-NGROK-SUBDOMAIN.ngrok-free.app/checkout`  
-   (replace with your actual ngrok URL). Save.
+Open **Paddle sandbox**: https://sandbox-vendors.paddle.com/
+
+### Checkout (payment link + website approval)
+
+1. **Website approval**  
+   **Checkout** → **Request website approval**.  
+   Add your ngrok host, e.g. `abc123.ngrok-free.app` (or the full URL if the form asks). Save.
+
+2. **Default payment link**  
+   **Checkout** → **Checkout settings** → **Default payment link**:  
+   `https://YOUR-NGROK-URL/checkout`  
+   Example: `https://abc123.ngrok-free.app/checkout`
+
+### Webhook (so subscription events reach your app)
+
+1. Go to **Developer tools** → **Notifications** (or **Webhooks**).
+2. Add a **Notification destination** (or edit existing):
+   - **Destination URL:**  
+     `https://YOUR-NGROK-URL/api/billing/paddle/webhook`  
+     Example: `https://abc123.ngrok-free.app/api/billing/paddle/webhook`
+   - Subscribe to the events you need (e.g. `subscription.created`, `subscription.activated`, `subscription.updated`, `transaction.paid`).
+3. Copy the **Signing secret** and set it in your local `.env`:
+   ```env
+   PADDLE_WEBHOOK_SECRET="your_signing_secret_from_paddle"
+   ```
+4. Restart `pnpm dev` after changing `.env`.
 
 ## 3. Use the ngrok URL
 
-- Open your app in the browser at **https://YOUR-NGROK-SUBDOMAIN.ngrok-free.app** (not localhost).
-- Sign in, go to Workspace Settings → Billing, click **Upgrade to Starter**.
-- You should be redirected to `https://....ngrok-free.app/checkout?_ptxn=...` and the Paddle overlay should open.
+- In the browser, open **https://YOUR-NGROK-URL** (not localhost).
+- Sign in → Workspace Settings → Billing → **Change plan** → complete checkout.
+- Paddle will send webhooks to `https://YOUR-NGROK-URL/api/billing/paddle/webhook`; your local server will receive them and update the subscription so the Billing tab shows the new plan.
+
+## Quick reference: URLs to set in Paddle (local)
+
+| Purpose              | URL |
+|----------------------|-----|
+| Default payment link | `https://YOUR-NGROK-URL/checkout` |
+| Webhook destination  | `https://YOUR-NGROK-URL/api/billing/paddle/webhook` |
+
+Replace `YOUR-NGROK-URL` with your ngrok Forwarding URL (e.g. `abc123.ngrok-free.app`).
 
 ## Notes
 
-- Free ngrok URLs change each time you restart ngrok (unless you use a reserved domain). Update the Default payment link and website approval in Paddle when the URL changes.
-- Keep `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN` and `PADDLE_API_KEY` set to your **sandbox** credentials.
-- For production, use your real domain (e.g. `https://yourdomain.com/checkout`) in Paddle; no tunnel needed.
+- **Free ngrok:** the URL changes each time you restart ngrok. Update both the Default payment link and the Webhook destination URL in Paddle when it changes (or use a reserved ngrok domain).
+- Use **sandbox** credentials in `.env`: `PADDLE_API_KEY`, `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN`, `PADDLE_WEBHOOK_SECRET`, and sandbox price IDs.
+- For production, use your real domain; no tunnel. Webhook URL: `https://yourdomain.com/api/billing/paddle/webhook`.
