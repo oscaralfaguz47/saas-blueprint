@@ -101,6 +101,11 @@ export const ApiErrors = {
     apiError("FORBIDDEN", 403, message ?? "Plan limit reached or subscription inactive. Upgrade to continue.", {
       code: "UPGRADE_REQUIRED",
     }),
+  /** Paddle rejected tax identifier (e.g. unsupported country); 400 — client can retry without Tax ID */
+  TAX_IDENTIFIER_VALIDATION_FAILED: (message?: string) =>
+    apiError("VALIDATION_ERROR", 400, message ?? "Tax identifier could not be validated for this country. You can continue without it.", {
+      code: "TAX_IDENTIFIER_VALIDATION_FAILED",
+    }),
 } as const;
 
 /**
@@ -119,6 +124,9 @@ export function withErrorHandler<T extends unknown[]>(
       if (error instanceof Error) {
         if (error.name === "UpgradeRequiredError") {
           return ApiErrors.UPGRADE_REQUIRED(error.message);
+        }
+        if (error.name === "TaxIdentifierValidationError") {
+          return ApiErrors.TAX_IDENTIFIER_VALIDATION_FAILED(error.message);
         }
         if (error instanceof ValidationError) {
           return ApiErrors.VALIDATION_ERROR(error.message);

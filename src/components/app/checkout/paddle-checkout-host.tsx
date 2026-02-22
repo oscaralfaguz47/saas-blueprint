@@ -83,6 +83,9 @@ export function PaddleCheckoutHost({ clientToken }: Props) {
             displayMode: "overlay",
             theme: "light",
             locale: "en",
+            // Invoice-first is handled server-side; overlay changes are secondary.
+            // Allow "Add VAT" in overlay for users who change country or add business details there.
+            showAddTaxId: true,
           },
         },
       });

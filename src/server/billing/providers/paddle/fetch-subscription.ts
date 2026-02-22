@@ -62,4 +62,30 @@ export function resolvePlanFromPaddleSubscription(
   return null;
 }
 
+/**
+ * Fetch customer's billing country from Paddle (GET /customers/{id}/addresses).
+ * Returns the first address's country_code (2-letter uppercase) or null.
+ * Used by reconcile to set paddleFinalCountryCode and countryMismatch.
+ */
+export async function fetchPaddleCustomerCountry(
+  customerId: string
+): Promise<string | null> {
+  const res = await fetch(
+    `${PADDLE_API_BASE}/customers/${encodeURIComponent(customerId)}/addresses`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${getApiKey()}` },
+    }
+  );
+  if (!res.ok) {
+    if (res.status === 404 || res.status === 403) return null;
+    return null;
+  }
+  const json = (await res.json()) as { data?: Array<{ country_code?: string }> };
+  const first = json?.data?.[0];
+  const code = first?.country_code?.trim?.();
+  if (!code || code.length !== 2) return null;
+  return code.toUpperCase();
+}
+
 export { mapPaddleStatusToInternal };

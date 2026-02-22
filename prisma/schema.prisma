@@ -251,11 +251,43 @@ model Tenant {
   tenantBillingStates   TenantBillingState[]
   tenantUsageCounters   TenantUsageCounter[]
   tenantUsageLedgers    TenantUsageLedger[]
+  billingProfile       BillingProfile?
 
   @@index([status])
   @@index([createdByUserId])
   @@index([createdByUserId, status])
   @@index([createdAt, id])
+}
+
+/** Workspace billing address and optional business details for checkout/invoicing. One per tenant. */
+model BillingProfile {
+  id           String   @id @default(cuid())
+  tenantId     String   @unique
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  countryCode  String?  @db.VarChar(2)
+  postalCode   String?  @db.VarChar(20)
+  region       String?  @db.VarChar(80)
+  city         String?  @db.VarChar(120)
+  firstLine    String?  @db.VarChar(200)
+  secondLine   String?  @db.VarChar(200)
+
+  companyName   String? @db.VarChar(200)
+  taxIdentifier String? @db.VarChar(80)
+
+  paddleCustomerId  String? @db.VarChar(191)
+  paddleAddressId   String? @db.VarChar(191)
+  paddleBusinessId  String? @db.VarChar(191)
+
+  paddleFinalCountryCode    String?   @db.VarChar(2)
+  paddleFinalCountryUpdatedAt DateTime?
+  countryMismatch Boolean @default(false)
+
+  updatedByUserId String? @db.VarChar(191)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([tenantId])
 }
 
 model TenantMembership {

@@ -15,6 +15,7 @@ import {
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import {
   IN_APP_PLAN_CATALOG,
   formatPriceMonthly,
@@ -23,6 +24,9 @@ import {
   type PlanCode,
   type InAppPlanItem,
 } from "@/lib/billing/plan-catalog";
+
+import { BILLING_COUNTRY_OPTIONS } from "@/lib/countries";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 type BillingSummary = {
   planCode: string;
@@ -144,6 +148,18 @@ export function WorkspaceBillingTab() {
   } | null>(null);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showBillingDetails, setShowBillingDetails] = useState(false);
+  const [billingCountryCode, setBillingCountryCode] = useState("");
+  const [billingPostalCode, setBillingPostalCode] = useState("");
+  const [billingRegion, setBillingRegion] = useState("");
+  const [billingCity, setBillingCity] = useState("");
+  const [billingFirstLine, setBillingFirstLine] = useState("");
+  const [billingSecondLine, setBillingSecondLine] = useState("");
+  const [businessToggle, setBusinessToggle] = useState(false);
+  const [companyName, setCompanyName] = useState("");
+  const [taxIdentifier, setTaxIdentifier] = useState("");
+  const [taxValidationError, setTaxValidationError] = useState<string | null>(null);
+  const [countryMismatch, setCountryMismatch] = useState(false);
   const [postCheckoutState, setPostCheckoutState] = useState<
     "idle" | "polling" | "resolved" | "timeout"
   >("idle");
@@ -381,31 +397,78 @@ export function WorkspaceBillingTab() {
     [billingState.currentPlan]
   );
 
-  const handleConfirmUpgrade = useCallback(async () => {
-    if (!confirmTarget || confirmTarget.direction !== "upgrade") return;
-    setCheckoutLoading(true);
-    try {
-      const res = await apiFetch("/api/billing/paddle/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planCode: confirmTarget.plan.code }),
-        showToastOnError: true,
-      });
-      if (!res.ok) return;
-      const json = await res.json();
-      const url = (json.data as { checkoutUrl?: string })?.checkoutUrl;
-      if (url) {
-        try {
-          sessionStorage.setItem("billing:postCheckoutPlan", confirmTarget.plan.code);
-        } catch {
-          // ignore
+  const handleConfirmUpgrade = useCallback(
+    async (skipTaxId?: boolean) => {
+      if (!confirmTarget || confirmTarget.direction !== "upgrade") return;
+      setTaxValidationError(null);
+      setCheckoutLoading(true);
+      try {
+        const hasAddress = !!billingCountryCode;
+        const billing =
+          hasAddress || businessToggle
+            ? {
+                address: hasAddress
+                  ? {
+                      countryCode: billingCountryCode,
+                      postalCode: billingPostalCode || undefined,
+                      region: billingRegion || undefined,
+                      city: billingCity || undefined,
+                      firstLine: billingFirstLine || undefined,
+                      secondLine: billingSecondLine || undefined,
+                    }
+                  : undefined,
+                businessToggle: businessToggle && !!companyName.trim(),
+                companyName: companyName.trim() || undefined,
+                taxIdentifier: taxIdentifier.trim() || undefined,
+              }
+            : undefined;
+        const res = await apiFetch("/api/billing/paddle/checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            planCode: confirmTarget.plan.code,
+            billing: billing ?? undefined,
+            ...(skipTaxId && { skipTaxId: true }),
+          }),
+          showToastOnError: !skipTaxId,
+        });
+        const json = await res.json().catch(() => ({}));
+        const errCode = (json as { details?: { code?: string }; error?: string }).details?.code;
+        const errMessage = (json as { message?: string }).message;
+        if (!res.ok && errCode === "TAX_IDENTIFIER_VALIDATION_FAILED") {
+          setTaxValidationError(
+            errMessage ?? "Tax identifier could not be validated for this country. You can continue without it."
+          );
+          return;
         }
-        window.location.href = url;
+        if (!res.ok) return;
+        const url = (json.data as { checkoutUrl?: string })?.checkoutUrl;
+        if (url) {
+          try {
+            sessionStorage.setItem("billing:postCheckoutPlan", confirmTarget.plan.code);
+          } catch {
+            // ignore
+          }
+          window.location.href = url;
+        }
+      } finally {
+        setCheckoutLoading(false);
       }
-    } finally {
-      setCheckoutLoading(false);
-    }
-  }, [confirmTarget, apiFetch]);
+    },
+    [
+      confirmTarget,
+      apiFetch,
+      billingCountryCode,
+      billingPostalCode,
+      billingRegion,
+      billingCity,
+      billingFirstLine,
+      billingSecondLine,
+      businessToggle,
+      companyName,
+      taxIdentifier,
+    ]
+  );
 
   const handleConfirmDowngrade = useCallback(async () => {
     if (!confirmTarget || confirmTarget.direction !== "downgrade") return;
@@ -432,7 +495,56 @@ export function WorkspaceBillingTab() {
   const closeConfirm = useCallback(() => {
     setConfirmPlanOpen(false);
     setConfirmTarget(null);
+    setTaxValidationError(null);
   }, []);
+
+  const loadBillingProfileForCheckout = useCallback(async () => {
+    try {
+      const res = await apiFetch("/api/billing/profile", { showToastOnError: false });
+      if (!res.ok) return;
+      const json = await res.json();
+      const p = (json.data as { countryCode?: string; postalCode?: string; region?: string; city?: string; firstLine?: string; secondLine?: string; companyName?: string; taxIdentifier?: string; countryMismatch?: boolean } | null);
+      if (p) {
+        setBillingCountryCode(p.countryCode ?? "");
+        setBillingPostalCode(p.postalCode ?? "");
+        setBillingRegion(p.region ?? "");
+        setBillingCity(p.city ?? "");
+        setBillingFirstLine(p.firstLine ?? "");
+        setBillingSecondLine(p.secondLine ?? "");
+        setCompanyName(p.companyName ?? "");
+        setTaxIdentifier(p.taxIdentifier ?? "");
+        if ((p.companyName ?? "").trim()) setBusinessToggle(true);
+        setShowBillingDetails(!!(p.countryCode ?? p.firstLine ?? p.city));
+      }
+    } catch {
+      // ignore
+    }
+  }, [apiFetch]);
+
+  useEffect(() => {
+    if (confirmPlanOpen && confirmTarget?.direction === "upgrade") {
+      loadBillingProfileForCheckout();
+    }
+  }, [confirmPlanOpen, confirmTarget?.direction, loadBillingProfileForCheckout]);
+
+  useEffect(() => {
+    if (loading || error) return;
+    let cancelled = false;
+    apiFetch("/api/billing/profile", { showToastOnError: false })
+      .then((res) => {
+        if (cancelled || !res.ok) return res.json().catch(() => null);
+        return res.json();
+      })
+      .then((json) => {
+        if (cancelled) return;
+        const p = json?.data as { countryMismatch?: boolean } | null;
+        setCountryMismatch(!!p?.countryMismatch);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, error, apiFetch]);
 
   if (loading) {
     return (
@@ -529,6 +641,14 @@ export function WorkspaceBillingTab() {
           Plan, usage, and overage for the current billing period.
         </p>
       </div>
+
+      {countryMismatch && (
+        <Alert
+          variant="warning"
+          title="Billing country mismatch"
+          description="Your invoice country in Paddle differs from your saved billing address country. Update billing details if needed."
+        />
+      )}
 
       {/* Post-checkout: finalizing (hides when we transition to resolved or timeout) */}
       {postCheckoutState === "polling" && (
@@ -854,23 +974,162 @@ export function WorkspaceBillingTab() {
         {confirmTarget && (
           <div className="space-y-4">
             {confirmTarget.direction === "upgrade" ? (
-              <p className="text-sm text-(--text-primary)">
-                You are upgrading to {confirmTarget.plan.name} —{" "}
-                {formatPriceMonthly(confirmTarget.plan.priceMonthlyCents)}
-                /month billed monthly. Upgrades apply immediately.
-              </p>
-            ) : (
-              <p className="text-sm text-(--text-primary)">
-                You are downgrading to {confirmTarget.plan.name}. Downgrades take
-                effect at the end of the current billing period.
-              </p>
-            )}
-            <div className="flex flex-wrap gap-2">
-              {confirmTarget.direction === "upgrade" ? (
-                <>
+              <>
+                <p className="text-sm text-(--text-primary)">
+                  You are upgrading to {confirmTarget.plan.name} —{" "}
+                  {formatPriceMonthly(confirmTarget.plan.priceMonthlyCents)}
+                  /month billed monthly. Upgrades apply immediately.
+                </p>
+
+                {taxValidationError && (
+                  <Alert
+                    variant="warning"
+                    title="Tax identifier could not be validated"
+                    description={taxValidationError}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleConfirmUpgrade(true)}
+                      disabled={checkoutLoading}
+                      className="mt-2 inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
+                    >
+                      Continue without Tax ID
+                    </button>
+                  </Alert>
+                )}
+
+                {!taxValidationError && (
+                  <div className="space-y-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowBillingDetails((v) => !v)}
+                      className="text-sm font-medium text-(--color-primary) hover:underline"
+                    >
+                      {showBillingDetails ? "Hide billing details" : "Add billing address (optional)"}
+                    </button>
+                    {showBillingDetails && (
+                      <div className="grid gap-3 rounded-lg border border-(--border-subtle) bg-(--bg-surface) p-3 text-sm">
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <div>
+                            <label htmlFor="billing-country" className="mb-1 block text-(--text-muted)">
+                              Country
+                            </label>
+                            <SearchableSelect
+                              id="billing-country"
+                              options={BILLING_COUNTRY_OPTIONS}
+                              value={billingCountryCode}
+                              onChange={setBillingCountryCode}
+                              placeholder="Select country"
+                              aria-label="Billing country"
+                            />
+                          </div>
+                          <div>
+                            <label htmlFor="billing-postal" className="mb-1 block text-(--text-muted)">
+                              Postal code
+                            </label>
+                            <Input
+                              id="billing-postal"
+                              value={billingPostalCode}
+                              onChange={(e) => setBillingPostalCode(e.target.value)}
+                              placeholder="ZIP / postal code"
+                            />
+                          </div>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <div>
+                            <label htmlFor="billing-region" className="mb-1 block text-(--text-muted)">
+                              Region / State
+                            </label>
+                            <Input
+                              id="billing-region"
+                              value={billingRegion}
+                              onChange={(e) => setBillingRegion(e.target.value)}
+                              placeholder="State or region"
+                            />
+                          </div>
+                          <div>
+                            <label htmlFor="billing-city" className="mb-1 block text-(--text-muted)">
+                              City
+                            </label>
+                            <Input
+                              id="billing-city"
+                              value={billingCity}
+                              onChange={(e) => setBillingCity(e.target.value)}
+                              placeholder="City"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label htmlFor="billing-line1" className="mb-1 block text-(--text-muted)">
+                            Address line 1
+                          </label>
+                          <Input
+                            id="billing-line1"
+                            value={billingFirstLine}
+                            onChange={(e) => setBillingFirstLine(e.target.value)}
+                            placeholder="Street address"
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="billing-line2" className="mb-1 block text-(--text-muted)">
+                            Address line 2 (optional)
+                          </label>
+                          <Input
+                            id="billing-line2"
+                            value={billingSecondLine}
+                            onChange={(e) => setBillingSecondLine(e.target.value)}
+                            placeholder="Apt, suite, etc."
+                          />
+                        </div>
+                        <div className="border-t border-(--border-subtle) pt-3">
+                          <label className="flex cursor-pointer items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={businessToggle}
+                              onChange={(e) => setBusinessToggle(e.target.checked)}
+                              className="rounded border-(--border-subtle)"
+                            />
+                            <span className="text-(--text-primary)">Buying as a business (optional)</span>
+                          </label>
+                          {businessToggle && (
+                            <div className="mt-3 space-y-2">
+                              <div>
+                                <label htmlFor="billing-company" className="mb-1 block text-(--text-muted)">
+                                  Company name
+                                </label>
+                                <Input
+                                  id="billing-company"
+                                  value={companyName}
+                                  onChange={(e) => setCompanyName(e.target.value)}
+                                  placeholder="Company name"
+                                />
+                              </div>
+                              <div>
+                                <label htmlFor="billing-tax" className="mb-1 block text-(--text-muted)">
+                                  Tax / VAT number (optional)
+                                </label>
+                                <Input
+                                  id="billing-tax"
+                                  value={taxIdentifier}
+                                  onChange={(e) => setTaxIdentifier(e.target.value)}
+                                  placeholder="VAT, GST, etc."
+                                />
+                                <p className="mt-1 text-xs text-(--text-muted)">
+                                  Only required for VAT/GST regions; may not validate for some countries (e.g. Costa Rica). You can leave blank and continue.
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={handleConfirmUpgrade}
+                    onClick={() => handleConfirmUpgrade()}
                     disabled={checkoutLoading}
                     className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-50"
                   >
@@ -891,9 +1150,15 @@ export function WorkspaceBillingTab() {
                   >
                     Cancel
                   </button>
-                </>
-              ) : (
-                <>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-(--text-primary)">
+                  You are downgrading to {confirmTarget.plan.name}. Downgrades take
+                  effect at the end of the current billing period.
+                </p>
+                <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={handleConfirmDowngrade}
@@ -910,9 +1175,9 @@ export function WorkspaceBillingTab() {
                   >
                     Cancel
                   </button>
-                </>
-              )}
-            </div>
+                </div>
+              </>
+            )}
           </div>
         )}
       </Dialog>

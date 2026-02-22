@@ -6,14 +6,35 @@
 export function logCheckoutInitiated(params: {
   tenantId: string;
   planCode: string;
+  country?: string | null;
+  businessToggle?: boolean;
 }): void {
   if (process.env.NODE_ENV === "development") {
     // eslint-disable-next-line no-console
     console.info("[billing] checkout_initiated", {
       tenantId: params.tenantId,
       planCode: params.planCode,
+      ...(params.country != null && { country: params.country }),
+      ...(params.businessToggle != null && { businessToggle: params.businessToggle }),
     });
   }
+}
+
+export function logCheckoutFailedValidation(params: {
+  tenantId: string;
+  planCode: string;
+  country?: string | null;
+  businessToggle?: boolean;
+  reason?: string;
+}): void {
+  // eslint-disable-next-line no-console
+  console.info("[billing] checkout_failed_validation", {
+    tenantId: params.tenantId,
+    planCode: params.planCode,
+    ...(params.country != null && { country: params.country }),
+    ...(params.businessToggle != null && { businessToggle: params.businessToggle }),
+    ...(params.reason != null && { reason: params.reason }),
+  });
 }
 
 export type WebhookLogResult =
