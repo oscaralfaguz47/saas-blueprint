@@ -9,7 +9,12 @@ import { createCheckoutSession, TaxIdentifierValidationError } from "@/server/bi
 import { logCheckoutInitiated, logCheckoutFailedValidation } from "@/server/billing/billing-log";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { zodErrorToFieldErrors } from "@/lib/validations/common";
-import { isPostalCodeRequiredForCheckout } from "@/lib/billing/country-rules";
+import {
+  isPostalCodeRequiredForCheckout,
+  getPostalCodeRuleForCheckout,
+  isAERegionRequiredForCheckout,
+  AE_REGION_OPTIONS,
+} from "@/lib/billing/country-rules";
 import { prisma } from "@/server/db";
 
 /** Billing address is optional. When country is provided, city/firstLine and (per country) postal/region are validated in the handler. */
@@ -162,13 +167,49 @@ export const POST = withErrorHandler(async (req: Request) => {
       fields: { billingPostalCode: "Postal code is required for this country." },
     });
   }
-  if (countryTrimmed === "US" && addr.postalCode?.trim() && !/^\d{5}$/.test(addr.postalCode.trim())) {
-    return ApiErrors.VALIDATION_ERROR("Validation failed", {
-      fields: { billingPostalCode: "US ZIP code must be 5 digits." },
-    });
+  if (isPostalCodeRequiredForCheckout(countryTrimmed) && addr.postalCode?.trim()) {
+    const postalRule = getPostalCodeRuleForCheckout(countryTrimmed);
+    if (postalRule) {
+      if (!postalRule.pattern.test(addr.postalCode.trim())) {
+        return ApiErrors.VALIDATION_ERROR("Validation failed", {
+          fields: { billingPostalCode: postalRule.message },
+        });
+      }
+      if (addr.postalCode.length > postalRule.maxLength) {
+        return ApiErrors.VALIDATION_ERROR("Validation failed", {
+          fields: { billingPostalCode: postalRule.message },
+        });
+      }
+    }
+  }
+  if (isAERegionRequiredForCheckout(countryTrimmed)) {
+    if (!addr.region?.trim()) {
+      return ApiErrors.VALIDATION_ERROR("Validation failed", {
+        fields: { billingRegion: "Please select a region." },
+      });
+    }
+    const validValues = new Set(AE_REGION_OPTIONS.map((o) => o.value));
+    if (!validValues.has(addr.region.trim())) {
+      return ApiErrors.VALIDATION_ERROR("Validation failed", {
+        fields: { billingRegion: "Please select a region." },
+      });
+    }
   }
 
-  // When any billing address field beyond country/postal is provided, require city, firstLine, and (per country) region
+  const isBusiness = !!(b.businessToggle && b.companyName?.trim());
+  if (isBusiness) {
+    const fieldErrors: Record<string, string> = {};
+    if (!isAERegionRequiredForCheckout(countryTrimmed) && !addr.region?.trim()) {
+      fieldErrors.billingRegion = "Region/State is required when buying as a company.";
+    }
+    if (!addr.city?.trim()) fieldErrors.billingCity = "City is required when buying as a company.";
+    if (!addr.firstLine?.trim()) fieldErrors.billingFirstLine = "Address line 1 is required when buying as a company.";
+    if (Object.keys(fieldErrors).length > 0) {
+      return ApiErrors.VALIDATION_ERROR("Validation failed", { fields: fieldErrors });
+    }
+  }
+
+  // When any billing address field beyond country/postal is provided, validate max lengths
   const hasAnyBillingDetail =
     !!(addr.city?.trim() || addr.firstLine?.trim() || addr.region?.trim() || addr.secondLine?.trim());
   if (hasAnyBillingDetail) {

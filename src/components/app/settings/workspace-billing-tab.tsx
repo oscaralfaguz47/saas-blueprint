@@ -26,7 +26,13 @@ import {
 } from "@/lib/billing/plan-catalog";
 
 import { useSession } from "next-auth/react";
-import { getCountryRule, isPostalCodeRequiredForCheckout } from "@/lib/billing/country-rules";
+import {
+  getCountryRule,
+  isPostalCodeRequiredForCheckout,
+  getPostalCodeRuleForCheckout,
+  AE_REGION_OPTIONS,
+  isAERegionRequiredForCheckout,
+} from "@/lib/billing/country-rules";
 import { getCheckoutCountryOptions } from "@/lib/countries";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { IconAlertCircle } from "@/components/ui/icons";
@@ -216,22 +222,32 @@ export function WorkspaceBillingTab() {
         case "billingCountryCode":
           return !billingCountryCode?.trim() ? "Please select your country." : null;
         case "billingCity":
+          if (businessToggle && !billingCity?.trim()) return "City is required when buying as a company.";
           if (limits && (billingCity?.length ?? 0) > limits.max) return limits.message;
           return null;
         case "billingFirstLine":
+          if (businessToggle && !billingFirstLine?.trim()) return "Address line 1 is required when buying as a company.";
           if (limits && (billingFirstLine?.length ?? 0) > limits.max) return limits.message;
           return null;
         case "billingPostalCode": {
           if (!isPostalCodeRequiredForCheckout(billingCountryCode)) return null;
           if (!billingPostalCode?.trim()) return "Postal code is required for this country.";
-          if (billingCountryCode?.trim()?.toUpperCase() === "US" && !/^\d{5}$/.test(billingPostalCode.trim()))
-            return "US ZIP code must be 5 digits.";
-          if (limits && (billingPostalCode?.length ?? 0) > limits.max) return limits.message;
+          const postalRule = getPostalCodeRuleForCheckout(billingCountryCode);
+          if (postalRule && !postalRule.pattern.test(billingPostalCode.trim())) return postalRule.message;
+          if (postalRule && billingPostalCode.length > postalRule.maxLength) return postalRule.message;
           return null;
         }
-        case "billingRegion":
+        case "billingRegion": {
+          if (isAERegionRequiredForCheckout(billingCountryCode)) {
+            if (!billingRegion?.trim()) return "Please select a region.";
+            const validValues = new Set(AE_REGION_OPTIONS.map((o) => o.value));
+            if (!validValues.has(billingRegion.trim())) return "Please select a region.";
+            return null;
+          }
+          if (businessToggle && !billingRegion?.trim()) return "Region/State is required when buying as a company.";
           if (limits && (billingRegion?.length ?? 0) > limits.max) return limits.message;
           return null;
+        }
         case "billingSecondLine":
           if (limits && (billingSecondLine?.length ?? 0) > limits.max) return limits.message;
           return null;
@@ -292,6 +308,10 @@ export function WorkspaceBillingTab() {
       return next;
     });
   }, []);
+
+  const hasAnyBillingField =
+    !!(billingRegion?.trim() || billingCity?.trim() || billingFirstLine?.trim() || billingSecondLine?.trim());
+  const billingSectionActive = showBillingAddress || businessToggle || hasAnyBillingField;
 
   const billingState = useBillingState(summary);
   const billingParam = searchParams.get("billing");
@@ -546,21 +566,38 @@ export function WorkspaceBillingTab() {
 
     const hasAnyBillingField =
       !!(billingRegion?.trim() || billingCity?.trim() || billingFirstLine?.trim() || billingSecondLine?.trim());
-    const billingSectionActive = showBillingAddress || hasAnyBillingField;
+    const billingSectionActive = showBillingAddress || businessToggle || hasAnyBillingField;
 
     if (isPostalCodeRequiredForCheckout(billingCountryCode) && !billingPostalCode?.trim()) err.billingPostalCode = "Postal code is required for this country.";
-    else if (isPostalCodeRequiredForCheckout(billingCountryCode) && billingCountryCode?.trim()?.toUpperCase() === "US" && billingPostalCode?.trim() && !/^\d{5}$/.test(billingPostalCode.trim()))
-      err.billingPostalCode = "US ZIP code must be 5 digits.";
-    else if (isPostalCodeRequiredForCheckout(billingCountryCode) && (CHECKOUT_FIELD_LIMITS.billingPostalCode?.max ?? 0) > 0 && (billingPostalCode?.length ?? 0) > CHECKOUT_FIELD_LIMITS.billingPostalCode.max)
-      err.billingPostalCode = CHECKOUT_FIELD_LIMITS.billingPostalCode.message;
+    else if (isPostalCodeRequiredForCheckout(billingCountryCode) && billingPostalCode?.trim()) {
+      const postalRule = getPostalCodeRuleForCheckout(billingCountryCode);
+      if (postalRule && !postalRule.pattern.test(billingPostalCode.trim())) err.billingPostalCode = postalRule.message;
+      else if (postalRule && billingPostalCode.length > postalRule.maxLength) err.billingPostalCode = postalRule.message;
+    }
+    if (isAERegionRequiredForCheckout(billingCountryCode)) {
+      if (!billingRegion?.trim()) err.billingRegion = "Please select a region.";
+      else {
+        const validValues = new Set(AE_REGION_OPTIONS.map((o) => o.value));
+        if (!validValues.has(billingRegion.trim())) err.billingRegion = "Please select a region.";
+      }
+    } else if (billingSectionActive && (CHECKOUT_FIELD_LIMITS.billingRegion?.max ?? 0) > 0 && (billingRegion?.length ?? 0) > CHECKOUT_FIELD_LIMITS.billingRegion.max) {
+      err.billingRegion = CHECKOUT_FIELD_LIMITS.billingRegion.message;
+    }
+
+    if (businessToggle) {
+      if (!isAERegionRequiredForCheckout(billingCountryCode) && !billingRegion?.trim())
+        err.billingRegion = "Region/State is required when buying as a company.";
+      if (!billingCity?.trim()) err.billingCity = "City is required when buying as a company.";
+      if (!billingFirstLine?.trim()) err.billingFirstLine = "Address line 1 is required when buying as a company.";
+    }
 
     if (billingSectionActive) {
       if ((CHECKOUT_FIELD_LIMITS.billingCity?.max ?? 0) > 0 && (billingCity?.length ?? 0) > CHECKOUT_FIELD_LIMITS.billingCity.max)
-        err.billingCity = CHECKOUT_FIELD_LIMITS.billingCity.message;
+        err.billingCity = err.billingCity ?? CHECKOUT_FIELD_LIMITS.billingCity.message;
       if ((CHECKOUT_FIELD_LIMITS.billingFirstLine?.max ?? 0) > 0 && (billingFirstLine?.length ?? 0) > CHECKOUT_FIELD_LIMITS.billingFirstLine.max)
-        err.billingFirstLine = CHECKOUT_FIELD_LIMITS.billingFirstLine.message;
-      if ((CHECKOUT_FIELD_LIMITS.billingRegion?.max ?? 0) > 0 && (billingRegion?.length ?? 0) > CHECKOUT_FIELD_LIMITS.billingRegion.max)
-        err.billingRegion = CHECKOUT_FIELD_LIMITS.billingRegion.message;
+        err.billingFirstLine = err.billingFirstLine ?? CHECKOUT_FIELD_LIMITS.billingFirstLine.message;
+      if (!isAERegionRequiredForCheckout(billingCountryCode) && (CHECKOUT_FIELD_LIMITS.billingRegion?.max ?? 0) > 0 && (billingRegion?.length ?? 0) > CHECKOUT_FIELD_LIMITS.billingRegion.max)
+        err.billingRegion = err.billingRegion ?? CHECKOUT_FIELD_LIMITS.billingRegion.message;
       if ((CHECKOUT_FIELD_LIMITS.billingSecondLine?.max ?? 0) > 0 && (billingSecondLine?.length ?? 0) > CHECKOUT_FIELD_LIMITS.billingSecondLine.max)
         err.billingSecondLine = CHECKOUT_FIELD_LIMITS.billingSecondLine.message;
     }
@@ -1333,6 +1370,7 @@ export function WorkspaceBillingTab() {
                             setBillingCountryCode(v);
                             clearCheckoutFieldError("billingCountryCode");
                             clearCheckoutFieldError("billingPostalCode");
+                            clearCheckoutFieldError("billingRegion");
                             markTouched("billingCountryCode");
                           }}
                           placeholder="Select country"
@@ -1346,6 +1384,31 @@ export function WorkspaceBillingTab() {
                           </div>
                         )}
                       </div>
+                      {isAERegionRequiredForCheckout(billingCountryCode) && (
+                        <div className="mt-3">
+                          <label htmlFor="billing-region" className="mb-1 block text-(--text-muted)">
+                            Region <span className="ml-0.5 text-destructive">*</span>
+                          </label>
+                          <SearchableSelect
+                            id="billing-region"
+                            options={AE_REGION_OPTIONS}
+                            value={billingRegion}
+                            onChange={(v) => {
+                              setBillingRegion(v);
+                              clearCheckoutFieldError("billingRegion");
+                            }}
+                            placeholder="Select region"
+                            aria-label="Region (UAE)"
+                            className={showError("billingRegion") ? "[&_button]:border-destructive [&_button]:focus-visible:ring-2 [&_button]:focus-visible:ring-destructive/40" : ""}
+                          />
+                          {showError("billingRegion") && (
+                            <div id="billing-region-error" role="alert" className="mt-1 flex items-start gap-1 text-xs text-destructive">
+                              <IconAlertCircle className="mt-[2px] h-3.5 w-3.5 shrink-0" />
+                              <span>{getErrorMessage("billingRegion")}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       {isPostalCodeRequiredForCheckout(billingCountryCode) && (
                         <div className="mt-3">
                           <label htmlFor="billing-postal" className="mb-1 block text-(--text-muted)">
@@ -1359,7 +1422,12 @@ export function WorkspaceBillingTab() {
                               clearCheckoutFieldError("billingPostalCode");
                             }}
                             onBlur={() => markTouched("billingPostalCode")}
-                            placeholder={billingCountryCode?.trim()?.toUpperCase() === "US" ? "ZIP (5 digits)" : "ZIP / postal code"}
+                            placeholder={
+                              billingCountryCode?.trim()?.toUpperCase() === "US" || billingCountryCode?.trim()?.toUpperCase() === "CA"
+                                ? "5 digits"
+                                : "Up to 10 alphanumeric"
+                            }
+                            maxLength={getPostalCodeRuleForCheckout(billingCountryCode)?.maxLength ?? 20}
                             aria-invalid={showError("billingPostalCode")}
                             aria-describedby={showError("billingPostalCode") ? "billing-postal-error" : undefined}
                             className={showError("billingPostalCode") ? "border-destructive focus-visible:ring-2 focus-visible:ring-destructive/40" : undefined}
@@ -1374,27 +1442,28 @@ export function WorkspaceBillingTab() {
                       )}
                     </div>
 
-                    {/* 3) Billing address — optional, collapsible (postal, region, city, line1, line2 only) */}
+                    {/* 3) Billing address — optional, collapsible; shown when company checked or any field has data */}
                     <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface) text-sm">
                       <button
                         type="button"
                         onClick={() => setShowBillingAddress((v) => !v)}
                         className="flex w-full items-center justify-between p-3 text-left font-medium text-(--text-primary) hover:bg-(--bg-surface-elev)"
                       >
-                        {showBillingAddress ? "Hide billing address (optional)" : "Add billing address for invoices (optional)"}
+                        {billingSectionActive ? "Hide billing address (optional)" : "Add billing address for invoices (optional)"}
                       </button>
-                      {!showBillingAddress && (
+                      {!billingSectionActive && (
                         <p className="border-t border-(--border-subtle) px-3 pb-3 pt-1 text-xs text-(--text-muted)">
                           Only needed if you want invoice details stored for this workspace.
                         </p>
                       )}
-                      {showBillingAddress && (
+                      {billingSectionActive && (
                         <div className="border-t border-(--border-subtle) p-3">
                           <div className="grid gap-3">
-                            <div>
-                              <label htmlFor="billing-region" className="mb-1 block text-(--text-muted)">
-                                Region / State
-                              </label>
+                            {!isAERegionRequiredForCheckout(billingCountryCode) && (
+                              <div>
+                                <label htmlFor="billing-region" className="mb-1 block text-(--text-muted)">
+                                  Region / State
+                                </label>
                                 <Input
                                   id="billing-region"
                                   value={billingRegion}
@@ -1414,7 +1483,8 @@ export function WorkspaceBillingTab() {
                                     <span>{getErrorMessage("billingRegion")}</span>
                                   </div>
                                 )}
-                            </div>
+                              </div>
+                            )}
                             <div>
                               <label htmlFor="billing-city" className="mb-1 block text-(--text-muted)">
                                 City
@@ -1498,10 +1568,14 @@ export function WorkspaceBillingTab() {
                         <input
                           type="checkbox"
                           checked={businessToggle}
-                          onChange={(e) => setBusinessToggle(e.target.checked)}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setBusinessToggle(checked);
+                            if (checked) setShowBillingAddress(true);
+                          }}
                           className="mt-0.5 rounded border-(--border-subtle)"
                         />
-                        <span className="font-medium text-(--text-primary)">Buying as a company? (optional)</span>
+                        <span className="font-medium text-(--text-primary)">Buying as a company?</span>
                       </label>
                       <p className="mt-1 text-xs text-(--text-muted)">
                         Add company details to include them on invoices and for VAT/GST where applicable.
