@@ -65,6 +65,102 @@ type BillingTransactionItem = {
   invoiceUrl?: string;
 };
 
+type PaymentMethodDisplay = {
+  brand: string;
+  last4: string;
+  expiryMonth: number;
+  expiryYear: number;
+};
+
+const CARD_BRAND_LABELS: Record<string, string> = {
+  visa: "Visa",
+  mastercard: "Mastercard",
+  amex: "American Express",
+  american_express: "American Express",
+  discover: "Discover",
+};
+
+function formatCardBrand(brand: string): string {
+  return CARD_BRAND_LABELS[brand.toLowerCase()] ?? brand.charAt(0).toUpperCase() + brand.slice(1).toLowerCase();
+}
+
+/** Card brand icon (Visa, Mastercard, Amex, Discover) for payment method display. */
+function CardBrandIcon({ brand, className }: { brand: string; className?: string }) {
+  const key = brand.toLowerCase().replace(/\s+/g, "_");
+  const normalized = key === "american_express" ? "amex" : key;
+  const containerClassName = `flex h-10 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) ${className ?? ""}`;
+
+  if (normalized === "visa") {
+    return (
+      <div className={containerClassName} aria-hidden title="Visa">
+        <svg width={40} height={26} viewBox="0 0 40 26" fill="none">
+          <rect width={40} height={26} rx={4} fill="#1A1F71" fillOpacity={0.15} />
+          <text x={20} y={17} textAnchor="middle" fill="#1A1F71" fontSize={10} fontWeight="bold" fontFamily="system-ui, sans-serif">
+            VISA
+          </text>
+        </svg>
+      </div>
+    );
+  }
+  if (normalized === "mastercard") {
+    return (
+      <div className={containerClassName} aria-hidden title="Mastercard">
+        <svg width={40} height={26} viewBox="0 0 40 26" fill="none">
+          <rect width={40} height={26} rx={4} fill="#EB001B" fillOpacity={0.12} />
+          <circle cx={15} cy={13} r={8} fill="#EB001B" />
+          <circle cx={25} cy={13} r={8} fill="#F79E1B" fillOpacity={0.95} />
+          <path fill="#FF5F00" d="M25 7.3a8 8 0 000 11.4 8 8 0 010-11.4zM15 7.3a8 8 0 010 11.4 8 8 0 000-11.4z" />
+        </svg>
+      </div>
+    );
+  }
+  if (normalized === "amex" || normalized === "american_express") {
+    return (
+      <div className={containerClassName} aria-hidden title="American Express">
+        <svg width={40} height={26} viewBox="0 0 40 26" fill="none">
+          <rect width={40} height={26} rx={4} fill="#006FCF" fillOpacity={0.15} />
+          <text x={20} y={16} textAnchor="middle" fill="#006FCF" fontSize={7} fontWeight="bold" fontFamily="system-ui, sans-serif">
+            AMEX
+          </text>
+        </svg>
+      </div>
+    );
+  }
+  if (normalized === "discover") {
+    return (
+      <div className={containerClassName} aria-hidden title="Discover">
+        <svg width={40} height={26} viewBox="0 0 40 26" fill="none">
+          <rect width={40} height={26} rx={4} fill="#FF6000" fillOpacity={0.2} />
+          <text x={20} y={16} textAnchor="middle" fill="#FF6000" fontSize={8} fontWeight="bold" fontFamily="system-ui, sans-serif">
+            DISCOVER
+          </text>
+        </svg>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={containerClassName}
+      aria-hidden
+      title={formatCardBrand(brand)}
+    >
+      <span className="text-xs font-semibold text-(--text-muted)">
+        {formatCardBrand(brand).slice(0, 2).toUpperCase()}
+      </span>
+    </div>
+  );
+}
+
+function formatExpiry(month: number, year: number): string {
+  try {
+    const date = new Date(year, month - 1, 1);
+    return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  } catch {
+    return `${month}/${year}`;
+  }
+}
+
 function formatPeriod(start: string, end: string): string {
   try {
     const s = new Date(start);
@@ -160,6 +256,8 @@ export function WorkspaceBillingTab() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [transactions, setTransactions] = useState<BillingTransactionItem[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodDisplay | null | undefined>(undefined);
+  const [paymentMethodLoading, setPaymentMethodLoading] = useState(false);
   const [paddleReady, setPaddleReady] = useState(false);
   const [postCheckoutState, setPostCheckoutState] = useState<
     "idle" | "polling" | "resolved" | "timeout"
@@ -257,6 +355,26 @@ export function WorkspaceBillingTab() {
     }
   }, [apiFetch]);
 
+  const fetchPaymentMethod = useCallback(async () => {
+    setPaymentMethodLoading(true);
+    try {
+      const res = await apiFetch("/api/billing/paddle/payment-method", {
+        showToastOnError: false,
+      });
+      if (!res.ok) {
+        setPaymentMethod(null);
+        return;
+      }
+      const json = await res.json();
+      const pm = (json.data as { paymentMethod?: PaymentMethodDisplay | null })?.paymentMethod ?? null;
+      setPaymentMethod(pm ?? null);
+    } catch {
+      setPaymentMethod(null);
+    } finally {
+      setPaymentMethodLoading(false);
+    }
+  }, [apiFetch]);
+
   const handlePaddleScriptLoad = useCallback(() => {
     const Paddle = typeof window !== "undefined" ? window.Paddle : undefined;
     if (!Paddle || !clientToken) {
@@ -301,6 +419,18 @@ export function WorkspaceBillingTab() {
     if (!summary) return;
     fetchTransactions();
   }, [summary, fetchTransactions]);
+
+  const shouldShowPaymentMethod =
+    summary &&
+    (summary.planCode === "starter" ||
+      summary.planCode === "pro" ||
+      summary.subscriptionStatus.toUpperCase() === "PAST_DUE" ||
+      summary.subscriptionStatus.toUpperCase() === "SUSPENDED");
+
+  useEffect(() => {
+    if (!shouldShowPaymentMethod) return;
+    fetchPaymentMethod();
+  }, [shouldShowPaymentMethod, fetchPaymentMethod]);
 
   useEffect(() => {
     if (billingParam !== "canceled") {
@@ -420,24 +550,6 @@ export function WorkspaceBillingTab() {
   const handleOpenChangePlan = useCallback(() => {
     setChangePlanOpen(true);
   }, []);
-
-  const handleManageSubscription = useCallback(async () => {
-    setPortalLoading(true);
-    try {
-      const res = await apiFetch("/api/billing/paddle/portal", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "general" }),
-        showToastOnError: true,
-      });
-      if (!res.ok) return;
-      const json = await res.json();
-      const url = (json.data as { url?: string })?.url;
-      if (url) window.open(url, "_blank");
-    } finally {
-      setPortalLoading(false);
-    }
-  }, [apiFetch]);
 
   const handleChangePaymentMethod = useCallback(async () => {
     setPortalLoading(true);
@@ -717,14 +829,6 @@ export function WorkspaceBillingTab() {
             >
               Refresh
             </button>
-            <button
-              type="button"
-              onClick={handleManageSubscription}
-              disabled={portalLoading}
-              className="inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 text-sm font-medium hover:bg-(--bg-surface-elev) disabled:opacity-50"
-            >
-              Manage subscription
-            </button>
           </div>
         </Alert>
       )}
@@ -735,19 +839,7 @@ export function WorkspaceBillingTab() {
           variant="info"
           title="Plan change scheduled"
           description={`Your plan will change to ${PLAN_LABELS[summary.pendingPlanCode] ?? summary.pendingPlanCode} on ${formatDate(summary.periodEnd)}. You'll keep your current plan until then.`}
-        >
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={handleManageSubscription}
-              disabled={portalLoading}
-              className="text-sm font-medium underline hover:no-underline disabled:opacity-50"
-            >
-              Manage subscription
-            </button>
-            {/* TODO: Undo scheduled downgrade ? optional; stub or future API */}
-          </div>
-        </Alert>
+        />
       )}
       {billingState.isPastDue && (
         <Alert
@@ -757,7 +849,7 @@ export function WorkspaceBillingTab() {
         >
           <button
             type="button"
-            onClick={handleManageSubscription}
+            onClick={handleChangePaymentMethod}
             disabled={portalLoading}
             className="mt-2 inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 text-sm font-medium hover:bg-(--bg-surface-elev) disabled:opacity-50"
           >
@@ -779,11 +871,11 @@ export function WorkspaceBillingTab() {
         >
           <button
             type="button"
-            onClick={handleManageSubscription}
+            onClick={handleChangePaymentMethod}
             disabled={portalLoading}
             className="mt-2 inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) px-3 text-sm font-medium disabled:opacity-50"
           >
-            {portalLoading ? "Loading?" : "Manage subscription"}
+            {portalLoading ? "Loading?" : "Update payment method"}
           </button>
         </Alert>
       )}
@@ -845,19 +937,6 @@ export function WorkspaceBillingTab() {
               className="inline-flex h-9 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover)"
             >
               Change plan
-            </button>
-          )}
-          {(billingState.hasPaidPlan ||
-            billingState.isPastDue ||
-            billingState.isSuspended ||
-            billingState.isCanceled) && (
-            <button
-              type="button"
-              onClick={handleManageSubscription}
-              disabled={portalLoading}
-              className="inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
-            >
-              {portalLoading ? "Loading?" : "Manage subscription"}
             </button>
           )}
         </CardFooter>
@@ -958,14 +1037,7 @@ export function WorkspaceBillingTab() {
                             Open
                           </a>
                         ) : (
-                          <button
-                            type="button"
-                            onClick={handleManageSubscription}
-                            disabled={portalLoading}
-                            className="text-(--color-primary) underline hover:no-underline disabled:opacity-50"
-                          >
-                            View in portal
-                          </button>
+                          "?"
                         )}
                       </td>
                     </tr>
@@ -977,7 +1049,7 @@ export function WorkspaceBillingTab() {
         </CardContent>
       </CardRoot>
 
-      {/* Payment method (EPIC 4) */}
+      {/* Payment method */}
       {(billingState.hasPaidPlan || billingState.isPastDue || billingState.isSuspended) && (
         <CardRoot>
           <CardHeader>
@@ -986,9 +1058,25 @@ export function WorkspaceBillingTab() {
             </p>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-(--text-muted)">
-              Manage your payment method in the billing portal.
-            </p>
+            {paymentMethodLoading ? (
+              <Skeleton className="h-14 w-full max-w-sm" />
+            ) : paymentMethod ? (
+              <div className="flex items-start gap-3">
+                <CardBrandIcon brand={paymentMethod.brand} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-(--text-primary)">
+                    {formatCardBrand(paymentMethod.brand)} ending in {paymentMethod.last4}
+                  </p>
+                  <p className="mt-0.5 text-xs text-(--text-muted)">
+                    Expires {formatExpiry(paymentMethod.expiryMonth, paymentMethod.expiryYear)}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-(--text-muted)">
+                No payment method on file.
+              </p>
+            )}
             <button
               type="button"
               onClick={handleChangePaymentMethod}
