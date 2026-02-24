@@ -17,6 +17,7 @@ import {
   parseMetadataFromCustomData,
   parseSubscriptionData,
 } from "./map-paddle-event";
+import { handleTransactionCompleted } from "./handle-transaction-completed";
 
 const BILLING_WEBHOOK_ACTOR_USER_ID = process.env.BILLING_WEBHOOK_ACTOR_USER_ID;
 
@@ -72,7 +73,19 @@ export async function handleWebhookEvent(params: {
   envelope: unknown;
 }): Promise<{ processed: boolean; tenantMismatch?: boolean }> {
   const { envelope } = params;
-  let { eventId, eventType, subscriptionData, metadata } = validateWebhookPayload(envelope);
+
+  const envelopeParsed = paddleWebhookEnvelopeSchema.safeParse(envelope);
+  if (!envelopeParsed.success) {
+    throw new Error("Invalid webhook payload schema");
+  }
+  const { event_id: eventId, event_type: eventType } = envelopeParsed.data;
+
+  if (eventType === "transaction.completed") {
+    const result = await handleTransactionCompleted(envelope);
+    return { processed: result.processed };
+  }
+
+  const { subscriptionData, metadata } = validateWebhookPayload(envelope);
 
   if (!isSupportedPaddleEventType(eventType)) {
     logWebhookReceived({
@@ -94,7 +107,8 @@ export async function handleWebhookEvent(params: {
 
   const providerSubscriptionId = subscriptionData.id;
 
-  if (!metadata) {
+  let resolvedMetadata = metadata;
+  if (!resolvedMetadata) {
     const priceId = subscriptionData.items?.[0]?.price_id;
     const planCodeFromPrice = getPlanCodeFromPriceId(priceId);
     const existingBySub = await prisma.subscription.findFirst({
@@ -102,11 +116,11 @@ export async function handleWebhookEvent(params: {
       select: { tenantId: true },
     });
     if (existingBySub && planCodeFromPrice && planCodeFromPrice !== "free") {
-      metadata = { tenantId: existingBySub.tenantId, planCode: planCodeFromPrice };
+      resolvedMetadata = { tenantId: existingBySub.tenantId, planCode: planCodeFromPrice };
     }
   }
 
-  if (!metadata) {
+  if (!resolvedMetadata) {
     logWebhookReceived({
       eventType,
       providerEventId: eventId,
@@ -116,19 +130,19 @@ export async function handleWebhookEvent(params: {
     return { processed: false };
   }
 
-  if (metadata.planCode === "free") {
+  if (resolvedMetadata.planCode === "free") {
     logWebhookReceived({
       eventType,
       providerEventId: eventId,
       providerSubscriptionId,
-      extractedTenantId: metadata.tenantId,
-      extractedPlanCode: metadata.planCode,
+      extractedTenantId: resolvedMetadata.tenantId,
+      extractedPlanCode: resolvedMetadata.planCode,
       result: "ignored",
     });
     return { processed: false };
   }
 
-  const tenantId = metadata.tenantId;
+  const tenantId = resolvedMetadata.tenantId;
   const tenant = await prisma.tenant.findUnique({
     where: { id: tenantId },
     select: { id: true, status: true },
@@ -139,7 +153,7 @@ export async function handleWebhookEvent(params: {
       providerEventId: eventId,
       providerSubscriptionId,
       extractedTenantId: tenantId,
-      extractedPlanCode: metadata.planCode,
+      extractedPlanCode: resolvedMetadata.planCode,
       result: "ignored",
     });
     return { processed: false };
@@ -150,7 +164,7 @@ export async function handleWebhookEvent(params: {
       providerEventId: eventId,
       providerSubscriptionId,
       extractedTenantId: tenantId,
-      extractedPlanCode: metadata.planCode,
+      extractedPlanCode: resolvedMetadata.planCode,
       result: "ignored",
     });
     return { processed: false };
@@ -166,14 +180,14 @@ export async function handleWebhookEvent(params: {
       providerEventId: eventId,
       providerSubscriptionId,
       extractedTenantId: tenantId,
-      extractedPlanCode: metadata.planCode,
+      extractedPlanCode: resolvedMetadata.planCode,
       result: "tenant_mismatch",
     });
     return { processed: true, tenantMismatch: true };
   }
 
   const plan = await prisma.plan.findUnique({
-    where: { code: metadata.planCode, isActive: true },
+    where: { code: resolvedMetadata.planCode, isActive: true },
     select: { id: true },
   });
   if (!plan) {
@@ -182,7 +196,7 @@ export async function handleWebhookEvent(params: {
       providerEventId: eventId,
       providerSubscriptionId,
       extractedTenantId: tenantId,
-      extractedPlanCode: metadata.planCode,
+      extractedPlanCode: resolvedMetadata.planCode,
       result: "ignored",
     });
     return { processed: false };
@@ -205,7 +219,7 @@ export async function handleWebhookEvent(params: {
     currentPeriodStart: period?.starts_at,
     currentPeriodEnd: period?.ends_at,
     tenantId,
-    planCode: metadata.planCode,
+    planCode: resolvedMetadata.planCode,
     occurredAt:
       typeof (envelope as { occurred_at?: string }).occurred_at === "string"
         ? (envelope as { occurred_at: string }).occurred_at
@@ -299,7 +313,7 @@ export async function handleWebhookEvent(params: {
     providerEventId: eventId,
     providerSubscriptionId,
     extractedTenantId: tenantId,
-    extractedPlanCode: metadata.planCode,
+    extractedPlanCode: resolvedMetadata.planCode,
     result: "success",
   });
 

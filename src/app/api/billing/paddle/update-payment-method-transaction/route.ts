@@ -1,19 +1,18 @@
 import { getServerSession } from "next-auth";
-import { z } from "zod";
 import { authOptions } from "@/server/auth-options";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { requireFullSession } from "@/server/require-full-session";
 import { writeAuditLog } from "@/server/services/audit";
-import { getCustomerPortalLink } from "@/server/billing/providers/paddle/get-customer-portal-link";
+import { getUpdatePaymentMethodTransaction } from "@/server/billing/providers/paddle/get-update-payment-method-transaction";
 import { prisma } from "@/server/db";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 
-const portalBodySchema = z.object({
-  mode: z.enum(["general", "update_payment_method"]),
-  subscriptionId: z.string().optional(),
-});
-
+/**
+ * POST /api/billing/paddle/update-payment-method-transaction
+ * Returns a transaction ID to open Paddle Checkout in overlay mode for updating payment method (in-app modal).
+ * Requires auth + tenant.billing.manage.
+ */
 export const POST = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
   const mfaError = await requireFullSession(session);
@@ -31,32 +30,19 @@ export const POST = withErrorHandler(async (req: Request) => {
   });
   if (!allowed) return ApiErrors.FORBIDDEN();
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    body = {};
-  }
-  const parsed = portalBodySchema.safeParse(body);
-  const mode = parsed.success ? parsed.data.mode : "general";
-
   const subscription = await prisma.subscription.findFirst({
     where: { tenantId, provider: "paddle" },
-    select: { providerCustomerId: true, providerSubscriptionId: true },
+    select: { providerSubscriptionId: true },
   });
 
-  if (!subscription?.providerCustomerId) {
+  if (!subscription?.providerSubscriptionId) {
     return ApiErrors.VALIDATION_ERROR(
-      "No Paddle subscription found for this workspace. Subscribe first to manage billing."
+      "No Paddle subscription found for this workspace. Subscribe first to update payment method."
     );
   }
 
-  const { url } = await getCustomerPortalLink({
-    providerCustomerId: subscription.providerCustomerId,
-    subscriptionIds: subscription.providerSubscriptionId
-      ? [subscription.providerSubscriptionId]
-      : undefined,
-    preferUpdatePaymentMethod: mode === "update_payment_method",
+  const { transactionId } = await getUpdatePaymentMethodTransaction({
+    providerSubscriptionId: subscription.providerSubscriptionId,
   });
 
   await writeAuditLog({
@@ -65,8 +51,8 @@ export const POST = withErrorHandler(async (req: Request) => {
     tenantId,
     action: "tenant.billing.portal_accessed",
     targetType: "Subscription",
-    metadata: { mode },
+    metadata: { mode: "update_payment_method_overlay" },
   });
 
-  return apiSuccess({ url });
+  return apiSuccess({ transactionId });
 });

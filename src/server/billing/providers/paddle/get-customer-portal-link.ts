@@ -15,12 +15,15 @@ function getApiKey(): string {
  * Create customer portal session (POST /customers/{customer_id}/portal-sessions).
  * Official API: https://developer.paddle.com/api-reference/customer-portals/create-customer-portal-session
  * Returns the authenticated portal URL from response data.urls.
+ * When preferUpdatePaymentMethod is true, returns update payment method URL when available.
  */
 export async function getCustomerPortalLink(params: {
   providerCustomerId: string;
   subscriptionIds?: string[];
+  /** When true, prefer update_subscription_payment_method URL for "Change payment method" flow. */
+  preferUpdatePaymentMethod?: boolean;
 }): Promise<{ url: string }> {
-  const { providerCustomerId, subscriptionIds } = params;
+  const { providerCustomerId, subscriptionIds, preferUpdatePaymentMethod } = params;
   const res = await fetch(
     `${PADDLE_API_BASE}/customers/${encodeURIComponent(providerCustomerId)}/portal-sessions`,
     {
@@ -53,11 +56,15 @@ export async function getCustomerPortalLink(params: {
   };
   const d = json?.data;
   let url: string | null = null;
-  if (d?.urls?.general?.overview) url = d.urls.general.overview;
-  else if (d?.urls?.subscriptions?.[0]?.update_subscription_payment_method)
+  if (preferUpdatePaymentMethod && d?.urls?.subscriptions?.[0]?.update_subscription_payment_method) {
     url = d.urls.subscriptions[0].update_subscription_payment_method;
-  else if (d?.urls?.subscriptions?.[0]?.cancel_subscription)
+  } else if (d?.urls?.general?.overview) {
+    url = d.urls.general.overview;
+  } else if (d?.urls?.subscriptions?.[0]?.update_subscription_payment_method) {
+    url = d.urls.subscriptions[0].update_subscription_payment_method;
+  } else if (d?.urls?.subscriptions?.[0]?.cancel_subscription) {
     url = d.urls.subscriptions[0].cancel_subscription;
+  }
   if (!url || typeof url !== "string") {
     throw new Error(
       "Paddle Create Customer Portal Session: missing url in response (data.urls.general.overview or data.urls.subscriptions)"

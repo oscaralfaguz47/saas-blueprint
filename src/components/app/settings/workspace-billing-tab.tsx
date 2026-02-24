@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import Script from "next/script";
 import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useApiFetch } from "@/hooks/use-api-fetch";
@@ -15,7 +16,6 @@ import {
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import {
   IN_APP_PLAN_CATALOG,
   formatPriceMonthly,
@@ -24,18 +24,11 @@ import {
   type PlanCode,
   type InAppPlanItem,
 } from "@/lib/billing/plan-catalog";
-
 import { useSession } from "next-auth/react";
-import {
-  getCountryRule,
-  isPostalCodeRequiredForCheckout,
-  getPostalCodeRuleForCheckout,
-  AE_REGION_OPTIONS,
-  isAERegionRequiredForCheckout,
-} from "@/lib/billing/country-rules";
-import { getCheckoutCountryOptions } from "@/lib/countries";
-import { SearchableSelect } from "@/components/ui/searchable-select";
-import { IconAlertCircle } from "@/components/ui/icons";
+
+const PADDLE_SCRIPT_URL = "https://cdn.paddle.com/paddle/v2/paddle.js";
+const CHECKOUT_SUCCESS_REDIRECT =
+  "/app/settings/workspace?tab=billing&billing=updated";
 
 type BillingSummary = {
   planCode: string;
@@ -64,18 +57,12 @@ const PLAN_LABELS: Record<string, string> = {
   pro: "Pro",
 };
 
-/** Max lengths and messages aligned with checkout API validation. */
-const CHECKOUT_FIELD_LIMITS: Record<string, { max: number; message: string }> = {
-  contactName: { max: 200, message: "Contact name must be 200 characters or less." },
-  contactEmail: { max: 191, message: "Email must be 191 characters or less." },
-  billingCountryCode: { max: 2, message: "Please select your country." },
-  billingPostalCode: { max: 20, message: "Postal code must be 20 characters or less." },
-  billingRegion: { max: 80, message: "Region must be 80 characters or less." },
-  billingCity: { max: 120, message: "City must be 120 characters or less." },
-  billingFirstLine: { max: 200, message: "Address line 1 must be 200 characters or less." },
-  billingSecondLine: { max: 200, message: "Address line 2 must be 200 characters or less." },
-  companyName: { max: 200, message: "Company name must be 200 characters or less." },
-  taxIdentifier: { max: 80, message: "Tax/VAT number must be 80 characters or less." },
+type BillingTransactionItem = {
+  id: string;
+  billedAt: string;
+  status: string;
+  total: { cents: number; currency: string };
+  invoiceUrl?: string;
 };
 
 function formatPeriod(start: string, end: string): string {
@@ -100,7 +87,7 @@ function formatDate(iso: string): string {
   }
 }
 
-/** Derived UI state from summary (subscription state → UI mapping). */
+/** Derived UI state from summary (subscription state ? UI mapping). */
 function useBillingState(summary: BillingSummary | null) {
   if (!summary) {
     return {
@@ -171,23 +158,9 @@ export function WorkspaceBillingTab() {
   } | null>(null);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [contactName, setContactName] = useState("");
-  const [contactEmail, setContactEmail] = useState("");
-  const [checkoutValidationErrors, setCheckoutValidationErrors] = useState<Record<string, string>>({});
-  const [submitted, setSubmitted] = useState(false);
-  const [touched, setTouched] = useState<Record<string, boolean>>({});
-  const [showBillingAddress, setShowBillingAddress] = useState(false);
-  const [billingCountryCode, setBillingCountryCode] = useState("");
-  const [billingPostalCode, setBillingPostalCode] = useState("");
-  const [billingRegion, setBillingRegion] = useState("");
-  const [billingCity, setBillingCity] = useState("");
-  const [billingFirstLine, setBillingFirstLine] = useState("");
-  const [billingSecondLine, setBillingSecondLine] = useState("");
-  const [businessToggle, setBusinessToggle] = useState(false);
-  const [companyName, setCompanyName] = useState("");
-  const [taxIdentifier, setTaxIdentifier] = useState("");
-  const [taxValidationError, setTaxValidationError] = useState<string | null>(null);
-  const [countryMismatch, setCountryMismatch] = useState(false);
+  const [transactions, setTransactions] = useState<BillingTransactionItem[]>([]);
+  const [transactionsLoading, setTransactionsLoading] = useState(false);
+  const [paddleReady, setPaddleReady] = useState(false);
   const [postCheckoutState, setPostCheckoutState] = useState<
     "idle" | "polling" | "resolved" | "timeout"
   >("idle");
@@ -201,117 +174,10 @@ export function WorkspaceBillingTab() {
   const toastRef = useRef(toast);
   toastRef.current = toast;
   const pathname = usePathname();
-
-  const billingCountryOptions = getCheckoutCountryOptions();
-
-  const getCurrentError = useCallback(
-    (fieldKey: string): string | null => {
-      const limits = CHECKOUT_FIELD_LIMITS[fieldKey];
-      switch (fieldKey) {
-        case "contactName": {
-          if (!contactName.trim()) return "Contact name is required.";
-          if (limits && contactName.length > limits.max) return limits.message;
-          return null;
-        }
-        case "contactEmail": {
-          if (!contactEmail.trim()) return "Contact email is required.";
-          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail.trim())) return "Please enter a valid email address.";
-          if (limits && contactEmail.length > limits.max) return limits.message;
-          return null;
-        }
-        case "billingCountryCode":
-          return !billingCountryCode?.trim() ? "Please select your country." : null;
-        case "billingCity":
-          if (businessToggle && !billingCity?.trim()) return "City is required when buying as a company.";
-          if (limits && (billingCity?.length ?? 0) > limits.max) return limits.message;
-          return null;
-        case "billingFirstLine":
-          if (businessToggle && !billingFirstLine?.trim()) return "Address line 1 is required when buying as a company.";
-          if (limits && (billingFirstLine?.length ?? 0) > limits.max) return limits.message;
-          return null;
-        case "billingPostalCode": {
-          if (!isPostalCodeRequiredForCheckout(billingCountryCode)) return null;
-          if (!billingPostalCode?.trim()) return "Postal code is required for this country.";
-          const postalRule = getPostalCodeRuleForCheckout(billingCountryCode);
-          if (postalRule && !postalRule.pattern.test(billingPostalCode.trim())) return postalRule.message;
-          if (postalRule && billingPostalCode.length > postalRule.maxLength) return postalRule.message;
-          return null;
-        }
-        case "billingRegion": {
-          if (isAERegionRequiredForCheckout(billingCountryCode)) {
-            if (!billingRegion?.trim()) return "Please select a region.";
-            const validValues = new Set(AE_REGION_OPTIONS.map((o) => o.value));
-            if (!validValues.has(billingRegion.trim())) return "Please select a region.";
-            return null;
-          }
-          if (businessToggle && !billingRegion?.trim()) return "Region/State is required when buying as a company.";
-          if (limits && (billingRegion?.length ?? 0) > limits.max) return limits.message;
-          return null;
-        }
-        case "billingSecondLine":
-          if (limits && (billingSecondLine?.length ?? 0) > limits.max) return limits.message;
-          return null;
-        case "companyName": {
-          if (!businessToggle) return null;
-          if (!companyName?.trim()) return "Company name is required for business purchases.";
-          if (limits && companyName.length > limits.max) return limits.message;
-          return null;
-        }
-        case "taxIdentifier":
-          if (limits && (taxIdentifier?.length ?? 0) > limits.max) return limits.message;
-          return null;
-        default:
-          return null;
-      }
-    },
-    [
-      contactName,
-      contactEmail,
-      billingCountryCode,
-      billingPostalCode,
-      billingRegion,
-      billingCity,
-      billingFirstLine,
-      billingSecondLine,
-      showBillingAddress,
-      businessToggle,
-      companyName,
-    ]
-  );
-
-  const showError = useCallback(
-    (fieldKey: string) => {
-      const error = checkoutValidationErrors[fieldKey] ?? getCurrentError(fieldKey);
-      return (submitted || !!touched[fieldKey]) && !!error;
-    },
-    [submitted, touched, checkoutValidationErrors, getCurrentError]
-  );
-
-  const getErrorMessage = useCallback(
-    (fieldKey: string): string | null => {
-      const msg = checkoutValidationErrors[fieldKey] ?? getCurrentError(fieldKey);
-      return (submitted || !!touched[fieldKey]) ? msg : null;
-    },
-    [submitted, touched, checkoutValidationErrors, getCurrentError]
-  );
-
-  const markTouched = useCallback((fieldKey: string) => {
-    setTouched((prev) => ({ ...prev, [fieldKey]: true }));
-  }, []);
-
-  /** Clear API-originated error for a field when the user edits it so the message hides once the field is valid. */
-  const clearCheckoutFieldError = useCallback((fieldKey: string) => {
-    setCheckoutValidationErrors((prev) => {
-      if (!(fieldKey in prev)) return prev;
-      const next = { ...prev };
-      delete next[fieldKey];
-      return next;
-    });
-  }, []);
-
-  const hasAnyBillingField =
-    !!(billingRegion?.trim() || billingCity?.trim() || billingFirstLine?.trim() || billingSecondLine?.trim());
-  const billingSectionActive = showBillingAddress || businessToggle || hasAnyBillingField;
+  const clientToken =
+    typeof process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN === "string"
+      ? process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN.trim()
+      : null;
 
   const billingState = useBillingState(summary);
   const billingParam = searchParams.get("billing");
@@ -371,6 +237,52 @@ export function WorkspaceBillingTab() {
     [apiFetch, toast]
   );
 
+  const fetchTransactions = useCallback(async () => {
+    setTransactionsLoading(true);
+    try {
+      const res = await apiFetch("/api/billing/transactions", {
+        showToastOnError: false,
+      });
+      if (!res.ok) {
+        setTransactions([]);
+        return;
+      }
+      const json = await res.json();
+      const list = (json.data as { transactions?: BillingTransactionItem[] })?.transactions ?? [];
+      setTransactions(Array.isArray(list) ? list : []);
+    } catch {
+      setTransactions([]);
+    } finally {
+      setTransactionsLoading(false);
+    }
+  }, [apiFetch]);
+
+  const handlePaddleScriptLoad = useCallback(() => {
+    const Paddle = typeof window !== "undefined" ? window.Paddle : undefined;
+    if (!Paddle || !clientToken) {
+      setPaddleReady(true);
+      return;
+    }
+    try {
+      if (clientToken.startsWith("test_") && Paddle.Environment?.set) {
+        Paddle.Environment.set("sandbox");
+      }
+      Paddle.Initialize({
+        token: clientToken,
+        eventCallback: (data: { name?: string }) => {
+          if (data.name === "checkout.completed") {
+            window.location.href = CHECKOUT_SUCCESS_REDIRECT;
+          }
+          // checkout.closed: user closed overlay (e.g. X) ? do nothing, no redirect
+        },
+        checkout: { settings: { displayMode: "overlay", theme: "light", locale: "en", showAddTaxId: true } },
+      });
+      setPaddleReady(true);
+    } catch {
+      setPaddleReady(true);
+    }
+  }, [clientToken]);
+
   useEffect(() => {
     if (billingParam === "updated") {
       setLoading(false);
@@ -384,6 +296,11 @@ export function WorkspaceBillingTab() {
     fetchSummary(controller.signal);
     return () => controller.abort();
   }, [fetchSummary, billingParam]);
+
+  useEffect(() => {
+    if (!summary) return;
+    fetchTransactions();
+  }, [summary, fetchTransactions]);
 
   useEffect(() => {
     if (billingParam !== "canceled") {
@@ -509,242 +426,140 @@ export function WorkspaceBillingTab() {
     try {
       const res = await apiFetch("/api/billing/paddle/portal", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "general" }),
         showToastOnError: true,
       });
       if (!res.ok) return;
       const json = await res.json();
       const url = (json.data as { url?: string })?.url;
-      if (url) window.location.href = url;
+      if (url) window.open(url, "_blank");
     } finally {
       setPortalLoading(false);
     }
   }, [apiFetch]);
+
+  const handleChangePaymentMethod = useCallback(async () => {
+    setPortalLoading(true);
+    try {
+      const res = await apiFetch("/api/billing/paddle/update-payment-method-transaction", {
+        method: "POST",
+        showToastOnError: true,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+      const transactionId = (json.data as { transactionId?: string })?.transactionId;
+      if (!transactionId) {
+        toast.addToast("error", "Could not open payment method update. Please try again.");
+        return;
+      }
+      const Paddle = typeof window !== "undefined" ? (window as { Paddle?: { Checkout?: { open: (opts: { transactionId: string; settings?: { displayMode: string } }) => void } } }).Paddle : undefined;
+      if (Paddle?.Checkout?.open) {
+        Paddle.Checkout.open({
+          transactionId,
+          settings: { displayMode: "overlay" },
+        });
+      } else {
+        toast.addToast("error", "Payment window could not open. Refresh the page and try again.");
+      }
+    } finally {
+      setPortalLoading(false);
+    }
+  }, [apiFetch, toast]);
+
+  const handleStartUpgradeCheckout = useCallback(
+    async (planCode: PlanCode) => {
+      setCheckoutLoading(true);
+      try {
+        const res = await apiFetch("/api/billing/paddle/checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ planCode }),
+          showToastOnError: true,
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        const transactionId = (json.data as { transactionId?: string })?.transactionId;
+        if (!transactionId) {
+          toast.addToast("error", "Checkout could not be started. Please try again.");
+          return;
+        }
+        try {
+          sessionStorage.setItem("billing:postCheckoutPlan", planCode);
+        } catch {
+          // ignore
+        }
+        const Paddle = typeof window !== "undefined" ? (window as { Paddle?: { Checkout?: { open: (opts: { transactionId: string; settings?: { displayMode: string } }) => void } } }).Paddle : undefined;
+        if (Paddle?.Checkout?.open) {
+          Paddle.Checkout.open({
+            transactionId,
+            settings: { displayMode: "overlay" },
+          });
+        } else {
+          toast.addToast("error", "Payment window could not open. Refresh the page and try again.");
+        }
+      } finally {
+        setCheckoutLoading(false);
+      }
+    },
+    [apiFetch, toast]
+  );
 
   const handleSelectPlan = useCallback(
     (plan: InAppPlanItem) => {
       const current = billingState.currentPlan;
       if (plan.code === current) return;
       if (isUpgrade(current, plan.code)) {
-        setConfirmTarget({ plan, direction: "upgrade" });
         setChangePlanOpen(false);
-        setConfirmPlanOpen(true);
+        void handleStartUpgradeCheckout(plan.code);
       } else if (isDowngrade(current, plan.code)) {
         setConfirmTarget({ plan, direction: "downgrade" });
         setChangePlanOpen(false);
         setConfirmPlanOpen(true);
       }
     },
-    [billingState.currentPlan]
+    [billingState.currentPlan, handleStartUpgradeCheckout]
   );
 
-  /** Order of field IDs for scroll-to-first-error. */
-  const CHECKOUT_FIELD_ORDER = [
-    "checkout-contact-name",
-    "checkout-contact-email",
-    "billing-country",
-    "billing-postal",
-    "billing-region",
-    "billing-city",
-    "billing-line1",
-    "billing-line2",
-    "billing-company",
-    "billing-tax",
-  ] as const;
-
-  const validateCheckout = useCallback((): { valid: boolean; errors: Record<string, string> } => {
-    const err: Record<string, string> = {};
-    if (!contactName.trim()) err.contactName = "Contact name is required.";
-    else if ((CHECKOUT_FIELD_LIMITS.contactName?.max ?? 0) > 0 && contactName.length > CHECKOUT_FIELD_LIMITS.contactName.max)
-      err.contactName = CHECKOUT_FIELD_LIMITS.contactName.message;
-
-    if (!contactEmail.trim()) err.contactEmail = "Contact email is required.";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail.trim())) err.contactEmail = "Please enter a valid email address.";
-    else if ((CHECKOUT_FIELD_LIMITS.contactEmail?.max ?? 0) > 0 && contactEmail.length > CHECKOUT_FIELD_LIMITS.contactEmail.max)
-      err.contactEmail = CHECKOUT_FIELD_LIMITS.contactEmail.message;
-
-    if (!billingCountryCode?.trim()) err.billingCountryCode = "Please select your country.";
-
-    const hasAnyBillingField =
-      !!(billingRegion?.trim() || billingCity?.trim() || billingFirstLine?.trim() || billingSecondLine?.trim());
-    const billingSectionActive = showBillingAddress || businessToggle || hasAnyBillingField;
-
-    if (isPostalCodeRequiredForCheckout(billingCountryCode) && !billingPostalCode?.trim()) err.billingPostalCode = "Postal code is required for this country.";
-    else if (isPostalCodeRequiredForCheckout(billingCountryCode) && billingPostalCode?.trim()) {
-      const postalRule = getPostalCodeRuleForCheckout(billingCountryCode);
-      if (postalRule && !postalRule.pattern.test(billingPostalCode.trim())) err.billingPostalCode = postalRule.message;
-      else if (postalRule && billingPostalCode.length > postalRule.maxLength) err.billingPostalCode = postalRule.message;
-    }
-    if (isAERegionRequiredForCheckout(billingCountryCode)) {
-      if (!billingRegion?.trim()) err.billingRegion = "Please select a region.";
-      else {
-        const validValues = new Set(AE_REGION_OPTIONS.map((o) => o.value));
-        if (!validValues.has(billingRegion.trim())) err.billingRegion = "Please select a region.";
-      }
-    } else if (billingSectionActive && (CHECKOUT_FIELD_LIMITS.billingRegion?.max ?? 0) > 0 && (billingRegion?.length ?? 0) > CHECKOUT_FIELD_LIMITS.billingRegion.max) {
-      err.billingRegion = CHECKOUT_FIELD_LIMITS.billingRegion.message;
-    }
-
-    if (businessToggle) {
-      if (!isAERegionRequiredForCheckout(billingCountryCode) && !billingRegion?.trim())
-        err.billingRegion = "Region/State is required when buying as a company.";
-      if (!billingCity?.trim()) err.billingCity = "City is required when buying as a company.";
-      if (!billingFirstLine?.trim()) err.billingFirstLine = "Address line 1 is required when buying as a company.";
-    }
-
-    if (billingSectionActive) {
-      if ((CHECKOUT_FIELD_LIMITS.billingCity?.max ?? 0) > 0 && (billingCity?.length ?? 0) > CHECKOUT_FIELD_LIMITS.billingCity.max)
-        err.billingCity = err.billingCity ?? CHECKOUT_FIELD_LIMITS.billingCity.message;
-      if ((CHECKOUT_FIELD_LIMITS.billingFirstLine?.max ?? 0) > 0 && (billingFirstLine?.length ?? 0) > CHECKOUT_FIELD_LIMITS.billingFirstLine.max)
-        err.billingFirstLine = err.billingFirstLine ?? CHECKOUT_FIELD_LIMITS.billingFirstLine.message;
-      if (!isAERegionRequiredForCheckout(billingCountryCode) && (CHECKOUT_FIELD_LIMITS.billingRegion?.max ?? 0) > 0 && (billingRegion?.length ?? 0) > CHECKOUT_FIELD_LIMITS.billingRegion.max)
-        err.billingRegion = err.billingRegion ?? CHECKOUT_FIELD_LIMITS.billingRegion.message;
-      if ((CHECKOUT_FIELD_LIMITS.billingSecondLine?.max ?? 0) > 0 && (billingSecondLine?.length ?? 0) > CHECKOUT_FIELD_LIMITS.billingSecondLine.max)
-        err.billingSecondLine = CHECKOUT_FIELD_LIMITS.billingSecondLine.message;
-    }
-
-    if (businessToggle) {
-      if (!companyName?.trim()) err.companyName = "Company name is required for business purchases.";
-      else if ((CHECKOUT_FIELD_LIMITS.companyName?.max ?? 0) > 0 && companyName.length > CHECKOUT_FIELD_LIMITS.companyName.max)
-        err.companyName = CHECKOUT_FIELD_LIMITS.companyName.message;
-    }
-    if ((CHECKOUT_FIELD_LIMITS.taxIdentifier?.max ?? 0) > 0 && (taxIdentifier?.length ?? 0) > CHECKOUT_FIELD_LIMITS.taxIdentifier.max)
-      err.taxIdentifier = CHECKOUT_FIELD_LIMITS.taxIdentifier.message;
-
-    setCheckoutValidationErrors(err);
-    return { valid: Object.keys(err).length === 0, errors: err };
-  }, [
-    contactName,
-    contactEmail,
-    showBillingAddress,
-    billingCountryCode,
-    billingPostalCode,
-    billingRegion,
-    billingCity,
-    billingFirstLine,
-    billingSecondLine,
-    businessToggle,
-    companyName,
-    taxIdentifier,
-  ]);
-
-  const errorKeyToFieldId: Record<string, string> = {
-    contactName: "checkout-contact-name",
-    contactEmail: "checkout-contact-email",
-    billingCountryCode: "billing-country",
-    billingPostalCode: "billing-postal",
-    billingRegion: "billing-region",
-    billingCity: "billing-city",
-    billingFirstLine: "billing-line1",
-    billingSecondLine: "billing-line2",
-    companyName: "billing-company",
-    taxIdentifier: "billing-tax",
-  };
-
   const handleConfirmUpgrade = useCallback(
-    async (skipTaxId?: boolean) => {
+    async () => {
       if (!confirmTarget || confirmTarget.direction !== "upgrade") return;
-      const result = validateCheckout();
-      if (!skipTaxId && !result.valid) {
-        setSubmitted(true);
-        const firstErrorKey = CHECKOUT_FIELD_ORDER.find((id) => {
-          const key = Object.keys(errorKeyToFieldId).find((k) => errorKeyToFieldId[k] === id);
-          return key && result.errors[key];
-        });
-        const fieldId = firstErrorKey ?? (Object.keys(result.errors)[0] ? errorKeyToFieldId[Object.keys(result.errors)[0]] : null);
-        const el = fieldId ? document.getElementById(fieldId) : null;
-        if (el) {
-          el.scrollIntoView({ behavior: "smooth", block: "center" });
-          if ("focus" in el && typeof (el as HTMLInputElement).focus === "function") (el as HTMLInputElement).focus();
-        }
-        return;
-      }
-      setTaxValidationError(null);
-      setCheckoutValidationErrors({});
-      setSubmitted(false);
       setCheckoutLoading(true);
       try {
-        const billing = {
-          address: {
-            countryCode: billingCountryCode?.trim() ?? "",
-            city: billingCity?.trim() ?? "",
-            firstLine: billingFirstLine?.trim() ?? "",
-            postalCode: billingPostalCode?.trim() || undefined,
-            region: billingRegion?.trim() || undefined,
-            secondLine: billingSecondLine?.trim() || undefined,
-          },
-          businessToggle: businessToggle && !!companyName.trim(),
-          companyName: companyName.trim() || undefined,
-          taxIdentifier: taxIdentifier.trim() || undefined,
-        };
         const res = await apiFetch("/api/billing/paddle/checkout", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            planCode: confirmTarget.plan.code,
-            contact: { name: contactName.trim(), email: contactEmail.trim() },
-            billing,
-            ...(skipTaxId && { skipTaxId: true }),
-          }),
-          showToastOnError: !skipTaxId,
+          body: JSON.stringify({ planCode: confirmTarget.plan.code }),
+          showToastOnError: true,
         });
         const json = await res.json().catch(() => ({}));
-        const errCode = (json as { details?: { code?: string }; error?: string }).details?.code;
-        const errMessage = (json as { message?: string }).message;
-        const fieldErrors = (json as { details?: { fields?: Record<string, string> } }).details?.fields;
-        if (!res.ok && errCode === "TAX_IDENTIFIER_VALIDATION_FAILED") {
-          setTaxValidationError(
-            errMessage ?? "Tax identifier could not be validated for this country. You can continue without it."
-          );
-          return;
-        }
-        if (!res.ok && fieldErrors && Object.keys(fieldErrors).length > 0) {
-          setCheckoutValidationErrors(fieldErrors);
-          setSubmitted(true);
-          const firstErrorKey = CHECKOUT_FIELD_ORDER.find((id) => {
-            const key = Object.keys(errorKeyToFieldId).find((k) => errorKeyToFieldId[k] === id);
-            return key ? fieldErrors[key] : false;
-          });
-          const fieldId =
-            firstErrorKey ??
-            (Object.keys(fieldErrors)[0] ? errorKeyToFieldId[Object.keys(fieldErrors)[0]] : null);
-          const el = fieldId ? document.getElementById(fieldId) : null;
-          if (el) {
-            el.scrollIntoView({ behavior: "smooth", block: "center" });
-            if ("focus" in el && typeof (el as HTMLInputElement).focus === "function")
-              (el as HTMLInputElement).focus();
-          }
-          return;
-        }
         if (!res.ok) return;
-        const url = (json.data as { checkoutUrl?: string })?.checkoutUrl;
-        if (url) {
-          try {
-            sessionStorage.setItem("billing:postCheckoutPlan", confirmTarget.plan.code);
-          } catch {
-            // ignore
-          }
-          window.location.href = url;
+        const transactionId = (json.data as { transactionId?: string })?.transactionId;
+        if (!transactionId) {
+          toast.addToast("error", "Checkout could not be started. Please try again.");
+          return;
+        }
+        try {
+          sessionStorage.setItem("billing:postCheckoutPlan", confirmTarget.plan.code);
+        } catch {
+          // ignore
+        }
+        setConfirmPlanOpen(false);
+        setConfirmTarget(null);
+        const Paddle = typeof window !== "undefined" ? (window as { Paddle?: { Checkout?: { open: (opts: { transactionId: string; settings?: { displayMode: string } }) => void } } }).Paddle : undefined;
+        if (Paddle?.Checkout?.open) {
+          Paddle.Checkout.open({
+            transactionId,
+            settings: { displayMode: "overlay" },
+          });
+        } else {
+          toast.addToast("error", "Payment window could not open. Refresh the page and try again.");
         }
       } finally {
         setCheckoutLoading(false);
       }
     },
-    [
-      confirmTarget,
-      apiFetch,
-      validateCheckout,
-      contactName,
-      contactEmail,
-      billingCountryCode,
-      billingPostalCode,
-      billingRegion,
-      billingCity,
-      billingFirstLine,
-      billingSecondLine,
-      businessToggle,
-      companyName,
-      taxIdentifier,
-    ]
+    [confirmTarget, apiFetch, toast]
   );
 
   const handleConfirmDowngrade = useCallback(async () => {
@@ -772,67 +587,7 @@ export function WorkspaceBillingTab() {
   const closeConfirm = useCallback(() => {
     setConfirmPlanOpen(false);
     setConfirmTarget(null);
-    setTaxValidationError(null);
-    setCheckoutValidationErrors({});
-    setSubmitted(false);
-    setTouched({});
-    setShowBillingAddress(false);
   }, []);
-
-  const loadBillingProfileForCheckout = useCallback(async () => {
-    try {
-      const res = await apiFetch("/api/billing/profile", { showToastOnError: false });
-      if (!res.ok) return;
-      const json = await res.json();
-      const p = (json.data as { contactName?: string; contactEmail?: string; countryCode?: string; postalCode?: string; region?: string; city?: string; firstLine?: string; secondLine?: string; companyName?: string; taxIdentifier?: string; countryMismatch?: boolean } | null);
-      if (p) {
-        if (p.contactName != null && p.contactName.trim() !== "") setContactName(p.contactName);
-        if (p.contactEmail != null && p.contactEmail.trim() !== "") setContactEmail(p.contactEmail);
-        setBillingCountryCode(p.countryCode ?? "");
-        setBillingPostalCode(p.postalCode ?? "");
-        setBillingRegion(p.region ?? "");
-        setBillingCity(p.city ?? "");
-        setBillingFirstLine(p.firstLine ?? "");
-        setBillingSecondLine(p.secondLine ?? "");
-        setCompanyName(p.companyName ?? "");
-        setTaxIdentifier(p.taxIdentifier ?? "");
-        if ((p.companyName ?? "").trim()) setBusinessToggle(true);
-      }
-    } catch {
-      // ignore
-    }
-  }, [apiFetch]);
-
-  useEffect(() => {
-    if (confirmPlanOpen && confirmTarget?.direction === "upgrade") {
-      loadBillingProfileForCheckout();
-    }
-  }, [confirmPlanOpen, confirmTarget?.direction, loadBillingProfileForCheckout]);
-
-  useEffect(() => {
-    if (!confirmPlanOpen || confirmTarget?.direction !== "upgrade" || !session?.user) return;
-    setContactName((prev) => prev.trim() || (session.user?.name ?? ""));
-    setContactEmail((prev) => prev.trim() || (session.user?.email ?? ""));
-  }, [confirmPlanOpen, confirmTarget?.direction, session?.user?.name, session?.user?.email]);
-
-  useEffect(() => {
-    if (loading || error) return;
-    let cancelled = false;
-    apiFetch("/api/billing/profile", { showToastOnError: false })
-      .then((res) => {
-        if (cancelled || !res.ok) return res.json().catch(() => null);
-        return res.json();
-      })
-      .then((json) => {
-        if (cancelled) return;
-        const p = json?.data as { countryMismatch?: boolean } | null;
-        setCountryMismatch(!!p?.countryMismatch);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [loading, error, apiFetch]);
 
   if (loading) {
     return (
@@ -921,6 +676,13 @@ export function WorkspaceBillingTab() {
 
   return (
     <div className="space-y-6">
+      {clientToken && (
+        <Script
+          src={PADDLE_SCRIPT_URL}
+          strategy="afterInteractive"
+          onLoad={handlePaddleScriptLoad}
+        />
+      )}
       <div>
         <h2 className="text-base font-semibold text-(--text-primary)">
           Billing
@@ -930,19 +692,11 @@ export function WorkspaceBillingTab() {
         </p>
       </div>
 
-      {countryMismatch && (
-        <Alert
-          variant="warning"
-          title="Billing country mismatch"
-          description="Your invoice country in Paddle differs from your saved billing address country. Update billing details if needed."
-        />
-      )}
-
-      {/* Post-checkout: finalizing (hides when we transition to resolved or timeout) */}
+      {/* Post-checkout: setting up account (EPIC 4 n8n-style) */}
       {postCheckoutState === "polling" && (
         <Alert
           variant="info"
-          title="Finalizing your subscription…"
+          title="Setting up account?"
           description="We're confirming your plan with the payment provider. This usually takes a few seconds."
         />
       )}
@@ -991,7 +745,7 @@ export function WorkspaceBillingTab() {
             >
               Manage subscription
             </button>
-            {/* TODO: Undo scheduled downgrade — optional; stub or future API */}
+            {/* TODO: Undo scheduled downgrade ? optional; stub or future API */}
           </div>
         </Alert>
       )}
@@ -1007,7 +761,7 @@ export function WorkspaceBillingTab() {
             disabled={portalLoading}
             className="mt-2 inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 text-sm font-medium hover:bg-(--bg-surface-elev) disabled:opacity-50"
           >
-            {portalLoading ? "Loading…" : "Update payment method"}
+            {portalLoading ? "Loading?" : "Update payment method"}
           </button>
         </Alert>
       )}
@@ -1029,7 +783,7 @@ export function WorkspaceBillingTab() {
             disabled={portalLoading}
             className="mt-2 inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) px-3 text-sm font-medium disabled:opacity-50"
           >
-            {portalLoading ? "Loading…" : "Manage subscription"}
+            {portalLoading ? "Loading?" : "Manage subscription"}
           </button>
         </Alert>
       )}
@@ -1103,7 +857,7 @@ export function WorkspaceBillingTab() {
               disabled={portalLoading}
               className="inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
             >
-              {portalLoading ? "Loading…" : "Manage subscription"}
+              {portalLoading ? "Loading?" : "Manage subscription"}
             </button>
           )}
         </CardFooter>
@@ -1161,6 +915,91 @@ export function WorkspaceBillingTab() {
           )}
         </CardContent>
       </CardRoot>
+
+      {/* Transaction history (EPIC 4) */}
+      <CardRoot>
+        <CardHeader>
+          <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">
+            Payments
+          </p>
+        </CardHeader>
+        <CardContent>
+          {transactionsLoading ? (
+            <Skeleton className="h-20 w-full" />
+          ) : transactions.length === 0 ? (
+            <p className="text-sm text-(--text-muted)">No transactions yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-(--border-subtle)">
+                    <th className="pb-2 pr-4 text-left font-medium text-(--text-muted)">Date</th>
+                    <th className="pb-2 pr-4 text-left font-medium text-(--text-muted)">Status</th>
+                    <th className="pb-2 pr-4 text-right font-medium text-(--text-muted)">Amount</th>
+                    <th className="pb-2 text-right font-medium text-(--text-muted)"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {transactions.map((t) => (
+                    <tr key={t.id} className="border-b border-(--border-subtle)">
+                      <td className="py-2 pr-4 text-(--text-primary)">{formatDate(t.billedAt)}</td>
+                      <td className="py-2 pr-4 text-(--text-secondary)">{t.status}</td>
+                      <td className="py-2 pr-4 text-right text-(--text-primary)">
+                        {(t.total.cents / 100).toFixed(2)} {t.total.currency}
+                      </td>
+                      <td className="py-2 text-right">
+                        {t.invoiceUrl ? (
+                          <a
+                            href={t.invoiceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-(--color-primary) underline hover:no-underline"
+                          >
+                            Open
+                          </a>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={handleManageSubscription}
+                            disabled={portalLoading}
+                            className="text-(--color-primary) underline hover:no-underline disabled:opacity-50"
+                          >
+                            View in portal
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </CardRoot>
+
+      {/* Payment method (EPIC 4) */}
+      {(billingState.hasPaidPlan || billingState.isPastDue || billingState.isSuspended) && (
+        <CardRoot>
+          <CardHeader>
+            <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">
+              Payment method
+            </p>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-(--text-muted)">
+              Manage your payment method in the billing portal.
+            </p>
+            <button
+              type="button"
+              onClick={handleChangePaymentMethod}
+              disabled={portalLoading}
+              className="mt-3 inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
+            >
+              {portalLoading ? "Loading?" : "Change payment method"}
+            </button>
+          </CardContent>
+        </CardRoot>
+      )}
 
       {/* Change plan dialog */}
       <Dialog
@@ -1241,7 +1080,7 @@ export function WorkspaceBillingTab() {
                     <span className="text-xs text-(--text-muted)">
                       {billingState.isPastDue || billingState.isSuspended
                         ? "Update payment method to change plan."
-                        : "—"}
+                        : "?"}
                     </span>
                   )}
                 </div>
@@ -1251,7 +1090,7 @@ export function WorkspaceBillingTab() {
         </div>
       </Dialog>
 
-      {/* Confirm plan change dialog — overlay close prevented to avoid accidental dismiss */}
+      {/* Confirm plan change dialog ? overlay close prevented to avoid accidental dismiss */}
       <Dialog
         open={confirmPlanOpen}
         onClose={closeConfirm}
@@ -1270,413 +1109,37 @@ export function WorkspaceBillingTab() {
             {confirmTarget.direction === "upgrade" ? (
               <>
                 <p className="text-sm text-(--text-muted)">
-                  You&apos;re upgrading to {confirmTarget.plan.name} —{" "}
-                  {formatPriceMonthly(confirmTarget.plan.priceMonthlyCents)}
-                  /month. You can update billing details anytime.
+                  You&apos;re upgrading to {confirmTarget.plan.name} ? {formatPriceMonthly(confirmTarget.plan.priceMonthlyCents)}/month. You&apos;ll enter your payment details in the next step.
                 </p>
-
-                {taxValidationError && (
-                  <Alert
-                    variant="warning"
-                    title="Tax identifier could not be validated"
-                    description={taxValidationError}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={handleConfirmUpgrade}
+                    disabled={checkoutLoading}
+                    className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-50"
                   >
-                    <button
-                      type="button"
-                      onClick={() => handleConfirmUpgrade(true)}
-                      disabled={checkoutLoading}
-                      className="mt-2 inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
-                    >
-                      Continue without Tax ID
-                    </button>
-                  </Alert>
-                )}
-
-                {!taxValidationError && (
-                  <div className="space-y-3">
-                    {/* 1) Contact details — required */}
-                    <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface) p-3 text-sm">
-                      <p className="mb-1 font-medium text-(--text-primary)">Contact details</p>
-                      <p className="mb-3 text-xs text-(--text-muted)">
-                        Used for receipts and account ownership.
-                      </p>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div>
-                          <label htmlFor="checkout-contact-name" className="mb-1 block text-(--text-muted)">
-                            Contact name <span className="ml-0.5 text-destructive">*</span>
-                          </label>
-                          <Input
-                            id="checkout-contact-name"
-                            value={contactName}
-                            onChange={(e) => {
-                              setContactName(e.target.value);
-                              clearCheckoutFieldError("contactName");
-                            }}
-                            onBlur={() => markTouched("contactName")}
-                            placeholder="Your name"
-                            aria-invalid={showError("contactName")}
-                            aria-describedby={showError("contactName") ? "checkout-contact-name-error" : undefined}
-                            className={showError("contactName") ? "border-destructive focus-visible:ring-2 focus-visible:ring-destructive/40" : undefined}
-                          />
-                          {showError("contactName") && (
-                            <div id="checkout-contact-name-error" role="alert" className="mt-1 flex items-start gap-1 text-xs text-destructive">
-                              <IconAlertCircle className="mt-[2px] h-3.5 w-3.5 shrink-0" />
-                              <span>{getErrorMessage("contactName")}</span>
-                            </div>
-                          )}
-                        </div>
-                        <div>
-                          <label htmlFor="checkout-contact-email" className="mb-1 block text-(--text-muted)">
-                            Email <span className="ml-0.5 text-destructive">*</span>
-                          </label>
-                          <Input
-                            id="checkout-contact-email"
-                            type="email"
-                            value={contactEmail}
-                            onChange={(e) => {
-                              setContactEmail(e.target.value);
-                              clearCheckoutFieldError("contactEmail");
-                            }}
-                            onBlur={() => markTouched("contactEmail")}
-                            placeholder="you@example.com"
-                            aria-invalid={showError("contactEmail")}
-                            aria-describedby={showError("contactEmail") ? "checkout-contact-email-error" : undefined}
-                            className={showError("contactEmail") ? "border-destructive focus-visible:ring-2 focus-visible:ring-destructive/40" : undefined}
-                          />
-                          {showError("contactEmail") && (
-                            <div id="checkout-contact-email-error" role="alert" className="mt-1 flex items-start gap-1 text-xs text-destructive">
-                              <IconAlertCircle className="mt-[2px] h-3.5 w-3.5 shrink-0" />
-                              <span>{getErrorMessage("contactEmail")}</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* 2) Country and Postal code (postal on new line, shown/required only when country requires it) */}
-                    <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface) p-3 text-sm">
-                      <div>
-                        <label htmlFor="billing-country" className="mb-1 block text-(--text-muted)">
-                          Country <span className="ml-0.5 text-destructive">*</span>
-                        </label>
-                        <p className="mb-2 text-xs text-(--text-muted)">
-                          Required to calculate taxes and VAT where applicable.
-                        </p>
-                        <SearchableSelect
-                          id="billing-country"
-                          options={billingCountryOptions}
-                          value={billingCountryCode}
-                          onChange={(v) => {
-                            setBillingCountryCode(v);
-                            clearCheckoutFieldError("billingCountryCode");
-                            clearCheckoutFieldError("billingPostalCode");
-                            clearCheckoutFieldError("billingRegion");
-                            markTouched("billingCountryCode");
-                          }}
-                          placeholder="Select country"
-                          aria-label="Billing country"
-                          className={showError("billingCountryCode") ? "[&_button]:border-destructive [&_button]:focus-visible:ring-2 [&_button]:focus-visible:ring-destructive/40" : ""}
-                        />
-                        {showError("billingCountryCode") && (
-                          <div id="billing-country-error" role="alert" className="mt-1 flex items-start gap-1 text-xs text-destructive">
-                            <IconAlertCircle className="mt-[2px] h-3.5 w-3.5 shrink-0" />
-                            <span>{getErrorMessage("billingCountryCode")}</span>
-                          </div>
-                        )}
-                      </div>
-                      {isAERegionRequiredForCheckout(billingCountryCode) && (
-                        <div className="mt-3">
-                          <label htmlFor="billing-region" className="mb-1 block text-(--text-muted)">
-                            Region <span className="ml-0.5 text-destructive">*</span>
-                          </label>
-                          <SearchableSelect
-                            id="billing-region"
-                            options={AE_REGION_OPTIONS}
-                            value={billingRegion}
-                            onChange={(v) => {
-                              setBillingRegion(v);
-                              clearCheckoutFieldError("billingRegion");
-                            }}
-                            placeholder="Select region"
-                            aria-label="Region (UAE)"
-                            className={showError("billingRegion") ? "[&_button]:border-destructive [&_button]:focus-visible:ring-2 [&_button]:focus-visible:ring-destructive/40" : ""}
-                          />
-                          {showError("billingRegion") && (
-                            <div id="billing-region-error" role="alert" className="mt-1 flex items-start gap-1 text-xs text-destructive">
-                              <IconAlertCircle className="mt-[2px] h-3.5 w-3.5 shrink-0" />
-                              <span>{getErrorMessage("billingRegion")}</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      {isPostalCodeRequiredForCheckout(billingCountryCode) && (
-                        <div className="mt-3">
-                          <label htmlFor="billing-postal" className="mb-1 block text-(--text-muted)">
-                            Postal code <span className="ml-0.5 text-destructive">*</span>
-                          </label>
-                          <Input
-                            id="billing-postal"
-                            value={billingPostalCode}
-                            onChange={(e) => {
-                              setBillingPostalCode(e.target.value);
-                              clearCheckoutFieldError("billingPostalCode");
-                            }}
-                            onBlur={() => markTouched("billingPostalCode")}
-                            placeholder={
-                              billingCountryCode?.trim()?.toUpperCase() === "US" || billingCountryCode?.trim()?.toUpperCase() === "CA"
-                                ? "5 digits"
-                                : "Up to 10 alphanumeric"
-                            }
-                            maxLength={getPostalCodeRuleForCheckout(billingCountryCode)?.maxLength ?? 20}
-                            aria-invalid={showError("billingPostalCode")}
-                            aria-describedby={showError("billingPostalCode") ? "billing-postal-error" : undefined}
-                            className={showError("billingPostalCode") ? "border-destructive focus-visible:ring-2 focus-visible:ring-destructive/40" : undefined}
-                          />
-                          {showError("billingPostalCode") && (
-                            <div id="billing-postal-error" role="alert" className="mt-1 flex items-start gap-1 text-xs text-destructive">
-                              <IconAlertCircle className="mt-[2px] h-3.5 w-3.5 shrink-0" />
-                              <span>{getErrorMessage("billingPostalCode")}</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* 3) Billing address — optional, collapsible; shown when company checked or any field has data */}
-                    <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface) text-sm">
-                      <button
-                        type="button"
-                        onClick={() => setShowBillingAddress((v) => !v)}
-                        className="flex w-full items-center justify-between p-3 text-left font-medium text-(--text-primary) hover:bg-(--bg-surface-elev)"
-                      >
-                        {billingSectionActive ? "Hide billing address (optional)" : "Add billing address for invoices (optional)"}
-                      </button>
-                      {!billingSectionActive && (
-                        <p className="border-t border-(--border-subtle) px-3 pb-3 pt-1 text-xs text-(--text-muted)">
-                          Only needed if you want invoice details stored for this workspace.
-                        </p>
-                      )}
-                      {billingSectionActive && (
-                        <div className="border-t border-(--border-subtle) p-3">
-                          <div className="grid gap-3">
-                            {!isAERegionRequiredForCheckout(billingCountryCode) && (
-                              <div>
-                                <label htmlFor="billing-region" className="mb-1 block text-(--text-muted)">
-                                  Region / State
-                                </label>
-                                <Input
-                                  id="billing-region"
-                                  value={billingRegion}
-                                  onChange={(e) => {
-                                    setBillingRegion(e.target.value);
-                                    clearCheckoutFieldError("billingRegion");
-                                  }}
-                                  onBlur={() => markTouched("billingRegion")}
-                                  placeholder="State or region"
-                                  aria-invalid={showError("billingRegion")}
-                                  aria-describedby={showError("billingRegion") ? "billing-region-error" : undefined}
-                                  className={showError("billingRegion") ? "border-destructive focus-visible:ring-2 focus-visible:ring-destructive/40" : undefined}
-                                />
-                                {showError("billingRegion") && (
-                                  <div id="billing-region-error" role="alert" className="mt-1 flex items-start gap-1 text-xs text-destructive">
-                                    <IconAlertCircle className="mt-[2px] h-3.5 w-3.5 shrink-0" />
-                                    <span>{getErrorMessage("billingRegion")}</span>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                            <div>
-                              <label htmlFor="billing-city" className="mb-1 block text-(--text-muted)">
-                                City
-                              </label>
-                              <Input
-                                id="billing-city"
-                                value={billingCity}
-                                onChange={(e) => {
-                                  setBillingCity(e.target.value);
-                                  clearCheckoutFieldError("billingCity");
-                                }}
-                                onBlur={() => markTouched("billingCity")}
-                                placeholder="City"
-                                aria-invalid={showError("billingCity")}
-                                aria-describedby={showError("billingCity") ? "billing-city-error" : undefined}
-                                className={showError("billingCity") ? "border-destructive focus-visible:ring-2 focus-visible:ring-destructive/40" : undefined}
-                              />
-                              {showError("billingCity") && (
-                                <div id="billing-city-error" role="alert" className="mt-1 flex items-start gap-1 text-xs text-destructive">
-                                  <IconAlertCircle className="mt-[2px] h-3.5 w-3.5 shrink-0" />
-                                  <span>{getErrorMessage("billingCity")}</span>
-                                </div>
-                              )}
-                            </div>
-                            <div>
-                              <label htmlFor="billing-line1" className="mb-1 block text-(--text-muted)">
-                                Address line 1
-                              </label>
-                              <Input
-                                id="billing-line1"
-                                value={billingFirstLine}
-                                onChange={(e) => {
-                                  setBillingFirstLine(e.target.value);
-                                  clearCheckoutFieldError("billingFirstLine");
-                                }}
-                                onBlur={() => markTouched("billingFirstLine")}
-                                placeholder="Street address"
-                                aria-invalid={showError("billingFirstLine")}
-                                aria-describedby={showError("billingFirstLine") ? "billing-line1-error" : undefined}
-                                className={showError("billingFirstLine") ? "border-destructive focus-visible:ring-2 focus-visible:ring-destructive/40" : undefined}
-                              />
-                              {showError("billingFirstLine") && (
-                                <div id="billing-line1-error" role="alert" className="mt-1 flex items-start gap-1 text-xs text-destructive">
-                                  <IconAlertCircle className="mt-[2px] h-3.5 w-3.5 shrink-0" />
-                                  <span>{getErrorMessage("billingFirstLine")}</span>
-                                </div>
-                              )}
-                            </div>
-                            <div>
-                              <label htmlFor="billing-line2" className="mb-1 block text-(--text-muted)">
-                                Address line 2
-                              </label>
-                              <Input
-                                id="billing-line2"
-                                value={billingSecondLine}
-                                onChange={(e) => {
-                                setBillingSecondLine(e.target.value);
-                                clearCheckoutFieldError("billingSecondLine");
-                              }}
-                                onBlur={() => markTouched("billingSecondLine")}
-                                placeholder="Apt, suite, etc."
-                                aria-invalid={showError("billingSecondLine")}
-                                aria-describedby={showError("billingSecondLine") ? "billing-line2-error" : undefined}
-                                className={showError("billingSecondLine") ? "border-destructive focus-visible:ring-2 focus-visible:ring-destructive/40" : undefined}
-                              />
-                              {showError("billingSecondLine") && (
-                                <div id="billing-line2-error" role="alert" className="mt-1 flex items-start gap-1 text-xs text-destructive">
-                                  <IconAlertCircle className="mt-[2px] h-3.5 w-3.5 shrink-0" />
-                                  <span>{getErrorMessage("billingSecondLine")}</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* 4) Business details — optional, revealed by toggle */}
-                    <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface) p-3 text-sm">
-                      <label className="flex cursor-pointer items-start gap-2">
-                        <input
-                          type="checkbox"
-                          checked={businessToggle}
-                          onChange={(e) => {
-                            const checked = e.target.checked;
-                            setBusinessToggle(checked);
-                            if (checked) setShowBillingAddress(true);
-                          }}
-                          className="mt-0.5 rounded border-(--border-subtle)"
-                        />
-                        <span className="font-medium text-(--text-primary)">Buying as a company?</span>
-                      </label>
-                      <p className="mt-1 text-xs text-(--text-muted)">
-                        Add company details to include them on invoices and for VAT/GST where applicable.
-                      </p>
-                      {businessToggle && (
-                        <div className="mt-3 space-y-3 border-t border-(--border-subtle) pt-3 transition-all duration-200 ease-out">
-                          <div>
-                            <label htmlFor="billing-company" className="mb-1 block text-(--text-muted)">
-                              Company name <span className="ml-0.5 text-destructive">*</span>
-                            </label>
-                            <Input
-                              id="billing-company"
-                              value={companyName}
-                              onChange={(e) => {
-                              setCompanyName(e.target.value);
-                              clearCheckoutFieldError("companyName");
-                            }}
-                              onBlur={() => markTouched("companyName")}
-                              placeholder="Company name"
-                              aria-invalid={showError("companyName")}
-                              aria-describedby={showError("companyName") ? "billing-company-error" : undefined}
-                              className={showError("companyName") ? "border-destructive focus-visible:ring-2 focus-visible:ring-destructive/40" : undefined}
-                            />
-                            {showError("companyName") && (
-                              <div id="billing-company-error" role="alert" className="mt-1 flex items-start gap-1 text-xs text-destructive">
-                                <IconAlertCircle className="mt-[2px] h-3.5 w-3.5 shrink-0" />
-                                <span>{getErrorMessage("companyName")}</span>
-                              </div>
-                            )}
-                          </div>
-                          <div>
-                            <label htmlFor="billing-tax" className="mb-1 block text-(--text-muted)">
-                              Tax / VAT number (optional)
-                            </label>
-                            <Input
-                              id="billing-tax"
-                              value={taxIdentifier}
-                              onChange={(e) => {
-                              setTaxIdentifier(e.target.value);
-                              clearCheckoutFieldError("taxIdentifier");
-                            }}
-                              onBlur={() => markTouched("taxIdentifier")}
-                              placeholder="VAT, GST, etc."
-                              aria-invalid={showError("taxIdentifier")}
-                              aria-describedby={showError("taxIdentifier") ? "billing-tax-error" : undefined}
-                              className={showError("taxIdentifier") ? "border-destructive focus-visible:ring-2 focus-visible:ring-destructive/40" : undefined}
-                            />
-                            {showError("taxIdentifier") && (
-                              <div id="billing-tax-error" role="alert" className="mt-1 flex items-start gap-1 text-xs text-destructive">
-                                <IconAlertCircle className="mt-[2px] h-3.5 w-3.5 shrink-0" />
-                                <span>{getErrorMessage("taxIdentifier")}</span>
-                              </div>
-                            )}
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              Providing a VAT/GST number may remove local taxes where applicable.
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-3">
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleConfirmUpgrade()}
-                      disabled={checkoutLoading}
-                      className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-50"
-                    >
-                      {checkoutLoading ? (
-                        <>
-                          <Spinner size="sm" />
-                          Preparing secure checkout…
-                        </>
-                      ) : (
-                        "Continue to secure payment →"
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={closeConfirm}
-                      disabled={checkoutLoading}
-                      className="inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                  <div className="flex flex-col items-center justify-center gap-1 border-t border-(--border-subtle) pt-3 text-center">
-                    <p className="text-xs text-muted-foreground">
-                      🔒 Secure payment powered by Paddle
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Invoices comply with international tax requirements where applicable.
-                    </p>
-                  </div>
+                    {checkoutLoading ? (
+                      <>
+                        <Spinner size="sm" />
+                        Preparing?
+                      </>
+                    ) : (
+                      "Upgrade"
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closeConfirm}
+                    disabled={checkoutLoading}
+                    className="inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
                 </div>
               </>
             ) : (
               <>
+                {/* REMOVED: old Activate plan form (EPIC 4) */}
                 <p className="text-sm text-(--text-primary)">
                   You are downgrading to {confirmTarget.plan.name}. Downgrades take
                   effect at the end of the current billing period.
@@ -1688,7 +1151,7 @@ export function WorkspaceBillingTab() {
                     disabled={scheduleLoading}
                     className="inline-flex h-9 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-50"
                   >
-                    {scheduleLoading ? "Loading…" : "Schedule downgrade"}
+                    {scheduleLoading ? "Loading?" : "Schedule downgrade"}
                   </button>
                   <button
                     type="button"

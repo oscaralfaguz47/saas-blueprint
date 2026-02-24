@@ -59,7 +59,7 @@ export function zodErrorToFieldErrors(
 ): Record<string, string> {
   const out: Record<string, string> = {};
   for (const issue of error.issues) {
-    const key = pathToKey(issue.path);
+    const key = pathToKey(issue.path as (string | number)[]);
     const message = formatValidationMessage(issue.message);
     if (key && !out[key]) out[key] = message;
   }

@@ -4,7 +4,7 @@ import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { requireFullSession } from "@/server/require-full-session";
 import { prisma } from "@/server/db";
-import { fetchPaddleSubscription, fetchPaddleCustomerCountry, resolvePlanFromPaddleSubscription, mapPaddleStatusToInternal } from "@/server/billing/providers/paddle/fetch-subscription";
+import { fetchPaddleSubscription, resolvePlanFromPaddleSubscription, mapPaddleStatusToInternal } from "@/server/billing/providers/paddle/fetch-subscription";
 import { getGraceUntilForPastDue, isCancelAtPeriodEnd } from "@/server/billing/providers/paddle/map-paddle-event";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 
@@ -39,7 +39,6 @@ export const POST = withErrorHandler(async () => {
   });
 
   if (!sub?.providerSubscriptionId) {
-    // No subscription yet (e.g. webhook not received). Return 200 so client keeps polling.
     return apiSuccess({ ok: false, noSubscription: true });
   }
 
@@ -78,26 +77,6 @@ export const POST = withErrorHandler(async () => {
       cancelAtPeriodEnd,
     },
   });
-
-  const paddleFinalCountryCode = await fetchPaddleCustomerCountry(paddleSub.customer_id);
-  const profile = await prisma.billingProfile.findUnique({
-    where: { tenantId },
-    select: { countryCode: true },
-  });
-  if (profile && (paddleFinalCountryCode != null || profile.countryCode != null)) {
-    const saved = profile.countryCode?.trim?.().toUpperCase() ?? null;
-    const paddle = paddleFinalCountryCode ?? null;
-    const countryMismatch =
-      saved != null && paddle != null && saved !== paddle;
-    await prisma.billingProfile.updateMany({
-      where: { tenantId },
-      data: {
-        paddleFinalCountryCode: paddle,
-        paddleFinalCountryUpdatedAt: new Date(),
-        countryMismatch,
-      } as Parameters<typeof prisma.billingProfile.updateMany>[0]["data"],
-    });
-  }
 
   return apiSuccess({ ok: true });
 });

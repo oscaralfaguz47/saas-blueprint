@@ -251,7 +251,7 @@ model Tenant {
   tenantBillingStates   TenantBillingState[]
   tenantUsageCounters   TenantUsageCounter[]
   tenantUsageLedgers    TenantUsageLedger[]
-  billingProfile       BillingProfile?
+  billingTransactions  BillingTransaction[]
 
   @@index([status])
   @@index([createdByUserId])
@@ -259,38 +259,36 @@ model Tenant {
   @@index([createdAt, id])
 }
 
-/** Workspace billing address and optional business details for checkout/invoicing. One per tenant. */
-model BillingProfile {
-  id           String   @id @default(cuid())
-  tenantId     String   @unique
-  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+/// EPIC 4: Transaction history for Billing tab (invoice link, display). No PII stored.
+model BillingTransaction {
+  id                     String    @id @default(cuid())
+  tenantId               String
+  tenant                 Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  contactName  String?  @db.VarChar(200)
-  contactEmail String?  @db.VarChar(191)
+  provider               String    @db.VarChar(30)
+  providerTransactionId  String    @unique @db.VarChar(191)
 
-  countryCode  String?  @db.VarChar(2)
-  postalCode   String?  @db.VarChar(20)
-  region       String?  @db.VarChar(80)
-  city         String?  @db.VarChar(120)
-  firstLine    String?  @db.VarChar(200)
-  secondLine   String?  @db.VarChar(200)
+  status                 String    @db.VarChar(40)
+  billedAt               DateTime?
 
-  companyName   String? @db.VarChar(200)
-  taxIdentifier String? @db.VarChar(80)
+  currency               String    @db.VarChar(10)
+  subtotalCents          Int
+  taxCents               Int
+  totalCents             Int
 
-  paddleCustomerId  String? @db.VarChar(191)
-  paddleAddressId   String? @db.VarChar(191)
-  paddleBusinessId  String? @db.VarChar(191)
+  invoiceUrl             String?   @db.VarChar(600)
+  receiptNumber          String?   @db.VarChar(120)
 
-  paddleFinalCountryCode    String?   @db.VarChar(2)
-  paddleFinalCountryUpdatedAt DateTime?
-  countryMismatch Boolean @default(false)
+  planCode               String?   @db.VarChar(50)
+  subscriptionId         String?
+  providerSubscriptionId String?   @db.VarChar(191)
 
-  updatedByUserId String? @db.VarChar(191)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
-  @@index([tenantId])
+  @@index([tenantId, billedAt])
+  @@index([tenantId, status])
+  @@index([provider, providerSubscriptionId])
 }
 
 model TenantMembership {
