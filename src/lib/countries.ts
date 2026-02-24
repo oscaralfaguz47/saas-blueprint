@@ -255,6 +255,39 @@ const COUNTRIES: CountryOption[] = [
 
 export const BILLING_COUNTRY_OPTIONS: CountryOption[] = COUNTRIES;
 
+/** Pinned country codes shown at top of checkout billing country dropdown. */
+export const CHECKOUT_TOP_COUNTRY_CODES = [
+  "US",
+  "CA",
+  "GB",
+  "CR",
+  "AU",
+  "DE",
+  "FR",
+  "ES",
+] as const;
+
+/**
+ * Country options for checkout: pinned top countries first, then full list A–Z.
+ * Type-safe { value, label } structure.
+ */
+export function getCheckoutCountryOptions(): CountryOption[] {
+  const topSet = new Set(CHECKOUT_TOP_COUNTRY_CODES);
+  const top: CountryOption[] = [];
+  const rest: CountryOption[] = [];
+  for (const c of COUNTRIES) {
+    if (topSet.has(c.value as (typeof CHECKOUT_TOP_COUNTRY_CODES)[number])) {
+      top.push(c);
+    } else {
+      rest.push(c);
+    }
+  }
+  const order = [...CHECKOUT_TOP_COUNTRY_CODES];
+  top.sort((a, b) => order.indexOf(a.value as (typeof CHECKOUT_TOP_COUNTRY_CODES)[number]) - order.indexOf(b.value as (typeof CHECKOUT_TOP_COUNTRY_CODES)[number]));
+  rest.sort((a, b) => a.label.localeCompare(b.label));
+  return [...top, ...rest];
+}
+
 export function getCountryByCode(
   code: string | null | undefined
 ): CountryOption | undefined {

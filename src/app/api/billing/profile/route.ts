@@ -10,6 +10,8 @@ import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { parseBody } from "@/lib/validations/common";
 
 const billingProfileSchema = z.object({
+  contactName: z.string().max(200).optional().nullable(),
+  contactEmail: z.string().email().max(191).optional().nullable(),
   countryCode: z.string().length(2).optional().nullable(),
   postalCode: z.string().max(20).optional().nullable(),
   region: z.string().max(80).optional().nullable(),
@@ -40,6 +42,8 @@ export const GET = withErrorHandler(async () => {
   const profile = await prisma.billingProfile.findUnique({
     where: { tenantId },
     select: {
+      contactName: true,
+      contactEmail: true,
       countryCode: true,
       postalCode: true,
       region: true,
@@ -78,6 +82,8 @@ export const PATCH = withErrorHandler(async (req: Request) => {
     where: { tenantId },
     create: {
       tenantId,
+      contactName: (body.contactName?.trim() || undefined) ?? undefined,
+      contactEmail: (body.contactEmail?.trim() || undefined) ?? undefined,
       countryCode: body.countryCode ?? undefined,
       postalCode: (body.postalCode?.trim() || undefined) ?? undefined,
       region: (body.region?.trim() || undefined) ?? undefined,
@@ -89,6 +95,8 @@ export const PATCH = withErrorHandler(async (req: Request) => {
       updatedByUserId: session.user.id,
     },
     update: {
+      ...(body.contactName !== undefined && { contactName: (body.contactName?.trim() || undefined) ?? null }),
+      ...(body.contactEmail !== undefined && { contactEmail: (body.contactEmail?.trim() || undefined) ?? null }),
       ...(body.countryCode !== undefined && { countryCode: body.countryCode ?? null }),
       ...(body.postalCode !== undefined && { postalCode: (body.postalCode?.trim() || undefined) ?? null }),
       ...(body.region !== undefined && { region: (body.region?.trim() || undefined) ?? null }),
@@ -101,6 +109,8 @@ export const PATCH = withErrorHandler(async (req: Request) => {
     },
     select: {
       id: true,
+      contactName: true,
+      contactEmail: true,
       countryCode: true,
       postalCode: true,
       region: true,

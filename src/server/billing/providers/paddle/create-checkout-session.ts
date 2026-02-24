@@ -37,9 +37,13 @@ export class TaxIdentifierValidationError extends Error {
 
 /**
  * Invoice-first: we create Paddle address when user provides billing address so it appears on invoices.
- * We create Paddle business when user provides company name; tax_identifier is attempted and retried without if Paddle rejects.
- * No country allowlists — robust retry handles tax validation failures (e.g. Costa Rica, invalid EU VAT).
+ * We create Paddle business when user provides company name; include contact (name/email) for invoices.
+ * tax_identifier is sent only when country is in TAX_VALIDATION_SUPPORTED (vatB2bStrict); otherwise retry without if Paddle rejects.
  */
+const TAX_VALIDATION_SUPPORTED_COUNTRY_CODES = new Set([
+  "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT",
+  "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE", "GB", "NO", "CH",
+]);
 
 /**
  * List customers by exact email (GET /customers?email=...).
@@ -165,9 +169,16 @@ async function createPaddleBusiness(params: {
   customerId: string;
   name: string;
   taxIdentifier?: string | null;
+  contactName?: string | null;
+  contactEmail?: string | null;
 }): Promise<{ id: string }> {
-  const body: { name: string; tax_identifier?: string } = { name: params.name };
+  const body: { name: string; tax_identifier?: string; contacts?: Array<{ name: string; email: string }> } = {
+    name: params.name,
+  };
   if (params.taxIdentifier?.trim()) body.tax_identifier = params.taxIdentifier.trim();
+  if (params.contactName?.trim() && params.contactEmail?.trim()) {
+    body.contacts = [{ name: params.contactName.trim(), email: params.contactEmail.trim() }];
+  }
   const res = await fetch(
     `${PADDLE_API_BASE}/customers/${encodeURIComponent(params.customerId)}/businesses`,
     {
@@ -345,16 +356,31 @@ export async function createCheckoutSession(
 
   let addressId: string | null = null;
   if (params.billingAddress?.countryCode?.trim()) {
-    const addr = await createPaddleAddress({
-      customerId: customer.id,
-      countryCode: params.billingAddress.countryCode.trim().toUpperCase(),
-      postalCode: params.billingAddress.postalCode?.trim() || undefined,
-      region: params.billingAddress.region?.trim() || undefined,
-      city: params.billingAddress.city?.trim() || undefined,
-      firstLine: params.billingAddress.firstLine?.trim() || undefined,
-      secondLine: params.billingAddress.secondLine?.trim() || undefined,
-    });
-    addressId = addr.id;
+    const countryCode = params.billingAddress.countryCode.trim().toUpperCase();
+    const hasFullAddress =
+      !!params.billingAddress.city?.trim() &&
+      !!params.billingAddress.firstLine?.trim();
+    try {
+      const addr = await createPaddleAddress({
+        customerId: customer.id,
+        countryCode,
+        postalCode: params.billingAddress.postalCode?.trim() || undefined,
+        region: params.billingAddress.region?.trim() || undefined,
+        city: params.billingAddress.city?.trim() || undefined,
+        firstLine: params.billingAddress.firstLine?.trim() || undefined,
+        secondLine: params.billingAddress.secondLine?.trim() || undefined,
+      });
+      addressId = addr.id;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const isBadRequest =
+        message.includes("400") ||
+        message.includes("postal_code") ||
+        message.includes("bad_request") ||
+        message.includes("required");
+      if (hasFullAddress || !isBadRequest) throw err;
+      // Country-only: Paddle requires postal_code/region for some countries; leave addressId null
+    }
   }
 
   let businessId: string | null = null;
@@ -362,11 +388,16 @@ export async function createCheckoutSession(
     const name = params.business.companyName.trim();
     const taxIdentifier = params.business.taxIdentifier?.trim() || null;
     const skipTaxId = !!params.skipTaxId;
+    const country = (params.business.countryCode || "").toUpperCase();
+    const sendTaxToPaddle =
+      !!taxIdentifier && !skipTaxId && TAX_VALIDATION_SUPPORTED_COUNTRY_CODES.has(country);
     try {
       const business = await createPaddleBusiness({
         customerId: customer.id,
         name,
-        taxIdentifier: skipTaxId || !taxIdentifier ? null : taxIdentifier,
+        taxIdentifier: sendTaxToPaddle ? taxIdentifier : null,
+        contactName: params.customerName,
+        contactEmail: params.customerEmail,
       });
       businessId = business.id;
     } catch (err) {
@@ -375,6 +406,8 @@ export async function createCheckoutSession(
           customerId: customer.id,
           name,
           taxIdentifier: null,
+          contactName: params.customerName,
+          contactEmail: params.customerEmail,
         });
         businessId = business.id;
       } else {

@@ -49,6 +49,24 @@ export const paginationSchema = z.object({
 });
 
 /**
+ * Convert a ZodError into a map of field keys to user-facing messages.
+ * pathToKey maps the Zod path array (e.g. ["contact", "name"]) to the UI field key (e.g. "contactName").
+ * Uses formatValidationMessage for consistent messaging.
+ */
+export function zodErrorToFieldErrors(
+  error: z.ZodError,
+  pathToKey: (path: (string | number)[]) => string
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const issue of error.issues) {
+    const key = pathToKey(issue.path);
+    const message = formatValidationMessage(issue.message);
+    if (key && !out[key]) out[key] = message;
+  }
+  return out;
+}
+
+/**
  * Parse and validate request body with Zod.
  * Throws ValidationError with a user-facing message (no "Validation failed:" or field path).
  */

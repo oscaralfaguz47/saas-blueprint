@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+@theme {
+  --color-destructive: var(--destructive);
+  --color-muted-foreground: var(--text-muted);
+}
+
 /* -------------------------------------------------------------------------- */
 /* Theme tokens                                                               */
 /* Default: dark                                                              */
@@ -20,6 +25,7 @@
   --color-success: #16a34a;
   --color-warning: #d97706;
   --color-danger: #dc2626;
+  --destructive: var(--color-danger);
 
   --border-subtle: rgba(148, 163, 184, 0.18);
 
@@ -43,6 +49,7 @@
   --color-success: #16a34a;
   --color-warning: #d97706;
   --color-danger: #dc2626;
+  --destructive: var(--color-danger);
 
   --border-subtle: rgba(148, 163, 184, 0.18);
 
@@ -66,6 +73,7 @@
   --color-success: #16a34a;
   --color-warning: #d97706;
   --color-danger: #dc2626;
+  --destructive: var(--color-danger);
 
   --border-subtle: #e2e8f0;
 

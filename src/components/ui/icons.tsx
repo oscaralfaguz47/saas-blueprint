@@ -170,3 +170,14 @@ export function IconHelpCircle(props: IconProps) {
     </BaseIcon>
   );
 }
+
+/** Alert / validation error (e.g. inline field errors). */
+export function IconAlertCircle(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 8v4" />
+      <path d="M12 16h.01" />
+    </BaseIcon>
+  );
+}

@@ -265,6 +265,9 @@ model BillingProfile {
   tenantId     String   @unique
   tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  contactName  String?  @db.VarChar(200)
+  contactEmail String?  @db.VarChar(191)
+
   countryCode  String?  @db.VarChar(2)
   postalCode   String?  @db.VarChar(20)
   region       String?  @db.VarChar(80)
