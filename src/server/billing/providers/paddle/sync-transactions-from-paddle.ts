@@ -86,10 +86,8 @@ export async function syncTransactionsFromPaddle(params: {
     const billedAt = parseDate(txn?.billed_at ?? txn?.created_at);
     const subId = txn?.subscription_id?.slice(0, 191) ?? null;
     const receiptNumber = txn?.invoice_number?.slice(0, 120) ?? null;
-    const invoiceUrl =
-      typeof txn?.checkout?.url === "string" && txn.checkout.url.length <= 600
-        ? txn.checkout.url
-        : null;
+    // Do not store checkout.url as invoiceUrl — it is the payment link, not the receipt.
+    const invoiceUrl = null;
 
     await prisma.billingTransaction.upsert({
       where: { providerTransactionId },

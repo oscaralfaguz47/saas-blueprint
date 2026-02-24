@@ -109,10 +109,9 @@ export async function handleTransactionCompleted(envelope: unknown): Promise<{
   const providerSubscriptionId = txn?.subscription_id?.slice(0, 191) ?? null;
   const receiptNumber = txn?.invoice_number?.slice(0, 120) ?? null;
   const planCode = metadata.planCode?.slice(0, 50) ?? null;
-  const invoiceUrl =
-    typeof txn?.checkout?.url === "string" && txn.checkout.url.length <= 600
-      ? txn.checkout.url
-      : null;
+  // Do not store checkout.url as invoiceUrl — it is the payment/checkout link, not the receipt.
+  // Use GET /api/billing/transactions/[id]/invoice-redirect to open the Paddle invoice (PDF) on demand.
+  const invoiceUrl = null;
 
   await prisma.$transaction(async (tx) => {
     const existingEvent = await tx.billingEvent.findUnique({

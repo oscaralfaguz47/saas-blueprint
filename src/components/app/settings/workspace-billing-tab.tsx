@@ -1027,18 +1027,18 @@ export function WorkspaceBillingTab() {
                         {(t.total.cents / 100).toFixed(2)} {t.total.currency}
                       </td>
                       <td className="py-2 text-right">
-                        {t.invoiceUrl ? (
-                          <a
-                            href={t.invoiceUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-(--color-primary) underline hover:no-underline"
-                          >
-                            Open
-                          </a>
-                        ) : (
-                          "?"
-                        )}
+                        <a
+                          href={
+                            t.invoiceUrl?.includes("my.paddle.com/invoice")
+                              ? t.invoiceUrl
+                              : `/api/billing/transactions/${t.id}/invoice-redirect`
+                          }
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-(--color-primary) underline hover:no-underline"
+                        >
+                          Open
+                        </a>
                       </td>
                     </tr>
                   ))}
