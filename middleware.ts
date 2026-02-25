@@ -72,6 +72,12 @@ export async function middleware(req: NextRequest) {
   // Extra hardening: always allow Next internal paths
   if (pathname.startsWith("/_next")) return NextResponse.next();
 
+  // Cron endpoints are invoked by Vercel Cron (or tools like Postman) with Authorization: Bearer CRON_SECRET.
+  // They must bypass session auth here so the route handler can return JSON (401/200); auth is enforced inside the route.
+  if (pathname === "/api/internal/cron" || pathname.startsWith("/api/internal/cron/")) {
+    return NextResponse.next();
+  }
+
   // 1) Public routes: pass-through (+ hardening for /r/)
   if (isPublicPath(pathname)) {
     if (pathname.startsWith("/r/")) {
