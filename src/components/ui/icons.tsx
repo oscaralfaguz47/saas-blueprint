@@ -181,3 +181,23 @@ export function IconAlertCircle(props: IconProps) {
     </BaseIcon>
   );
 }
+
+/** View / visibility (e.g. view invoice). */
+export function IconEye(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </BaseIcon>
+  );
+}
+
+/** Edit / pencil (e.g. edit billing details). */
+export function IconPencil(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+      <path d="m15 5 4 4" />
+    </BaseIcon>
+  );
+}

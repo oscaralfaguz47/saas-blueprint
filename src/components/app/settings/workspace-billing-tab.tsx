@@ -25,6 +25,7 @@ import {
   type InAppPlanItem,
 } from "@/lib/billing/plan-catalog";
 import { useSession } from "next-auth/react";
+import { IconEye, IconPencil } from "@/components/ui/icons";
 
 const PADDLE_SCRIPT_URL = "https://cdn.paddle.com/paddle/v2/paddle.js";
 const CHECKOUT_SUCCESS_REDIRECT =
@@ -1027,18 +1028,29 @@ export function WorkspaceBillingTab() {
                         {(t.total.cents / 100).toFixed(2)} {t.total.currency}
                       </td>
                       <td className="py-2 text-right">
-                        <a
-                          href={
-                            t.invoiceUrl?.includes("my.paddle.com/invoice")
-                              ? t.invoiceUrl
-                              : `/api/billing/transactions/${t.id}/invoice-redirect`
-                          }
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-(--color-primary) underline hover:no-underline"
-                        >
-                          Open
-                        </a>
+                        {t.status?.toLowerCase() === "completed" ? (
+                          <div className="flex items-center justify-end gap-2">
+                            <a
+                              href={`/api/billing/transactions/${t.id}/invoice-redirect`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 text-sm text-(--color-primary) underline hover:no-underline"
+                            >
+                              <IconEye size={14} />
+                              View invoice
+                            </a>
+                            <a
+                              href={`/api/billing/transactions/${t.id}/portal-redirect`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title="Opens Paddle's secure billing portal to view payments and update invoice information."
+                              className="inline-flex items-center gap-1.5 text-sm text-(--color-primary) underline hover:no-underline"
+                            >
+                              <IconPencil size={14} />
+                              Edit billing details
+                            </a>
+                          </div>
+                        ) : null}
                       </td>
                     </tr>
                   ))}

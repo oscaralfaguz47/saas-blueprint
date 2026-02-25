@@ -11,6 +11,7 @@ type TransactionData = {
   status?: string;
   currency_code?: string;
   subscription_id?: string | null;
+  invoice_id?: string | null;
   invoice_number?: string | null;
   custom_data?: Record<string, unknown> | null;
   created_at?: string;
@@ -23,7 +24,6 @@ type TransactionData = {
       total?: string;
     };
   };
-  /** Receipt/invoice URL if present in payload (Paddle may not include; store null and use portal). */
   checkout?: { url?: string } | null;
 };
 
@@ -109,9 +109,11 @@ export async function handleTransactionCompleted(envelope: unknown): Promise<{
   const providerSubscriptionId = txn?.subscription_id?.slice(0, 191) ?? null;
   const receiptNumber = txn?.invoice_number?.slice(0, 120) ?? null;
   const planCode = metadata.planCode?.slice(0, 50) ?? null;
-  // Do not store checkout.url as invoiceUrl — it is the payment/checkout link, not the receipt.
-  // Use GET /api/billing/transactions/[id]/invoice-redirect to open the Paddle invoice (PDF) on demand.
-  const invoiceUrl = null;
+  // Store only Paddle invoice_id (inv_xxx). "Open" uses GET /invoices/{invoice_id} → hosted_invoice_url (n8n-style).
+  const providerInvoiceId =
+    typeof txn?.invoice_id === "string" && txn.invoice_id.trim().length > 0 && txn.invoice_id.length <= 191
+      ? txn.invoice_id.trim()
+      : null;
 
   await prisma.$transaction(async (tx) => {
     const existingEvent = await tx.billingEvent.findUnique({
@@ -148,7 +150,7 @@ export async function handleTransactionCompleted(envelope: unknown): Promise<{
         subtotalCents,
         taxCents,
         totalCents,
-        invoiceUrl,
+        providerInvoiceId,
         receiptNumber,
         planCode,
         providerSubscriptionId,
@@ -159,7 +161,7 @@ export async function handleTransactionCompleted(envelope: unknown): Promise<{
         subtotalCents,
         taxCents,
         totalCents,
-        invoiceUrl: invoiceUrl ?? undefined,
+        providerInvoiceId: providerInvoiceId ?? undefined,
         receiptNumber: receiptNumber ?? undefined,
         providerSubscriptionId: providerSubscriptionId ?? undefined,
       },

@@ -17,6 +17,12 @@
       "maxDuration": 30
     }
   },
+  "crons": [
+    {
+      "path": "/api/internal/cron/daily-email",
+      "schedule": "0 8 * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",

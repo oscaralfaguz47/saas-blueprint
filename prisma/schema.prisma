@@ -276,6 +276,8 @@ model BillingTransaction {
   taxCents               Int
   totalCents             Int
 
+  /// Paddle invoice id (inv_xxx) from transaction.completed; used to fetch hosted_invoice_url on "Open".
+  providerInvoiceId      String?   @db.VarChar(191)
   invoiceUrl             String?   @db.VarChar(600)
   receiptNumber          String?   @db.VarChar(120)
 

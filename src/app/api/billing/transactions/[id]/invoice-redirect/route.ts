@@ -1,3 +1,4 @@
+import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
@@ -19,8 +20,9 @@ function getApiKey(): string {
 
 /**
  * GET /api/billing/transactions/[id]/invoice-redirect
- * Resolves the transaction to Paddle and redirects to the temporary invoice PDF URL.
- * Requires tenant.billing.manage. Opens in new tab; link expires in 1 hour (Paddle).
+ * Always opens the PDF invoice in a new tab: calls GET /transactions/{transaction_id}/invoice
+ * and redirects to the returned URL. Uses sandbox when PADDLE_ENVIRONMENT !== "production".
+ * Requires tenant.billing.manage.
  */
 export const GET = withErrorHandler(
   async (
@@ -57,31 +59,27 @@ export const GET = withErrorHandler(
       );
     }
 
-    const url = new URL(
+    const txInvoiceUrl = new URL(
       `${PADDLE_API_BASE}/transactions/${transaction.providerTransactionId}/invoice`
     );
-    url.searchParams.set("disposition", "inline");
-
-    const res = await fetch(url.toString(), {
+    txInvoiceUrl.searchParams.set("disposition", "inline");
+    const res = await fetch(txInvoiceUrl.toString(), {
       method: "GET",
       headers: { Authorization: `Bearer ${getApiKey()}` },
     });
     if (!res.ok) {
       const err = await res.text();
       return ApiErrors.INTERNAL_ERROR(
-        `Failed to get invoice URL from Paddle: ${res.status} ${err}`
+        `Failed to get invoice from Paddle: ${res.status} ${err}`
       );
     }
-
     const json = (await res.json()) as { data?: { url?: string } };
-    const invoiceUrl = json?.data?.url;
-    if (!invoiceUrl || typeof invoiceUrl !== "string") {
-      return ApiErrors.INTERNAL_ERROR("Paddle did not return an invoice URL.");
+    const url = json?.data?.url;
+    if (!url || typeof url !== "string") {
+      return ApiErrors.INTERNAL_ERROR(
+        "Paddle did not return an invoice URL. Try again or open the link from your receipt email."
+      );
     }
-
-    return new Response(null, {
-      status: 302,
-      headers: { Location: invoiceUrl },
-    });
+    return NextResponse.redirect(url);
   }
 );

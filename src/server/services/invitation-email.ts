@@ -92,6 +92,32 @@ export async function sendInvitationDeclinedNotificationToInviter(params: {
   }
 }
 
+/**
+ * Reusable email send via Resend. Uses RESEND_API_KEY and EMAIL_FROM.
+ * Used by cron jobs and other server-only flows (e.g. daily digest, billing overage alerts).
+ */
+export async function sendEmail(params: {
+  to: string;
+  subject: string;
+  html: string;
+}): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.EMAIL_FROM;
+  if (!apiKey || !from) {
+    throw new Error("RESEND_API_KEY and EMAIL_FROM must be set to send emails.");
+  }
+  const resend = new Resend(apiKey);
+  const { error } = await resend.emails.send({
+    from,
+    to: params.to,
+    subject: params.subject,
+    html: params.html,
+  });
+  if (error) {
+    throw new Error(`Failed to send email: ${error.message}`);
+  }
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
