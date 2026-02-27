@@ -599,12 +599,15 @@ export function WorkspaceBillingTab() {
       } catch {
         // ignore; checkout still opens without prefilled country
       }
-      const Paddle = typeof window !== "undefined" ? (window as { Paddle?: { Checkout?: { open: (opts: { transactionId: string; settings?: { displayMode: string }; customer?: { address?: { countryCode: string } } }) => void } } }).Paddle : undefined;
+      const customerEmail = session?.user?.email?.trim();
+      const Paddle = typeof window !== "undefined" ? (window as { Paddle?: { Checkout?: { open: (opts: { transactionId: string; settings?: { displayMode: string }; customer?: { email?: string; address?: { countryCode: string } } }) => void } } }).Paddle : undefined;
       if (Paddle?.Checkout?.open) {
         Paddle.Checkout.open({
           transactionId,
           settings: { displayMode: "overlay" },
-          ...(defaultCountry ? { customer: { address: { countryCode: defaultCountry } } } : {}),
+          ...(defaultCountry && customerEmail
+            ? { customer: { email: customerEmail, address: { countryCode: defaultCountry } } }
+            : {}),
         });
       } else {
         toast.addToast("error", "Payment window could not open. Refresh the page and try again.");
@@ -612,7 +615,7 @@ export function WorkspaceBillingTab() {
     } finally {
       setPaymentMethodUpdateLoading(false);
     }
-  }, [apiFetch, toast]);
+  }, [apiFetch, toast, session?.user?.email]);
 
   const handleSelectPlan = useCallback(
     async (plan: InAppPlanItem) => {
@@ -684,12 +687,15 @@ export function WorkspaceBillingTab() {
           } catch {
             // ignore; checkout still opens without prefilled country
           }
-          const Paddle = typeof window !== "undefined" ? (window as { Paddle?: { Checkout?: { open: (opts: { transactionId: string; settings?: { displayMode: string }; customer?: { address?: { countryCode: string } } }) => void } } }).Paddle : undefined;
+          const customerEmail = session?.user?.email?.trim();
+          const Paddle = typeof window !== "undefined" ? (window as { Paddle?: { Checkout?: { open: (opts: { transactionId: string; settings?: { displayMode: string }; customer?: { email?: string; address?: { countryCode: string } } }) => void } } }).Paddle : undefined;
           if (Paddle?.Checkout?.open) {
             Paddle.Checkout.open({
               transactionId: data.transactionId,
               settings: { displayMode: "overlay" },
-              ...(defaultCountry ? { customer: { address: { countryCode: defaultCountry } } } : {}),
+              ...(defaultCountry && customerEmail
+                ? { customer: { email: customerEmail, address: { countryCode: defaultCountry } } }
+                : {}),
             });
           } else {
             toast.addToast("error", "Payment window could not open. Refresh the page and try again.");
@@ -702,7 +708,7 @@ export function WorkspaceBillingTab() {
         setCheckoutLoading(false);
       }
     },
-    [confirmTarget, apiFetch, toast, fetchSummary]
+    [confirmTarget, apiFetch, toast, fetchSummary, session?.user?.email]
   );
 
   const handleConfirmDowngrade = useCallback(async () => {
