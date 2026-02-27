@@ -4,7 +4,7 @@
  * Annual billing: prepared for; not implemented (see EPIC 3 scope).
  */
 
-export type PlanCode = "free" | "starter" | "pro";
+export type PlanCode = "free" | "starter" | "pro" | "enterprise";
 
 export type InAppPlanItem = {
   code: PlanCode;
@@ -78,6 +78,24 @@ export const IN_APP_PLAN_CATALOG: InAppPlanItem[] = [
       "Rollover: unused requests roll over",
     ],
   },
+  {
+    code: "enterprise",
+    name: "Enterprise",
+    priceMonthlyCents: 49900,
+    bestFor: "Teams with predictable high volume and hard limits.",
+    includes: [
+      "1 workspace",
+      "Unlimited users & approvers",
+      "External approvals & manual reminders",
+      "Unlimited PDF exports, audit bundle ZIP",
+      "Full audit visibility",
+    ],
+    limits: [
+      "Requests: 4,000 / month (hard cap)",
+      "No overage billing",
+      "Self-serve",
+    ],
+  },
 ];
 
 export function getPlanFromCatalog(code: PlanCode): InAppPlanItem | undefined {
@@ -89,8 +107,8 @@ export function formatPriceMonthly(cents: number): string {
   return `$${(cents / 100).toFixed(0)}`;
 }
 
-/** Order for comparison: free < starter < pro. */
-export const PLAN_ORDER: PlanCode[] = ["free", "starter", "pro"];
+/** Order for comparison: free < starter < pro < enterprise. */
+export const PLAN_ORDER: PlanCode[] = ["free", "starter", "pro", "enterprise"];
 
 export function isUpgrade(from: PlanCode, to: PlanCode): boolean {
   const i = PLAN_ORDER.indexOf(from);

@@ -4,29 +4,21 @@ import { prisma } from "@/server/db";
 import {
   getPeriodStartForDate,
   getPeriodEndForDate,
-  getOrCreateBillingState,
 } from "./get-or-create-billing-state";
 import { resolveTenantPlan } from "./resolve-tenant-plan";
+import { resolveEffectiveSubscription } from "./resolve-effective-subscription";
 import { writeAuditLog } from "@/server/services/audit";
 
+const ROLLOVER_EXPIRY_DAYS = 60;
+
 /**
- * Close billing periods that have ended (periodEnd in the past) and open next period with rollover.
- * Idempotent and batch-safe: safe to run daily for all tenants.
- * Optionally pass actorUserId for audit (e.g. when triggered by admin); when run by cron, use system actor if configured.
- *
- * TODO (Epic 1/2 or cron): When closing a period, apply Subscription.pendingPlanCode for tenants
- * where cancelAtPeriodEnd is true and currentPeriodEnd has passed (switch plan, clear cancelAtPeriodEnd + pendingPlanCode).
+ * EPIC 5: Close billing periods that have ended; create TenantRolloverLot (60d expiry); apply pendingPlanCode (downgrade to free).
+ * Idempotent and batch-safe. Optionally pass actorUserId for audit (cron uses system actor if configured).
  */
 export async function runPeriodClose(params?: {
   actorUserId?: string | null;
 }): Promise<{ closed: number }> {
   const now = new Date();
-  const lastMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1, 0, 0, 0, 0));
-  const lastMonthEnd = getPeriodEndForDate(lastMonthStart);
-
-  if (now <= lastMonthEnd) {
-    return { closed: 0 };
-  }
 
   const openStatesToClose = await prisma.tenantBillingState.findMany({
     where: {
@@ -44,7 +36,8 @@ export async function runPeriodClose(params?: {
 
   let closed = 0;
   for (const state of openStatesToClose) {
-    const { tenantId, periodStart, planCode, rolloverRequests } = state;
+    const { tenantId, periodStart, periodEnd, planCode, rolloverRequests } =
+      state;
     const resolved = await resolveTenantPlan(tenantId);
     const features = resolved.features;
     const req = features.requests;
@@ -54,6 +47,7 @@ export async function runPeriodClose(params?: {
         where: { tenantId_periodStart: { tenantId, periodStart } },
         data: { status: "CLOSED" },
       });
+      await applyPendingPlanCodeIfNeeded(tenantId, periodEnd, params?.actorUserId);
       if (params?.actorUserId) {
         await writeAuditLog({
           actorUserId: params.actorUserId,
@@ -83,6 +77,9 @@ export async function runPeriodClose(params?: {
     const unused = Math.max(0, req.included + rolloverRequests - used);
     const rolloverToNext = Math.min(unused, req.maxAvailable);
 
+    const expiresAt = new Date(periodEnd);
+    expiresAt.setDate(expiresAt.getDate() + ROLLOVER_EXPIRY_DAYS);
+
     const nextPeriodStart = new Date(periodStart);
     nextPeriodStart.setUTCMonth(nextPeriodStart.getUTCMonth() + 1);
     const nextPeriodEnd = getPeriodEndForDate(nextPeriodStart);
@@ -92,6 +89,19 @@ export async function runPeriodClose(params?: {
         where: { tenantId_periodStart: { tenantId, periodStart } },
         data: { status: "CLOSED" },
       }),
+      ...(rolloverToNext > 0
+        ? [
+            prisma.tenantRolloverLot.create({
+              data: {
+                tenantId,
+                periodStart,
+                granted: rolloverToNext,
+                used: 0,
+                expiresAt,
+              },
+            }),
+          ]
+        : []),
       prisma.tenantBillingState.upsert({
         where: {
           tenantId_periodStart: { tenantId, periodStart: nextPeriodStart },
@@ -110,6 +120,7 @@ export async function runPeriodClose(params?: {
       }),
     ]);
 
+    await applyPendingPlanCodeIfNeeded(tenantId, periodEnd, params?.actorUserId);
     if (params?.actorUserId) {
       await writeAuditLog({
         actorUserId: params.actorUserId,
@@ -129,4 +140,58 @@ export async function runPeriodClose(params?: {
   }
 
   return { closed };
+}
+
+/** EPIC 5: When period ended, apply downgrade to free (clear cancelAtPeriodEnd, set plan to free). */
+async function applyPendingPlanCodeIfNeeded(
+  tenantId: string,
+  periodEnd: Date,
+  actorUserId?: string | null
+): Promise<void> {
+  const sub = await prisma.subscription.findFirst({
+    where: { tenantId },
+    orderBy: { currentPeriodEnd: "desc" },
+    select: {
+      id: true,
+      cancelAtPeriodEnd: true,
+      pendingPlanCode: true,
+      currentPeriodEnd: true,
+    },
+  });
+  if (
+    !sub ||
+    !sub.cancelAtPeriodEnd ||
+    sub.pendingPlanCode?.toLowerCase() !== "free" ||
+    !sub.currentPeriodEnd ||
+    sub.currentPeriodEnd > periodEnd
+  ) {
+    return;
+  }
+
+  const freePlan = await prisma.plan.findUnique({
+    where: { code: "free", isActive: true },
+    select: { id: true },
+  });
+  if (!freePlan) return;
+
+  await prisma.subscription.update({
+    where: { id: sub.id },
+    data: {
+      planId: freePlan.id,
+      cancelAtPeriodEnd: false,
+      pendingPlanCode: null,
+    },
+  });
+
+  if (actorUserId) {
+    await writeAuditLog({
+      actorUserId: actorUserId,
+      actorContext: "TENANT",
+      tenantId,
+      action: "tenant.billing.plan_changed",
+      targetType: "Subscription",
+      targetId: sub.id,
+      metadata: { appliedPendingPlanCode: "free" },
+    });
+  }
 }

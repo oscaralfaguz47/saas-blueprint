@@ -1,31 +1,29 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
-import { getDefaultTenantForUser } from "@/server/services/tenancy";
-import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { requireFullSession } from "@/server/require-full-session";
+import { getCurrentTenantId, requireTenantPermission } from "@/server/billing/tenant-context";
 import { computeUsageSummary } from "@/server/billing/compute-usage-summary";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 
-export const GET = withErrorHandler(async () => {
+export const GET = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
   const mfaError = await requireFullSession(session);
   if (mfaError) return mfaError;
   if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 
-  const membership = await getDefaultTenantForUser(session.user.id);
-  const tenantId = membership?.tenant?.id;
+  const tenantId = await getCurrentTenantId({ session, req });
   if (!tenantId) return ApiErrors.NO_TENANT();
 
-  const allowed = await hasTenantPermission({
+  const permError = await requireTenantPermission({
     userId: session.user.id,
     tenantId,
     permission: "tenant.billing.manage",
   });
-  if (!allowed) return ApiErrors.FORBIDDEN();
+  if (permError) return permError;
 
   const summary = await computeUsageSummary(tenantId);
 
-  const req = summary.meters.requests;
+  const reqMeters = summary.meters.requests;
   return apiSuccess({
     planCode: summary.planCode,
     subscriptionStatus: summary.subscriptionStatus,
@@ -34,10 +32,10 @@ export const GET = withErrorHandler(async () => {
     cancelAtPeriodEnd: summary.cancelAtPeriodEnd,
     pendingPlanCode: summary.pendingPlanCode ?? null,
     graceUntil: summary.graceUntil?.toISOString() ?? null,
-    included: req.included,
-    rolloverAvailable: req.rolloverAvailable,
-    used: req.used,
-    overageEstimate: req.overageEstimateCents,
+    included: reqMeters.included,
+    rolloverAvailable: reqMeters.rolloverAvailable,
+    used: reqMeters.used,
+    overageEstimate: reqMeters.overageEstimateCents,
     threshold80: summary.threshold80,
     threshold100: summary.threshold100,
     overageCapReached: summary.overageCapReached,

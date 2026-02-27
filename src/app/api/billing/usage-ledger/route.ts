@@ -1,7 +1,6 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
-import { getDefaultTenantForUser } from "@/server/services/tenancy";
-import { hasTenantPermission } from "@/server/security/tenant-authorization";
+import { getCurrentTenantId, requireTenantPermission } from "@/server/billing/tenant-context";
 import { requireFullSession } from "@/server/require-full-session";
 import { prisma } from "@/server/db";
 import { getPeriodStartForDate } from "@/server/billing/get-or-create-billing-state";
@@ -23,16 +22,15 @@ export const GET = withErrorHandler(async (req: Request) => {
   if (mfaError) return mfaError;
   if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 
-  const membership = await getDefaultTenantForUser(session.user.id);
-  const tenantId = membership?.tenant?.id;
+  const tenantId = await getCurrentTenantId({ session, req });
   if (!tenantId) return ApiErrors.NO_TENANT();
 
-  const allowed = await hasTenantPermission({
+  const permError = await requireTenantPermission({
     userId: session.user.id,
     tenantId,
     permission: "tenant.billing.manage",
   });
-  if (!allowed) return ApiErrors.FORBIDDEN();
+  if (permError) return permError;
 
   let query;
   try {

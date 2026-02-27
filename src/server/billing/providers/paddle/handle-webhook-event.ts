@@ -11,6 +11,7 @@ import {
 import {
   buildSanitizedPayload,
   getGraceUntilForPastDue,
+  getHighestPlanCodeFromItems,
   getPlanCodeFromPriceId,
   isCancelAtPeriodEnd,
   mapPaddleStatusToInternal,
@@ -18,11 +19,167 @@ import {
   parseSubscriptionData,
 } from "./map-paddle-event";
 import { handleTransactionCompleted } from "./handle-transaction-completed";
+import { mapAddressToProfile, type PaddleAddress } from "@/server/billing/billing-profile/sync-from-paddle";
 
 const BILLING_WEBHOOK_ACTOR_USER_ID = process.env.BILLING_WEBHOOK_ACTOR_USER_ID;
 
 function getAuditActorUserId(): string | null {
   return BILLING_WEBHOOK_ACTOR_USER_ID ?? null;
+}
+
+/**
+ * Handle address.updated webhook: update TenantBillingProfile for the tenant that owns this customer.
+ * Payload data shape matches Paddle address (id, customer_id, country_code, postal_code, first_line, second_line, city, region).
+ */
+async function handleAddressUpdated(envelope: {
+  event_id: string;
+  event_type: string;
+  data: Record<string, unknown>;
+}): Promise<{ processed: boolean }> {
+  const { event_id: eventId, event_type: eventType, data } = envelope;
+  const address = data as unknown as PaddleAddress;
+  const providerCustomerId = address?.customer_id?.trim?.();
+  if (!providerCustomerId || providerCustomerId.length > 191) {
+    logWebhookReceived({
+      eventType,
+      providerEventId: eventId,
+      result: "ignored",
+    });
+    return { processed: false };
+  }
+
+  const sub = await prisma.subscription.findFirst({
+    where: { provider: "paddle", providerCustomerId },
+    select: { tenantId: true },
+  });
+  if (!sub) {
+    logWebhookReceived({
+      eventType,
+      providerEventId: eventId,
+      result: "ignored",
+    });
+    return { processed: false };
+  }
+
+  const mapped = mapAddressToProfile(address);
+  await prisma.tenantBillingProfile.upsert({
+    where: { tenantId: sub.tenantId },
+    create: {
+      tenantId: sub.tenantId,
+      countryCode: mapped.countryCode,
+      postalCode: mapped.postalCode,
+      region: mapped.region,
+      city: mapped.city,
+      addressLine1: mapped.addressLine1,
+      addressLine2: mapped.addressLine2,
+      companyName: null,
+      vatId: null,
+      providerCustomerId,
+      providerAddressId: mapped.providerAddressId,
+      lastSyncedAt: new Date(),
+      syncSource: "webhook",
+    },
+    update: {
+      countryCode: mapped.countryCode,
+      postalCode: mapped.postalCode,
+      region: mapped.region,
+      city: mapped.city,
+      addressLine1: mapped.addressLine1,
+      addressLine2: mapped.addressLine2,
+      providerAddressId: mapped.providerAddressId,
+      lastSyncedAt: new Date(),
+      syncSource: "webhook",
+    },
+  });
+
+  logWebhookReceived({
+    eventType,
+    providerEventId: eventId,
+    extractedTenantId: sub.tenantId,
+    result: "success",
+  });
+  return { processed: true };
+}
+
+/** Paddle business payload (business.created / business.updated): name -> companyName, tax_identifier -> vatId. */
+type PaddleBusiness = {
+  id?: string;
+  customer_id?: string;
+  name?: string | null;
+  company_number?: string | null;
+  tax_identifier?: string | null;
+};
+
+/**
+ * Handle business.created / business.updated: sync company name and VAT ID to TenantBillingProfile.
+ * Payload: customer_id, name (company name), tax_identifier (VAT/Tax ID).
+ */
+async function handleBusinessCreatedOrUpdated(envelope: {
+  event_id: string;
+  event_type: string;
+  data: Record<string, unknown>;
+}): Promise<{ processed: boolean }> {
+  const { event_id: eventId, event_type: eventType, data } = envelope;
+  const business = data as unknown as PaddleBusiness;
+  const providerCustomerId = business?.customer_id?.trim?.();
+  if (!providerCustomerId || providerCustomerId.length > 191) {
+    logWebhookReceived({
+      eventType,
+      providerEventId: eventId,
+      result: "ignored",
+    });
+    return { processed: false };
+  }
+
+  const sub = await prisma.subscription.findFirst({
+    where: { provider: "paddle", providerCustomerId },
+    select: { tenantId: true },
+  });
+  if (!sub) {
+    logWebhookReceived({
+      eventType,
+      providerEventId: eventId,
+      result: "ignored",
+    });
+    return { processed: false };
+  }
+
+  const companyName = business.name?.trim?.()?.slice(0, 160) ?? null;
+  const vatId = business.tax_identifier?.trim?.()?.slice(0, 64) ?? null;
+
+  await prisma.tenantBillingProfile.upsert({
+    where: { tenantId: sub.tenantId },
+    create: {
+      tenantId: sub.tenantId,
+      countryCode: "US",
+      postalCode: null,
+      region: null,
+      city: null,
+      addressLine1: null,
+      addressLine2: null,
+      companyName,
+      vatId,
+      providerCustomerId,
+      providerBusinessId: business.id?.slice(0, 191) ?? null,
+      lastSyncedAt: new Date(),
+      syncSource: "webhook",
+    },
+    update: {
+      companyName: companyName ?? undefined,
+      vatId: vatId ?? undefined,
+      providerBusinessId: business.id?.slice(0, 191) ?? undefined,
+      lastSyncedAt: new Date(),
+      syncSource: "webhook",
+    },
+  });
+
+  logWebhookReceived({
+    eventType,
+    providerEventId: eventId,
+    extractedTenantId: sub.tenantId,
+    result: "success",
+  });
+  return { processed: true };
 }
 
 /**
@@ -43,7 +200,7 @@ export function validateWebhookPayload(envelope: unknown): {
   eventId: string;
   eventType: string;
   subscriptionData: ReturnType<typeof parseSubscriptionData>;
-  metadata: { tenantId: string; planCode: "free" | "starter" | "pro" } | null;
+  metadata: { tenantId: string; planCode: "free" | "starter" | "pro" | "enterprise" } | null;
 } {
   const parsed = paddleWebhookEnvelopeSchema.safeParse(envelope);
   if (!parsed.success) {
@@ -85,6 +242,16 @@ export async function handleWebhookEvent(params: {
     return { processed: result.processed };
   }
 
+  if (eventType === "address.updated") {
+    const result = await handleAddressUpdated(envelopeParsed.data);
+    return { processed: result.processed };
+  }
+
+  if (eventType === "business.created" || eventType === "business.updated") {
+    const result = await handleBusinessCreatedOrUpdated(envelopeParsed.data);
+    return { processed: result.processed };
+  }
+
   const { subscriptionData, metadata } = validateWebhookPayload(envelope);
 
   if (!isSupportedPaddleEventType(eventType)) {
@@ -107,16 +274,58 @@ export async function handleWebhookEvent(params: {
 
   const providerSubscriptionId = subscriptionData.id;
 
+  if (eventType === "subscription.canceled") {
+    const existingSub = await prisma.subscription.findFirst({
+      where: { provider: "paddle", providerSubscriptionId },
+      select: { id: true, tenantId: true },
+    });
+    if (existingSub) {
+      const freePlan = await prisma.plan.findUnique({
+        where: { code: "free", isActive: true },
+        select: { id: true },
+      });
+      if (freePlan) {
+        await prisma.subscription.update({
+          where: { id: existingSub.id },
+          data: {
+            status: "CANCELED",
+            planId: freePlan.id,
+            pendingPlanCode: null,
+            cancelAtPeriodEnd: false,
+          },
+        });
+        const actorUserId = getAuditActorUserId();
+        if (actorUserId) {
+          await writeAuditLog({
+            actorUserId,
+            actorContext: "VENDOR",
+            tenantId: existingSub.tenantId,
+            action: "tenant.billing.subscription_canceled",
+            targetType: "Subscription",
+            targetId: existingSub.id,
+            metadata: { providerSubscriptionId, eventId },
+          });
+        }
+      }
+    }
+    logWebhookReceived({
+      eventType,
+      providerEventId: eventId,
+      providerSubscriptionId,
+      result: "success",
+    });
+    return { processed: true };
+  }
+
   let resolvedMetadata = metadata;
   if (!resolvedMetadata) {
-    const priceId = subscriptionData.items?.[0]?.price_id;
-    const planCodeFromPrice = getPlanCodeFromPriceId(priceId);
+    const planCodeFromItems = getHighestPlanCodeFromItems(subscriptionData.items);
     const existingBySub = await prisma.subscription.findFirst({
       where: { provider: "paddle", providerSubscriptionId },
       select: { tenantId: true },
     });
-    if (existingBySub && planCodeFromPrice && planCodeFromPrice !== "free") {
-      resolvedMetadata = { tenantId: existingBySub.tenantId, planCode: planCodeFromPrice };
+    if (existingBySub && planCodeFromItems && planCodeFromItems !== "free") {
+      resolvedMetadata = { tenantId: existingBySub.tenantId, planCode: planCodeFromItems };
     }
   }
 
@@ -186,8 +395,18 @@ export async function handleWebhookEvent(params: {
     return { processed: true, tenantMismatch: true };
   }
 
+  const planCodeFromItems = getHighestPlanCodeFromItems(subscriptionData.items);
+  const hasScheduledChange = !!(
+    subscriptionData.scheduled_change &&
+    typeof subscriptionData.scheduled_change === "object"
+  );
+  const effectivePlanCode =
+    !hasScheduledChange && planCodeFromItems && planCodeFromItems !== "free"
+      ? planCodeFromItems
+      : resolvedMetadata.planCode;
+
   const plan = await prisma.plan.findUnique({
-    where: { code: resolvedMetadata.planCode, isActive: true },
+    where: { code: effectivePlanCode, isActive: true },
     select: { id: true },
   });
   if (!plan) {
@@ -196,7 +415,7 @@ export async function handleWebhookEvent(params: {
       providerEventId: eventId,
       providerSubscriptionId,
       extractedTenantId: tenantId,
-      extractedPlanCode: resolvedMetadata.planCode,
+      extractedPlanCode: effectivePlanCode,
       result: "ignored",
     });
     return { processed: false };
@@ -219,7 +438,7 @@ export async function handleWebhookEvent(params: {
     currentPeriodStart: period?.starts_at,
     currentPeriodEnd: period?.ends_at,
     tenantId,
-    planCode: resolvedMetadata.planCode,
+    planCode: effectivePlanCode,
     occurredAt:
       typeof (envelope as { occurred_at?: string }).occurred_at === "string"
         ? (envelope as { occurred_at: string }).occurred_at
@@ -229,23 +448,18 @@ export async function handleWebhookEvent(params: {
   const auditAction =
     eventType === "subscription.created"
       ? "tenant.billing.subscription_created"
-      : eventType === "subscription.canceled"
-        ? "tenant.billing.subscription_canceled"
-        : "tenant.billing.subscription_updated";
+      : "tenant.billing.subscription_updated";
 
   const actorUserId = getAuditActorUserId();
 
   await prisma.$transaction(async (tx) => {
-    const existingEvent = await tx.billingEvent.findUnique({
-      where: { providerEventId: eventId },
-      select: { id: true },
-    });
-    if (existingEvent) return;
-
     const existingSub = await tx.subscription.findFirst({
       where: { provider: "paddle", providerSubscriptionId },
-      select: { id: true, tenantId: true },
+      select: { id: true, tenantId: true, pendingPlanCode: true },
     });
+
+    const clearPending =
+      existingSub?.pendingPlanCode != null && existingSub.pendingPlanCode === effectivePlanCode;
 
     let sub: { id: string };
     if (existingSub) {
@@ -259,6 +473,7 @@ export async function handleWebhookEvent(params: {
           currentPeriodEnd,
           graceUntil,
           cancelAtPeriodEnd,
+          ...(clearPending ? { pendingPlanCode: null } : {}),
         },
         select: { id: true },
       });
@@ -279,16 +494,6 @@ export async function handleWebhookEvent(params: {
         select: { id: true },
       });
     }
-
-    await tx.billingEvent.create({
-      data: {
-        tenantId,
-        subscriptionId: sub.id,
-        type: eventType,
-        providerEventId: eventId,
-        payload: sanitizedPayload as unknown as object,
-      },
-    });
 
     if (actorUserId) {
       await writeAuditLog({

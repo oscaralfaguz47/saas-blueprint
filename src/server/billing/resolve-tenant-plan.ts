@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/server/db";
 import type { PlanCode, PlanFeatures, RequestsLimits } from "./provider-types";
 import { resolveEffectiveSubscription } from "./resolve-effective-subscription";
+import { getPlanCatalogEntry } from "./plans/catalog";
 
 export type ResolvedTenantPlan = {
   planCode: PlanCode | string;
@@ -34,6 +35,31 @@ const DEFAULT_FREE_FEATURES: PlanFeatures = {
   paymentStatus: false,
   auditLog: "basic",
 };
+
+/** Build PlanFeatures from server plan catalog (EPIC 5 canonical). */
+function featuresFromCatalog(entry: import("./plans/catalog").PlanCatalogEntry): PlanFeatures {
+  const rolloverMonths = entry.rolloverExpiryDays > 0 ? 1 : 0;
+  return {
+    requests: {
+      included: entry.requestsIncluded,
+      hardCap: entry.hardCap,
+      rolloverMonths,
+      maxAvailable: entry.rolloverMaxAvailable,
+      overageCentsPerUnit: entry.overageCentsPerRequest,
+      overageCapCents: null,
+    },
+    pdf: {
+      included: entry.pdfIncluded < 0 ? -1 : entry.pdfIncluded,
+      hardCap: entry.pdfHardCap,
+      watermark: entry.pdfWatermark,
+    },
+    zip: { enabled: entry.zipEnabled },
+    search: entry.code !== "free",
+    manualReminders: entry.code !== "free",
+    paymentStatus: entry.code !== "free",
+    auditLog: entry.code === "free" ? "basic" : "full",
+  };
+}
 
 function parseFeaturesJson(featuresJson: unknown): PlanFeatures {
   if (!featuresJson || typeof featuresJson !== "object") {
@@ -101,10 +127,13 @@ export async function resolveTenantPlan(
     select: { code: true, featuresJson: true },
   });
 
-  const features = plan
-    ? parseFeaturesJson(plan.featuresJson)
-    : DEFAULT_FREE_FEATURES;
-  const planCode = (plan?.code ?? "free") as PlanCode | string;
+  const planCode = (plan?.code ?? "free").toLowerCase() as PlanCode | string;
+  const catalogEntry = getPlanCatalogEntry(planCode);
+  const features = catalogEntry
+    ? featuresFromCatalog(catalogEntry)
+    : plan
+      ? parseFeaturesJson(plan.featuresJson)
+      : DEFAULT_FREE_FEATURES;
 
   return {
     planCode,

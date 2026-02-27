@@ -25,7 +25,8 @@ import {
   type InAppPlanItem,
 } from "@/lib/billing/plan-catalog";
 import { useSession } from "next-auth/react";
-import { IconEye, IconPencil } from "@/components/ui/icons";
+import { IconEye } from "@/components/ui/icons";
+import { BillingProfileSection } from "@/components/app/settings/billing-profile-section";
 
 const PADDLE_SCRIPT_URL = "https://cdn.paddle.com/paddle/v2/paddle.js";
 const CHECKOUT_SUCCESS_REDIRECT =
@@ -56,6 +57,7 @@ const PLAN_LABELS: Record<string, string> = {
   free: "Free",
   starter: "Starter",
   pro: "Pro",
+  enterprise: "Enterprise",
 };
 
 type BillingTransactionItem = {
@@ -71,6 +73,16 @@ type PaymentMethodDisplay = {
   last4: string;
   expiryMonth: number;
   expiryYear: number;
+};
+
+type ChangePlanPreview = {
+  currentPlanCode: string;
+  targetPlanCode: string;
+  effectiveFromDate: string | null;
+  currentPeriodEnd: string | null;
+  currency: string;
+  nextPriceCents: number | null;
+  requiresCheckout: boolean;
 };
 
 const CARD_BRAND_LABELS: Record<string, string> = {
@@ -202,7 +214,7 @@ function useBillingState(summary: BillingSummary | null) {
   const graceUntil = summary.graceUntil ? new Date(summary.graceUntil) : null;
   return {
     currentPlan: (summary.planCode.toLowerCase() as PlanCode) || "free",
-    hasPaidPlan: summary.planCode === "starter" || summary.planCode === "pro",
+    hasPaidPlan: ["starter", "pro", "enterprise"].includes(summary.planCode),
     isCancelingAtPeriodEnd: Boolean(summary.cancelAtPeriodEnd),
     isPastDue: status === "PAST_DUE",
     isInGrace: Boolean(graceUntil && now < graceUntil),
@@ -246,9 +258,10 @@ export function WorkspaceBillingTab() {
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<BillingSummary | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
-  const [portalLoading, setPortalLoading] = useState(false);
+  const [paymentMethodUpdateLoading, setPaymentMethodUpdateLoading] = useState(false);
   const [changePlanOpen, setChangePlanOpen] = useState(false);
   const [confirmPlanOpen, setConfirmPlanOpen] = useState(false);
+  const [changePlanPreview, setChangePlanPreview] = useState<ChangePlanPreview | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<{
     plan: InAppPlanItem;
     direction: "upgrade" | "downgrade";
@@ -336,10 +349,12 @@ export function WorkspaceBillingTab() {
     [apiFetch, toast]
   );
 
+  const [showAllActivity, setShowAllActivity] = useState(false);
   const fetchTransactions = useCallback(async () => {
     setTransactionsLoading(true);
     try {
-      const res = await apiFetch("/api/billing/transactions", {
+      const filter = showAllActivity ? "all" : "completed";
+      const res = await apiFetch(`/api/billing/transactions?filter=${filter}`, {
         showToastOnError: false,
       });
       if (!res.ok) {
@@ -354,7 +369,7 @@ export function WorkspaceBillingTab() {
     } finally {
       setTransactionsLoading(false);
     }
-  }, [apiFetch]);
+  }, [apiFetch, showAllActivity]);
 
   const fetchPaymentMethod = useCallback(async () => {
     setPaymentMethodLoading(true);
@@ -394,7 +409,14 @@ export function WorkspaceBillingTab() {
           }
           // checkout.closed: user closed overlay (e.g. X) ? do nothing, no redirect
         },
-        checkout: { settings: { displayMode: "overlay", theme: "light", locale: "en", showAddTaxId: true } },
+        checkout: {
+          settings: {
+            displayMode: "overlay",
+            theme: "light",
+            locale: "en",
+            showAddTaxId: true,
+          },
+        },
       });
       setPaddleReady(true);
     } catch {
@@ -425,6 +447,7 @@ export function WorkspaceBillingTab() {
     summary &&
     (summary.planCode === "starter" ||
       summary.planCode === "pro" ||
+      summary.planCode === "enterprise" ||
       summary.subscriptionStatus.toUpperCase() === "PAST_DUE" ||
       summary.subscriptionStatus.toUpperCase() === "SUSPENDED");
 
@@ -467,7 +490,7 @@ export function WorkspaceBillingTab() {
       const plan = (data.planCode.toLowerCase() || "free") as PlanCode;
       const status = data.subscriptionStatus.toUpperCase();
       if (targetPlan && plan === targetPlan && status === "ACTIVE") return true;
-      if (!targetPlan && (plan === "starter" || plan === "pro") && status === "ACTIVE")
+      if (!targetPlan && (plan === "starter" || plan === "pro" || plan === "enterprise") && status === "ACTIVE")
         return true;
       return false;
     };
@@ -532,7 +555,7 @@ export function WorkspaceBillingTab() {
     const plan = (summary.planCode?.toLowerCase() || "free") as PlanCode;
     const status = summary.subscriptionStatus?.toUpperCase() ?? "";
     if (
-      (plan === "starter" || plan === "pro") &&
+      (plan === "starter" || plan === "pro" || plan === "enterprise") &&
       status === "ACTIVE"
     ) {
       setPostCheckoutState("resolved");
@@ -553,7 +576,7 @@ export function WorkspaceBillingTab() {
   }, []);
 
   const handleChangePaymentMethod = useCallback(async () => {
-    setPortalLoading(true);
+    setPaymentMethodUpdateLoading(true);
     try {
       const res = await apiFetch("/api/billing/paddle/update-payment-method-transaction", {
         method: "POST",
@@ -566,72 +589,63 @@ export function WorkspaceBillingTab() {
         toast.addToast("error", "Could not open payment method update. Please try again.");
         return;
       }
-      const Paddle = typeof window !== "undefined" ? (window as { Paddle?: { Checkout?: { open: (opts: { transactionId: string; settings?: { displayMode: string } }) => void } } }).Paddle : undefined;
+      let defaultCountry: string | null = null;
+      try {
+        const geoRes = await apiFetch("/api/billing/geo-country");
+        if (geoRes.ok) {
+          const geoJson = await geoRes.json().catch(() => null);
+          defaultCountry = (geoJson?.data as { countryCode?: string | null })?.countryCode ?? null;
+        }
+      } catch {
+        // ignore; checkout still opens without prefilled country
+      }
+      const Paddle = typeof window !== "undefined" ? (window as { Paddle?: { Checkout?: { open: (opts: { transactionId: string; settings?: { displayMode: string }; customer?: { address?: { countryCode: string } } }) => void } } }).Paddle : undefined;
       if (Paddle?.Checkout?.open) {
         Paddle.Checkout.open({
           transactionId,
           settings: { displayMode: "overlay" },
+          ...(defaultCountry ? { customer: { address: { countryCode: defaultCountry } } } : {}),
         });
       } else {
         toast.addToast("error", "Payment window could not open. Refresh the page and try again.");
       }
     } finally {
-      setPortalLoading(false);
+      setPaymentMethodUpdateLoading(false);
     }
   }, [apiFetch, toast]);
 
-  const handleStartUpgradeCheckout = useCallback(
-    async (planCode: PlanCode) => {
-      setCheckoutLoading(true);
-      try {
-        const res = await apiFetch("/api/billing/paddle/checkout", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ planCode }),
-          showToastOnError: true,
-        });
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok) return;
-        const transactionId = (json.data as { transactionId?: string })?.transactionId;
-        if (!transactionId) {
-          toast.addToast("error", "Checkout could not be started. Please try again.");
-          return;
-        }
-        try {
-          sessionStorage.setItem("billing:postCheckoutPlan", planCode);
-        } catch {
-          // ignore
-        }
-        const Paddle = typeof window !== "undefined" ? (window as { Paddle?: { Checkout?: { open: (opts: { transactionId: string; settings?: { displayMode: string } }) => void } } }).Paddle : undefined;
-        if (Paddle?.Checkout?.open) {
-          Paddle.Checkout.open({
-            transactionId,
-            settings: { displayMode: "overlay" },
-          });
-        } else {
-          toast.addToast("error", "Payment window could not open. Refresh the page and try again.");
-        }
-      } finally {
-        setCheckoutLoading(false);
-      }
-    },
-    [apiFetch, toast]
-  );
-
   const handleSelectPlan = useCallback(
-    (plan: InAppPlanItem) => {
+    async (plan: InAppPlanItem) => {
       const current = billingState.currentPlan;
       if (plan.code === current) return;
       if (isUpgrade(current, plan.code)) {
         setChangePlanOpen(false);
-        void handleStartUpgradeCheckout(plan.code);
+        setConfirmTarget({ plan, direction: "upgrade" });
+        try {
+          const res = await apiFetch(
+            `/api/billing/change-plan/preview?targetPlanCode=${encodeURIComponent(plan.code)}`,
+            { showToastOnError: false }
+          );
+          if (!res.ok) {
+            toast.addToast("error", "Could not load plan preview.");
+            return;
+          }
+          const json = await res.json().catch(() => ({}));
+          const data = json.data as ChangePlanPreview | undefined;
+          if (data) {
+            setChangePlanPreview(data);
+            setConfirmPlanOpen(true);
+          }
+        } catch {
+          toast.addToast("error", "Could not load plan preview.");
+        }
       } else if (isDowngrade(current, plan.code)) {
         setConfirmTarget({ plan, direction: "downgrade" });
         setChangePlanOpen(false);
         setConfirmPlanOpen(true);
       }
     },
-    [billingState.currentPlan, handleStartUpgradeCheckout]
+    [billingState.currentPlan, apiFetch, toast]
   );
 
   const handleConfirmUpgrade = useCallback(
@@ -639,58 +653,76 @@ export function WorkspaceBillingTab() {
       if (!confirmTarget || confirmTarget.direction !== "upgrade") return;
       setCheckoutLoading(true);
       try {
-        const res = await apiFetch("/api/billing/paddle/checkout", {
+        const res = await apiFetch("/api/billing/change-plan", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ planCode: confirmTarget.plan.code }),
+          body: JSON.stringify({
+            targetPlanCode: confirmTarget.plan.code,
+            effective: "next_period",
+          }),
           showToastOnError: true,
         });
         const json = await res.json().catch(() => ({}));
         if (!res.ok) return;
-        const transactionId = (json.data as { transactionId?: string })?.transactionId;
-        if (!transactionId) {
-          toast.addToast("error", "Checkout could not be started. Please try again.");
-          return;
-        }
-        try {
-          sessionStorage.setItem("billing:postCheckoutPlan", confirmTarget.plan.code);
-        } catch {
-          // ignore
-        }
+        const data = json.data as { mode: string; transactionId?: string; environment?: string };
         setConfirmPlanOpen(false);
         setConfirmTarget(null);
-        const Paddle = typeof window !== "undefined" ? (window as { Paddle?: { Checkout?: { open: (opts: { transactionId: string; settings?: { displayMode: string } }) => void } } }).Paddle : undefined;
-        if (Paddle?.Checkout?.open) {
-          Paddle.Checkout.open({
-            transactionId,
-            settings: { displayMode: "overlay" },
-          });
+        setChangePlanPreview(null);
+        if (data.mode === "checkout" && data.transactionId) {
+          try {
+            sessionStorage.setItem("billing:postCheckoutPlan", confirmTarget.plan.code);
+          } catch {
+            // ignore
+          }
+          let defaultCountry: string | null = null;
+          try {
+            const geoRes = await apiFetch("/api/billing/geo-country");
+            if (geoRes.ok) {
+              const geoJson = await geoRes.json().catch(() => null);
+              defaultCountry = (geoJson?.data as { countryCode?: string | null })?.countryCode ?? null;
+            }
+          } catch {
+            // ignore; checkout still opens without prefilled country
+          }
+          const Paddle = typeof window !== "undefined" ? (window as { Paddle?: { Checkout?: { open: (opts: { transactionId: string; settings?: { displayMode: string }; customer?: { address?: { countryCode: string } } }) => void } } }).Paddle : undefined;
+          if (Paddle?.Checkout?.open) {
+            Paddle.Checkout.open({
+              transactionId: data.transactionId,
+              settings: { displayMode: "overlay" },
+              ...(defaultCountry ? { customer: { address: { countryCode: defaultCountry } } } : {}),
+            });
+          } else {
+            toast.addToast("error", "Payment window could not open. Refresh the page and try again.");
+          }
         } else {
-          toast.addToast("error", "Payment window could not open. Refresh the page and try again.");
+          toast.addToast("success", `Plan change to ${confirmTarget.plan.name} scheduled for next billing cycle.`);
+          await fetchSummary();
         }
       } finally {
         setCheckoutLoading(false);
       }
     },
-    [confirmTarget, apiFetch, toast]
+    [confirmTarget, apiFetch, toast, fetchSummary]
   );
 
   const handleConfirmDowngrade = useCallback(async () => {
     if (!confirmTarget || confirmTarget.direction !== "downgrade") return;
-    if (confirmTarget.plan.code !== "free" && confirmTarget.plan.code !== "starter")
-      return;
     setScheduleLoading(true);
     try {
+      const effective = confirmTarget.plan.code === "free" ? "next_period" : "next_period";
       const res = await apiFetch("/api/billing/change-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planCode: confirmTarget.plan.code }),
+        body: JSON.stringify({
+          targetPlanCode: confirmTarget.plan.code,
+          effective,
+        }),
         showToastOnError: true,
       });
       if (!res.ok) return;
       setConfirmPlanOpen(false);
       setConfirmTarget(null);
-      toast.addToast("success", "Downgrade scheduled.");
+      toast.addToast("success", confirmTarget.plan.code === "free" ? "Downgrade scheduled." : "Plan change scheduled.");
       await fetchSummary();
     } finally {
       setScheduleLoading(false);
@@ -700,6 +732,7 @@ export function WorkspaceBillingTab() {
   const closeConfirm = useCallback(() => {
     setConfirmPlanOpen(false);
     setConfirmTarget(null);
+    setChangePlanPreview(null);
   }, []);
 
   if (loading) {
@@ -816,8 +849,7 @@ export function WorkspaceBillingTab() {
       {postCheckoutState === "timeout" && (
         <Alert variant="warning" title="Still processing your payment">
           <p className="mt-1">
-            We&apos;re still processing your payment. Refresh in a moment or check
-            the billing portal.
+            We&apos;re still processing your payment. Refresh in a moment to see the latest status.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
@@ -851,10 +883,10 @@ export function WorkspaceBillingTab() {
           <button
             type="button"
             onClick={handleChangePaymentMethod}
-            disabled={portalLoading}
+            disabled={paymentMethodUpdateLoading}
             className="mt-2 inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 text-sm font-medium hover:bg-(--bg-surface-elev) disabled:opacity-50"
           >
-            {portalLoading ? "Loading?" : "Update payment method"}
+            {paymentMethodUpdateLoading ? "Loading…" : "Update payment method"}
           </button>
         </Alert>
       )}
@@ -873,10 +905,10 @@ export function WorkspaceBillingTab() {
           <button
             type="button"
             onClick={handleChangePaymentMethod}
-            disabled={portalLoading}
+            disabled={paymentMethodUpdateLoading}
             className="mt-2 inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) px-3 text-sm font-medium disabled:opacity-50"
           >
-            {portalLoading ? "Loading?" : "Update payment method"}
+            {paymentMethodUpdateLoading ? "Loading…" : "Update payment method"}
           </button>
         </Alert>
       )}
@@ -996,12 +1028,23 @@ export function WorkspaceBillingTab() {
         </CardContent>
       </CardRoot>
 
-      {/* Transaction history (EPIC 4) */}
+      {/* Transaction history (EPIC 4/5) */}
       <CardRoot>
         <CardHeader>
-          <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">
-            Payments
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">
+              Payments
+            </p>
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-(--text-secondary)">
+              <input
+                type="checkbox"
+                checked={showAllActivity}
+                onChange={(e) => setShowAllActivity(e.target.checked)}
+                className="h-4 w-4 rounded border-(--border-subtle)"
+              />
+              Show all activity
+            </label>
+          </div>
         </CardHeader>
         <CardContent>
           {transactionsLoading ? (
@@ -1027,29 +1070,18 @@ export function WorkspaceBillingTab() {
                       <td className="py-2 pr-4 text-right text-(--text-primary)">
                         {(t.total.cents / 100).toFixed(2)} {t.total.currency}
                       </td>
+                      {/* EPIC 5: Payments are read-only. Only "View invoice"; no per-row "Edit billing details". */}
                       <td className="py-2 text-right">
                         {t.status?.toLowerCase() === "completed" ? (
-                          <div className="flex items-center justify-end gap-2">
-                            <a
-                              href={`/api/billing/transactions/${t.id}/invoice-redirect`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 text-sm text-(--color-primary) underline hover:no-underline"
-                            >
-                              <IconEye size={14} />
-                              View invoice
-                            </a>
-                            <a
-                              href={`/api/billing/transactions/${t.id}/portal-redirect`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title="Opens Paddle's secure billing portal to view payments and update invoice information."
-                              className="inline-flex items-center gap-1.5 text-sm text-(--color-primary) underline hover:no-underline"
-                            >
-                              <IconPencil size={14} />
-                              Edit billing details
-                            </a>
-                          </div>
+                          <a
+                            href={`/api/billing/transactions/${t.id}/invoice-redirect`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-sm text-(--color-primary) underline hover:no-underline"
+                          >
+                            <IconEye size={14} />
+                            View invoice
+                          </a>
                         ) : null}
                       </td>
                     </tr>
@@ -1060,6 +1092,9 @@ export function WorkspaceBillingTab() {
           )}
         </CardContent>
       </CardRoot>
+
+      {/* Billing profile (tenant-level; future invoices only) */}
+      <BillingProfileSection />
 
       {/* Payment method */}
       {(billingState.hasPaidPlan || billingState.isPastDue || billingState.isSuspended) && (
@@ -1092,10 +1127,10 @@ export function WorkspaceBillingTab() {
             <button
               type="button"
               onClick={handleChangePaymentMethod}
-              disabled={portalLoading}
+              disabled={paymentMethodUpdateLoading}
               className="mt-3 inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
             >
-              {portalLoading ? "Loading?" : "Change payment method"}
+              {paymentMethodUpdateLoading ? "Loading…" : "Change payment method"}
             </button>
           </CardContent>
         </CardRoot>
@@ -1194,11 +1229,7 @@ export function WorkspaceBillingTab() {
       <Dialog
         open={confirmPlanOpen}
         onClose={closeConfirm}
-        title={
-          confirmTarget?.direction === "upgrade"
-            ? `Activate ${confirmTarget.plan.name} Plan`
-            : "Confirm plan change"
-        }
+        title="Confirm change"
         closeDisabled={scheduleLoading || checkoutLoading}
         allowOverlayClose={false}
         contentClassName="max-h-[90vh] overflow-hidden flex flex-col max-w-md"
@@ -1208,9 +1239,35 @@ export function WorkspaceBillingTab() {
           <div className="space-y-4">
             {confirmTarget.direction === "upgrade" ? (
               <>
-                <p className="text-sm text-(--text-muted)">
-                  You&apos;re upgrading to {confirmTarget.plan.name} ? {formatPriceMonthly(confirmTarget.plan.priceMonthlyCents)}/month. You&apos;ll enter your payment details in the next step.
-                </p>
+                <div className="text-sm text-(--text-primary) space-y-2">
+                  <p>
+                    <span className="text-(--text-muted)">Current plan: </span>
+                    {PLAN_LABELS[changePlanPreview?.currentPlanCode ?? summary?.planCode ?? "free"] ?? (changePlanPreview?.currentPlanCode ?? summary?.planCode ?? "free")}
+                  </p>
+                  <p>
+                    <span className="text-(--text-muted)">Target plan: </span>
+                    {confirmTarget.plan.name}
+                    {changePlanPreview?.nextPriceCents != null && (
+                      <span className="text-(--text-muted)"> — {formatPriceMonthly(changePlanPreview.nextPriceCents)}/month</span>
+                    )}
+                  </p>
+                  {changePlanPreview?.effectiveFromDate && (
+                    <p>
+                      <span className="text-(--text-muted)">Billing starts: </span>
+                      {formatDate(changePlanPreview.effectiveFromDate)}
+                    </p>
+                  )}
+                  <p className="text-(--text-muted)">
+                    {changePlanPreview?.requiresCheckout
+                      ? "You'll enter your payment details in the next step."
+                      : "Your new amount will be charged at the end of the current billing cycle."}
+                  </p>
+                  {paymentMethod && !changePlanPreview?.requiresCheckout && (
+                    <p className="text-(--text-muted)">
+                      Payment method: {formatCardBrand(paymentMethod.brand)} •••• {paymentMethod.last4}
+                    </p>
+                  )}
+                </div>
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -1221,10 +1278,10 @@ export function WorkspaceBillingTab() {
                     {checkoutLoading ? (
                       <>
                         <Spinner size="sm" />
-                        Preparing?
+                        Preparing…
                       </>
                     ) : (
-                      "Upgrade"
+                      "Confirm"
                     )}
                   </button>
                   <button

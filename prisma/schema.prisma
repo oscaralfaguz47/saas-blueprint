@@ -90,6 +90,19 @@ enum BillingPeriodStatus {
   CLOSED
 }
 
+/// EPIC 5: Support request type for billing.
+enum BillingSupportRequestType {
+  INVOICE_BILLING_DETAILS_CHANGE
+}
+
+/// EPIC 5: Support request status.
+enum BillingSupportRequestStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  REJECTED
+}
+
 enum RecordStatus {
   DRAFT
   PENDING_APPROVAL
@@ -253,6 +266,15 @@ model Tenant {
   tenantUsageLedgers    TenantUsageLedger[]
   billingTransactions  BillingTransaction[]
 
+  /// EPIC 5: Billing profile snapshot (future invoices; Country/Postal locked).
+  tenantBillingProfile   TenantBillingProfile?
+  /// EPIC 5: Support requests for existing invoice billing detail changes.
+  billingSupportRequests BillingSupportRequest[]
+  /// EPIC 5: Rollover lots (paid plans; 60d expiry, cap 400 for Starter).
+  tenantRolloverLots    TenantRolloverLot[]
+  /// EPIC 5: Scheduled overage charges (Starter; one-time on next invoice).
+  tenantOverageCharges  TenantOverageCharge[]
+
   @@index([status])
   @@index([createdByUserId])
   @@index([createdByUserId, status])
@@ -291,6 +313,96 @@ model BillingTransaction {
   @@index([tenantId, billedAt])
   @@index([tenantId, status])
   @@index([provider, providerSubscriptionId])
+}
+
+/// EPIC 5: Billing profile snapshot for future invoices. Country/Postal locked (set by Paddle checkout).
+model TenantBillingProfile {
+  tenantId String @id
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  countryCode String   @db.VarChar(2)
+  postalCode  String?  @db.VarChar(32)
+  region      String?  @db.VarChar(80)
+  city        String?  @db.VarChar(80)
+  addressLine1 String? @db.VarChar(120)
+  addressLine2 String? @db.VarChar(120)
+  companyName  String? @db.VarChar(160)
+  vatId        String? @db.VarChar(64)
+
+  providerCustomerId String? @db.VarChar(191)
+  providerBusinessId String? @db.VarChar(191)
+  providerAddressId  String? @db.VarChar(191)
+
+  lastSyncedAt DateTime?
+  syncSource   String?   @db.VarChar(40)
+
+  updatedByUserId String?
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@index([providerCustomerId])
+  @@index([lastSyncedAt])
+}
+
+/// EPIC 5: Support request for existing invoice billing detail changes (platform admin handles).
+model BillingSupportRequest {
+  id       String   @id @default(cuid())
+  tenantId String
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  type   BillingSupportRequestType
+  status BillingSupportRequestStatus @default(OPEN)
+
+  providerInvoiceId     String? @db.VarChar(191)
+  providerTransactionId String? @db.VarChar(191)
+  requestedData         Json
+  note                  String? @db.VarChar(500)
+
+  createdByUserId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, createdAt])
+  @@index([status, createdAt])
+}
+
+/// EPIC 5: Rollover lots (paid plans); expiry 60d, cap 400 for Starter.
+model TenantRolloverLot {
+  id       String   @id @default(cuid())
+  tenantId String
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  periodStart DateTime
+  granted     Int
+  used        Int      @default(0)
+  expiresAt   DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, expiresAt])
+  @@index([tenantId, periodStart])
+}
+
+/// EPIC 5: Scheduled overage charges (Starter; one-time on next invoice).
+model TenantOverageCharge {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  periodStart DateTime
+
+  meter         MeterKey
+  units         Int
+  unitPriceCents Int
+  totalCents    Int
+
+  provider         String  @db.VarChar(30)
+  providerChargeId String? @db.VarChar(191)
+  status           String  @db.VarChar(40)
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, periodStart, meter])
+  @@index([tenantId, createdAt])
 }
 
 model TenantMembership {

@@ -1,22 +1,11 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
-import { getDefaultTenantForUser } from "@/server/services/tenancy";
-import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { requireFullSession } from "@/server/require-full-session";
+import { getCurrentTenantId, requireTenantPermission } from "@/server/billing/tenant-context";
+import { getInvoiceUrl } from "@/server/billing/paddle/invoices/get-invoice-url";
 import { ApiErrors, withErrorHandler } from "@/lib/api-response";
 import { prisma } from "@/server/db";
-
-const PADDLE_API_BASE =
-  process.env.PADDLE_ENVIRONMENT === "production"
-    ? "https://api.paddle.com"
-    : "https://sandbox-api.paddle.com";
-
-function getApiKey(): string {
-  const key = process.env.PADDLE_API_KEY;
-  if (!key) throw new Error("PADDLE_API_KEY is not set");
-  return key;
-}
 
 /**
  * GET /api/billing/transactions/[id]/invoice-redirect
@@ -26,7 +15,7 @@ function getApiKey(): string {
  */
 export const GET = withErrorHandler(
   async (
-    _req: Request,
+    req: Request,
     context: { params: Promise<{ id: string }> }
   ) => {
     const session = await getServerSession(authOptions);
@@ -34,21 +23,20 @@ export const GET = withErrorHandler(
     if (mfaError) return mfaError;
     if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 
-    const membership = await getDefaultTenantForUser(session.user.id);
-    const tenantId = membership?.tenant?.id;
+    const tenantId = await getCurrentTenantId({ session, req });
     if (!tenantId) return ApiErrors.NO_TENANT();
 
-    const allowed = await hasTenantPermission({
+    const permError = await requireTenantPermission({
       userId: session.user.id,
       tenantId,
       permission: "tenant.billing.manage",
     });
-    if (!allowed) return ApiErrors.FORBIDDEN();
+    if (permError) return permError;
 
     const { id } = await context.params;
     const transaction = await prisma.billingTransaction.findFirst({
       where: { id, tenantId },
-      select: { providerTransactionId: true, status: true },
+      select: { providerTransactionId: true, status: true, invoiceUrl: true },
     });
     if (!transaction?.providerTransactionId) {
       return ApiErrors.NOT_FOUND("Transaction");
@@ -59,23 +47,15 @@ export const GET = withErrorHandler(
       );
     }
 
-    const txInvoiceUrl = new URL(
-      `${PADDLE_API_BASE}/transactions/${transaction.providerTransactionId}/invoice`
-    );
-    txInvoiceUrl.searchParams.set("disposition", "inline");
-    const res = await fetch(txInvoiceUrl.toString(), {
-      method: "GET",
-      headers: { Authorization: `Bearer ${getApiKey()}` },
-    });
-    if (!res.ok) {
-      const err = await res.text();
-      return ApiErrors.INTERNAL_ERROR(
-        `Failed to get invoice from Paddle: ${res.status} ${err}`
-      );
+    let url: string | null = transaction.invoiceUrl ?? null;
+    if (!url) {
+      url = await getInvoiceUrl({
+        providerTransactionId: transaction.providerTransactionId,
+        tenantId,
+        persist: true,
+      });
     }
-    const json = (await res.json()) as { data?: { url?: string } };
-    const url = json?.data?.url;
-    if (!url || typeof url !== "string") {
+    if (!url) {
       return ApiErrors.INTERNAL_ERROR(
         "Paddle did not return an invoice URL. Try again or open the link from your receipt email."
       );

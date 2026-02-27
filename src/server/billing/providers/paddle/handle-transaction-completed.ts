@@ -116,28 +116,6 @@ export async function handleTransactionCompleted(envelope: unknown): Promise<{
       : null;
 
   await prisma.$transaction(async (tx) => {
-    const existingEvent = await tx.billingEvent.findUnique({
-      where: { providerEventId: eventId },
-      select: { id: true },
-    });
-    if (existingEvent) return;
-
-    await tx.billingEvent.create({
-      data: {
-        tenantId,
-        type: eventType,
-        providerEventId: eventId,
-        payload: {
-          providerEventId: eventId,
-          eventType,
-          tenantId,
-          planCode,
-          providerTransactionId,
-          status,
-        } as object,
-      },
-    });
-
     await tx.billingTransaction.upsert({
       where: { providerTransactionId },
       create: {

@@ -215,6 +215,39 @@ async function ensurePlan() {
       featuresJson: proFeatures,
     },
   });
+
+  const enterpriseFeatures = {
+    requests: {
+      included: 4000,
+      hardCap: true,
+      rolloverMonths: 0,
+      maxAvailable: 4000,
+      overageCentsPerUnit: null,
+      overageCapCents: null,
+    },
+    pdf: { included: -1, hardCap: false, watermark: false },
+    zip: { enabled: true },
+    search: true,
+    manualReminders: true,
+    paymentStatus: true,
+    auditLog: "full",
+  };
+  await prisma.plan.upsert({
+    where: { code: "enterprise" },
+    update: {
+      name: "Enterprise",
+      isActive: true,
+      priceMonthly: 49900,
+      featuresJson: enterpriseFeatures,
+    },
+    create: {
+      code: "enterprise",
+      name: "Enterprise",
+      isActive: true,
+      priceMonthly: 49900,
+      featuresJson: enterpriseFeatures,
+    },
+  });
 }
 
 async function main() {

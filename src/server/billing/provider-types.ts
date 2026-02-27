@@ -6,8 +6,8 @@ import "server-only";
  */
 export type BillingProvider = "paddle" | "stripe" | "manual";
 
-/** Plan code canonical set (J1 Workspace Billing Core). */
-export type PlanCode = "free" | "starter" | "pro";
+/** Plan code canonical set (J1 Workspace Billing Core; EPIC 5 adds enterprise). */
+export type PlanCode = "free" | "starter" | "pro" | "enterprise";
 
 /** Parsed limits for requests meter from Plan.featuresJson. */
 export type RequestsLimits = {

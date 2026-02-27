@@ -1,5 +1,27 @@
 # Billing address & optional Tax ID — How to test
 
+## Tax not calculating (e.g. US + ZIP 21103)
+
+If the user selects **United States**, enters a taxable ZIP (e.g. **21103**), clicks **Continue**, but **Tax** stays **$0.00**, check Paddle Dashboard configuration:
+
+1. **Checkout > Sales tax settings**
+   - Ensure sales tax is **enabled** for your account.
+   - For US: ensure **United States** (and state-level rules if required) is configured.
+2. **Catalog > Product / Price**
+   - For the price used at checkout (e.g. Starter monthly), ensure **Tax** is enabled and the price uses a tax mode that supports location-based calculation (e.g. “Automatic based on location” or tax-inclusive/exclusive as needed).
+3. **Test mode**
+   - In sandbox, confirm tax rules are set for the same regions you test (US, state, or ZIP).
+
+The app creates the transaction **without** an address; Paddle Checkout collects country and ZIP in “Your details” and recalculates tax when the user clicks **Continue**. If tax still does not appear after that, the cause is almost always Dashboard tax configuration or the price’s tax settings.
+
+## Google Pay / Apple Pay not showing
+
+The app does **not** restrict payment methods; Paddle shows all methods that are **enabled in your Paddle account** and **valid for the transaction** (currency, country, device). If Google Pay or Apple Pay do not appear:
+
+1. **Paddle Dashboard** — Check **Checkout** or **Payment methods** and ensure **Google Pay** and **Apple Pay** are enabled for your account and (if applicable) for the product/price.
+2. **Device / browser** — Apple Pay typically appears only in **Safari** or on **Apple devices**; Google Pay in **Chrome** (and often not on iPhone/iPad). Test in the expected browser/device.
+3. **Sandbox** — In test mode, some wallet options may be limited; confirm in Paddle docs or support for sandbox availability.
+
 ## Prerequisites
 
 1. Run migrations and generate Prisma client:

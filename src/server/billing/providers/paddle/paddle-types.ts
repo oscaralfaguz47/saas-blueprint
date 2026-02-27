@@ -3,8 +3,8 @@ import "server-only";
 import { z } from "zod";
 import { cuidSchema } from "@/lib/validations/common";
 
-/** Canonical plan codes (webhook must never assign "free"; checkout never creates free). */
-export const PADDLE_PLAN_CODE = z.enum(["free", "starter", "pro"]);
+/** Canonical plan codes (webhook must never assign "free"; checkout never creates free). EPIC 5: enterprise. */
+export const PADDLE_PLAN_CODE = z.enum(["free", "starter", "pro", "enterprise"]);
 export type PaddlePlanCode = z.infer<typeof PADDLE_PLAN_CODE>;
 
 /** Allowlist of Paddle event types we process. Others are logged and ignored. */

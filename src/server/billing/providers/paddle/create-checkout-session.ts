@@ -17,7 +17,13 @@ function getApiKey(): string {
 function getPriceId(planCode: PlanCode): string {
   if (planCode === "free") throw new Error("Cannot checkout free plan");
   const envKey =
-    planCode === "starter" ? "PADDLE_PRICE_ID_STARTER" : "PADDLE_PRICE_ID_PRO";
+    planCode === "starter"
+      ? "PADDLE_PRICE_ID_STARTER"
+      : planCode === "pro"
+        ? "PADDLE_PRICE_ID_PRO"
+        : planCode === "enterprise"
+          ? "PADDLE_PRICE_ID_ENTERPRISE"
+          : "PADDLE_PRICE_ID_PRO";
   const id = process.env[envKey];
   if (!id) throw new Error(`${envKey} is not set`);
   return id;
@@ -92,8 +98,8 @@ async function getOrCreatePaddleCustomer(params: {
 }
 
 /**
- * Create Paddle transaction (POST /transactions). No address/business — Paddle overlay collects
- * email + country and "Add VAT number" in payment step.
+ * Create Paddle transaction (POST /transactions). No address_id — checkout opens on "Your details";
+ * user selects country, enters ZIP, clicks Continue so Paddle can calculate tax before Payment.
  * Returns transactionId for Paddle.Checkout.open({ transactionId }) and optional checkoutUrl fallback.
  */
 async function createPaddleTransaction(params: {

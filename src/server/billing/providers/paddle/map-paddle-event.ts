@@ -8,14 +8,45 @@ import type {
 } from "./paddle-types";
 import { paddleMetadataSchema, paddleSubscriptionDataSchema } from "./paddle-types";
 
-/** Resolve planCode from Paddle price_id (fallback when custom_data missing). */
+const PLAN_TIER_ORDER: Record<PaddlePlanCode, number> = {
+  free: 0,
+  starter: 1,
+  pro: 2,
+  enterprise: 3,
+};
+
+/** Resolve planCode from Paddle price_id (fallback when custom_data missing). EPIC 5: enterprise. */
 export function getPlanCodeFromPriceId(priceId: string | null | undefined): PaddlePlanCode | null {
   if (!priceId || typeof priceId !== "string") return null;
   const starter = process.env.PADDLE_PRICE_ID_STARTER;
   const pro = process.env.PADDLE_PRICE_ID_PRO;
+  const enterprise = process.env.PADDLE_PRICE_ID_ENTERPRISE;
   if (starter && priceId === starter) return "starter";
   if (pro && priceId === pro) return "pro";
+  if (enterprise && priceId === enterprise) return "enterprise";
   return null;
+}
+
+/**
+ * From subscription items, return the highest-tier plan code (starter < pro < enterprise).
+ * Used when a subscription has multiple items (e.g. duplicate from second checkout) so we show the effective plan.
+ */
+export function getHighestPlanCodeFromItems(
+  items: Array<{ price_id?: string }> | null | undefined
+): PaddlePlanCode | null {
+  if (!items?.length) return null;
+  let highest: PaddlePlanCode | null = null;
+  for (const item of items) {
+    const code = getPlanCodeFromPriceId(item.price_id);
+    if (!code || code === "free") continue;
+    if (
+      !highest ||
+      PLAN_TIER_ORDER[code] > PLAN_TIER_ORDER[highest as PaddlePlanCode]
+    ) {
+      highest = code;
+    }
+  }
+  return highest;
 }
 
 /** Configurable grace period (days) when status is past_due. */

@@ -1,33 +1,32 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
-import { getDefaultTenantForUser } from "@/server/services/tenancy";
-import { hasTenantPermission } from "@/server/security/tenant-authorization";
+import { getCurrentTenantId, requireTenantPermission } from "@/server/billing/tenant-context";
 import { requireFullSession } from "@/server/require-full-session";
 import { prisma } from "@/server/db";
 import { fetchPaddleSubscription, resolvePlanFromPaddleSubscription, mapPaddleStatusToInternal } from "@/server/billing/providers/paddle/fetch-subscription";
 import { getGraceUntilForPastDue, isCancelAtPeriodEnd } from "@/server/billing/providers/paddle/map-paddle-event";
+import { updateSubscriptionPrice } from "@/server/billing/paddle/subscriptions/update-subscription-price";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 
 /**
  * Reconcile subscription state from Paddle (fallback when webhook is delayed).
  * Auth + tenant.billing.manage. Rate-limit should be applied (e.g. 1/min per tenant).
  */
-export const POST = withErrorHandler(async () => {
+export const POST = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
   const mfaError = await requireFullSession(session);
   if (mfaError) return mfaError;
   if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 
-  const membership = await getDefaultTenantForUser(session.user.id);
-  const tenantId = membership?.tenant?.id;
+  const tenantId = await getCurrentTenantId({ session, req });
   if (!tenantId) return ApiErrors.NO_TENANT();
 
-  const allowed = await hasTenantPermission({
+  const permError = await requireTenantPermission({
     userId: session.user.id,
     tenantId,
     permission: "tenant.billing.manage",
   });
-  if (!allowed) return ApiErrors.FORBIDDEN();
+  if (permError) return permError;
 
   const sub = await prisma.subscription.findFirst({
     where: { tenantId, provider: "paddle" },
@@ -42,14 +41,28 @@ export const POST = withErrorHandler(async () => {
     return apiSuccess({ ok: false, noSubscription: true });
   }
 
-  const paddleSub = await fetchPaddleSubscription(sub.providerSubscriptionId);
+  let paddleSub = await fetchPaddleSubscription(sub.providerSubscriptionId);
   if (!paddleSub) {
     return apiSuccess({ ok: false, notFoundAtProvider: true });
   }
 
-  const resolved = resolvePlanFromPaddleSubscription(paddleSub, sub.tenantId);
+  let resolved = resolvePlanFromPaddleSubscription(paddleSub, sub.tenantId);
   if (!resolved || resolved.tenantId !== tenantId) {
     return ApiErrors.FORBIDDEN();
+  }
+
+  if (paddleSub.items && paddleSub.items.length > 1) {
+    const normalizeResult = await updateSubscriptionPrice({
+      providerSubscriptionId: sub.providerSubscriptionId,
+      targetPlanCode: resolved.planCode,
+      effective: "next_period",
+      tenantId: sub.tenantId,
+    });
+    if (!normalizeResult.ok) {
+      return apiSuccess({ ok: false, normalized: false, error: normalizeResult.error });
+    }
+    paddleSub = await fetchPaddleSubscription(sub.providerSubscriptionId) ?? paddleSub;
+    resolved = resolvePlanFromPaddleSubscription(paddleSub, sub.tenantId) ?? resolved;
   }
 
   const plan = await prisma.plan.findUnique({
@@ -75,6 +88,7 @@ export const POST = withErrorHandler(async () => {
       currentPeriodEnd,
       graceUntil,
       cancelAtPeriodEnd,
+      pendingPlanCode: null,
     },
   });
 

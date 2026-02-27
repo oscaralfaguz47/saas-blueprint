@@ -1,6 +1,7 @@
 import "server-only";
 
 import {
+  getHighestPlanCodeFromItems,
   getPlanCodeFromPriceId,
   mapPaddleStatusToInternal,
   parseMetadataFromCustomData,
@@ -44,20 +45,22 @@ export async function fetchPaddleSubscription(
 }
 
 /**
- * Resolve tenantId and planCode from Paddle subscription (custom_data or existing DB + price_id).
+ * Resolve tenantId and planCode from Paddle subscription.
+ * When there are multiple items, uses the highest-tier plan (e.g. Pro over Starter).
  */
 export function resolvePlanFromPaddleSubscription(
   subscription: PaddleSubscriptionData,
   existingTenantId: string | null
-): { tenantId: string; planCode: "starter" | "pro" } | null {
+): { tenantId: string; planCode: "starter" | "pro" | "enterprise" } | null {
   const metadata = parseMetadataFromCustomData(subscription.custom_data ?? undefined);
-  if (metadata && metadata.planCode !== "free") {
-    return { tenantId: metadata.tenantId, planCode: metadata.planCode };
-  }
-  const priceId = subscription.items?.[0]?.price_id;
-  const planCode = getPlanCodeFromPriceId(priceId);
-  if (existingTenantId && planCode && planCode !== "free") {
-    return { tenantId: existingTenantId, planCode };
+  const tenantId = metadata?.tenantId ?? existingTenantId;
+  if (!tenantId) return null;
+
+  const planFromItems = getHighestPlanCodeFromItems(subscription.items);
+  const planFromMetadata = metadata?.planCode && metadata.planCode !== "free" ? metadata.planCode : null;
+  const planCode = planFromItems ?? planFromMetadata;
+  if (planCode && planCode !== "free") {
+    return { tenantId, planCode };
   }
   return null;
 }

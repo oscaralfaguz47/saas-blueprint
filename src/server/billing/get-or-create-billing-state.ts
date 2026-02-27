@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/server/db";
 import type { TenantBillingState } from "@prisma/client";
 import { resolveTenantPlan } from "./resolve-tenant-plan";
+import { resolveEffectiveSubscription } from "./resolve-effective-subscription";
 
 /** Start of calendar month UTC (00:00:00.000). */
 export function getPeriodStartForDate(date: Date): Date {
@@ -18,16 +19,42 @@ export function getPeriodEndForDate(date: Date): Date {
   return new Date(Date.UTC(y, m + 1, 0, 23, 59, 59, 999));
 }
 
+/**
+ * EPIC 5: Billing period for tenant. Paid = subscription currentPeriodStart/End; Free = calendar month UTC.
+ */
+export async function getBillingPeriodForTenant(
+  tenantId: string,
+  atDate: Date = new Date()
+): Promise<{ periodStart: Date; periodEnd: Date }> {
+  const effective = await resolveEffectiveSubscription(tenantId);
+  if (
+    effective?.currentPeriodStart &&
+    effective?.currentPeriodEnd &&
+    effective.planCode?.toLowerCase() !== "free"
+  ) {
+    const start = new Date(effective.currentPeriodStart);
+    const end = new Date(effective.currentPeriodEnd);
+    if (atDate >= start && atDate <= end) {
+      return { periodStart: start, periodEnd: end };
+    }
+  }
+  const periodStart = getPeriodStartForDate(atDate);
+  const periodEnd = getPeriodEndForDate(atDate);
+  return { periodStart, periodEnd };
+}
+
 export async function getOrCreateBillingState(
   tenantId: string,
-  periodStart: Date
+  atDate: Date = new Date()
 ): Promise<TenantBillingState> {
-  const normalizedStart = getPeriodStartForDate(periodStart);
-  const periodEnd = getPeriodEndForDate(periodStart);
+  const { periodStart, periodEnd } = await getBillingPeriodForTenant(
+    tenantId,
+    atDate
+  );
 
   const existing = await prisma.tenantBillingState.findUnique({
     where: {
-      tenantId_periodStart: { tenantId, periodStart: normalizedStart },
+      tenantId_periodStart: { tenantId, periodStart },
     },
   });
 
@@ -37,11 +64,11 @@ export async function getOrCreateBillingState(
 
   return prisma.tenantBillingState.upsert({
     where: {
-      tenantId_periodStart: { tenantId, periodStart: normalizedStart },
+      tenantId_periodStart: { tenantId, periodStart },
     },
     create: {
       tenantId,
-      periodStart: normalizedStart,
+      periodStart,
       periodEnd,
       status: "OPEN",
       rolloverRequests: 0,

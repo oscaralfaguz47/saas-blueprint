@@ -1,26 +1,34 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
-import { getDefaultTenantForUser } from "@/server/services/tenancy";
-import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { requireFullSession } from "@/server/require-full-session";
-import { resolveEffectiveSubscription } from "@/server/billing/resolve-effective-subscription";
+import { getCurrentTenantId, requireTenantPermission } from "@/server/billing/tenant-context";
+import { updateSubscriptionPrice } from "@/server/billing/paddle/subscriptions/update-subscription-price";
+import { cancelSubscriptionAtPeriodEnd } from "@/server/billing/paddle/subscriptions/cancel-subscription-at-period-end";
+import { createCheckoutSession } from "@/server/billing/providers/paddle/create-checkout-session";
 import { writeAuditLog } from "@/server/services/audit";
+import { logCheckoutInitiated } from "@/server/billing/billing-log";
 import { prisma } from "@/server/db";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { parseBody } from "@/lib/validations/common";
 import { z } from "zod";
 
 const changePlanBodySchema = z.object({
-  planCode: z.enum(["free", "starter"]),
+  targetPlanCode: z.enum(["free", "starter", "pro", "enterprise"]),
+  effective: z.enum(["immediate", "next_period"]).optional().default("next_period"),
 });
 
-/** Only downgrade targets; upgrades use Paddle checkout. */
-const PLAN_ORDER = ["free", "starter", "pro"] as const;
+const PLAN_ORDER = ["free", "starter", "pro", "enterprise"] as const;
+type PlanCode = (typeof PLAN_ORDER)[number];
 
-function isDowngrade(currentCode: string, targetCode: "free" | "starter"): boolean {
-  const i = PLAN_ORDER.indexOf(currentCode as "free" | "starter" | "pro");
-  const j = PLAN_ORDER.indexOf(targetCode);
-  return i >= 0 && j >= 0 && j < i;
+function planOrderIndex(code: string): number {
+  const i = PLAN_ORDER.indexOf(code as PlanCode);
+  return i >= 0 ? i : -1;
+}
+function isUpgrade(currentCode: string, targetCode: string): boolean {
+  return planOrderIndex(targetCode) > planOrderIndex(currentCode);
+}
+function isDowngrade(currentCode: string, targetCode: string): boolean {
+  return planOrderIndex(targetCode) < planOrderIndex(currentCode);
 }
 
 export const POST = withErrorHandler(async (req: Request) => {
@@ -29,50 +37,146 @@ export const POST = withErrorHandler(async (req: Request) => {
   if (mfaError) return mfaError;
   if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 
-  const membership = await getDefaultTenantForUser(session.user.id);
-  const tenantId = membership?.tenant?.id;
+  const tenantId = await getCurrentTenantId({ session, req });
   if (!tenantId) return ApiErrors.NO_TENANT();
 
-  const allowed = await hasTenantPermission({
+  const permError = await requireTenantPermission({
     userId: session.user.id,
     tenantId,
     permission: "tenant.billing.manage",
   });
-  if (!allowed) return ApiErrors.FORBIDDEN();
+  if (permError) return permError;
 
   const body = await parseBody(req, changePlanBodySchema);
-
-  const effective = await resolveEffectiveSubscription(tenantId);
-  if (!effective) {
-    return ApiErrors.VALIDATION_ERROR(
-      "No active subscription found. Upgrade via checkout first."
-    );
-  }
-
-  const currentCode = effective.planCode.toLowerCase();
-  if (!isDowngrade(currentCode, body.planCode)) {
-    return ApiErrors.VALIDATION_ERROR(
-      "Only downgrades can be scheduled here. Use Change plan to upgrade via checkout."
-    );
-  }
+  const targetCode = body.targetPlanCode;
+  const effective = body.effective ?? "next_period";
 
   const subscription = await prisma.subscription.findFirst({
-    where: { tenantId },
+    where: { tenantId, provider: "paddle" },
     orderBy: { currentPeriodEnd: "desc" },
-    select: { id: true },
+    select: {
+      id: true,
+      providerSubscriptionId: true,
+      cancelAtPeriodEnd: true,
+      pendingPlanCode: true,
+      planId: true,
+      plan: { select: { code: true } },
+    },
   });
 
-  if (!subscription) {
+  const currentCode = (subscription?.plan?.code ?? "free").toLowerCase();
+
+  if (targetCode === "free") {
+    if (!subscription) {
+      return apiSuccess({ mode: "noop_free" as const });
+    }
+    if (effective !== "next_period") {
+      return ApiErrors.VALIDATION_ERROR(
+        "Downgrade to Free takes effect at the end of your billing period. Use effective: 'next_period'."
+      );
+    }
+    if (subscription.cancelAtPeriodEnd && subscription.pendingPlanCode === "free") {
+      return apiSuccess({ mode: "cancel_at_period_end" as const });
+    }
+    if (!subscription.providerSubscriptionId) {
+      await prisma.subscription.update({
+        where: { id: subscription.id },
+        data: { cancelAtPeriodEnd: true, pendingPlanCode: "free" },
+      });
+      await writeAuditLog({
+        actorUserId: session.user.id,
+        actorContext: "TENANT",
+        tenantId,
+        action: "tenant.billing.cancellation_scheduled",
+        targetType: "Subscription",
+        targetId: subscription.id,
+        metadata: { pendingPlanCode: "free", previousPlanCode: currentCode },
+      });
+      return apiSuccess({ mode: "cancel_at_period_end" as const });
+    }
+    const cancelResult = await cancelSubscriptionAtPeriodEnd(subscription.providerSubscriptionId);
+    if (!cancelResult.ok) {
+      return ApiErrors.VALIDATION_ERROR(
+        cancelResult.error ?? "Failed to schedule cancellation. Try again or contact support."
+      );
+    }
+    await prisma.subscription.update({
+      where: { id: subscription.id },
+      data: { cancelAtPeriodEnd: true, pendingPlanCode: "free" },
+    });
+    await writeAuditLog({
+      actorUserId: session.user.id,
+      actorContext: "TENANT",
+      tenantId,
+      action: "tenant.billing.cancellation_scheduled",
+      targetType: "Subscription",
+      targetId: subscription.id,
+      metadata: { pendingPlanCode: "free", previousPlanCode: currentCode },
+    });
+    return apiSuccess({ mode: "cancel_at_period_end" as const });
+  }
+
+  if (!subscription?.providerSubscriptionId) {
+    const customerEmail = session.user.email?.trim();
+    if (!customerEmail) {
+      return ApiErrors.VALIDATION_ERROR("User email is required for checkout.");
+    }
+    try {
+      const result = await createCheckoutSession({
+        tenantId,
+        planCode: targetCode as "starter" | "pro" | "enterprise",
+        customerEmail,
+        customerName: session.user.name ?? null,
+      });
+      logCheckoutInitiated({ tenantId, planCode: targetCode });
+      await writeAuditLog({
+        actorUserId: session.user.id,
+        actorContext: "TENANT",
+        tenantId,
+        action: "tenant.billing.checkout_initiated",
+        targetType: "Subscription",
+        metadata: { planCode: targetCode },
+      });
+      return apiSuccess({
+        mode: "checkout" as const,
+        transactionId: result.transactionId,
+        environment: result.environment,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes("Cannot checkout free plan")) {
+        return ApiErrors.VALIDATION_ERROR("Free plan cannot be checked out.");
+      }
+      throw err;
+    }
+  }
+
+  if (!isUpgrade(currentCode, targetCode) && !isDowngrade(currentCode, targetCode)) {
+    return apiSuccess({ mode: "update_subscription" as const, effective: "next_period" as const });
+  }
+
+  const clearScheduledCancel =
+    subscription.cancelAtPeriodEnd && isUpgrade(currentCode, targetCode);
+
+  const updateResult = await updateSubscriptionPrice({
+    providerSubscriptionId: subscription.providerSubscriptionId,
+    targetPlanCode: targetCode as "starter" | "pro" | "enterprise",
+    effective: "next_period",
+    clearScheduledCancel,
+    tenantId,
+  });
+
+  if (!updateResult.ok) {
     return ApiErrors.VALIDATION_ERROR(
-      "No subscription found for this workspace."
+      updateResult.error ?? "Failed to update subscription. Try again or contact support."
     );
   }
 
   await prisma.subscription.update({
     where: { id: subscription.id },
     data: {
-      cancelAtPeriodEnd: true,
-      pendingPlanCode: body.planCode,
+      pendingPlanCode: targetCode,
+      ...(clearScheduledCancel ? { cancelAtPeriodEnd: false } : {}),
     },
   });
 
@@ -80,15 +184,18 @@ export const POST = withErrorHandler(async (req: Request) => {
     actorUserId: session.user.id,
     actorContext: "TENANT",
     tenantId,
-    action: "tenant.plan.changed",
+    action: "tenant.billing.plan_change_requested",
     targetType: "Subscription",
     targetId: subscription.id,
     metadata: {
-      scheduledAtPeriodEnd: true,
-      pendingPlanCode: body.planCode,
+      targetPlanCode: targetCode,
       previousPlanCode: currentCode,
+      effective: "next_period",
     },
   });
 
-  return apiSuccess({ ok: true });
+  return apiSuccess({
+    mode: "update_subscription" as const,
+    effective: "next_period" as const,
+  });
 });

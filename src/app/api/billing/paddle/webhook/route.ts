@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
 import { verifyPaddleWebhookSignature } from "@/server/billing/providers/paddle/verify-webhook-signature";
-import {
-  handleWebhookEvent,
-  isEventAlreadyProcessed,
-} from "@/server/billing/providers/paddle/handle-webhook-event";
+import { handleWebhookEvent } from "@/server/billing/providers/paddle/handle-webhook-event";
 import { paddleWebhookEnvelopeSchema } from "@/server/billing/providers/paddle/paddle-types";
 import { logWebhookReceived } from "@/server/billing/billing-log";
+import { persistBillingEventFirst } from "@/server/billing/webhooks/persist-first";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -101,8 +99,19 @@ export async function POST(req: Request) {
   const validatedEnvelope = envelopeResult.data;
   const { event_id, event_type } = validatedEnvelope;
 
-  const alreadyProcessed = await isEventAlreadyProcessed(event_id);
-  if (alreadyProcessed) {
+  const inserted = await persistBillingEventFirst({
+    providerEventId: event_id,
+    eventType: event_type,
+    payload: validatedEnvelope,
+  });
+
+  // Events that are safe to re-process on retry (idempotent handlers). When Paddle retries,
+  // the same event_id is sent again, so the insert above fails and we would skip processing.
+  // For these types we still run the handler so retries actually update the DB.
+  const idempotentRetryEventTypes = ["address.updated", "business.created", "business.updated"] as const;
+  const isIdempotentRetry = !inserted && idempotentRetryEventTypes.includes(event_type as (typeof idempotentRetryEventTypes)[number]);
+
+  if (!inserted && !isIdempotentRetry) {
     logWebhookReceived({
       eventType: event_type,
       providerEventId: event_id,

@@ -3,8 +3,7 @@ import "server-only";
 import { prisma } from "@/server/db";
 import type { MeterKey } from "@prisma/client";
 import {
-  getPeriodStartForDate,
-  getPeriodEndForDate,
+  getBillingPeriodForTenant,
   getOrCreateBillingState,
 } from "./get-or-create-billing-state";
 import { resolveTenantPlan } from "./resolve-tenant-plan";
@@ -43,11 +42,14 @@ export async function computeUsageSummary(
   tenantId: string,
   atDate: Date = new Date()
 ): Promise<UsageSummaryResult> {
-  const periodStart = getPeriodStartForDate(atDate);
-  const periodEnd = getPeriodEndForDate(atDate);
+  const { periodStart, periodEnd } = await getBillingPeriodForTenant(
+    tenantId,
+    atDate
+  );
 
   await getOrCreateBillingState(tenantId, atDate);
 
+  const now = new Date();
   const [resolved, billingState, counters] = await Promise.all([
     resolveTenantPlan(tenantId),
     prisma.tenantBillingState.findUnique({
@@ -59,12 +61,27 @@ export async function computeUsageSummary(
     }),
   ]);
 
-  const rawRollover = billingState?.rolloverRequests ?? 0;
   const reqLimits = resolved.requestsLimits;
   const reqIncluded = reqLimits.included;
-  /** Free plan has rollover disabled (rolloverMonths: 0); do not show or use stored rollover. */
-  const rolloverAvailable =
-    reqLimits.rolloverMonths === 0 ? 0 : rawRollover;
+
+  let rolloverAvailable: number;
+  if (reqLimits.rolloverMonths === 0) {
+    rolloverAvailable = 0;
+  } else {
+    const rolloverLots = await prisma.tenantRolloverLot.findMany({
+      where: { tenantId, expiresAt: { gt: now } },
+      select: { granted: true, used: true },
+    });
+    if (rolloverLots.length > 0) {
+      const fromLots = rolloverLots.reduce(
+        (sum, lot) => sum + Math.max(0, lot.granted - lot.used),
+        0
+      );
+      rolloverAvailable = Math.min(fromLots, reqLimits.maxAvailable);
+    } else {
+      rolloverAvailable = billingState?.rolloverRequests ?? 0;
+    }
+  }
   const reqUsed =
     counters.find((c) => c.meter === "REQUESTS")?.usedCount ?? 0;
   const reqOverageUnits = Math.max(
