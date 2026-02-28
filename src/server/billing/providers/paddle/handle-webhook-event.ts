@@ -400,13 +400,20 @@ export async function handleWebhookEvent(params: {
     subscriptionData.scheduled_change &&
     typeof subscriptionData.scheduled_change === "object"
   );
+  // Prefer custom_data.planCode when present (source of truth for plan changes); else derive from items
   const effectivePlanCode =
-    !hasScheduledChange && planCodeFromItems && planCodeFromItems !== "free"
-      ? planCodeFromItems
-      : resolvedMetadata.planCode;
+    resolvedMetadata.planCode && resolvedMetadata.planCode !== "free"
+      ? resolvedMetadata.planCode
+      : !hasScheduledChange && planCodeFromItems && planCodeFromItems !== "free"
+        ? planCodeFromItems
+        : resolvedMetadata.planCode;
 
-  const plan = await prisma.plan.findUnique({
-    where: { code: effectivePlanCode, isActive: true },
+  // Case-insensitive lookup so we find plan even if DB uses different casing (e.g. "enterprise")
+  const plan = await prisma.plan.findFirst({
+    where: {
+      code: { equals: effectivePlanCode, mode: "insensitive" },
+      isActive: true,
+    },
     select: { id: true },
   });
   if (!plan) {
