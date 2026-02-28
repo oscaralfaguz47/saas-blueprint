@@ -162,11 +162,21 @@ export const POST = withErrorHandler(async (req: Request) => {
   // Upgrade: charge prorated now, same cycle; entitlements update only after webhook (no optimistic DB update).
   const effectiveTiming: "immediate" | "next_period" = isUpgradeFlow ? "immediate" : "next_period";
 
+  const updateResult = await updateSubscriptionPrice({
+    providerSubscriptionId: subscription.providerSubscriptionId,
+    targetPlanCode: targetCode as "starter" | "pro" | "enterprise",
+    effective: effectiveTiming,
+    clearScheduledCancel,
+    tenantId,
+  });
+
+  if (!updateResult.ok) {
+    return ApiErrors.VALIDATION_ERROR(
+      updateResult.error ?? "Failed to update subscription. Try again or contact support."
+    );
+  }
+
   if (effectiveTiming === "next_period") {
-    // Downgrade: do NOT call Paddle here. Paddle would apply the new price immediately; we need the change
-    // to take effect only at next billing date. We persist scheduled downgrade state only; a periodic job
-    // (period-close) will call Paddle when currentPeriodEnd has passed, then the webhook applies the plan.
-    // UI shows current plan until webhook confirms; banner shows "Downgrade scheduled for <date>".
     await prisma.subscription.update({
       where: { id: subscription.id },
       data: {
@@ -174,19 +184,6 @@ export const POST = withErrorHandler(async (req: Request) => {
         ...(clearScheduledCancel ? { cancelAtPeriodEnd: false } : {}),
       },
     });
-  } else {
-    const updateResult = await updateSubscriptionPrice({
-      providerSubscriptionId: subscription.providerSubscriptionId,
-      targetPlanCode: targetCode as "starter" | "pro" | "enterprise",
-      effective: "immediate",
-      clearScheduledCancel,
-      tenantId,
-    });
-    if (!updateResult.ok) {
-      return ApiErrors.VALIDATION_ERROR(
-        updateResult.error ?? "Failed to update subscription. Try again or contact support."
-      );
-    }
   }
 
   await writeAuditLog({
