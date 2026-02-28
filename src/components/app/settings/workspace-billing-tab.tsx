@@ -78,6 +78,8 @@ type PaymentMethodDisplay = {
 type ChangePlanPreview = {
   currentPlanCode: string;
   targetPlanCode: string;
+  /** "immediate" = upgrade (prorated charge now; plan updates after webhook). "next_period" = downgrade (scheduled). */
+  effectiveAt?: "immediate" | "next_period";
   effectiveFromDate: string | null;
   currentPeriodEnd: string | null;
   currency: string;
@@ -661,13 +663,13 @@ export function WorkspaceBillingTab() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             targetPlanCode: confirmTarget.plan.code,
-            effective: "next_period",
+            effective: "immediate",
           }),
           showToastOnError: true,
         });
         const json = await res.json().catch(() => ({}));
         if (!res.ok) return;
-        const data = json.data as { mode: string; transactionId?: string; environment?: string };
+        const data = json.data as { mode: string; effective?: string; transactionId?: string; environment?: string };
         setConfirmPlanOpen(false);
         setConfirmTarget(null);
         setChangePlanPreview(null);
@@ -701,7 +703,11 @@ export function WorkspaceBillingTab() {
             toast.addToast("error", "Payment window could not open. Refresh the page and try again.");
           }
         } else {
-          toast.addToast("success", `Plan change to ${confirmTarget.plan.name} scheduled for next billing cycle.`);
+          if (data.effective === "immediate") {
+            toast.addToast("success", "Upgrade in progress. Your plan will update after payment is confirmed.");
+          } else {
+            toast.addToast("success", `Plan change to ${confirmTarget.plan.name} scheduled for next billing cycle.`);
+          }
           await fetchSummary();
         }
       } finally {
@@ -872,12 +878,12 @@ export function WorkspaceBillingTab() {
         </Alert>
       )}
 
-      {/* Status banners */}
-      {billingState.isCancelingAtPeriodEnd && summary.pendingPlanCode && (
+      {/* Status banners: show when any plan change is scheduled (downgrade or cancel). Plan applies only after webhook confirmation. */}
+      {summary.pendingPlanCode && (
         <Alert
           variant="info"
-          title="Plan change scheduled"
-          description={`Your plan will change to ${PLAN_LABELS[summary.pendingPlanCode] ?? summary.pendingPlanCode} on ${formatDate(summary.periodEnd)}. You'll keep your current plan until then.`}
+          title="Downgrade scheduled"
+          description={`Downgrade scheduled for ${formatDate(summary.periodEnd)}. You'll keep your current plan until then.`}
         />
       )}
       {billingState.isPastDue && (
@@ -1257,16 +1263,18 @@ export function WorkspaceBillingTab() {
                       <span className="text-(--text-muted)"> — {formatPriceMonthly(changePlanPreview.nextPriceCents)}/month</span>
                     )}
                   </p>
-                  {changePlanPreview?.effectiveFromDate && (
+                  {changePlanPreview?.effectiveAt === "next_period" && changePlanPreview?.effectiveFromDate && (
                     <p>
-                      <span className="text-(--text-muted)">Billing starts: </span>
+                      <span className="text-(--text-muted)">Effective: </span>
                       {formatDate(changePlanPreview.effectiveFromDate)}
                     </p>
                   )}
                   <p className="text-(--text-muted)">
                     {changePlanPreview?.requiresCheckout
                       ? "You'll enter your payment details in the next step."
-                      : "Your new amount will be charged at the end of the current billing cycle."}
+                      : changePlanPreview?.effectiveAt === "immediate"
+                        ? "You'll be charged a prorated amount now. Your plan will update after payment is confirmed (same billing cycle)."
+                        : "Your new amount will be charged at the end of the current billing cycle."}
                   </p>
                   {paymentMethod && !changePlanPreview?.requiresCheckout && (
                     <p className="text-(--text-muted)">
@@ -1314,7 +1322,7 @@ export function WorkspaceBillingTab() {
                     disabled={scheduleLoading}
                     className="inline-flex h-9 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-50"
                   >
-                    {scheduleLoading ? "Loading?" : "Schedule downgrade"}
+                    {scheduleLoading ? "Loading…" : "Schedule downgrade"}
                   </button>
                   <button
                     type="button"

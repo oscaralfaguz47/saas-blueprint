@@ -395,18 +395,24 @@ export async function handleWebhookEvent(params: {
     return { processed: true, tenantMismatch: true };
   }
 
+  // Entitlements are updated only from Paddle data here; we never trust frontend or optimistically change plan.
+  // Upgrades: plan switches only after this webhook runs (proration already charged by Paddle).
+  // Downgrades: we keep current plan until scheduled_change takes effect and Paddle sends updated items; then we apply the new plan.
   const planCodeFromItems = getHighestPlanCodeFromItems(subscriptionData.items);
   const hasScheduledChange = !!(
     subscriptionData.scheduled_change &&
     typeof subscriptionData.scheduled_change === "object"
   );
-  // Prefer custom_data.planCode when present (source of truth for plan changes); else derive from items
-  const effectivePlanCode =
-    resolvedMetadata.planCode && resolvedMetadata.planCode !== "free"
-      ? resolvedMetadata.planCode
-      : !hasScheduledChange && planCodeFromItems && planCodeFromItems !== "free"
-        ? planCodeFromItems
-        : resolvedMetadata.planCode;
+  // When a downgrade is scheduled, Paddle still has current items (higher plan) until the change takes effect.
+  // We must not apply the target plan from custom_data yet; use current items so entitlements stay correct.
+  // When there is no scheduled change, prefer custom_data.planCode (source of truth), then items.
+  const effectivePlanCode = hasScheduledChange
+    ? (planCodeFromItems && planCodeFromItems !== "free" ? planCodeFromItems : resolvedMetadata.planCode)
+    : (resolvedMetadata.planCode && resolvedMetadata.planCode !== "free"
+        ? resolvedMetadata.planCode
+        : planCodeFromItems && planCodeFromItems !== "free"
+          ? planCodeFromItems
+          : resolvedMetadata.planCode);
 
   // Case-insensitive lookup so we find plan even if DB uses different casing (e.g. "enterprise")
   const plan = await prisma.plan.findFirst({

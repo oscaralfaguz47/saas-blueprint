@@ -8,17 +8,22 @@ import {
 import { resolveTenantPlan } from "./resolve-tenant-plan";
 import { resolveEffectiveSubscription } from "./resolve-effective-subscription";
 import { writeAuditLog } from "@/server/services/audit";
+import { updateSubscriptionPrice } from "@/server/billing/paddle/subscriptions/update-subscription-price";
 
 const ROLLOVER_EXPIRY_DAYS = 60;
 
 /**
  * EPIC 5: Close billing periods that have ended; create TenantRolloverLot (60d expiry); apply pendingPlanCode (downgrade to free).
+ * Also applies scheduled paid downgrades (Pro→Starter etc.): when currentPeriodEnd has passed, push the new price to Paddle
+ * so the next renewal is at the lower price; webhook then updates our plan and clears pendingPlanCode.
  * Idempotent and batch-safe. Optionally pass actorUserId for audit (cron uses system actor if configured).
  */
 export async function runPeriodClose(params?: {
   actorUserId?: string | null;
 }): Promise<{ closed: number }> {
   const now = new Date();
+
+  await applyScheduledPaidDowngrades(now);
 
   const openStatesToClose = await prisma.tenantBillingState.findMany({
     where: {
@@ -140,6 +145,44 @@ export async function runPeriodClose(params?: {
   }
 
   return { closed };
+}
+
+/**
+ * Apply scheduled paid downgrades: for Paddle subscriptions whose current period has ended and
+ * pendingPlanCode is set (starter/pro/enterprise), tell Paddle to update the subscription item to the new price.
+ * We do not call Paddle when the user first requests a downgrade (so the current period stays at the higher plan);
+ * we call Paddle here so the next renewal is at the new price. Webhook subscription.updated then updates our
+ * planId and clears pendingPlanCode. Idempotent: if webhook already applied, pendingPlanCode is null; if we run
+ * twice, Paddle already has the new price so updateSubscriptionPrice is a no-op.
+ */
+async function applyScheduledPaidDowngrades(now: Date): Promise<void> {
+  const subs = await prisma.subscription.findMany({
+    where: {
+      provider: "paddle",
+      pendingPlanCode: { not: null },
+      currentPeriodEnd: { not: null, lt: now },
+    },
+    select: {
+      id: true,
+      tenantId: true,
+      providerSubscriptionId: true,
+      pendingPlanCode: true,
+    },
+  });
+  for (const sub of subs) {
+    const code = sub.pendingPlanCode?.toLowerCase();
+    if (!code || code === "free" || !sub.providerSubscriptionId) continue;
+    if (code !== "starter" && code !== "pro" && code !== "enterprise") continue;
+    const result = await updateSubscriptionPrice({
+      providerSubscriptionId: sub.providerSubscriptionId,
+      targetPlanCode: code as "starter" | "pro" | "enterprise",
+      effective: "next_period",
+      tenantId: sub.tenantId,
+    });
+    if (!result.ok) {
+      console.error("[applyScheduledPaidDowngrades]", sub.id, result.error);
+    }
+  }
 }
 
 /** EPIC 5: When period ended, apply downgrade to free (clear cancelAtPeriodEnd, set plan to free). */

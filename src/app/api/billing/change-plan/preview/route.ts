@@ -10,6 +10,15 @@ const querySchema = z.object({
   targetPlanCode: z.enum(["free", "starter", "pro", "enterprise"]),
 });
 
+const PLAN_ORDER = ["free", "starter", "pro", "enterprise"] as const;
+function planOrderIndex(code: string): number {
+  const i = PLAN_ORDER.indexOf(code as (typeof PLAN_ORDER)[number]);
+  return i >= 0 ? i : -1;
+}
+function isUpgrade(currentCode: string, targetCode: string): boolean {
+  return planOrderIndex(targetCode) > planOrderIndex(currentCode);
+}
+
 /**
  * GET /api/billing/change-plan/preview?targetPlanCode=...
  * Returns preview for confirm modal: current plan, target plan, effective date, payment method hint.
@@ -59,6 +68,7 @@ export const GET = withErrorHandler(async (req: Request) => {
     return apiSuccess({
       currentPlanCode,
       targetPlanCode,
+      effectiveAt: "next_period" as const,
       effectiveFromDate: effectiveFromDate?.toISOString() ?? null,
       currentPeriodEnd: effectiveFromDate?.toISOString() ?? null,
       currency: subscription?.currency ?? "USD",
@@ -77,6 +87,7 @@ export const GET = withErrorHandler(async (req: Request) => {
     return apiSuccess({
       currentPlanCode,
       targetPlanCode,
+      effectiveAt: "immediate" as const,
       effectiveFromDate: null,
       currentPeriodEnd: null,
       currency: "USD",
@@ -86,10 +97,12 @@ export const GET = withErrorHandler(async (req: Request) => {
   }
 
   const effectiveFromDate = subscription.currentPeriodEnd;
+  const effectiveAt = isUpgrade(currentPlanCode, targetPlanCode) ? ("immediate" as const) : ("next_period" as const);
 
   return apiSuccess({
     currentPlanCode,
     targetPlanCode,
+    effectiveAt,
     effectiveFromDate: effectiveFromDate?.toISOString() ?? null,
     currentPeriodEnd: effectiveFromDate?.toISOString() ?? null,
     currency: subscription.currency ?? "USD",
