@@ -30,9 +30,10 @@ function getPriceIdForPlan(planCode: string): string | null {
 
 /**
  * EPIC 5: Update Paddle subscription to new price_id (plan change).
- * Sends COMPLETE items list with only the target price (removes any other items to avoid duplication).
- * Uses full_next_billing_period so change is effective next cycle, no immediate charge.
- * Idempotent: only skip PATCH when items.length === 1 and items[0].price_id === newPriceId.
+ * Sends COMPLETE items list with only the target price (replaces all items — no add).
+ * Uses do_not_bill so items are replaced immediately and next renewal is a single charge;
+ * full_next_billing_period can cause Paddle to show two line items at next billing.
+ * Idempotent: only skip PATCH when items.length === 1 and single item matches newPriceId.
  */
 export async function updateSubscriptionPrice(
   params: UpdateSubscriptionPriceParams
@@ -47,9 +48,10 @@ export async function updateSubscriptionPrice(
   try {
     const current = await fetchPaddleSubscription(providerSubscriptionId);
     const items = current?.items ?? [];
-    const alreadyCorrect =
-      items.length === 1 &&
-      (items[0] as { price_id?: string })?.price_id === newPriceId;
+    const firstPriceId =
+      (items[0] as { price_id?: string; price?: { id?: string } } | undefined)?.price_id ??
+      (items[0] as { price?: { id?: string } } | undefined)?.price?.id;
+    const alreadyCorrect = items.length === 1 && firstPriceId === newPriceId;
 
     if (alreadyCorrect) {
       return { ok: true };
@@ -58,7 +60,7 @@ export async function updateSubscriptionPrice(
     const body: Record<string, unknown> = {
       items: [{ price_id: newPriceId, quantity: 1 }],
       proration_billing_mode:
-        effective === "next_period" ? "full_next_billing_period" : "prorated_immediately",
+        effective === "next_period" ? "do_not_bill" : "prorated_immediately",
     };
     if (clearScheduledCancel) {
       body.scheduled_change = null;

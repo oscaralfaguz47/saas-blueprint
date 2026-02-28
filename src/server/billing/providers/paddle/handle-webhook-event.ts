@@ -453,10 +453,17 @@ export async function handleWebhookEvent(params: {
   const actorUserId = getAuditActorUserId();
 
   await prisma.$transaction(async (tx) => {
-    const existingSub = await tx.subscription.findFirst({
+    let existingSub = await tx.subscription.findFirst({
       where: { provider: "paddle", providerSubscriptionId },
       select: { id: true, tenantId: true, pendingPlanCode: true },
     });
+    if (!existingSub) {
+      existingSub = await tx.subscription.findFirst({
+        where: { tenantId, provider: "paddle" },
+        orderBy: { currentPeriodEnd: "desc" },
+        select: { id: true, tenantId: true, pendingPlanCode: true },
+      }) ?? undefined;
+    }
 
     const clearPending =
       existingSub?.pendingPlanCode != null && existingSub.pendingPlanCode === effectivePlanCode;
@@ -468,6 +475,7 @@ export async function handleWebhookEvent(params: {
         data: {
           planId: plan.id,
           providerCustomerId: subscriptionData.customer_id,
+          providerSubscriptionId,
           status,
           currentPeriodStart,
           currentPeriodEnd,

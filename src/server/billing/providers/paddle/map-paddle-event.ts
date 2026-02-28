@@ -30,14 +30,16 @@ export function getPlanCodeFromPriceId(priceId: string | null | undefined): Padd
 /**
  * From subscription items, return the highest-tier plan code (starter < pro < enterprise).
  * Used when a subscription has multiple items (e.g. duplicate from second checkout) so we show the effective plan.
+ * Supports both item.price_id (API) and item.price.id (webhook payload).
  */
 export function getHighestPlanCodeFromItems(
-  items: Array<{ price_id?: string }> | null | undefined
+  items: Array<{ price_id?: string; price?: { id?: string } }> | null | undefined
 ): PaddlePlanCode | null {
   if (!items?.length) return null;
   let highest: PaddlePlanCode | null = null;
   for (const item of items) {
-    const code = getPlanCodeFromPriceId(item.price_id);
+    const priceId = item.price_id ?? item.price?.id;
+    const code = getPlanCodeFromPriceId(priceId);
     if (!code || code === "free") continue;
     if (
       !highest ||
