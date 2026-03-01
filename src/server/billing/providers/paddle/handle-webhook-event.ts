@@ -405,14 +405,13 @@ export async function handleWebhookEvent(params: {
   );
   // When a downgrade is scheduled, Paddle still has current items (higher plan) until the change takes effect.
   // We must not apply the target plan from custom_data yet; use current items so entitlements stay correct.
-  // When there is no scheduled change, prefer custom_data.planCode (source of truth), then items.
+  // When there is no scheduled change: prefer subscription items (authoritative in Paddle) over custom_data
+  // so we don't miss updates if custom_data is missing or delayed in the webhook payload (fixes intermittent upgrade sync).
   const effectivePlanCode = hasScheduledChange
     ? (planCodeFromItems && planCodeFromItems !== "free" ? planCodeFromItems : resolvedMetadata.planCode)
-    : (resolvedMetadata.planCode && resolvedMetadata.planCode !== "free"
-        ? resolvedMetadata.planCode
-        : planCodeFromItems && planCodeFromItems !== "free"
-          ? planCodeFromItems
-          : resolvedMetadata.planCode);
+    : (planCodeFromItems && planCodeFromItems !== "free"
+        ? planCodeFromItems
+        : resolvedMetadata.planCode);
 
   // Case-insensitive lookup so we find plan even if DB uses different casing (e.g. "enterprise")
   const plan = await prisma.plan.findFirst({
@@ -468,25 +467,37 @@ export async function handleWebhookEvent(params: {
   await prisma.$transaction(async (tx) => {
     let existingSub = await tx.subscription.findFirst({
       where: { provider: "paddle", providerSubscriptionId },
-      select: { id: true, tenantId: true, pendingPlanCode: true },
+      select: { id: true, tenantId: true, pendingPlanCode: true, planId: true, downgradePaddleAppliedAt: true },
     });
     if (!existingSub) {
-      existingSub = await tx.subscription.findFirst({
-        where: { tenantId, provider: "paddle" },
-        orderBy: { currentPeriodEnd: "desc" },
-        select: { id: true, tenantId: true, pendingPlanCode: true },
-      }) ?? undefined;
+      existingSub =
+        (await tx.subscription.findFirst({
+          where: { tenantId, provider: "paddle" },
+          orderBy: { currentPeriodEnd: "desc" },
+          select: { id: true, tenantId: true, pendingPlanCode: true, planId: true, downgradePaddleAppliedAt: true },
+        })) ?? null;
     }
 
+    // When we called Paddle on downgrade with prorated_next_billing_period, Paddle applies the new plan
+    // immediately; we keep showing the current plan until period end. So do not overwrite planId and do
+    // not clear pendingPlanCode here — period-close will update planId and clear both when period ends.
+    // When downgradePaddleAppliedAt is null and pendingPlanCode === effectivePlanCode, this is the
+    // legacy flow (period-close called Paddle); apply plan and clear pendingPlanCode.
+    const keepCurrentPlanForScheduledDowngrade =
+      existingSub?.pendingPlanCode != null &&
+      existingSub.pendingPlanCode === effectivePlanCode &&
+      existingSub?.downgradePaddleAppliedAt != null;
     const clearPending =
-      existingSub?.pendingPlanCode != null && existingSub.pendingPlanCode === effectivePlanCode;
+      existingSub?.pendingPlanCode != null &&
+      existingSub.pendingPlanCode === effectivePlanCode &&
+      !keepCurrentPlanForScheduledDowngrade;
 
     let sub: { id: string };
     if (existingSub) {
       sub = await tx.subscription.update({
         where: { id: existingSub.id },
         data: {
-          planId: plan.id,
+          planId: keepCurrentPlanForScheduledDowngrade ? existingSub.planId : plan.id,
           providerCustomerId: subscriptionData.customer_id,
           providerSubscriptionId,
           status,

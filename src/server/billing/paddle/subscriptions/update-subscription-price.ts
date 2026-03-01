@@ -10,10 +10,13 @@ export type UpdateSubscriptionPriceParams = {
   /**
    * - "immediate": upgrade; Paddle charges prorated difference now, same billing cycle preserved.
    *   Entitlements update only after webhook confirmation (we do not optimistically change plan in DB).
-   * - "next_period": downgrade; change takes effect at next billing date, no immediate charge.
-   *   User keeps current plan until then; we store pendingPlanCode and apply when webhook confirms.
+   * - "next_period": downgrade at period end (period-close job); Paddle items updated with do_not_bill.
+   *   Used when currentPeriodEnd has passed; plan in Paddle and our DB update then.
+   * - "next_period_prorated": user-initiated downgrade; Paddle items updated with prorated_next_billing_period
+   *   so next payment shows prorated amount. Plan in Paddle changes immediately; we keep DB/UI on current
+   *   plan until period end via webhook (don't overwrite planId) and period-close (DB-only update).
    */
-  effective: "immediate" | "next_period";
+  effective: "immediate" | "next_period" | "next_period_prorated";
   /** When upgrading from cancel-at-period-end, clear cancellation in Paddle. */
   clearScheduledCancel?: boolean;
   /** If set, PATCH will include custom_data so Paddle subscription shows correct planCode. */
@@ -38,10 +41,11 @@ function getPriceIdForPlan(planCode: string): string | null {
  * Always fetches the current subscription first; uses exactly one existing recurring item so we never add a second item.
  * - Upgrade (effective === "immediate"): proration_billing_mode = "prorated_immediately";
  *   Paddle charges prorated difference now and keeps the same billing cycle.
- * - Downgrade (effective === "next_period"): proration_billing_mode = "prorated_next_billing_period";
- *   Prorated amount (including credit for unused higher plan) is calculated now but the customer is billed on
- *   their next renewal. The subscription change is scheduled so current period stays unchanged and the next
- *   transaction reflects the lower plan with credits (e.g. $0 next payment). No immediate charge.
+ * - Downgrade (effective === "next_period"): only used by period-close when currentPeriodEnd has passed.
+ *   proration_billing_mode = "do_not_bill"; plan in Paddle and our DB change at period end.
+ * - Downgrade (effective === "next_period_prorated"): used when user clicks Downgrade. Paddle gets
+ *   proration_billing_mode = "prorated_next_billing_period" so next payment is prorated; plan in Paddle
+ *   changes immediately. We keep DB/UI on current plan until period end (webhook + period-close).
  * Idempotent: only skip PATCH when items.length === 1 and single item already matches newPriceId.
  */
 export async function updateSubscriptionPrice(
@@ -82,12 +86,15 @@ export async function updateSubscriptionPrice(
 
     const itemIdForLog = firstItem?.id ?? null;
 
+    const prorationMode =
+      effective === "next_period"
+        ? "do_not_bill"
+        : effective === "next_period_prorated"
+          ? "prorated_next_billing_period"
+          : "prorated_immediately";
     const body: Record<string, unknown> = {
       items: [{ price_id: newPriceId, quantity: 1 }],
-      proration_billing_mode:
-        effective === "next_period"
-          ? "prorated_next_billing_period"
-          : "prorated_immediately",
+      proration_billing_mode: prorationMode,
     };
     if (clearScheduledCancel) {
       body.scheduled_change = null;
@@ -125,7 +132,7 @@ export async function updateSubscriptionPrice(
       return { ok: false, error: `${res.status}: ${responseText.slice(0, 300)}` };
     }
 
-    if (effective === "next_period") {
+    if (effective === "next_period" || effective === "next_period_prorated") {
       const after = await fetchPaddleSubscription(providerSubscriptionId);
       const scheduledChange = after?.scheduled_change ?? null;
       const nextBilledAt =

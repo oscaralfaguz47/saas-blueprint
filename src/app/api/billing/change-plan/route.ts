@@ -162,28 +162,43 @@ export const POST = withErrorHandler(async (req: Request) => {
   // Upgrade: charge prorated now, same cycle; entitlements update only after webhook (no optimistic DB update).
   const effectiveTiming: "immediate" | "next_period" = isUpgradeFlow ? "immediate" : "next_period";
 
-  const updateResult = await updateSubscriptionPrice({
-    providerSubscriptionId: subscription.providerSubscriptionId,
-    targetPlanCode: targetCode as "starter" | "pro" | "enterprise",
-    effective: effectiveTiming,
-    clearScheduledCancel,
-    tenantId,
-  });
-
-  if (!updateResult.ok) {
-    return ApiErrors.VALIDATION_ERROR(
-      updateResult.error ?? "Failed to update subscription. Try again or contact support."
-    );
-  }
-
   if (effectiveTiming === "next_period") {
+    // Downgrade: call Paddle with prorated_next_billing_period so next payment shows prorated amount.
+    // Plan in Paddle changes immediately; we keep DB/UI on current plan until period end (webhook keeps
+    // planId when pendingPlanCode === effectivePlanCode; period-close does DB-only update when downgradePaddleAppliedAt is set).
+    const updateResult = await updateSubscriptionPrice({
+      providerSubscriptionId: subscription.providerSubscriptionId,
+      targetPlanCode: targetCode as "starter" | "pro" | "enterprise",
+      effective: "next_period_prorated",
+      clearScheduledCancel,
+      tenantId,
+    });
+    if (!updateResult.ok) {
+      return ApiErrors.VALIDATION_ERROR(
+        updateResult.error ?? "Failed to schedule downgrade. Try again or contact support."
+      );
+    }
     await prisma.subscription.update({
       where: { id: subscription.id },
       data: {
         pendingPlanCode: targetCode,
+        downgradePaddleAppliedAt: new Date(),
         ...(clearScheduledCancel ? { cancelAtPeriodEnd: false } : {}),
       },
     });
+  } else {
+    const updateResult = await updateSubscriptionPrice({
+      providerSubscriptionId: subscription.providerSubscriptionId,
+      targetPlanCode: targetCode as "starter" | "pro" | "enterprise",
+      effective: "immediate",
+      clearScheduledCancel,
+      tenantId,
+    });
+    if (!updateResult.ok) {
+      return ApiErrors.VALIDATION_ERROR(
+        updateResult.error ?? "Failed to update subscription. Try again or contact support."
+      );
+    }
   }
 
   await writeAuditLog({

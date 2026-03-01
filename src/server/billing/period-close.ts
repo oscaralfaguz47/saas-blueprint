@@ -14,8 +14,9 @@ const ROLLOVER_EXPIRY_DAYS = 60;
 
 /**
  * EPIC 5: Close billing periods that have ended; create TenantRolloverLot (60d expiry); apply pendingPlanCode (downgrade to free).
- * Also applies scheduled paid downgrades (Pro→Starter etc.): when currentPeriodEnd has passed, push the new price to Paddle
- * so the next renewal is at the lower price; webhook then updates our plan and clears pendingPlanCode.
+ * Scheduled paid downgrades: we do NOT call Paddle when the user clicks Downgrade (so Paddle keeps the higher plan).
+ * When currentPeriodEnd has passed, we call Paddle here to update the subscription to the lower price; Paddle then
+ * sends subscription.updated and our webhook updates our DB. So the plan in Paddle and our app change only at renewal.
  * Idempotent and batch-safe. Optionally pass actorUserId for audit (cron uses system actor if configured).
  */
 export async function runPeriodClose(params?: {
@@ -148,12 +149,9 @@ export async function runPeriodClose(params?: {
 }
 
 /**
- * Apply scheduled paid downgrades: for Paddle subscriptions whose current period has ended and
- * pendingPlanCode is set (starter/pro/enterprise), tell Paddle to update the subscription item to the new price.
- * We do not call Paddle when the user first requests a downgrade (so the current period stays at the higher plan);
- * we call Paddle here so the next renewal is at the new price. Webhook subscription.updated then updates our
- * planId and clears pendingPlanCode. Idempotent: if webhook already applied, pendingPlanCode is null; if we run
- * twice, Paddle already has the new price so updateSubscriptionPrice is a no-op.
+ * Apply scheduled paid downgrades: when the subscription's current period has ended and pendingPlanCode is set,
+ * either (1) only update our DB when we already applied the downgrade in Paddle at click time
+ * (downgradePaddleAppliedAt set), or (2) call Paddle with do_not_bill so webhook updates planId (legacy).
  */
 async function applyScheduledPaidDowngrades(now: Date): Promise<void> {
   const subs = await prisma.subscription.findMany({
@@ -167,12 +165,30 @@ async function applyScheduledPaidDowngrades(now: Date): Promise<void> {
       tenantId: true,
       providerSubscriptionId: true,
       pendingPlanCode: true,
+      downgradePaddleAppliedAt: true,
     },
   });
   for (const sub of subs) {
     const code = sub.pendingPlanCode?.toLowerCase();
-    if (!code || code === "free" || !sub.providerSubscriptionId) continue;
+    if (!code || code === "free") continue;
     if (code !== "starter" && code !== "pro" && code !== "enterprise") continue;
+
+    if (sub.downgradePaddleAppliedAt != null) {
+      // We already updated Paddle at downgrade click with prorated_next_billing_period; only sync our DB.
+      const plan = await prisma.plan.findFirst({
+        where: { code: { equals: code, mode: "insensitive" }, isActive: true },
+        select: { id: true },
+      });
+      if (plan) {
+        await prisma.subscription.update({
+          where: { id: sub.id },
+          data: { planId: plan.id, pendingPlanCode: null, downgradePaddleAppliedAt: null },
+        });
+      }
+      continue;
+    }
+
+    if (!sub.providerSubscriptionId) continue;
     const result = await updateSubscriptionPrice({
       providerSubscriptionId: sub.providerSubscriptionId,
       targetPlanCode: code as "starter" | "pro" | "enterprise",

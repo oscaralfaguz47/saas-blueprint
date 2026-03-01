@@ -564,6 +564,8 @@ model Subscription {
   cancelAtPeriodEnd  Boolean   @default(false)
   /** Target plan when cancelAtPeriodEnd is true; applied at period end by period-close/cron. */
   pendingPlanCode    String?   @db.VarChar(50)
+  /** Set when we called Paddle on downgrade with prorated_next_billing_period; period-close then only updates DB. */
+  downgradePaddleAppliedAt DateTime? @db.Timestamptz(6)
 
   provider               String? @db.VarChar(30) // stripe, paddle, manual
   providerCustomerId     String? @db.VarChar(191)
