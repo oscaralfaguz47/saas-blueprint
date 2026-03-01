@@ -237,9 +237,15 @@ function statusBadgeVariant(
 
 function statusBadgeLabel(
   status: string,
-  cancelAtPeriodEnd?: boolean
+  cancelAtPeriodEnd?: boolean,
+  pendingPlanCode?: string | null,
+  periodEnd?: string
 ): string {
-  if (cancelAtPeriodEnd) return "Canceling";
+  // Only show "Canceling" for full subscription cancellation (to Free). Scheduled downgrade stays "Active".
+  if (cancelAtPeriodEnd && (pendingPlanCode === "free" || pendingPlanCode == null)) return "Canceling";
+  if (cancelAtPeriodEnd && pendingPlanCode && pendingPlanCode !== "free") {
+    return periodEnd ? `Active until ${formatDate(periodEnd)}` : "Active";
+  }
   const s = status.toUpperCase();
   if (s === "ACTIVE") return "Active";
   if (s === "TRIAL") return "Trial";
@@ -883,7 +889,11 @@ export function WorkspaceBillingTab() {
         <Alert
           variant="info"
           title="Downgrade scheduled"
-          description={`Downgrade scheduled for ${formatDate(summary.periodEnd)}. You'll keep your current plan until then.`}
+          description={
+            summary.pendingPlanCode === "free"
+              ? `Downgrade scheduled for ${formatDate(summary.periodEnd)}. You'll keep your current plan until then.`
+              : `Downgrade scheduled to ${PLAN_LABELS[summary.pendingPlanCode] ?? summary.pendingPlanCode} on ${formatDate(summary.periodEnd)}. You'll keep your current plan until then.`
+          }
         />
       )}
       {billingState.isPastDue && (
@@ -949,14 +959,16 @@ export function WorkspaceBillingTab() {
               </span>
               <Badge
                 variant={
-                  billingState.isCancelingAtPeriodEnd
+                  billingState.isCancelingAtPeriodEnd && (summary.pendingPlanCode === "free" || !summary.pendingPlanCode)
                     ? "secondary"
                     : statusBadgeVariant(summary.subscriptionStatus)
                 }
               >
                 {statusBadgeLabel(
                   summary.subscriptionStatus,
-                  summary.cancelAtPeriodEnd
+                  summary.cancelAtPeriodEnd,
+                  summary.pendingPlanCode,
+                  summary.periodEnd
                 )}
               </Badge>
             </div>
@@ -973,6 +985,11 @@ export function WorkspaceBillingTab() {
               ? "Manage plan, usage, and renewal."
               : "Upgrade for more capacity and audit features."}
           </p>
+          {summary.pendingPlanCode && summary.pendingPlanCode !== "free" && (
+            <p className="mt-2 text-xs text-(--text-muted)">
+              Scheduled to downgrade to {PLAN_LABELS[summary.pendingPlanCode] ?? summary.pendingPlanCode} on {formatDate(summary.periodEnd)}.
+            </p>
+          )}
         </CardContent>
         <CardFooter className="flex flex-wrap items-center gap-2 border-t border-(--border-subtle) pt-3">
           {showChangePlan && (
@@ -1153,87 +1170,163 @@ export function WorkspaceBillingTab() {
         open={changePlanOpen}
         onClose={() => setChangePlanOpen(false)}
         title="Change plan"
-        description="Compare plans and choose what fits your workspace. Upgrades apply immediately. Downgrades take effect at the end of your billing period."
-        contentClassName="max-w-5xl"
+        description={
+          summary.pendingPlanCode && summary.pendingPlanCode !== "free"
+            ? "Compare plans. You have a scheduled downgrade; you can replace it with another plan below."
+            : "Compare plans and choose what fits your workspace. Upgrades apply immediately. Downgrades take effect at the end of your billing period."
+        }
+        contentClassName="max-w-6xl w-full"
       >
-        <div className="grid gap-4 sm:grid-cols-3">
-          {IN_APP_PLAN_CATALOG.map((plan) => {
-            const isCurrent = plan.code === billingState.currentPlan;
-            const canUpgrade =
-              isUpgrade(billingState.currentPlan, plan.code) &&
-              !billingState.isPastDue &&
-              !billingState.isSuspended;
-            const canDowngrade = isDowngrade(billingState.currentPlan, plan.code);
-            return (
-              <div
-                key={plan.code}
-                className={`rounded-xl border p-4 ${
-                  plan.mostPopular
-                    ? "border-(--color-primary)/50 bg-(--bg-surface-elev)"
-                    : "border-(--border-subtle) bg-(--bg-surface)"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <h3 className="font-semibold text-(--text-primary)">
-                    {plan.name}
-                  </h3>
-                  {plan.mostPopular && (
-                    <Badge variant="secondary">Most popular</Badge>
+        <div className="overflow-y-auto max-h-[75vh]">
+          <div className="space-y-4">
+            {summary.pendingPlanCode && summary.pendingPlanCode !== "free" && (
+              <Alert
+                variant="info"
+                title="Downgrade scheduled"
+                description={`Downgrade scheduled to ${PLAN_LABELS[summary.pendingPlanCode] ?? summary.pendingPlanCode} on ${formatDate(summary.periodEnd)}. You'll keep your current plan until then.`}
+              />
+            )}
+            <div className="overflow-x-auto pb-2 -mx-1 px-1">
+              <div className="flex gap-4 min-w-max">
+            {IN_APP_PLAN_CATALOG.map((plan) => {
+              const isCurrent = plan.code === billingState.currentPlan;
+              const isScheduled =
+                summary.pendingPlanCode &&
+                summary.pendingPlanCode !== "free" &&
+                plan.code === summary.pendingPlanCode;
+              const canUpgrade =
+                isUpgrade(billingState.currentPlan, plan.code) &&
+                !billingState.isPastDue &&
+                !billingState.isSuspended;
+              const canDowngrade = isDowngrade(billingState.currentPlan, plan.code);
+              const hasScheduledDowngrade =
+                summary.pendingPlanCode && summary.pendingPlanCode !== "free";
+              const isOtherLowerWithScheduled =
+                hasScheduledDowngrade &&
+                canDowngrade &&
+                !isCurrent &&
+                !isScheduled;
+              const effectiveDate = summary.periodEnd ? formatDate(summary.periodEnd) : "";
+              const buttonsDisabled = scheduleLoading || checkoutLoading;
+
+              return (
+                <div
+                  key={plan.code}
+                  className={`shrink-0 w-64 min-w-64 rounded-xl border p-4 ${
+                    plan.mostPopular
+                      ? "border-(--color-primary)/50 bg-(--bg-surface-elev)"
+                      : "border-(--border-subtle) bg-(--bg-surface)"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="font-semibold text-(--text-primary)">
+                      {plan.name}
+                    </h3>
+                    <div className="flex flex-wrap items-center gap-1.5 justify-end">
+                      {isCurrent && (
+                        <Badge variant="secondary">Current</Badge>
+                      )}
+                      {isScheduled && (
+                        <Badge variant="secondary">Scheduled</Badge>
+                      )}
+                      {plan.mostPopular && !isCurrent && !isScheduled && (
+                        <Badge variant="secondary">Most popular</Badge>
+                      )}
+                    </div>
+                  </div>
+                  <p className="mt-1 text-lg font-medium text-(--text-primary)">
+                    {formatPriceMonthly(plan.priceMonthlyCents)}/month
+                  </p>
+                  {isCurrent && hasScheduledDowngrade && effectiveDate && (
+                    <p className="mt-1 text-xs text-(--text-muted)">
+                      Current until {effectiveDate}
+                    </p>
                   )}
-                </div>
-                <p className="mt-1 text-lg font-medium text-(--text-primary)">
-                  {formatPriceMonthly(plan.priceMonthlyCents)}/month
-                </p>
-                <p className="mt-2 text-xs text-(--text-muted)">
-                  {plan.bestFor}
-                </p>
-                <ul className="mt-3 list-inside list-disc space-y-1 text-xs text-(--text-secondary)">
-                  {plan.includes.slice(0, 5).map((item, i) => (
-                    <li key={i}>{item}</li>
-                  ))}
-                </ul>
-                <ul className="mt-2 list-inside list-disc space-y-1 text-xs text-(--text-muted)">
-                  {plan.limits.slice(0, 3).map((item, i) => (
-                    <li key={i}>{item}</li>
-                  ))}
-                </ul>
-                <div className="mt-4">
-                  {isCurrent ? (
-                    <button
-                      type="button"
-                      disabled
-                      className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--muted) text-sm font-medium text-(--text-muted)"
-                    >
-                      Current plan
-                    </button>
-                  ) : canUpgrade ? (
-                    <button
-                      type="button"
-                      onClick={() => handleSelectPlan(plan)}
-                      className="inline-flex h-9 w-full items-center justify-center rounded-lg bg-(--color-primary) text-sm font-medium text-white hover:bg-(--color-primary-hover)"
-                    >
-                      Upgrade
-                    </button>
-                  ) : canDowngrade ? (
-                    <button
-                      type="button"
-                      onClick={() => handleSelectPlan(plan)}
-                      title="Downgrades take effect at the end of your billing period."
-                      className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev)"
-                    >
-                      Downgrade (end of period)
-                    </button>
-                  ) : (
-                    <span className="text-xs text-(--text-muted)">
-                      {billingState.isPastDue || billingState.isSuspended
-                        ? "Update payment method to change plan."
-                        : "?"}
-                    </span>
+                  {isScheduled && effectiveDate && (
+                    <p className="mt-1 text-xs text-(--text-muted)">
+                      Will become active on {effectiveDate}
+                    </p>
                   )}
+                  <p className="mt-2 text-xs text-(--text-muted)">
+                    {plan.bestFor}
+                  </p>
+                  <ul className="mt-3 list-inside list-disc space-y-1 text-xs text-(--text-secondary)">
+                    {plan.includes.slice(0, 5).map((item, i) => (
+                      <li key={i}>{item}</li>
+                    ))}
+                  </ul>
+                  <ul className="mt-2 list-inside list-disc space-y-1 text-xs text-(--text-muted)">
+                    {plan.limits.slice(0, 3).map((item, i) => (
+                      <li key={i}>{item}</li>
+                    ))}
+                  </ul>
+                  <div className="mt-4">
+                    {isCurrent ? (
+                      <button
+                        type="button"
+                        disabled
+                        className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--muted) text-sm font-medium text-(--text-muted)"
+                      >
+                        Current plan
+                      </button>
+                    ) : isScheduled ? (
+                      <button
+                        type="button"
+                        disabled
+                        className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--muted) text-sm font-medium text-(--text-muted)"
+                      >
+                        Scheduled
+                      </button>
+                    ) : canUpgrade ? (
+                      <button
+                        type="button"
+                        onClick={() => handleSelectPlan(plan)}
+                        disabled={buttonsDisabled}
+                        className="inline-flex h-9 w-full items-center justify-center rounded-lg bg-(--color-primary) text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-50"
+                      >
+                        Upgrade
+                      </button>
+                    ) : isOtherLowerWithScheduled ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleSelectPlan(plan)}
+                          disabled={buttonsDisabled}
+                          title="Replaces your scheduled downgrade."
+                          className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
+                        >
+                          Schedule instead
+                        </button>
+                        {effectiveDate && (
+                          <p className="mt-1.5 text-xs text-(--text-muted)">
+                            Replaces your scheduled downgrade. Effective on {effectiveDate}.
+                          </p>
+                        )}
+                      </>
+                    ) : canDowngrade ? (
+                      <button
+                        type="button"
+                        onClick={() => handleSelectPlan(plan)}
+                        disabled={buttonsDisabled}
+                        title="Downgrades take effect at the end of your billing period."
+                        className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
+                      >
+                        Downgrade (end of period)
+                      </button>
+                    ) : (
+                      <span className="text-xs text-(--text-muted)">
+                        {billingState.isPastDue || billingState.isSuspended
+                          ? "Update payment method to change plan."
+                          : "?"}
+                      </span>
+                    )}
+                  </div>
                 </div>
+              );
+            })}
               </div>
-            );
-          })}
+            </div>
+          </div>
         </div>
       </Dialog>
 
