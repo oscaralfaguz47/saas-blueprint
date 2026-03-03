@@ -108,7 +108,8 @@ export async function POST(req: Request) {
   // Events that are safe to re-process on retry (idempotent handlers). When Paddle retries,
   // the same event_id is sent again, so the insert above fails and we would skip processing.
   // For these types we still run the handler so retries actually update the DB.
-  const idempotentRetryEventTypes = ["address.updated", "business.created", "business.updated"] as const;
+  // Address/business events sync TenantBillingProfile when a Paddle admin updates address/business in the Paddle dashboard.
+  const idempotentRetryEventTypes = ["address.created", "address.updated", "business.created", "business.updated"] as const;
   const isIdempotentRetry = !inserted && idempotentRetryEventTypes.includes(event_type as (typeof idempotentRetryEventTypes)[number]);
 
   if (!inserted && !isIdempotentRetry) {

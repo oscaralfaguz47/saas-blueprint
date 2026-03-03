@@ -15,6 +15,8 @@ export type PaddleAddress = {
   second_line?: string | null;
   city?: string | null;
   region?: string | null;
+  /** Set by app to subscription ID (sub_xxx) for correct tenant resolution in webhooks. */
+  description?: string | null;
 };
 
 /** Paddle business from GET /customers/{id}/businesses (list) or business webhooks. */

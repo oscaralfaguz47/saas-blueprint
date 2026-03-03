@@ -18,6 +18,8 @@ export type UpdateBillingDetailsParams = {
   postalCode?: string | null;
   /** Paddle address description (e.g. subscription ID for identification). */
   description?: string | null;
+  /** Two-letter ISO 3166-1 alpha-2 country code. Editable in billing details. */
+  countryCode?: string | null;
 };
 
 async function paddleFetch<T>(
@@ -55,6 +57,7 @@ function isEntityArchivedError(error: string): boolean {
 
 /** Paddle API field name -> our form/API field name (billing details). */
 const PADDLE_FIELD_TO_OUR_FIELD: Record<string, string> = {
+  country_code: "countryCode",
   tax_identifier: "vatId",
   name: "companyName",
   first_line: "addressLine1",
@@ -128,6 +131,7 @@ export async function updatePaddleBillingDetails(
     providerCustomerId,
     providerAddressId,
     providerBusinessId,
+    countryCode,
     companyName,
     vatId,
     addressLine1,
@@ -139,6 +143,7 @@ export async function updatePaddleBillingDetails(
   } = params;
 
   const hasAddressFields =
+    countryCode !== undefined ||
     addressLine1 !== undefined ||
     addressLine2 !== undefined ||
     city !== undefined ||
@@ -159,6 +164,8 @@ export async function updatePaddleBillingDetails(
 
   if (hasAddressFields && addressId) {
     const body: Record<string, unknown> = {};
+    if (countryCode !== undefined)
+      body.country_code = typeof countryCode === "string" && countryCode.length >= 2 ? countryCode.trim().toUpperCase().slice(0, 2) : null;
     if (addressLine1 !== undefined) body.first_line = addressLine1 ?? null;
     if (addressLine2 !== undefined) body.second_line = addressLine2 ?? null;
     if (city !== undefined) body.city = city ?? null;

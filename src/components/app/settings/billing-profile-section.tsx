@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { useToast } from "@/components/ui/toast";
+import { getCheckoutCountryOptions } from "@/lib/countries";
 
 export type BillingProfileData = {
   countryCode: string;
@@ -44,6 +45,7 @@ export function BillingProfileSection() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [form, setForm] = useState<{
+    countryCode: string;
     companyName: string;
     vatId: string;
     addressLine1: string;
@@ -52,6 +54,7 @@ export function BillingProfileSection() {
     region: string;
     postalCode: string;
   }>({
+    countryCode: "US",
     companyName: "",
     vatId: "",
     addressLine1: "",
@@ -75,7 +78,9 @@ export function BillingProfileSection() {
       const data = json.data as { profile?: BillingProfileData | null; message?: string };
       setProfile(data.profile ?? null);
       if (data.profile) {
+        const cc = (data.profile.countryCode ?? "US").toUpperCase().slice(0, 2);
         setForm({
+          countryCode: cc,
           companyName: data.profile.companyName ?? "",
           vatId: data.profile.vatId ?? "",
           addressLine1: data.profile.addressLine1 ?? "",
@@ -100,7 +105,9 @@ export function BillingProfileSection() {
     setSubmitError(null);
     setFieldErrors({});
     if (profile) {
+      const cc = (profile.countryCode ?? "US").toUpperCase().slice(0, 2);
       setForm({
+        countryCode: cc,
         companyName: profile.companyName ?? "",
         vatId: profile.vatId ?? "",
         addressLine1: profile.addressLine1 ?? "",
@@ -122,6 +129,7 @@ export function BillingProfileSection() {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          countryCode: form.countryCode && form.countryCode.length === 2 ? form.countryCode : null,
           companyName: form.companyName || null,
           vatId: form.vatId || null,
           addressLine1: form.addressLine1 || null,
@@ -238,7 +246,7 @@ export function BillingProfileSection() {
         open={modalOpen}
         onClose={() => !saving && setModalOpen(false)}
         title="Edit billing details"
-        description="Update details for future invoices. Country is set at checkout and cannot be changed here."
+        description="Update details for future invoices. You can change your country and address here."
         closeDisabled={saving}
         allowOverlayClose={!saving}
         contentClassName="max-w-md"
@@ -255,11 +263,24 @@ export function BillingProfileSection() {
           <div className="grid gap-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-(--text-muted)">Country</label>
-              <Input
-                value={profile?.countryCode ? countryDisplayName(profile.countryCode) : ""}
-                disabled
-                className="bg-(--muted)"
-              />
+              <select
+                value={form.countryCode}
+                onChange={(e) => setForm((f) => ({ ...f, countryCode: e.target.value }))}
+                className="flex h-9 w-full rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-1 text-sm text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-(--color-primary) aria-invalid:border-red-500"
+                aria-invalid={!!fieldErrors.countryCode}
+                aria-describedby={fieldErrors.countryCode ? "countryCode-error" : undefined}
+              >
+                {getCheckoutCountryOptions().map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+              {fieldErrors.countryCode && (
+                <p id="countryCode-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
+                  {fieldErrors.countryCode}
+                </p>
+              )}
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-(--text-muted)">Postal code</label>

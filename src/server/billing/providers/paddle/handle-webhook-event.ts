@@ -21,6 +21,7 @@ import {
 import { handleTransactionCompleted } from "./handle-transaction-completed";
 import { fetchPaddleSubscription } from "./fetch-subscription";
 import { setPaddleAddressDescription } from "@/server/billing/paddle/customer/update-billing-details";
+import { PADDLE_API_BASE, getPaddleApiKey } from "@/server/billing/paddle/paddle-api";
 import { mapAddressToProfile, type PaddleAddress } from "@/server/billing/billing-profile/sync-from-paddle";
 
 const BILLING_WEBHOOK_ACTOR_USER_ID = process.env.BILLING_WEBHOOK_ACTOR_USER_ID;
@@ -30,10 +31,88 @@ function getAuditActorUserId(): string | null {
 }
 
 /**
- * Handle address.updated webhook: update TenantBillingProfile for the tenant that owns this customer.
+ * Resolve tenantId for a Paddle customer_id. Tries (1) Subscription by providerCustomerId,
+ * (2) TenantBillingProfile by providerCustomerId, (3) Paddle API list subscriptions by customer_id
+ * then our Subscription by providerSubscriptionId (and backfill providerCustomerId).
+ */
+async function resolveTenantIdByProviderCustomerId(providerCustomerId: string): Promise<string | null> {
+  const sub = await prisma.subscription.findFirst({
+    where: { provider: "paddle", providerCustomerId },
+    select: { tenantId: true },
+  });
+  if (sub) return sub.tenantId;
+  const profile = await prisma.tenantBillingProfile.findFirst({
+    where: { providerCustomerId },
+    select: { tenantId: true },
+  });
+  if (profile) return profile.tenantId;
+
+  // Fallback: fetch subscriptions from Paddle for this customer, match by providerSubscriptionId, backfill providerCustomerId
+  try {
+    const url = new URL(`${PADDLE_API_BASE}/subscriptions`);
+    url.searchParams.set("customer_id", providerCustomerId);
+    url.searchParams.set("per_page", "10");
+    const res = await fetch(url.toString(), {
+      method: "GET",
+      headers: { Authorization: `Bearer ${getPaddleApiKey()}` },
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { data?: Array<{ id?: string }> };
+    const firstId = json?.data?.[0]?.id;
+    if (!firstId || typeof firstId !== "string") return null;
+    const ourSub = await prisma.subscription.findFirst({
+      where: { provider: "paddle", providerSubscriptionId: firstId },
+      select: { tenantId: true, id: true },
+    });
+    if (!ourSub) return null;
+    await prisma.subscription.update({
+      where: { id: ourSub.id },
+      data: { providerCustomerId },
+    });
+    return ourSub.tenantId;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve tenantId for a Paddle business_id when the customer has multiple businesses/subscriptions.
+ * Fetches subscriptions for the customer from Paddle and finds the one whose business_id matches, then our Subscription by providerSubscriptionId.
+ */
+async function resolveTenantIdByProviderBusinessId(
+  providerCustomerId: string,
+  providerBusinessId: string
+): Promise<string | null> {
+  if (!providerBusinessId || providerBusinessId.length > 191) return null;
+  try {
+    const url = new URL(`${PADDLE_API_BASE}/subscriptions`);
+    url.searchParams.set("customer_id", providerCustomerId);
+    url.searchParams.set("per_page", "50");
+    const res = await fetch(url.toString(), {
+      method: "GET",
+      headers: { Authorization: `Bearer ${getPaddleApiKey()}` },
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { data?: Array<{ id?: string; business_id?: string | null }> };
+    const list = json?.data ?? [];
+    const subscriptionId = list.find((s) => s.business_id === providerBusinessId)?.id;
+    if (!subscriptionId || typeof subscriptionId !== "string") return null;
+    const ourSub = await prisma.subscription.findFirst({
+      where: { provider: "paddle", providerSubscriptionId: subscriptionId },
+      select: { tenantId: true },
+    });
+    return ourSub?.tenantId ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Handle address.created / address.updated webhook: sync TenantBillingProfile for the tenant that owns this customer.
+ * When a Paddle admin creates or updates an address in the Paddle dashboard, we reflect it in our DB.
  * Payload data shape matches Paddle address (id, customer_id, country_code, postal_code, first_line, second_line, city, region).
  */
-async function handleAddressUpdated(envelope: {
+async function handleAddressCreatedOrUpdated(envelope: {
   event_id: string;
   event_type: string;
   data: Record<string, unknown>;
@@ -50,11 +129,24 @@ async function handleAddressUpdated(envelope: {
     return { processed: false };
   }
 
-  const sub = await prisma.subscription.findFirst({
-    where: { provider: "paddle", providerCustomerId },
-    select: { tenantId: true },
-  });
-  if (!sub) {
+  // Prefer subscription ID from address description (we set it to sub_xxx) so we resolve the correct tenant when a customer has multiple subscriptions.
+  const description = address?.description?.trim?.();
+  const subscriptionIdFromDescription =
+    description && description.startsWith("sub_") && description.length >= 10 && description.length <= 191
+      ? description
+      : null;
+  let tenantId: string | null = null;
+  if (subscriptionIdFromDescription) {
+    const subByDescription = await prisma.subscription.findFirst({
+      where: { provider: "paddle", providerSubscriptionId: subscriptionIdFromDescription },
+      select: { tenantId: true },
+    });
+    if (subByDescription) tenantId = subByDescription.tenantId;
+  }
+  if (!tenantId) {
+    tenantId = await resolveTenantIdByProviderCustomerId(providerCustomerId);
+  }
+  if (!tenantId) {
     logWebhookReceived({
       eventType,
       providerEventId: eventId,
@@ -65,9 +157,9 @@ async function handleAddressUpdated(envelope: {
 
   const mapped = mapAddressToProfile(address);
   await prisma.tenantBillingProfile.upsert({
-    where: { tenantId: sub.tenantId },
+    where: { tenantId },
     create: {
-      tenantId: sub.tenantId,
+      tenantId,
       countryCode: mapped.countryCode,
       postalCode: mapped.postalCode,
       region: mapped.region,
@@ -97,7 +189,7 @@ async function handleAddressUpdated(envelope: {
   logWebhookReceived({
     eventType,
     providerEventId: eventId,
-    extractedTenantId: sub.tenantId,
+    extractedTenantId: tenantId,
     result: "success",
   });
   return { processed: true };
@@ -133,11 +225,16 @@ async function handleBusinessCreatedOrUpdated(envelope: {
     return { processed: false };
   }
 
-  const sub = await prisma.subscription.findFirst({
-    where: { provider: "paddle", providerCustomerId },
-    select: { tenantId: true },
-  });
-  if (!sub) {
+  // Resolve tenant by subscription that uses this business (customer can have multiple businesses/subscriptions).
+  const providerBusinessId = business?.id?.trim?.();
+  let tenantId: string | null = null;
+  if (providerBusinessId) {
+    tenantId = await resolveTenantIdByProviderBusinessId(providerCustomerId, providerBusinessId);
+  }
+  if (!tenantId) {
+    tenantId = await resolveTenantIdByProviderCustomerId(providerCustomerId);
+  }
+  if (!tenantId) {
     logWebhookReceived({
       eventType,
       providerEventId: eventId,
@@ -150,9 +247,9 @@ async function handleBusinessCreatedOrUpdated(envelope: {
   const vatId = business.tax_identifier?.trim?.()?.slice(0, 64) ?? null;
 
   await prisma.tenantBillingProfile.upsert({
-    where: { tenantId: sub.tenantId },
+    where: { tenantId },
     create: {
-      tenantId: sub.tenantId,
+      tenantId,
       countryCode: "US",
       postalCode: null,
       region: null,
@@ -178,7 +275,7 @@ async function handleBusinessCreatedOrUpdated(envelope: {
   logWebhookReceived({
     eventType,
     providerEventId: eventId,
-    extractedTenantId: sub.tenantId,
+    extractedTenantId: tenantId,
     result: "success",
   });
   return { processed: true };
@@ -244,8 +341,8 @@ export async function handleWebhookEvent(params: {
     return { processed: result.processed };
   }
 
-  if (eventType === "address.updated") {
-    const result = await handleAddressUpdated(envelopeParsed.data);
+  if (eventType === "address.created" || eventType === "address.updated") {
+    const result = await handleAddressCreatedOrUpdated(envelopeParsed.data);
     return { processed: result.processed };
   }
 

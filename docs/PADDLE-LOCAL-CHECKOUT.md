@@ -50,7 +50,11 @@ Open **Paddle sandbox**: https://sandbox-vendors.paddle.com/
    - **Destination URL:**  
      `https://YOUR-NGROK-URL/api/billing/paddle/webhook`  
      Example: `https://abc123.ngrok-free.app/api/billing/paddle/webhook`
-   - Subscribe to the events you need (e.g. `subscription.created`, `subscription.activated`, `subscription.updated`, `transaction.paid`).
+   - Subscribe to the events you need. The app processes:
+     - **Subscriptions:** `subscription.created`, `subscription.updated`, `subscription.activated`, `subscription.canceled`, `subscription.past_due`, `subscription.resumed`, `subscription.trialing`.
+     - **Transactions:** `transaction.completed`.
+     - **Billing profile (Paddle dashboard → customer address/business):** `address.created`, `address.updated`, `business.created`, `business.updated`.  
+     If you enable these address/business events, changes made by a Paddle administrator to a customer’s address or business (VAT/company) in the Paddle dashboard are synced into the app’s billing profile automatically.
 3. Copy the **Signing secret** and set it in your local `.env`:
    ```env
    PADDLE_WEBHOOK_SECRET="your_signing_secret_from_paddle"

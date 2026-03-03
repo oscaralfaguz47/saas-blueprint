@@ -14,6 +14,7 @@ import { parseBody } from "@/lib/validations/common";
 import { z } from "zod";
 
 const putBodySchema = z.object({
+  countryCode: z.string().length(2).optional().nullable(),
   companyName: z.string().max(160).optional().nullable(),
   vatId: z.string().max(64).optional().nullable(),
   addressLine1: z.string().max(120).optional().nullable(),
@@ -122,6 +123,7 @@ export const PUT = withErrorHandler(async (req: Request) => {
       providerCustomerId: sub.providerCustomerId,
       providerAddressId: profile?.providerAddressId ?? undefined,
       providerBusinessId: profile?.providerBusinessId ?? undefined,
+      countryCode: body.countryCode ?? undefined,
       companyName: body.companyName ?? undefined,
       vatId: body.vatId ?? undefined,
       addressLine1: body.addressLine1 ?? undefined,
@@ -160,7 +162,7 @@ export const PUT = withErrorHandler(async (req: Request) => {
     where: { tenantId },
     create: {
       tenantId,
-      countryCode: "US",
+      countryCode: (body.countryCode ?? profile?.countryCode ?? "US").toUpperCase().slice(0, 2),
       postalCode: body.postalCode ?? null,
       region: body.region ?? null,
       city: body.city ?? null,
@@ -175,6 +177,7 @@ export const PUT = withErrorHandler(async (req: Request) => {
       ...(businessIdUsed ? { providerBusinessId: businessIdUsed } : {}),
     },
     update: {
+      ...(body.countryCode != null ? { countryCode: body.countryCode.toUpperCase().slice(0, 2) } : {}),
       postalCode: body.postalCode ?? undefined,
       region: body.region ?? undefined,
       city: body.city ?? undefined,
