@@ -280,11 +280,21 @@ export const POST = withErrorHandler(async (req: Request) => {
       });
     }
   } else {
+    // Upgrade: Paddle forbids combining scheduled_change with items/proration in one PATCH.
+    // If we need to clear a scheduled cancellation, do it in a separate request first.
+    if (clearScheduledCancel) {
+      const clearResult = await clearScheduledChangeOnly(subscription.providerSubscriptionId);
+      if (!clearResult.ok) {
+        return ApiErrors.VALIDATION_ERROR(
+          clearResult.error ?? "Failed to clear scheduled cancellation. Try again or contact support."
+        );
+      }
+    }
     const updateResult = await updateSubscriptionPrice({
       providerSubscriptionId: subscription.providerSubscriptionId,
       targetPlanCode: targetCode as "starter" | "pro" | "enterprise",
       effective: "immediate",
-      clearScheduledCancel,
+      clearScheduledCancel: false,
       tenantId,
     });
     if (!updateResult.ok) {

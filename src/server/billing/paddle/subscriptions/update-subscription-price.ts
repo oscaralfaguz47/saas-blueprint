@@ -94,6 +94,9 @@ export async function updateSubscriptionPrice(
       body.custom_data = { tenantId, planCode: targetPlanCode };
     }
 
+    // Paddle does not allow changing items and next_billed_at in the same request.
+    // We do not send next_billed_at on upgrade; proration uses Paddle's current billing period.
+
     // Log payload for downgrades (no secrets in body; redact if adding sensitive fields later).
     if (effective === "next_period") {
       console.info("[updateSubscriptionPrice] downgrade PATCH payload", {
@@ -103,6 +106,13 @@ export async function updateSubscriptionPrice(
         items: body.items,
         scheduled_change: body.scheduled_change ?? "(not set)",
         has_custom_data: Boolean(body.custom_data),
+      });
+    }
+    if (effective === "immediate") {
+      console.info("[updateSubscriptionPrice] upgrade PATCH payload", {
+        providerSubscriptionId,
+        targetPlanCode,
+        proration_billing_mode: prorationMode,
       });
     }
 
