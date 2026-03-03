@@ -25,10 +25,11 @@ export async function getInvoiceUrl(params: {
   const invoiceUrl = json?.data?.url;
   if (typeof invoiceUrl !== "string") return null;
 
-  if (persist) {
+  if (persist && invoiceUrl.length <= 600) {
+    // BillingTransaction.invoiceUrl is VarChar(600); skip persisting when longer so we don't store a broken truncated URL.
     await prisma.billingTransaction.updateMany({
       where: { tenantId, providerTransactionId },
-      data: { invoiceUrl },
+      data: { invoiceUrl: invoiceUrl },
     });
   }
   return invoiceUrl;
