@@ -45,15 +45,19 @@ type PaddleTransactionItem = {
 };
 
 /**
- * Fetch all transactions for a Paddle customer and upsert into BillingTransaction.
- * Uses customer_id so we get every transaction (e.g. Starter then Pro) across subscriptions.
- * Used to backfill and to keep history when the user has upgraded/changed plans.
+ * Fetch transactions for a Paddle customer and upsert into BillingTransaction.
+ * Only processes transactions whose subscription_id is in providerSubscriptionIds so we never
+ * attach another tenant's transactions to this tenant (same Paddle customer can have multiple subscriptions).
  */
 export async function syncTransactionsFromPaddle(params: {
   tenantId: string;
   providerCustomerId: string;
+  /** This tenant's Paddle subscription ID(s). Only transactions for these subscriptions are upserted. */
+  providerSubscriptionIds: string[];
 }): Promise<{ synced: number }> {
-  const { tenantId, providerCustomerId } = params;
+  const { tenantId, providerCustomerId, providerSubscriptionIds } = params;
+  const subscriptionIdSet = new Set(providerSubscriptionIds.map((id) => id?.trim()).filter(Boolean));
+  if (subscriptionIdSet.size === 0) return { synced: 0 };
 
   const url = new URL(`${PADDLE_API_BASE}/transactions`);
   url.searchParams.set("customer_id", providerCustomerId);
@@ -86,6 +90,8 @@ export async function syncTransactionsFromPaddle(params: {
     const status = (txn?.status ?? "completed").slice(0, 40);
     const billedAt = parseDate(txn?.billed_at ?? txn?.created_at);
     const subId = txn?.subscription_id?.slice(0, 191) ?? null;
+    if (!subId || !subscriptionIdSet.has(subId)) continue;
+
     const receiptNumber = txn?.invoice_number?.slice(0, 120) ?? null;
     const providerInvoiceId =
       typeof txn?.invoice_id === "string" && txn.invoice_id.trim().length > 0 && txn.invoice_id.length <= 191
