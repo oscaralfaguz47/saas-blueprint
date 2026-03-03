@@ -292,6 +292,12 @@ This project is configured for deployment on Vercel with support for multiple en
    - Push to `demo` branch for automatic demo deployment
    - Deploy `main` branch manually when ready for production
 
+#### Build, migrations, and seed
+
+- **Migrations** run on every deploy (via `vercel-build`).
+- **Seed** runs only when `RUN_SEED` is set to a truthy value (`1`, `true`, `yes`, `on`) in Vercel environment variables. Normally leave it unset; set it temporarily when you need to update system catalogs (permissions, roles, plans), then unset after a successful deploy.
+- See **[Vercel: Migrations and Seed](docs/ops/vercel-seeding.md)** for the full flow and STRICT_SEED behavior.
+
 #### Detailed Documentation
 
 - **[Deployment Guide](docs/DEPLOYMENT.md)**: Complete Vercel deployment instructions

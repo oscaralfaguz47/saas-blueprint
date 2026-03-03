@@ -28,7 +28,7 @@ The project is configured to deploy to Vercel with:
 
 **Framework Preset**: Next.js  
 **Root Directory**: `./` (root)  
-**Build Command**: `pnpm build` (or use `vercel-build` for auto-migrations)  
+**Build Command**: `pnpm run vercel-build` (runs migrations on every deploy; seed only when `RUN_SEED` is set — see [Vercel: Migrations and Seed](ops/vercel-seeding.md))  
 **Output Directory**: `.next` (default)  
 **Install Command**: `pnpm install`
 
