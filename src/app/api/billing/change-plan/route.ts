@@ -304,9 +304,17 @@ export const POST = withErrorHandler(async (req: Request) => {
       tenantId,
     });
     if (!updateResult.ok) {
-      return ApiErrors.VALIDATION_ERROR(
-        updateResult.error ?? "Failed to update subscription. Try again or contact support."
-      );
+      const err = updateResult.error ?? "Failed to update subscription. Try again or contact support.";
+      const isPaymentDeclined =
+        typeof err === "string" &&
+        (err.toLowerCase().includes("subscription_payment_declined") || err.toLowerCase().includes("payment declined"));
+      if (isPaymentDeclined) {
+        return ApiErrors.VALIDATION_ERROR(
+          "Your card was declined. Please update your payment method to continue.",
+          { code: "PAYMENT_DECLINED" }
+        );
+      }
+      return ApiErrors.VALIDATION_ERROR(err);
     }
   }
 

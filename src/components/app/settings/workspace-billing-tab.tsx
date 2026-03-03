@@ -282,6 +282,8 @@ export function WorkspaceBillingTab() {
     direction: "upgrade" | "downgrade";
   } | null>(null);
   const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [paymentDeclinedModalOpen, setPaymentDeclinedModalOpen] = useState(false);
+  const [paymentDeclinedPlanCode, setPaymentDeclinedPlanCode] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [transactions, setTransactions] = useState<BillingTransactionItem[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
@@ -489,6 +491,53 @@ export function WorkspaceBillingTab() {
     if (billingParam !== "updated" || postCheckoutPollStartedRef.current) return;
     postCheckoutPollStartedRef.current = true;
 
+    const retryPlan = ((): PlanCode | null => {
+      try {
+        const stored = sessionStorage.getItem("billing:retryUpgradePlan");
+        if (stored === "starter" || stored === "pro" || stored === "enterprise") return stored as PlanCode;
+      } catch {
+        // ignore
+      }
+      return null;
+    })();
+
+    if (retryPlan) {
+      (async () => {
+        setLoading(true);
+        try {
+          const res = await apiFetch("/api/billing/change-plan", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ targetPlanCode: retryPlan, effective: "immediate" }),
+            showToastOnError: true,
+          });
+          try {
+            sessionStorage.removeItem("billing:retryUpgradePlan");
+          } catch {
+            // ignore
+          }
+          if (res.ok) {
+            const planLabel = PLAN_LABELS[retryPlan] ?? retryPlan;
+            toastRef.current.addToast("success", `Plan updated to ${planLabel}.`);
+            await refetchBillingState(true);
+            router.replace("/app/settings/workspace?tab=billing", { scroll: false });
+          } else {
+            const json = await res.json().catch(() => ({}));
+            const msg = (json as { message?: string })?.message ?? "Upgrade could not be applied. Please try again.";
+            toastRef.current.addToast("error", msg);
+            router.replace("/app/settings/workspace?tab=billing", { scroll: false });
+          }
+        } catch {
+          toastRef.current.addToast("error", "Something went wrong. Please try again.");
+          router.replace("/app/settings/workspace?tab=billing", { scroll: false });
+        } finally {
+          setLoading(false);
+          postCheckoutPollStartedRef.current = false;
+        }
+      })();
+      return;
+    }
+
     const expectedPlan = (): PlanCode | null => {
       try {
         const prev = sessionStorage.getItem("billing:postCheckoutPlan");
@@ -557,7 +606,7 @@ export function WorkspaceBillingTab() {
     return () => {
       mounted = false;
     };
-  }, [billingParam, apiFetch, router]);
+  }, [billingParam, apiFetch, router, refetchBillingState]);
 
   // When summary already shows paid+active while polling (e.g. webhook beat us), transition to resolved so the banner hides
   useEffect(() => {
@@ -681,7 +730,22 @@ export function WorkspaceBillingTab() {
           showToastOnError: true,
         });
         const json = await res.json().catch(() => ({}));
-        if (!res.ok) return;
+        if (!res.ok) {
+          const details = (json as { details?: { code?: string } })?.details;
+          if (details?.code === "PAYMENT_DECLINED") {
+            try {
+              sessionStorage.setItem("billing:retryUpgradePlan", confirmTarget.plan.code);
+            } catch {
+              // ignore
+            }
+            setConfirmPlanOpen(false);
+            setConfirmTarget(null);
+            setChangePlanPreview(null);
+            setPaymentDeclinedPlanCode(confirmTarget.plan.code);
+            setPaymentDeclinedModalOpen(true);
+          }
+          return;
+        }
         const data = json.data as { mode: string; effective?: string; transactionId?: string; environment?: string };
         setConfirmPlanOpen(false);
         setConfirmTarget(null);
@@ -759,6 +823,21 @@ export function WorkspaceBillingTab() {
     setConfirmTarget(null);
     setChangePlanPreview(null);
   }, []);
+
+  const closePaymentDeclinedModal = useCallback(() => {
+    setPaymentDeclinedModalOpen(false);
+    setPaymentDeclinedPlanCode(null);
+    try {
+      sessionStorage.removeItem("billing:retryUpgradePlan");
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const handlePaymentDeclinedUpdateMethod = useCallback(() => {
+    setPaymentDeclinedModalOpen(false);
+    handleChangePaymentMethod();
+  }, [handleChangePaymentMethod]);
 
   if (loading) {
     return (
@@ -1498,6 +1577,45 @@ export function WorkspaceBillingTab() {
           </div>
           </div>
         )}
+      </Dialog>
+
+      {/* Payment declined — ask user to update payment method; after update we retry upgrade when billing=updated */}
+      <Dialog
+        open={paymentDeclinedModalOpen}
+        onClose={closePaymentDeclinedModal}
+        title="Payment declined"
+        contentClassName="max-w-md"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-(--text-primary)">
+            Your card was declined. Please update your payment method to continue with your upgrade
+            {paymentDeclinedPlanCode ? ` to ${PLAN_LABELS[paymentDeclinedPlanCode] ?? paymentDeclinedPlanCode}` : ""}.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={handlePaymentDeclinedUpdateMethod}
+              disabled={paymentMethodUpdateLoading}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-50"
+            >
+              {paymentMethodUpdateLoading ? (
+                <>
+                  <Spinner size="sm" />
+                  Opening…
+                </>
+              ) : (
+                "Update payment method"
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={closePaymentDeclinedModal}
+              className="inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev)"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       </Dialog>
     </div>
   );
