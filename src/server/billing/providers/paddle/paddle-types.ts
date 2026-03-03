@@ -52,6 +52,7 @@ export const paddleSubscriptionDataSchema = z.object({
   id: z.string().min(1).max(191),
   status: z.string().min(1).max(50),
   customer_id: z.string().min(1).max(191),
+  address_id: z.string().min(1).max(191).optional(),
   custom_data: z.record(z.string(), z.unknown()).nullable().optional(),
   items: z.array(subscriptionItemSchema).optional(),
   current_billing_period: paddleBillingPeriodSchema.nullable().optional(),

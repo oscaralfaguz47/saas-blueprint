@@ -4,6 +4,8 @@ import { requireFullSession } from "@/server/require-full-session";
 import { getCurrentTenantId, requireTenantPermission } from "@/server/billing/tenant-context";
 import { syncBillingProfileFromPaddle } from "@/server/billing/billing-profile/sync-from-paddle";
 import { updatePaddleBillingDetails } from "@/server/billing/paddle/customer/update-billing-details";
+import { updateSubscriptionAddress } from "@/server/billing/paddle/subscriptions/update-subscription-address";
+import { updateSubscriptionBusiness } from "@/server/billing/paddle/subscriptions/update-subscription-business";
 import { writeAuditLog } from "@/server/services/audit";
 import { sendEmail } from "@/server/services/invitation-email";
 import { prisma } from "@/server/db";
@@ -105,7 +107,7 @@ export const PUT = withErrorHandler(async (req: Request) => {
 
   const sub = await prisma.subscription.findFirst({
     where: { tenantId, provider: "paddle" },
-    select: { providerCustomerId: true },
+    select: { providerCustomerId: true, providerSubscriptionId: true },
   });
 
   const profile = await prisma.tenantBillingProfile.findUnique({
@@ -113,6 +115,8 @@ export const PUT = withErrorHandler(async (req: Request) => {
     select: { providerAddressId: true, providerBusinessId: true },
   });
 
+  let addressIdUsed: string | undefined = undefined;
+  let businessIdUsed: string | undefined = undefined;
   if (sub?.providerCustomerId) {
     const result = await updatePaddleBillingDetails({
       providerCustomerId: sub.providerCustomerId,
@@ -125,9 +129,27 @@ export const PUT = withErrorHandler(async (req: Request) => {
       city: body.city ?? undefined,
       region: body.region ?? undefined,
       postalCode: body.postalCode ?? undefined,
+      description: sub.providerSubscriptionId ?? undefined,
     });
     if (!result.ok) {
       return ApiErrors.VALIDATION_ERROR(result.error ?? "Failed to update billing details.");
+    }
+    addressIdUsed = result.addressIdUsed;
+    businessIdUsed = result.businessIdUsed;
+
+    if (addressIdUsed && sub.providerSubscriptionId) {
+      try {
+        await updateSubscriptionAddress(sub.providerSubscriptionId, addressIdUsed);
+      } catch {
+        // Non-blocking: customer address and profile are updated; subscription address best-effort
+      }
+    }
+    if (businessIdUsed && sub.providerSubscriptionId) {
+      try {
+        await updateSubscriptionBusiness(sub.providerSubscriptionId, businessIdUsed);
+      } catch {
+        // Non-blocking: customer business and profile are updated; subscription business best-effort
+      }
     }
   }
 
@@ -146,6 +168,8 @@ export const PUT = withErrorHandler(async (req: Request) => {
       lastSyncedAt: new Date(),
       syncSource: "manual",
       updatedByUserId: session.user.id,
+      ...(addressIdUsed ? { providerAddressId: addressIdUsed } : {}),
+      ...(businessIdUsed ? { providerBusinessId: businessIdUsed } : {}),
     },
     update: {
       postalCode: body.postalCode ?? undefined,
@@ -158,6 +182,8 @@ export const PUT = withErrorHandler(async (req: Request) => {
       lastSyncedAt: new Date(),
       syncSource: "manual",
       updatedByUserId: session.user.id,
+      ...(addressIdUsed ? { providerAddressId: addressIdUsed } : {}),
+      ...(businessIdUsed ? { providerBusinessId: businessIdUsed } : {}),
     },
   });
 

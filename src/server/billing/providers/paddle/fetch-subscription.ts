@@ -63,6 +63,7 @@ export async function fetchPaddleSubscription(
         id: String(raw.id),
         status: String(raw.status ?? "active"),
         customer_id: String(raw.customer_id),
+        address_id: typeof raw.address_id === "string" && raw.address_id.trim() ? raw.address_id.trim().slice(0, 191) : undefined,
         items: raw.items as PaddleSubscriptionData["items"],
         custom_data: (raw.custom_data as PaddleSubscriptionData["custom_data"]) ?? null,
         current_billing_period: currentBillingPeriod,

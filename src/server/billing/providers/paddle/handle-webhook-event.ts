@@ -20,6 +20,7 @@ import {
 } from "./map-paddle-event";
 import { handleTransactionCompleted } from "./handle-transaction-completed";
 import { fetchPaddleSubscription } from "./fetch-subscription";
+import { setPaddleAddressDescription } from "@/server/billing/paddle/customer/update-billing-details";
 import { mapAddressToProfile, type PaddleAddress } from "@/server/billing/billing-profile/sync-from-paddle";
 
 const BILLING_WEBHOOK_ACTOR_USER_ID = process.env.BILLING_WEBHOOK_ACTOR_USER_ID;
@@ -651,6 +652,22 @@ export async function handleWebhookEvent(params: {
       });
     }
   });
+
+  if (
+    (eventType === "subscription.created" || eventType === "subscription.updated") &&
+    dataToUse.address_id &&
+    dataToUse.customer_id
+  ) {
+    try {
+      await setPaddleAddressDescription(
+        dataToUse.customer_id,
+        dataToUse.address_id,
+        dataToUse.id
+      );
+    } catch {
+      // Non-blocking: subscription was saved; address description is best-effort
+    }
+  }
 
   logWebhookReceived({
     eventType,

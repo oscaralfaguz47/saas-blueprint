@@ -17,6 +17,14 @@ export type PaddleAddress = {
   region?: string | null;
 };
 
+/** Paddle business from GET /customers/{id}/businesses (list) or business webhooks. */
+export type PaddleBusiness = {
+  id?: string;
+  customer_id?: string;
+  name?: string | null;
+  tax_identifier?: string | null;
+};
+
 export function mapAddressToProfile(address: PaddleAddress | null): {
   countryCode: string;
   postalCode: string | null;
@@ -53,10 +61,24 @@ export function mapAddressToProfile(address: PaddleAddress | null): {
   };
 }
 
+function mapBusinessToProfile(business: PaddleBusiness | null): {
+  companyName: string | null;
+  vatId: string | null;
+  providerBusinessId: string | null;
+} {
+  if (!business) {
+    return { companyName: null, vatId: null, providerBusinessId: null };
+  }
+  return {
+    companyName: business.name?.trim?.()?.slice(0, 160) ?? null,
+    vatId: business.tax_identifier?.trim?.()?.slice(0, 64) ?? null,
+    providerBusinessId: business.id?.trim?.()?.slice(0, 191) ?? null,
+  };
+}
+
 /**
- * EPIC 5: Sync TenantBillingProfile from Paddle (customer/address). Idempotent by key.
- * Uses GET /customers/{id}/addresses for address data (Customer GET does not include full address).
- * Use idempotency key BILLING_PROFILE_FETCH:${tenantId}:${providerCustomerId}:${YYYY-MM-DD} for backfill.
+ * EPIC 5: Sync TenantBillingProfile from Paddle (customer address + business). Idempotent by key.
+ * Uses GET /customers/{id}/addresses and GET /customers/{id}/businesses so VAT/company from checkout are stored.
  */
 export async function syncBillingProfileFromPaddle(params: {
   tenantId: string;
@@ -65,20 +87,28 @@ export async function syncBillingProfileFromPaddle(params: {
 }): Promise<{ updated: boolean }> {
   const { tenantId, providerCustomerId } = params;
 
-  const addressesRes = await fetch(
-    `${PADDLE_API_BASE}/customers/${encodeURIComponent(providerCustomerId)}/addresses`,
-    {
-      method: "GET",
-      headers: { Authorization: `Bearer ${getPaddleApiKey()}` },
-    }
-  );
+  const [addressesRes, businessesRes] = await Promise.all([
+    fetch(
+      `${PADDLE_API_BASE}/customers/${encodeURIComponent(providerCustomerId)}/addresses`,
+      { method: "GET", headers: { Authorization: `Bearer ${getPaddleApiKey()}` } }
+    ),
+    fetch(
+      `${PADDLE_API_BASE}/customers/${encodeURIComponent(providerCustomerId)}/businesses`,
+      { method: "GET", headers: { Authorization: `Bearer ${getPaddleApiKey()}` } }
+    ),
+  ]);
   if (!addressesRes.ok) return { updated: false };
 
-  const addressesJson = (await addressesRes.json()) as {
-    data?: PaddleAddress[];
-  };
+  const addressesJson = (await addressesRes.json()) as { data?: PaddleAddress[] };
   const firstAddress = addressesJson?.data?.[0] ?? null;
   const mapped = mapAddressToProfile(firstAddress);
+
+  let businessMapped = mapBusinessToProfile(null);
+  if (businessesRes.ok) {
+    const businessesJson = (await businessesRes.json()) as { data?: PaddleBusiness[] };
+    const firstBusiness = businessesJson?.data?.[0] ?? null;
+    businessMapped = mapBusinessToProfile(firstBusiness);
+  }
 
   await prisma.tenantBillingProfile.upsert({
     where: { tenantId },
@@ -90,10 +120,11 @@ export async function syncBillingProfileFromPaddle(params: {
       city: mapped.city,
       addressLine1: mapped.addressLine1,
       addressLine2: mapped.addressLine2,
-      companyName: null,
-      vatId: null,
+      companyName: businessMapped.companyName,
+      vatId: businessMapped.vatId,
       providerCustomerId,
       providerAddressId: mapped.providerAddressId,
+      providerBusinessId: businessMapped.providerBusinessId,
       lastSyncedAt: new Date(),
       syncSource: "fetch",
     },
@@ -105,6 +136,9 @@ export async function syncBillingProfileFromPaddle(params: {
       addressLine1: mapped.addressLine1,
       addressLine2: mapped.addressLine2,
       providerAddressId: mapped.providerAddressId,
+      companyName: businessMapped.companyName ?? undefined,
+      vatId: businessMapped.vatId ?? undefined,
+      providerBusinessId: businessMapped.providerBusinessId ?? undefined,
       lastSyncedAt: new Date(),
       syncSource: "fetch",
     },
