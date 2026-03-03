@@ -62,11 +62,17 @@ export const POST = withErrorHandler(async (req: Request) => {
       pendingPlanCode: true,
       planId: true,
       currentPeriodEnd: true,
+      currentEntitlementPlanCode: true,
       plan: { select: { code: true } },
     },
   });
 
-  const currentCode = (subscription?.plan?.code ?? "free").toLowerCase();
+  // Use entitlement plan (what user has access to now); after reconcile planId may be billing plan (lower).
+  const currentCode = (
+    subscription?.currentEntitlementPlanCode ??
+    subscription?.plan?.code ??
+    "free"
+  ).toLowerCase();
 
   if (targetCode === "free") {
     if (!subscription) {
