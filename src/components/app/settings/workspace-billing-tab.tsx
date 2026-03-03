@@ -896,7 +896,7 @@ export function WorkspaceBillingTab() {
         <Alert
           variant="info"
           title="Cancellation scheduled"
-          description={`You'll move to Free on ${formatDate(summary.entitlementEffectiveUntil ?? summary.periodEnd)}. You can resume a paid plan before then.`}
+          description={`You'll move to Free on ${formatDate(summary.entitlementEffectiveUntil ?? summary.periodEnd)}. You can resume a paid plan whenever you want.`}
         />
       )}
       {summary.pendingChangeType === "downgrade_end_of_period" && summary.pendingPlanCode && (
