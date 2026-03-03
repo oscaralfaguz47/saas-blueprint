@@ -56,13 +56,16 @@ export async function fetchPaddleSubscription(
         typeof period === "object" &&
         typeof period.starts_at === "string" &&
         typeof period.ends_at === "string";
+      const currentBillingPeriod: { starts_at: string; ends_at: string } | null = hasPeriod
+        ? { starts_at: period.starts_at as string, ends_at: period.ends_at as string }
+        : null;
       return {
         id: String(raw.id),
         status: String(raw.status ?? "active"),
         customer_id: String(raw.customer_id),
         items: raw.items as PaddleSubscriptionData["items"],
         custom_data: (raw.custom_data as PaddleSubscriptionData["custom_data"]) ?? null,
-        current_billing_period: hasPeriod ? { starts_at: period.starts_at, ends_at: period.ends_at } : null,
+        current_billing_period: currentBillingPeriod,
         scheduled_change: (raw.scheduled_change as PaddleSubscriptionData["scheduled_change"]) ?? null,
       };
     }
