@@ -41,6 +41,8 @@ export function BillingProfileSection() {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [form, setForm] = useState<{
     companyName: string;
     vatId: string;
@@ -95,6 +97,8 @@ export function BillingProfileSection() {
   }, [fetchProfile]);
 
   const openModal = useCallback(() => {
+    setSubmitError(null);
+    setFieldErrors({});
     if (profile) {
       setForm({
         companyName: profile.companyName ?? "",
@@ -110,6 +114,8 @@ export function BillingProfileSection() {
   }, [profile]);
 
   const handleSave = useCallback(async () => {
+    setSubmitError(null);
+    setFieldErrors({});
     setSaving(true);
     try {
       const res = await apiFetch("/api/billing/billing-details", {
@@ -124,9 +130,24 @@ export function BillingProfileSection() {
           region: form.region || null,
           postalCode: form.postalCode || null,
         }),
-        showToastOnError: true,
+        showToastOnError: false,
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        const err = json as { message?: string; details?: { fieldErrors?: Array<{ field: string; message: string }> } };
+        setSubmitError(err.message ?? "Failed to update billing details.");
+        const list = err.details?.fieldErrors;
+        if (Array.isArray(list) && list.length > 0) {
+          const next: Record<string, string> = {};
+          for (const { field, message } of list) {
+            next[field] = message;
+          }
+          setFieldErrors(next);
+        } else if (err.message) {
+          toast.addToast("error", err.message);
+        }
+        return;
+      }
       toast.addToast("success", "Billing details updated.");
       setModalOpen(false);
       await fetchProfile();
@@ -226,6 +247,11 @@ export function BillingProfileSection() {
           <p className="text-sm text-(--text-muted)">
             Changes apply to future invoices only. For already-issued invoices, submit a support request.
           </p>
+          {submitError && (
+            <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+              {submitError}
+            </p>
+          )}
           <div className="grid gap-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-(--text-muted)">Country</label>
@@ -242,7 +268,14 @@ export function BillingProfileSection() {
                 onChange={(e) => setForm((f) => ({ ...f, postalCode: e.target.value }))}
                 placeholder="Optional"
                 maxLength={32}
+                aria-invalid={!!fieldErrors.postalCode}
+                aria-describedby={fieldErrors.postalCode ? "postalCode-error" : undefined}
               />
+              {fieldErrors.postalCode && (
+                <p id="postalCode-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
+                  {fieldErrors.postalCode}
+                </p>
+              )}
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-(--text-muted)">Company name</label>
@@ -251,16 +284,41 @@ export function BillingProfileSection() {
                 onChange={(e) => setForm((f) => ({ ...f, companyName: e.target.value }))}
                 placeholder="Optional"
                 maxLength={160}
+                aria-invalid={!!fieldErrors.companyName}
+                aria-describedby={fieldErrors.companyName ? "companyName-error" : undefined}
               />
+              {fieldErrors.companyName && (
+                <p id="companyName-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
+                  {fieldErrors.companyName}
+                </p>
+              )}
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-(--text-muted)">VAT / Tax ID</label>
+              <p className="mb-1.5 text-xs text-(--text-muted)">
+                Ensure the tax identifier matches the correct format for the customer&apos;s country to ensure tax is calculated accurately.{" "}
+                <a
+                  href="https://www.paddle.com/help/start/set-up-paddle/what-format-should-i-use-for-my-vat-id"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-(--color-primary) underline hover:no-underline"
+                >
+                  Check valid formats
+                </a>
+              </p>
               <Input
                 value={form.vatId}
                 onChange={(e) => setForm((f) => ({ ...f, vatId: e.target.value }))}
                 placeholder="Optional"
                 maxLength={64}
+                aria-invalid={!!fieldErrors.vatId}
+                aria-describedby={fieldErrors.vatId ? "vatId-error" : undefined}
               />
+              {fieldErrors.vatId && (
+                <p id="vatId-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
+                  {fieldErrors.vatId}
+                </p>
+              )}
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-(--text-muted)">Address line 1</label>
@@ -269,7 +327,14 @@ export function BillingProfileSection() {
                 onChange={(e) => setForm((f) => ({ ...f, addressLine1: e.target.value }))}
                 placeholder="Optional"
                 maxLength={120}
+                aria-invalid={!!fieldErrors.addressLine1}
+                aria-describedby={fieldErrors.addressLine1 ? "addressLine1-error" : undefined}
               />
+              {fieldErrors.addressLine1 && (
+                <p id="addressLine1-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
+                  {fieldErrors.addressLine1}
+                </p>
+              )}
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-(--text-muted)">Address line 2</label>
@@ -278,7 +343,14 @@ export function BillingProfileSection() {
                 onChange={(e) => setForm((f) => ({ ...f, addressLine2: e.target.value }))}
                 placeholder="Optional"
                 maxLength={120}
+                aria-invalid={!!fieldErrors.addressLine2}
+                aria-describedby={fieldErrors.addressLine2 ? "addressLine2-error" : undefined}
               />
+              {fieldErrors.addressLine2 && (
+                <p id="addressLine2-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
+                  {fieldErrors.addressLine2}
+                </p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
@@ -288,7 +360,14 @@ export function BillingProfileSection() {
                   onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
                   placeholder="Optional"
                   maxLength={80}
+                  aria-invalid={!!fieldErrors.city}
+                  aria-describedby={fieldErrors.city ? "city-error" : undefined}
                 />
+                {fieldErrors.city && (
+                  <p id="city-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
+                    {fieldErrors.city}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-(--text-muted)">Region / State</label>
@@ -297,7 +376,14 @@ export function BillingProfileSection() {
                   onChange={(e) => setForm((f) => ({ ...f, region: e.target.value }))}
                   placeholder="Optional"
                   maxLength={80}
+                  aria-invalid={!!fieldErrors.region}
+                  aria-describedby={fieldErrors.region ? "region-error" : undefined}
                 />
+                {fieldErrors.region && (
+                  <p id="region-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
+                    {fieldErrors.region}
+                  </p>
+                )}
               </div>
             </div>
           </div>

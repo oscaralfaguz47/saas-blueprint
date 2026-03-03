@@ -53,15 +53,77 @@ function isEntityArchivedError(error: string): boolean {
   );
 }
 
+/** Paddle API field name -> our form/API field name (billing details). */
+const PADDLE_FIELD_TO_OUR_FIELD: Record<string, string> = {
+  tax_identifier: "vatId",
+  name: "companyName",
+  first_line: "addressLine1",
+  second_line: "addressLine2",
+  city: "city",
+  region: "region",
+  postal_code: "postalCode",
+};
+
+export type PaddleFieldError = { field: string; message: string };
+
+/**
+ * Parse Paddle 400 response body into a user-facing message and field-level errors.
+ * Aligns Paddle field names with our form fields (e.g. tax_identifier -> vatId).
+ */
+export function parsePaddleValidationError(errorBody: string): {
+  message: string;
+  fieldErrors: PaddleFieldError[];
+} {
+  const fieldErrors: PaddleFieldError[] = [];
+  let message = "Validation failed. Please check your entries.";
+
+  try {
+    const jsonStr = errorBody.includes("{") ? errorBody.slice(errorBody.indexOf("{")) : errorBody;
+    const parsed = JSON.parse(jsonStr) as {
+      error?: {
+        detail?: string;
+        errors?: Array<{ field?: string; message?: string }>;
+      };
+    };
+    const err = parsed?.error;
+    if (err?.detail && typeof err.detail === "string") {
+      message = err.detail;
+    }
+    const list = err?.errors;
+    if (Array.isArray(list)) {
+      for (const e of list) {
+        const paddleField = e?.field?.trim?.();
+        const msg = (e?.message ?? "Invalid value").trim().slice(0, 200);
+        const ourField = paddleField ? PADDLE_FIELD_TO_OUR_FIELD[paddleField] ?? paddleField : "field";
+        fieldErrors.push({ field: ourField, message: msg });
+      }
+      if (fieldErrors.length > 0 && message === "Validation failed. Please check your entries.") {
+        message = fieldErrors[0].message;
+      }
+    }
+  } catch {
+    // leave message and fieldErrors as above/default
+  }
+  return { message, fieldErrors };
+}
+
 /**
  * EPIC 5: Update Paddle address and business for future invoices.
  * Does NOT change Country (set at checkout). Postal code is editable here and at checkout.
  * Uses PATCH /customers/{id}/addresses/{address_id} and PATCH /customers/{id}/businesses/{business_id}.
  * When the stored address is archived (entity_archived), fetches active addresses and retries with the first one.
  */
+export type UpdatePaddleBillingDetailsResult = {
+  ok: boolean;
+  error?: string;
+  fieldErrors?: PaddleFieldError[];
+  addressIdUsed?: string;
+  businessIdUsed?: string;
+};
+
 export async function updatePaddleBillingDetails(
   params: UpdateBillingDetailsParams
-): Promise<{ ok: boolean; error?: string; addressIdUsed?: string; businessIdUsed?: string }> {
+): Promise<UpdatePaddleBillingDetailsResult> {
   const {
     providerCustomerId,
     providerAddressId,
@@ -135,7 +197,10 @@ export async function updatePaddleBillingDetails(
       }
     }
 
-    if (!res.ok) return { ok: false, error: res.error };
+    if (!res.ok) {
+      const parsed = parsePaddleValidationError(res.error ?? "");
+      return { ok: false, error: parsed.message, fieldErrors: parsed.fieldErrors };
+    }
   }
 
   let addressIdUsed: string | undefined =
@@ -185,7 +250,10 @@ export async function updatePaddleBillingDetails(
       }
     }
 
-    if (!res.ok) return { ok: false, error: res.error };
+    if (!res.ok) {
+      const parsed = parsePaddleValidationError(res.error ?? "");
+      return { ok: false, error: parsed.message, fieldErrors: parsed.fieldErrors };
+    }
   }
 
   const businessIdUsed = hasBusinessFields && businessId ? businessId : undefined;

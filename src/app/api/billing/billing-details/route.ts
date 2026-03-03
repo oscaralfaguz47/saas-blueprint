@@ -132,7 +132,10 @@ export const PUT = withErrorHandler(async (req: Request) => {
       description: sub.providerSubscriptionId ?? undefined,
     });
     if (!result.ok) {
-      return ApiErrors.VALIDATION_ERROR(result.error ?? "Failed to update billing details.");
+      return ApiErrors.VALIDATION_ERROR(
+        result.error ?? "Failed to update billing details.",
+        result.fieldErrors?.length ? { fieldErrors: result.fieldErrors } : undefined
+      );
     }
     addressIdUsed = result.addressIdUsed;
     businessIdUsed = result.businessIdUsed;
