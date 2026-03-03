@@ -282,6 +282,7 @@ export function WorkspaceBillingTab() {
     direction: "upgrade" | "downgrade";
   } | null>(null);
   const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [clearScheduledChangeLoading, setClearScheduledChangeLoading] = useState(false);
   const [paymentDeclinedModalOpen, setPaymentDeclinedModalOpen] = useState(false);
   const [paymentDeclinedPlanCode, setPaymentDeclinedPlanCode] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -839,6 +840,26 @@ export function WorkspaceBillingTab() {
     handleChangePaymentMethod();
   }, [handleChangePaymentMethod]);
 
+  const handleClearScheduledChange = useCallback(async () => {
+    setClearScheduledChangeLoading(true);
+    try {
+      const res = await apiFetch("/api/billing/clear-scheduled-change", {
+        method: "POST",
+        showToastOnError: true,
+      });
+      if (!res.ok) return;
+      const json = await res.json().catch(() => ({}));
+      const data = json.data as { cleared?: boolean };
+      if (data.cleared) {
+        toast.addToast("success", "Scheduled change cleared. Your current plan will continue.");
+        setChangePlanOpen(false);
+        await fetchSummary();
+      }
+    } finally {
+      setClearScheduledChangeLoading(false);
+    }
+  }, [apiFetch, toast, fetchSummary]);
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -976,14 +997,46 @@ export function WorkspaceBillingTab() {
           variant="info"
           title="Cancellation scheduled"
           description={`You'll move to Free on ${formatDate(summary.entitlementEffectiveUntil ?? summary.periodEnd)}. You can resume a paid plan whenever you want.`}
-        />
+        >
+          <button
+            type="button"
+            onClick={handleClearScheduledChange}
+            disabled={clearScheduledChangeLoading}
+            className="mt-2 inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 text-sm font-medium hover:bg-(--bg-surface-elev) disabled:opacity-50"
+          >
+            {clearScheduledChangeLoading ? (
+              <>
+                <Spinner size="sm" />
+                Updating…
+              </>
+            ) : (
+              "Resume my current plan"
+            )}
+          </button>
+        </Alert>
       )}
       {summary.pendingChangeType === "downgrade_end_of_period" && summary.pendingPlanCode && (
         <Alert
           variant="info"
           title="Downgrade scheduled"
           description={`Downgrade scheduled to ${PLAN_LABELS[summary.pendingPlanCode] ?? summary.pendingPlanCode} on ${formatDate(summary.entitlementEffectiveUntil ?? summary.periodEnd)}. You'll keep ${PLAN_LABELS[summary.planCode] ?? summary.planCode} until then.`}
-        />
+        >
+          <button
+            type="button"
+            onClick={handleClearScheduledChange}
+            disabled={clearScheduledChangeLoading}
+            className="mt-2 inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 text-sm font-medium hover:bg-(--bg-surface-elev) disabled:opacity-50"
+          >
+            {clearScheduledChangeLoading ? (
+              <>
+                <Spinner size="sm" />
+                Updating…
+              </>
+            ) : (
+              `Cancel schedule downgrade and keep the ${PLAN_LABELS[summary.planCode] ?? summary.planCode} plan`
+            )}
+          </button>
+        </Alert>
       )}
       {summary.paymentStatus === "past_due" && (
         <Alert
@@ -1300,7 +1353,23 @@ export function WorkspaceBillingTab() {
                 variant="info"
                 title="Downgrade scheduled"
                 description={`Downgrade scheduled to ${PLAN_LABELS[summary.pendingPlanCode] ?? summary.pendingPlanCode} on ${formatDate(summary.periodEnd)}. You'll keep your current plan until then.`}
-              />
+              >
+                <button
+                  type="button"
+                  onClick={handleClearScheduledChange}
+                  disabled={clearScheduledChangeLoading}
+                  className="mt-2 inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 text-sm font-medium hover:bg-(--bg-surface-elev) disabled:opacity-50"
+                >
+                  {clearScheduledChangeLoading ? (
+                    <>
+                      <Spinner size="sm" />
+                      Updating…
+                    </>
+                  ) : (
+                    `Cancel schedule downgrade and keep the ${PLAN_LABELS[summary.planCode] ?? summary.planCode} plan`
+                  )}
+                </button>
+              </Alert>
             )}
             <div className="overflow-x-auto pb-2 -mx-1 px-1">
               <div className="flex gap-4 min-w-max">
