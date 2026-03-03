@@ -41,7 +41,27 @@ export async function fetchPaddleSubscription(
   }
   const json = (await res.json()) as { data?: unknown };
   const parsed = paddleSubscriptionDataSchema.safeParse(json?.data);
-  return parsed.success ? parsed.data : null;
+  if (parsed.success) return parsed.data;
+  // Lenient fallback: subscriptions with scheduled_change (e.g. cancel) may return a shape that fails
+  // strict schema (e.g. current_billing_period or scheduled_change format). Build minimal object so
+  // updateSubscriptionPrice can read items and proceed; Paddle accepts do_not_bill when clearing scheduled change.
+  const raw = json?.data as Record<string, unknown> | undefined;
+  if (raw && typeof raw === "object" && raw.id && raw.customer_id && Array.isArray(raw.items) && raw.items.length > 0) {
+    const first = raw.items[0] as Record<string, unknown> | undefined;
+    const hasPrice = first && (typeof first.price_id === "string" || (first.price && typeof (first.price as { id?: string })?.id === "string"));
+    if (hasPrice) {
+      return {
+        id: String(raw.id),
+        status: String(raw.status ?? "active"),
+        customer_id: String(raw.customer_id),
+        items: raw.items as PaddleSubscriptionData["items"],
+        custom_data: (raw.custom_data as PaddleSubscriptionData["custom_data"]) ?? null,
+        current_billing_period: null,
+        scheduled_change: (raw.scheduled_change as PaddleSubscriptionData["scheduled_change"]) ?? null,
+      };
+    }
+  }
+  return null;
 }
 
 /**

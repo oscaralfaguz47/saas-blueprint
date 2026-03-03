@@ -19,6 +19,7 @@ import {
   parseSubscriptionData,
 } from "./map-paddle-event";
 import { handleTransactionCompleted } from "./handle-transaction-completed";
+import { fetchPaddleSubscription } from "./fetch-subscription";
 import { mapAddressToProfile, type PaddleAddress } from "@/server/billing/billing-profile/sync-from-paddle";
 
 const BILLING_WEBHOOK_ACTOR_USER_ID = process.env.BILLING_WEBHOOK_ACTOR_USER_ID;
@@ -274,6 +275,20 @@ export async function handleWebhookEvent(params: {
 
   const providerSubscriptionId = subscriptionData.id;
 
+  // Use authoritative state from Paddle to avoid stale/partial webhook payloads (e.g. upgrade showing old plan).
+  let authoritativeData: typeof subscriptionData | null = null;
+  try {
+    authoritativeData = await fetchPaddleSubscription(providerSubscriptionId);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn("[handleWebhookEvent] Re-fetch subscription failed; using webhook payload", {
+      eventType,
+      providerSubscriptionId,
+      error: msg.slice(0, 200),
+    });
+  }
+  const dataToUse = authoritativeData ?? subscriptionData;
+
   if (eventType === "subscription.canceled") {
     const existingSub = await prisma.subscription.findFirst({
       where: { provider: "paddle", providerSubscriptionId },
@@ -319,7 +334,7 @@ export async function handleWebhookEvent(params: {
 
   let resolvedMetadata = metadata;
   if (!resolvedMetadata) {
-    const planCodeFromItems = getHighestPlanCodeFromItems(subscriptionData.items);
+    const planCodeFromItems = getHighestPlanCodeFromItems(dataToUse.items);
     const existingBySub = await prisma.subscription.findFirst({
       where: { provider: "paddle", providerSubscriptionId },
       select: { tenantId: true },
@@ -395,58 +410,37 @@ export async function handleWebhookEvent(params: {
     return { processed: true, tenantMismatch: true };
   }
 
-  // Entitlements are updated only from Paddle data here; we never trust frontend or optimistically change plan.
-  // Upgrades: plan switches only after this webhook runs (proration already charged by Paddle).
-  // Downgrades: we keep current plan until scheduled_change takes effect and Paddle sends updated items; then we apply the new plan.
-  const planCodeFromItems = getHighestPlanCodeFromItems(subscriptionData.items);
+  // Billing plan = what Paddle has on subscription items (authoritative from re-fetch when available).
+  const planCodeFromItems = getHighestPlanCodeFromItems(dataToUse.items);
+  const newBillingPlanCode = (planCodeFromItems ?? resolvedMetadata.planCode ?? "free").toLowerCase();
   const hasScheduledChange = !!(
-    subscriptionData.scheduled_change &&
-    typeof subscriptionData.scheduled_change === "object"
+    dataToUse.scheduled_change &&
+    typeof dataToUse.scheduled_change === "object"
   );
-  // When a downgrade is scheduled, Paddle still has current items (higher plan) until the change takes effect.
-  // We must not apply the target plan from custom_data yet; use current items so entitlements stay correct.
-  // When there is no scheduled change: prefer subscription items (authoritative in Paddle) over custom_data
-  // so we don't miss updates if custom_data is missing or delayed in the webhook payload (fixes intermittent upgrade sync).
-  const effectivePlanCode = hasScheduledChange
-    ? (planCodeFromItems && planCodeFromItems !== "free" ? planCodeFromItems : resolvedMetadata.planCode)
-    : (planCodeFromItems && planCodeFromItems !== "free"
-        ? planCodeFromItems
-        : resolvedMetadata.planCode);
+  const effectivePlanCode =
+    planCodeFromItems && planCodeFromItems !== "free"
+      ? planCodeFromItems
+      : resolvedMetadata.planCode;
 
-  // Case-insensitive lookup so we find plan even if DB uses different casing (e.g. "enterprise")
-  const plan = await prisma.plan.findFirst({
-    where: {
-      code: { equals: effectivePlanCode, mode: "insensitive" },
-      isActive: true,
-    },
-    select: { id: true },
-  });
-  if (!plan) {
-    logWebhookReceived({
-      eventType,
-      providerEventId: eventId,
-      providerSubscriptionId,
-      extractedTenantId: tenantId,
-      extractedPlanCode: effectivePlanCode,
-      result: "ignored",
-    });
-    return { processed: false };
-  }
-
-  const status = mapPaddleStatusToInternal(subscriptionData.status);
-  const period = subscriptionData.current_billing_period;
+  const status = mapPaddleStatusToInternal(dataToUse.status);
+  const period = dataToUse.current_billing_period;
   const currentPeriodStart = period?.starts_at ? new Date(period.starts_at) : null;
   const currentPeriodEnd = period?.ends_at ? new Date(period.ends_at) : null;
-  const cancelAtPeriodEnd = isCancelAtPeriodEnd(subscriptionData.scheduled_change);
+  const cancelAtPeriodEnd = isCancelAtPeriodEnd(dataToUse.scheduled_change);
   const graceUntil =
     status === "PAST_DUE" ? getGraceUntilForPastDue() : null;
+
+  const PLAN_TIER: Record<string, number> = { free: 0, starter: 1, pro: 2, enterprise: 3 };
+  function planTier(code: string): number {
+    return PLAN_TIER[code?.toLowerCase()] ?? -1;
+  }
 
   const sanitizedPayload: BillingEventSanitizedPayload = buildSanitizedPayload({
     providerEventId: eventId,
     eventType,
-    subscriptionId: subscriptionData.id,
-    customerId: subscriptionData.customer_id,
-    status: subscriptionData.status,
+    subscriptionId: dataToUse.id,
+    customerId: dataToUse.customer_id,
+    status: dataToUse.status,
     currentPeriodStart: period?.starts_at,
     currentPeriodEnd: period?.ends_at,
     tenantId,
@@ -463,65 +457,178 @@ export async function handleWebhookEvent(params: {
       : "tenant.billing.subscription_updated";
 
   const actorUserId = getAuditActorUserId();
+  const periodEnd = currentPeriodEnd ?? null;
 
   await prisma.$transaction(async (tx) => {
     let existingSub = await tx.subscription.findFirst({
       where: { provider: "paddle", providerSubscriptionId },
-      select: { id: true, tenantId: true, pendingPlanCode: true, planId: true, downgradePaddleAppliedAt: true },
+      select: {
+        id: true,
+        tenantId: true,
+        pendingPlanCode: true,
+        planId: true,
+        downgradePaddleAppliedAt: true,
+        currentEntitlementPlanCode: true,
+        billingPlanCode: true,
+        pendingChangeType: true,
+        pendingEffectiveAt: true,
+        entitlementEffectiveUntil: true,
+        pastDueSince: true,
+        graceEndsAt: true,
+        plan: { select: { code: true } },
+      },
     });
     if (!existingSub) {
       existingSub =
         (await tx.subscription.findFirst({
           where: { tenantId, provider: "paddle" },
           orderBy: { currentPeriodEnd: "desc" },
-          select: { id: true, tenantId: true, pendingPlanCode: true, planId: true, downgradePaddleAppliedAt: true },
+          select: {
+            id: true,
+            tenantId: true,
+            pendingPlanCode: true,
+            planId: true,
+            downgradePaddleAppliedAt: true,
+            currentEntitlementPlanCode: true,
+            billingPlanCode: true,
+            pendingChangeType: true,
+            pendingEffectiveAt: true,
+            entitlementEffectiveUntil: true,
+            pastDueSince: true,
+            graceEndsAt: true,
+            plan: { select: { code: true } },
+          },
         })) ?? null;
     }
 
-    // When we called Paddle on downgrade with prorated_next_billing_period, Paddle applies the new plan
-    // immediately; we keep showing the current plan until period end. So do not overwrite planId and do
-    // not clear pendingPlanCode here — period-close will update planId and clear both when period ends.
-    // When downgradePaddleAppliedAt is null and pendingPlanCode === effectivePlanCode, this is the
-    // legacy flow (period-close called Paddle); apply plan and clear pendingPlanCode.
-    const keepCurrentPlanForScheduledDowngrade =
-      existingSub?.pendingPlanCode != null &&
-      existingSub.pendingPlanCode === effectivePlanCode &&
-      existingSub?.downgradePaddleAppliedAt != null;
-    const clearPending =
-      existingSub?.pendingPlanCode != null &&
-      existingSub.pendingPlanCode === effectivePlanCode &&
-      !keepCurrentPlanForScheduledDowngrade;
+    const previousEntitlement = (existingSub?.currentEntitlementPlanCode ?? existingSub?.plan?.code ?? newBillingPlanCode).toLowerCase();
+    const newBilling = newBillingPlanCode === "free" ? "free" : newBillingPlanCode;
+
+    let entitlementCode: string;
+    let billingCode: string;
+    let pendingChangeType: string | null;
+    let pendingPlanCode: string | null;
+    let pendingEffectiveAt: Date | null;
+    let entitlementEffectiveUntil: Date | null;
+
+    if (cancelAtPeriodEnd) {
+      // A) Scheduled cancellation to free: keep paid until period end
+      billingCode = newBilling === "free" ? previousEntitlement : newBilling;
+      entitlementCode = newBilling === "free" ? previousEntitlement : newBilling;
+      pendingChangeType = "cancel_to_free_end_of_period";
+      pendingPlanCode = "free";
+      pendingEffectiveAt = periodEnd;
+      entitlementEffectiveUntil = periodEnd;
+    } else if (existingSub?.pendingChangeType && existingSub.pendingEffectiveAt && currentPeriodStart && currentPeriodStart >= existingSub.pendingEffectiveAt) {
+      // D) Renewal boundary: apply pending change
+      entitlementCode = (existingSub.pendingPlanCode ?? newBilling).toLowerCase();
+      billingCode = newBilling;
+      pendingChangeType = null;
+      pendingPlanCode = null;
+      pendingEffectiveAt = null;
+      entitlementEffectiveUntil = null;
+    } else if (planTier(newBilling) > planTier(previousEntitlement)) {
+      // C) Upgrade: switch entitlements immediately
+      entitlementCode = newBilling;
+      billingCode = newBilling;
+      pendingChangeType = null;
+      pendingPlanCode = null;
+      pendingEffectiveAt = null;
+      entitlementEffectiveUntil = null;
+    } else if (planTier(newBilling) < planTier(previousEntitlement) && newBilling !== "free") {
+      // B) Paid->paid downgrade: billing changes now, entitlements stay until period end
+      entitlementCode = previousEntitlement;
+      billingCode = newBilling;
+      pendingChangeType = "downgrade_end_of_period";
+      pendingPlanCode = newBilling;
+      pendingEffectiveAt = periodEnd;
+      entitlementEffectiveUntil = periodEnd;
+    } else {
+      entitlementCode = newBilling;
+      billingCode = newBilling;
+      pendingChangeType = existingSub?.pendingChangeType ?? null;
+      pendingPlanCode = existingSub?.pendingPlanCode ?? null;
+      pendingEffectiveAt = existingSub?.pendingEffectiveAt ?? null;
+      entitlementEffectiveUntil = existingSub?.entitlementEffectiveUntil ?? null;
+    }
+
+    const entitlementPlan = await tx.plan.findFirst({
+      where: { code: { equals: entitlementCode, mode: "insensitive" }, isActive: true },
+      select: { id: true },
+    });
+    if (!entitlementPlan) {
+      console.warn("[handleWebhookEvent] Plan not found for entitlement code; subscription not updated", {
+        eventType,
+        providerEventId: eventId,
+        providerSubscriptionId,
+        tenantId,
+        entitlementCode,
+        newBillingPlanCode,
+        previousEntitlement,
+      });
+      logWebhookReceived({
+        eventType,
+        providerEventId: eventId,
+        providerSubscriptionId,
+        extractedTenantId: tenantId,
+        extractedPlanCode: entitlementCode,
+        result: "ignored",
+      });
+      return;
+    }
+
+    const now = new Date();
+    const sevenDaysFromNow = (() => {
+      const d = new Date();
+      d.setDate(d.getDate() + 7);
+      return d;
+    })();
+    const paymentFields =
+      status === "PAST_DUE"
+        ? {
+            paymentStatus: "past_due" as const,
+            pastDueSince: existingSub?.pastDueSince ?? now,
+            graceEndsAt: existingSub?.graceEndsAt ?? sevenDaysFromNow,
+          }
+        : {
+            paymentStatus: "healthy" as const,
+            pastDueSince: null as Date | null,
+            graceEndsAt: null as Date | null,
+            lastPaymentFailureCode: null as string | null,
+            lastPaymentFailureMessage: null as string | null,
+          };
+
+    const baseData = {
+      providerCustomerId: dataToUse.customer_id,
+      providerSubscriptionId,
+      status,
+      currentPeriodStart,
+      currentPeriodEnd,
+      graceUntil,
+      cancelAtPeriodEnd,
+      planId: entitlementPlan.id,
+      billingPlanCode: billingCode,
+      currentEntitlementPlanCode: entitlementCode,
+      entitlementEffectiveUntil,
+      pendingChangeType,
+      pendingPlanCode,
+      pendingEffectiveAt,
+      ...paymentFields,
+    };
 
     let sub: { id: string };
     if (existingSub) {
       sub = await tx.subscription.update({
         where: { id: existingSub.id },
-        data: {
-          planId: keepCurrentPlanForScheduledDowngrade ? existingSub.planId : plan.id,
-          providerCustomerId: subscriptionData.customer_id,
-          providerSubscriptionId,
-          status,
-          currentPeriodStart,
-          currentPeriodEnd,
-          graceUntil,
-          cancelAtPeriodEnd,
-          ...(clearPending ? { pendingPlanCode: null } : {}),
-        },
+        data: baseData,
         select: { id: true },
       });
     } else {
       sub = await tx.subscription.create({
         data: {
           tenantId,
-          planId: plan.id,
           provider: "paddle",
-          providerCustomerId: subscriptionData.customer_id,
-          providerSubscriptionId,
-          status,
-          currentPeriodStart,
-          currentPeriodEnd,
-          graceUntil,
-          cancelAtPeriodEnd,
+          ...baseData,
         },
         select: { id: true },
       });

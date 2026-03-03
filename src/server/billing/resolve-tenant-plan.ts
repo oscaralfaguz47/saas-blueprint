@@ -16,6 +16,11 @@ export type ResolvedTenantPlan = {
   graceUntil: Date | null;
   cancelAtPeriodEnd: boolean;
   pendingPlanCode: string | null;
+  pendingChangeType: string | null;
+  entitlementEffectiveUntil: Date | null;
+  paymentStatus: string | null;
+  graceEndsAt: Date | null;
+  pastDueSince: Date | null;
   isBlocked: boolean;
 };
 
@@ -118,16 +123,21 @@ export async function resolveTenantPlan(
       graceUntil: null,
       cancelAtPeriodEnd: false,
       pendingPlanCode: null,
+      pendingChangeType: null,
+      entitlementEffectiveUntil: null,
+      paymentStatus: null,
+      graceEndsAt: null,
+      pastDueSince: null,
       isBlocked: false,
     };
   }
 
-  const plan = await prisma.plan.findUnique({
-    where: { id: effective.planId },
+  /** Use entitlement plan code for features; look up by code so downgrade-pending keeps higher plan features until period end. */
+  const planCode = (effective.planCode ?? "free").toLowerCase() as PlanCode | string;
+  const plan = await prisma.plan.findFirst({
+    where: { code: { equals: planCode, mode: "insensitive" }, isActive: true },
     select: { code: true, featuresJson: true },
   });
-
-  const planCode = (plan?.code ?? "free").toLowerCase() as PlanCode | string;
   const catalogEntry = getPlanCatalogEntry(planCode);
   const features = catalogEntry
     ? featuresFromCatalog(catalogEntry)
@@ -145,6 +155,11 @@ export async function resolveTenantPlan(
     graceUntil: effective.graceUntil,
     cancelAtPeriodEnd: effective.cancelAtPeriodEnd,
     pendingPlanCode: effective.pendingPlanCode,
+    pendingChangeType: effective.pendingChangeType,
+    entitlementEffectiveUntil: effective.entitlementEffectiveUntil,
+    paymentStatus: effective.paymentStatus,
+    graceEndsAt: effective.graceEndsAt,
+    pastDueSince: effective.pastDueSince,
     isBlocked: effective.isBlocked,
   };
 }

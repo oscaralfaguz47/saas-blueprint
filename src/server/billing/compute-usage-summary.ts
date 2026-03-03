@@ -15,6 +15,11 @@ export type UsageSummaryResult = {
   periodEnd: Date;
   cancelAtPeriodEnd: boolean;
   pendingPlanCode: string | null;
+  pendingChangeType: string | null;
+  entitlementEffectiveUntil: Date | null;
+  paymentStatus: string | null;
+  graceEndsAt: Date | null;
+  pastDueSince: Date | null;
   graceUntil: Date | null;
   /** Per-meter: included, rolloverAvailable, used, overageUnits, overageEstimateCents. */
   meters: {
@@ -121,6 +126,11 @@ export async function computeUsageSummary(
     periodEnd,
     cancelAtPeriodEnd: resolved.cancelAtPeriodEnd,
     pendingPlanCode: resolved.pendingPlanCode ?? null,
+    pendingChangeType: resolved.pendingChangeType ?? null,
+    entitlementEffectiveUntil: resolved.entitlementEffectiveUntil ?? null,
+    paymentStatus: resolved.paymentStatus ?? null,
+    graceEndsAt: resolved.graceEndsAt ?? null,
+    pastDueSince: resolved.pastDueSince ?? null,
     graceUntil: resolved.graceUntil,
     meters: {
       requests: {

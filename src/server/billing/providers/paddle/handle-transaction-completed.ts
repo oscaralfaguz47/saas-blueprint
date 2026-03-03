@@ -144,6 +144,19 @@ export async function handleTransactionCompleted(envelope: unknown): Promise<{
         providerSubscriptionId: providerSubscriptionId ?? undefined,
       },
     });
+    if (providerSubscriptionId) {
+      await tx.subscription.updateMany({
+        where: { provider: "paddle", providerSubscriptionId },
+        data: {
+          paymentStatus: "healthy",
+          pastDueSince: null,
+          graceEndsAt: null,
+          lastPaymentFailureCode: null,
+          lastPaymentFailureMessage: null,
+          latestTransactionId: providerTransactionId,
+        },
+      });
+    }
   });
 
   logWebhookReceived({

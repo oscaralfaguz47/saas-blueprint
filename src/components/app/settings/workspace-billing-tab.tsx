@@ -39,6 +39,11 @@ type BillingSummary = {
   periodEnd: string;
   cancelAtPeriodEnd?: boolean;
   pendingPlanCode?: string | null;
+  pendingChangeType?: string | null;
+  entitlementEffectiveUntil?: string | null;
+  paymentStatus?: string | null;
+  graceEndsAt?: string | null;
+  pastDueSince?: string | null;
   graceUntil?: string | null;
   included: number;
   rolloverAvailable: number;
@@ -239,9 +244,11 @@ function statusBadgeLabel(
   status: string,
   cancelAtPeriodEnd?: boolean,
   pendingPlanCode?: string | null,
-  periodEnd?: string
+  periodEnd?: string,
+  pendingChangeType?: string | null
 ): string {
-  // Only show "Canceling" for full subscription cancellation (to Free). Scheduled downgrade stays "Active".
+  // Only show "Canceling" for scheduled cancellation to Free. Paid->paid downgrade shows "Active".
+  if (pendingChangeType === "cancel_to_free_end_of_period") return "Canceling";
   if (cancelAtPeriodEnd && (pendingPlanCode === "free" || pendingPlanCode == null)) return "Canceling";
   if (cancelAtPeriodEnd && pendingPlanCode && pendingPlanCode !== "free") {
     return periodEnd ? `Active until ${formatDate(periodEnd)}` : "Active";
@@ -884,19 +891,42 @@ export function WorkspaceBillingTab() {
         </Alert>
       )}
 
-      {/* Status banners: show when any plan change is scheduled (downgrade or cancel). Plan applies only after webhook confirmation. */}
-      {summary.pendingPlanCode && (
+      {/* Status banners: scheduled downgrade or cancellation */}
+      {summary.pendingChangeType === "cancel_to_free_end_of_period" && (
+        <Alert
+          variant="info"
+          title="Cancellation scheduled"
+          description={`You'll move to Free on ${formatDate(summary.entitlementEffectiveUntil ?? summary.periodEnd)}. You can resume a paid plan before then.`}
+        />
+      )}
+      {summary.pendingChangeType === "downgrade_end_of_period" && summary.pendingPlanCode && (
         <Alert
           variant="info"
           title="Downgrade scheduled"
-          description={
-            summary.pendingPlanCode === "free"
-              ? `Downgrade scheduled for ${formatDate(summary.periodEnd)}. You'll keep your current plan until then.`
-              : `Downgrade scheduled to ${PLAN_LABELS[summary.pendingPlanCode] ?? summary.pendingPlanCode} on ${formatDate(summary.periodEnd)}. You'll keep your current plan until then.`
-          }
+          description={`Downgrade scheduled to ${PLAN_LABELS[summary.pendingPlanCode] ?? summary.pendingPlanCode} on ${formatDate(summary.entitlementEffectiveUntil ?? summary.periodEnd)}. You'll keep ${PLAN_LABELS[summary.planCode] ?? summary.planCode} until then.`}
         />
       )}
-      {billingState.isPastDue && (
+      {summary.paymentStatus === "past_due" && (
+        <Alert
+          variant="warning"
+          title="Payment failed"
+          description={
+            summary.graceEndsAt
+              ? `We couldn't process your renewal payment. Update your payment method within 7 days to avoid interruption. Grace period ends on ${formatDate(summary.graceEndsAt)}.`
+              : "We couldn't process your renewal payment. Update your payment method within 7 days to avoid interruption."
+          }
+        >
+          <button
+            type="button"
+            onClick={handleChangePaymentMethod}
+            disabled={paymentMethodUpdateLoading}
+            className="mt-2 inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 text-sm font-medium hover:bg-(--bg-surface-elev) disabled:opacity-50"
+          >
+            {paymentMethodUpdateLoading ? "Loading…" : "Change payment method"}
+          </button>
+        </Alert>
+      )}
+      {billingState.isPastDue && summary.paymentStatus !== "past_due" && (
         <Alert
           variant="warning"
           title="Payment issue"
@@ -912,7 +942,7 @@ export function WorkspaceBillingTab() {
           </button>
         </Alert>
       )}
-      {billingState.isInGrace && summary.graceUntil && !billingState.isPastDue && (
+      {billingState.isInGrace && summary.graceUntil && !billingState.isPastDue && summary.paymentStatus !== "past_due" && (
         <Alert
           variant="warning"
           description={`Grace period until ${formatDate(summary.graceUntil)}.`}
@@ -968,7 +998,8 @@ export function WorkspaceBillingTab() {
                   summary.subscriptionStatus,
                   summary.cancelAtPeriodEnd,
                   summary.pendingPlanCode,
-                  summary.periodEnd
+                  summary.periodEnd,
+                  summary.pendingChangeType
                 )}
               </Badge>
             </div>
@@ -1166,20 +1197,26 @@ export function WorkspaceBillingTab() {
       )}
 
       {/* Change plan dialog */}
+      {(() => {
+        const scheduledCancellation = Boolean(summary.cancelAtPeriodEnd && summary.pendingPlanCode === "free");
+        const effectiveDateStr = summary.periodEnd ? formatDate(summary.periodEnd) : "";
+        return (
       <Dialog
         open={changePlanOpen}
         onClose={() => setChangePlanOpen(false)}
         title="Change plan"
         description={
-          summary.pendingPlanCode && summary.pendingPlanCode !== "free"
-            ? "Compare plans. You have a scheduled downgrade; you can replace it with another plan below."
-            : "Compare plans and choose what fits your workspace. Upgrades apply immediately. Downgrades take effect at the end of your billing period."
+          scheduledCancellation
+            ? `Subscription cancellation scheduled. Your workspace will move to the Free plan${effectiveDateStr ? ` on ${effectiveDateStr}` : " at the end of your billing period"}. You can resume a paid plan before that date.`
+            : summary.pendingPlanCode && summary.pendingPlanCode !== "free"
+              ? "Compare plans. You have a scheduled downgrade; you can replace it with another plan below."
+              : "Compare plans and choose what fits your workspace. Upgrades apply immediately. Downgrades take effect at the end of your billing period."
         }
         contentClassName="max-w-6xl w-full"
       >
         <div className="overflow-y-auto max-h-[75vh]">
           <div className="space-y-4">
-            {summary.pendingPlanCode && summary.pendingPlanCode !== "free" && (
+            {!scheduledCancellation && summary.pendingPlanCode && summary.pendingPlanCode !== "free" && (
               <Alert
                 variant="info"
                 title="Downgrade scheduled"
@@ -1194,6 +1231,7 @@ export function WorkspaceBillingTab() {
                 summary.pendingPlanCode &&
                 summary.pendingPlanCode !== "free" &&
                 plan.code === summary.pendingPlanCode;
+              const isScheduledFree = scheduledCancellation && plan.code === "free";
               const canUpgrade =
                 isUpgrade(billingState.currentPlan, plan.code) &&
                 !billingState.isPastDue &&
@@ -1206,6 +1244,10 @@ export function WorkspaceBillingTab() {
                 canDowngrade &&
                 !isCurrent &&
                 !isScheduled;
+              const isResumePaidPlan =
+                scheduledCancellation &&
+                plan.code !== "free" &&
+                !isCurrent;
               const effectiveDate = summary.periodEnd ? formatDate(summary.periodEnd) : "";
               const buttonsDisabled = scheduleLoading || checkoutLoading;
 
@@ -1226,10 +1268,10 @@ export function WorkspaceBillingTab() {
                       {isCurrent && (
                         <Badge variant="secondary">Current</Badge>
                       )}
-                      {isScheduled && (
+                      {(isScheduled || isScheduledFree) && (
                         <Badge variant="secondary">Scheduled</Badge>
                       )}
-                      {plan.mostPopular && !isCurrent && !isScheduled && (
+                      {plan.mostPopular && !isCurrent && !isScheduled && !isScheduledFree && (
                         <Badge variant="secondary">Most popular</Badge>
                       )}
                     </div>
@@ -1237,12 +1279,12 @@ export function WorkspaceBillingTab() {
                   <p className="mt-1 text-lg font-medium text-(--text-primary)">
                     {formatPriceMonthly(plan.priceMonthlyCents)}/month
                   </p>
-                  {isCurrent && hasScheduledDowngrade && effectiveDate && (
+                  {isCurrent && (hasScheduledDowngrade || scheduledCancellation) && effectiveDate && (
                     <p className="mt-1 text-xs text-(--text-muted)">
                       Current until {effectiveDate}
                     </p>
                   )}
-                  {isScheduled && effectiveDate && (
+                  {(isScheduled || isScheduledFree) && effectiveDate && (
                     <p className="mt-1 text-xs text-(--text-muted)">
                       Will become active on {effectiveDate}
                     </p>
@@ -1277,6 +1319,14 @@ export function WorkspaceBillingTab() {
                       >
                         Scheduled
                       </button>
+                    ) : isScheduledFree ? (
+                      <button
+                        type="button"
+                        disabled
+                        className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--muted) text-sm font-medium text-(--text-muted)"
+                      >
+                        Scheduled
+                      </button>
                     ) : canUpgrade ? (
                       <button
                         type="button"
@@ -1286,6 +1336,21 @@ export function WorkspaceBillingTab() {
                       >
                         Upgrade
                       </button>
+                    ) : isResumePaidPlan ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleSelectPlan(plan)}
+                          disabled={buttonsDisabled}
+                          title="Replaces your scheduled cancellation."
+                          className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
+                        >
+                          Resume with this plan
+                        </button>
+                        <p className="mt-1.5 text-xs text-(--text-muted)">
+                          Replaces your scheduled cancellation.
+                        </p>
+                      </>
                     ) : isOtherLowerWithScheduled ? (
                       <>
                         <button
@@ -1303,7 +1368,7 @@ export function WorkspaceBillingTab() {
                           </p>
                         )}
                       </>
-                    ) : canDowngrade ? (
+                    ) : canDowngrade && !scheduledCancellation ? (
                       <button
                         type="button"
                         onClick={() => handleSelectPlan(plan)}
@@ -1329,6 +1394,8 @@ export function WorkspaceBillingTab() {
           </div>
         </div>
       </Dialog>
+        );
+      })()}
 
       {/* Confirm plan change dialog ? overlay close prevented to avoid accidental dismiss */}
       <Dialog

@@ -150,8 +150,9 @@ export async function runPeriodClose(params?: {
 
 /**
  * Apply scheduled paid downgrades: when the subscription's current period has ended and pendingPlanCode is set,
- * either (1) only update our DB when we already applied the downgrade in Paddle at click time
- * (downgradePaddleAppliedAt set), or (2) call Paddle with do_not_bill so webhook updates planId (legacy).
+ * either (1) only update our DB when we already applied the downgrade in Paddle at click time (legacy:
+ * downgradePaddleAppliedAt set), or (2) call Paddle with do_not_bill to apply the new price; webhook then syncs DB.
+ * Downgrades are never applied at click time (no proration/credits); we only update Paddle here at period end.
  */
 async function applyScheduledPaidDowngrades(now: Date): Promise<void> {
   const subs = await prisma.subscription.findMany({
@@ -174,7 +175,7 @@ async function applyScheduledPaidDowngrades(now: Date): Promise<void> {
     if (code !== "starter" && code !== "pro" && code !== "enterprise") continue;
 
     if (sub.downgradePaddleAppliedAt != null) {
-      // We already updated Paddle at downgrade click with prorated_next_billing_period; only sync our DB.
+      // Legacy: Paddle was already updated at click time; only sync our DB and clear pending fields.
       const plan = await prisma.plan.findFirst({
         where: { code: { equals: code, mode: "insensitive" }, isActive: true },
         select: { id: true },
@@ -182,7 +183,14 @@ async function applyScheduledPaidDowngrades(now: Date): Promise<void> {
       if (plan) {
         await prisma.subscription.update({
           where: { id: sub.id },
-          data: { planId: plan.id, pendingPlanCode: null, downgradePaddleAppliedAt: null },
+          data: {
+            planId: plan.id,
+            pendingPlanCode: null,
+            downgradePaddleAppliedAt: null,
+            pendingChangeType: null,
+            pendingEffectiveAt: null,
+            entitlementEffectiveUntil: null,
+          },
         });
       }
       continue;

@@ -3,6 +3,7 @@ import { authOptions } from "@/server/auth-options";
 import { requireFullSession } from "@/server/require-full-session";
 import { getCurrentTenantId, requireTenantPermission } from "@/server/billing/tenant-context";
 import { updateSubscriptionPrice } from "@/server/billing/paddle/subscriptions/update-subscription-price";
+import { clearScheduledChangeOnly } from "@/server/billing/paddle/subscriptions/clear-scheduled-change";
 import { cancelSubscriptionAtPeriodEnd } from "@/server/billing/paddle/subscriptions/cancel-subscription-at-period-end";
 import { createCheckoutSession } from "@/server/billing/providers/paddle/create-checkout-session";
 import { writeAuditLog } from "@/server/services/audit";
@@ -60,6 +61,7 @@ export const POST = withErrorHandler(async (req: Request) => {
       cancelAtPeriodEnd: true,
       pendingPlanCode: true,
       planId: true,
+      currentPeriodEnd: true,
       plan: { select: { code: true } },
     },
   });
@@ -79,9 +81,18 @@ export const POST = withErrorHandler(async (req: Request) => {
       return apiSuccess({ mode: "cancel_at_period_end" as const });
     }
     if (!subscription.providerSubscriptionId) {
+      const periodEnd = subscription.currentPeriodEnd ?? undefined;
       await prisma.subscription.update({
         where: { id: subscription.id },
-        data: { cancelAtPeriodEnd: true, pendingPlanCode: "free" },
+        data: {
+          cancelAtPeriodEnd: true,
+          pendingPlanCode: "free",
+          pendingChangeType: "cancel_to_free_end_of_period",
+          pendingEffectiveAt: periodEnd,
+          entitlementEffectiveUntil: periodEnd,
+          currentEntitlementPlanCode: currentCode,
+          billingPlanCode: currentCode,
+        },
       });
       await writeAuditLog({
         actorUserId: session.user.id,
@@ -100,9 +111,18 @@ export const POST = withErrorHandler(async (req: Request) => {
         cancelResult.error ?? "Failed to schedule cancellation. Try again or contact support."
       );
     }
+    const periodEnd = subscription.currentPeriodEnd ?? undefined;
     await prisma.subscription.update({
       where: { id: subscription.id },
-      data: { cancelAtPeriodEnd: true, pendingPlanCode: "free" },
+      data: {
+        cancelAtPeriodEnd: true,
+        pendingPlanCode: "free",
+        pendingChangeType: "cancel_to_free_end_of_period",
+        pendingEffectiveAt: periodEnd,
+        entitlementEffectiveUntil: periodEnd,
+        currentEntitlementPlanCode: currentCode,
+        billingPlanCode: currentCode,
+      },
     });
     await writeAuditLog({
       actorUserId: session.user.id,
@@ -156,36 +176,109 @@ export const POST = withErrorHandler(async (req: Request) => {
   }
 
   const isUpgradeFlow = isUpgrade(currentCode, targetCode);
+  const isResumeFromCancellation =
+    subscription.cancelAtPeriodEnd && subscription.pendingPlanCode === "free";
   const clearScheduledCancel =
-    subscription.cancelAtPeriodEnd && isUpgradeFlow;
+    subscription.cancelAtPeriodEnd && (isUpgradeFlow || isResumeFromCancellation);
 
   // Upgrade: charge prorated now, same cycle; entitlements update only after webhook (no optimistic DB update).
   const effectiveTiming: "immediate" | "next_period" = isUpgradeFlow ? "immediate" : "next_period";
 
   if (effectiveTiming === "next_period") {
-    // Downgrade: call Paddle with prorated_next_billing_period so next payment shows prorated amount.
-    // Plan in Paddle changes immediately; we keep DB/UI on current plan until period end (webhook keeps
-    // planId when pendingPlanCode === effectivePlanCode; period-close does DB-only update when downgradePaddleAppliedAt is set).
-    const updateResult = await updateSubscriptionPrice({
-      providerSubscriptionId: subscription.providerSubscriptionId,
-      targetPlanCode: targetCode as "starter" | "pro" | "enterprise",
-      effective: "next_period_prorated",
-      clearScheduledCancel,
-      tenantId,
-    });
-    if (!updateResult.ok) {
-      return ApiErrors.VALIDATION_ERROR(
-        updateResult.error ?? "Failed to schedule downgrade. Try again or contact support."
-      );
+    if (isResumeFromCancellation) {
+      // "Schedule instead" to a smaller plan = downgrade: keep current plan until period end.
+      // "Resume" to same/larger plan = cancel the cancellation and use chosen plan immediately.
+      const scheduleInsteadDowngrade = isDowngrade(currentCode, targetCode);
+
+      // Two-step flow: Paddle forbids combining scheduled_change with items/proration in one PATCH.
+      // Step 1: Clear only scheduled_change (no items, no proration).
+      const clearResult = await clearScheduledChangeOnly(subscription.providerSubscriptionId);
+      if (!clearResult.ok) {
+        return ApiErrors.VALIDATION_ERROR(
+          clearResult.error ?? "Failed to clear scheduled cancellation. Try again or contact support."
+        );
+      }
+      // Step 2: Apply chosen plan in Paddle with do_not_bill (no proration/credits); next payment = new plan price.
+      const updateResult = await updateSubscriptionPrice({
+        providerSubscriptionId: subscription.providerSubscriptionId,
+        targetPlanCode: targetCode as "starter" | "pro" | "enterprise",
+        effective: "next_period",
+        clearScheduledCancel: false,
+        tenantId,
+      });
+      if (!updateResult.ok) {
+        return ApiErrors.VALIDATION_ERROR(
+          updateResult.error ?? "Failed to resume subscription. Try again or contact support."
+        );
+      }
+      const periodEnd = subscription.currentPeriodEnd ?? undefined;
+      if (scheduleInsteadDowngrade) {
+        // Keep current (larger) plan until period end; schedule downgrade to target at period end.
+        await prisma.subscription.update({
+          where: { id: subscription.id },
+          data: {
+            cancelAtPeriodEnd: false,
+            pendingPlanCode: targetCode,
+            downgradePaddleAppliedAt: new Date(),
+            billingPlanCode: targetCode,
+            currentEntitlementPlanCode: currentCode,
+            pendingChangeType: "downgrade_end_of_period",
+            pendingEffectiveAt: periodEnd,
+            entitlementEffectiveUntil: periodEnd,
+          },
+        });
+      } else {
+        // Resume to same or larger plan: use chosen plan immediately.
+        const newPlan = await prisma.plan.findFirst({
+          where: { code: { equals: targetCode, mode: "insensitive" }, isActive: true },
+          select: { id: true },
+        });
+        if (newPlan) {
+          await prisma.subscription.update({
+            where: { id: subscription.id },
+            data: {
+              planId: newPlan.id,
+              cancelAtPeriodEnd: false,
+              pendingPlanCode: null,
+              billingPlanCode: targetCode,
+              currentEntitlementPlanCode: targetCode,
+              pendingChangeType: null,
+              pendingEffectiveAt: null,
+              entitlementEffectiveUntil: null,
+            },
+          });
+        }
+      }
+    } else {
+      // Paid→paid downgrade: apply new price in Paddle now with do_not_bill (no proration/credits).
+      // Next payment in Paddle = new plan price. We keep entitlements at current plan until period end in our DB.
+      const updateResult = await updateSubscriptionPrice({
+        providerSubscriptionId: subscription.providerSubscriptionId,
+        targetPlanCode: targetCode as "starter" | "pro" | "enterprise",
+        effective: "next_period",
+        clearScheduledCancel,
+        tenantId,
+      });
+      if (!updateResult.ok) {
+        return ApiErrors.VALIDATION_ERROR(
+          updateResult.error ?? "Failed to schedule downgrade. Try again or contact support."
+        );
+      }
+      const periodEnd = subscription.currentPeriodEnd ?? undefined;
+      await prisma.subscription.update({
+        where: { id: subscription.id },
+        data: {
+          pendingPlanCode: targetCode,
+          downgradePaddleAppliedAt: new Date(),
+          billingPlanCode: targetCode,
+          currentEntitlementPlanCode: currentCode,
+          pendingChangeType: "downgrade_end_of_period",
+          pendingEffectiveAt: periodEnd,
+          entitlementEffectiveUntil: periodEnd,
+          ...(clearScheduledCancel ? { cancelAtPeriodEnd: false } : {}),
+        },
+      });
     }
-    await prisma.subscription.update({
-      where: { id: subscription.id },
-      data: {
-        pendingPlanCode: targetCode,
-        downgradePaddleAppliedAt: new Date(),
-        ...(clearScheduledCancel ? { cancelAtPeriodEnd: false } : {}),
-      },
-    });
   } else {
     const updateResult = await updateSubscriptionPrice({
       providerSubscriptionId: subscription.providerSubscriptionId,

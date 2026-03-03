@@ -567,6 +567,25 @@ model Subscription {
   /** Set when we called Paddle on downgrade with prorated_next_billing_period; period-close then only updates DB. */
   downgradePaddleAppliedAt DateTime? @db.Timestamptz(6)
 
+  /** What Paddle will bill next (from subscription items). */
+  billingPlanCode         String?   @db.VarChar(50)
+  /** Plan that controls feature access now; stays higher until entitlementEffectiveUntil when downgrade pending. */
+  currentEntitlementPlanCode String? @db.VarChar(50)
+  /** Until when currentEntitlementPlanCode remains active (for scheduled downgrade/cancel). */
+  entitlementEffectiveUntil DateTime? @db.Timestamptz(6)
+  /** none | downgrade_end_of_period | cancel_to_free_end_of_period */
+  pendingChangeType       String?   @db.VarChar(50)
+  /** When the pending change takes effect (period end). */
+  pendingEffectiveAt      DateTime? @db.Timestamptz(6)
+
+  /** healthy | past_due | canceled */
+  paymentStatus           String?   @db.VarChar(30)
+  pastDueSince            DateTime? @db.Timestamptz(6)
+  graceEndsAt             DateTime? @db.Timestamptz(6)
+  lastPaymentFailureCode  String?   @db.VarChar(100)
+  lastPaymentFailureMessage String? @db.VarChar(500)
+  latestTransactionId     String?   @db.VarChar(191)
+
   provider               String? @db.VarChar(30) // stripe, paddle, manual
   providerCustomerId     String? @db.VarChar(191)
   providerSubscriptionId String? @db.VarChar(191)
