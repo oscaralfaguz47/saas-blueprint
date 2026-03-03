@@ -78,6 +78,9 @@ export const POST = withErrorHandler(async (req: Request) => {
   const cancelAtPeriodEnd = isCancelAtPeriodEnd(paddleSub.scheduled_change);
   const graceUntil = status === "PAST_DUE" ? getGraceUntilForPastDue() : null;
 
+  // Sync from Paddle only fields Paddle is source of truth for. Do not clear pending downgrade
+  // state (pendingPlanCode, pendingChangeType, etc.) so the "Downgrade scheduled" banner is
+  // preserved when user updates payment method (reconcile is called after checkout.completed).
   await prisma.subscription.update({
     where: { id: sub.id },
     data: {
@@ -88,7 +91,6 @@ export const POST = withErrorHandler(async (req: Request) => {
       currentPeriodEnd,
       graceUntil,
       cancelAtPeriodEnd,
-      pendingPlanCode: null,
     },
   });
 
