@@ -164,16 +164,20 @@ export function BillingProfileSection() {
     }
   }, [form, apiFetch, toast, fetchProfile]);
 
+  const addressLines = [profile?.addressLine1, profile?.addressLine2].filter(Boolean).join(", ");
+  const cityRegion = [profile?.city, profile?.region].filter(Boolean).join(", ");
+  const addressBlock = [addressLines, cityRegion, profile?.countryCode ? countryDisplayName(profile.countryCode) : null].filter(Boolean).join("\n");
+
   if (loading) {
     return (
-      <CardRoot>
+      <CardRoot className="shadow-sm">
         <CardHeader>
           <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">
             Billing profile
           </p>
         </CardHeader>
         <CardContent>
-          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-24 w-full" />
         </CardContent>
       </CardRoot>
     );
@@ -181,55 +185,37 @@ export function BillingProfileSection() {
 
   return (
     <>
-      <CardRoot>
+      <CardRoot className="shadow-sm">
         <CardHeader>
           <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">
             Billing profile
           </p>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-(--text-muted)">
-            Changes apply to future invoices only.
-          </p>
+        <CardContent className="space-y-4">
           {profile === null ? (
             <p className="text-sm text-(--text-secondary)">
               No billing profile yet. Complete a purchase to set billing details, or they will appear here after your first invoice.
             </p>
           ) : profile ? (
-            <div className="grid gap-2 text-sm">
-              <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
-                <div>
-                  <span className="text-(--text-muted)">Country: </span>
-                  <span className="text-(--text-primary)">{countryDisplayName(profile.countryCode)}</span>
-                </div>
-                <div>
-                  <span className="text-(--text-muted)">Postal code: </span>
-                  <span className="text-(--text-primary)">{profile.postalCode ?? "—"}</span>
-                </div>
+            <div className="space-y-3 text-sm">
+              <div>
+                <p className="text-xs font-medium text-(--text-muted)">Company</p>
+                <p className="mt-0.5 text-(--text-primary)">{profile.companyName ?? "—"}</p>
               </div>
-              {profile.companyName && (
-                <div>
-                  <span className="text-(--text-muted)">Company: </span>
-                  <span className="text-(--text-primary)">{profile.companyName}</span>
-                </div>
-              )}
-              {profile.vatId && (
-                <div>
-                  <span className="text-(--text-muted)">VAT / Tax ID: </span>
-                  <span className="text-(--text-primary)">{profile.vatId}</span>
-                </div>
-              )}
-              {(profile.addressLine1 || profile.city || profile.region) && (
-                <div>
-                  <span className="text-(--text-muted)">Address: </span>
-                  <span className="text-(--text-primary)">
-                    {[profile.addressLine1, profile.addressLine2, [profile.city, profile.region].filter(Boolean).join(", ")].filter(Boolean).join(", ") || "—"}
-                  </span>
-                </div>
-              )}
-              {!profile.companyName && !profile.vatId && !profile.addressLine1 && !profile.city && !profile.region && (
-                <p className="text-(--text-secondary)">No editable details on file yet.</p>
-              )}
+              <div>
+                <p className="text-xs font-medium text-(--text-muted)">Tax ID</p>
+                <p className="mt-0.5 text-(--text-primary)">{profile.vatId ?? "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-(--text-muted)">Address</p>
+                <p className="mt-0.5 whitespace-pre-line text-(--text-primary)">
+                  {addressBlock || "—"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-(--text-muted)">Postal code</p>
+                <p className="mt-0.5 text-(--text-primary)">{profile.postalCode ?? "—"}</p>
+              </div>
             </div>
           ) : null}
           <button

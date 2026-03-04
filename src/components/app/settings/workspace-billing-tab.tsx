@@ -270,6 +270,114 @@ const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 30000;
 const MAX_POLL_ATTEMPTS = Math.floor(POLL_TIMEOUT_MS / POLL_INTERVAL_MS);
 
+/** Actions menu for a single invoice row (••• dropdown). */
+function InvoiceRowActions({
+  transaction,
+  onViewInvoice,
+  onEditBilling,
+  onPaidInvoice,
+}: {
+  transaction: BillingTransactionItem;
+  onViewInvoice: () => void;
+  onEditBilling: () => void;
+  onPaidInvoice?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const statusLower = transaction.status?.toLowerCase() ?? "";
+  const isCompleted = statusLower === "completed";
+  const isFailedOrPastDue = statusLower === "failed" || statusLower === "past_due";
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    if (open) {
+      document.addEventListener("click", handleClickOutside);
+      return () => document.removeEventListener("click", handleClickOutside);
+    }
+  }, [open]);
+
+  return (
+    <div className="relative inline-block" ref={ref}>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((o) => !o);
+        }}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-(--text-muted) hover:bg-(--bg-surface-elev) hover:text-(--text-primary)"
+        aria-label="Invoice actions"
+      >
+        <span className="text-base leading-none">•••</span>
+      </button>
+      {open && (
+        <div
+          className="absolute right-0 top-full z-10 mt-1 min-w-[180px] rounded-lg border border-(--border-subtle) bg-(--bg-surface) py-1 shadow-lg"
+          role="menu"
+        >
+          {isCompleted && (
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onViewInvoice();
+                  setOpen(false);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-(--text-primary) hover:bg-(--bg-surface-elev)"
+              >
+                <IconEye size={14} />
+                View invoice
+              </button>
+              {!transaction.isRevised && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEditBilling();
+                    setOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-(--text-primary) hover:bg-(--bg-surface-elev)"
+                >
+                  <IconPencil size={14} />
+                  Edit billing details
+                </button>
+              )}
+              <a
+                href={`/api/billing/transactions/${transaction.id}/invoice-redirect`}
+                target="_blank"
+                rel="noopener noreferrer"
+                role="menuitem"
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-(--text-primary) hover:bg-(--bg-surface-elev)"
+                onClick={() => setOpen(false)}
+              >
+                Download PDF
+              </a>
+            </>
+          )}
+          {isFailedOrPastDue && onPaidInvoice && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPaidInvoice();
+                setOpen(false);
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-(--text-primary) hover:bg-(--bg-surface-elev)"
+            >
+              Paid invoice
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function WorkspaceBillingTab() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -1003,33 +1111,33 @@ export function WorkspaceBillingTab() {
       <div className="space-y-6">
         <div>
           <h2 className="text-lg font-semibold text-(--text-primary)">
-            Billing
+            Billing overview
           </h2>
-          <p className="text-sm text-(--text-secondary)">
-            Plan, usage, and overage for the current billing period.
+          <p className="mt-1 text-sm text-(--text-secondary)">
+            Manage your plan, invoices, and payment methods.
           </p>
         </div>
-        <CardRoot>
-          <CardHeader>
-            <Skeleton className="h-5 w-24" />
-            <Skeleton className="mt-2 h-4 w-32" />
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-2 w-full" />
-          </CardContent>
-          <CardFooter>
-            <Skeleton className="h-9 w-28" />
-          </CardFooter>
-        </CardRoot>
-        <CardRoot>
-          <CardHeader>
-            <Skeleton className="h-5 w-20" />
-          </CardHeader>
-          <CardContent>
-            <Skeleton className="h-2 w-full" />
-          </CardContent>
-        </CardRoot>
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+          <CardRoot className="shadow-sm">
+            <CardHeader>
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="mt-3 h-6 w-24" />
+              <Skeleton className="mt-2 h-4 w-40" />
+            </CardHeader>
+            <CardFooter>
+              <Skeleton className="h-9 w-28" />
+            </CardFooter>
+          </CardRoot>
+          <CardRoot className="shadow-sm">
+            <CardHeader>
+              <Skeleton className="h-4 w-20" />
+            </CardHeader>
+            <CardContent>
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="mt-2 h-2.5 w-full" />
+            </CardContent>
+          </CardRoot>
+        </div>
       </div>
     );
   }
@@ -1039,14 +1147,17 @@ export function WorkspaceBillingTab() {
       <div className="space-y-6">
         <div>
           <h2 className="text-lg font-semibold text-(--text-primary)">
-            Billing
+            Billing overview
           </h2>
+          <p className="mt-1 text-sm text-(--text-secondary)">
+            Manage your plan, invoices, and payment methods.
+          </p>
         </div>
         <Alert variant="destructive" title="Error" description={error} />
         <button
           type="button"
           onClick={() => fetchSummary()}
-          className="inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev)"
+          className="inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev)"
         >
           Try again
         </button>
@@ -1059,13 +1170,15 @@ export function WorkspaceBillingTab() {
       <div className="space-y-6">
         <div>
           <h2 className="text-lg font-semibold text-(--text-primary)">
-            Billing
+            Billing overview
           </h2>
+          <p className="mt-1 text-sm text-(--text-secondary)">
+            Manage your plan, invoices, and payment methods.
+          </p>
         </div>
-        <div className="rounded-lg border border-(--border-subtle) bg-(--card) p-4">
+        <div className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-5 shadow-sm">
           <p className="text-sm text-(--text-muted)">
-            No billing data available. Create or select a workspace with a plan
-            to see usage.
+            No billing data available. Create or select a workspace with a plan to see usage.
           </p>
         </div>
       </div>
@@ -1083,6 +1196,12 @@ export function WorkspaceBillingTab() {
   const showChangePlan =
     !billingState.isPastDue && !billingState.isSuspended;
 
+  const nextChargeDate = summary?.periodEnd ? formatDate(summary.periodEnd) : null;
+  const currentPlanItem = IN_APP_PLAN_CATALOG.find((p) => p.code === billingState.currentPlan);
+  const nextInvoicePlanCents = currentPlanItem?.priceMonthlyCents ?? 0;
+  const nextInvoiceOverageCents = summary?.overageEstimate ?? 0;
+  const nextInvoiceTotalCents = nextInvoicePlanCents + nextInvoiceOverageCents;
+
   return (
     <div className="space-y-6">
       {clientToken && (
@@ -1093,11 +1212,11 @@ export function WorkspaceBillingTab() {
         />
       )}
       <div>
-        <h2 className="text-base font-semibold text-(--text-primary)">
-          Billing
+        <h2 className="text-lg font-semibold text-(--text-primary)">
+          Billing overview
         </h2>
-        <p className="mt-0.5 text-sm text-(--text-secondary)">
-          Plan, usage, and overage for the current billing period.
+        <p className="mt-1 text-sm text-(--text-secondary)">
+          Manage your plan, invoices, and payment methods.
         </p>
       </div>
 
@@ -1246,16 +1365,17 @@ export function WorkspaceBillingTab() {
         />
       )}
 
-      {/* Plan card */}
-      <CardRoot className="border-(--border-subtle)">
-        <CardHeader className="pb-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">
-            Plan &amp; status
-          </p>
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <span className="text-base font-semibold text-(--text-primary)">
-                {planLabel}
+      {/* Row 1: Plan & Subscription | Usage */}
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        {/* Plan & Subscription */}
+        <CardRoot className="border-(--border-subtle) shadow-sm">
+          <CardHeader className="pb-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">
+              Plan &amp; subscription
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="text-lg font-semibold text-(--text-primary)">
+                {planLabel} plan
               </span>
               <Badge
                 variant={
@@ -1273,167 +1393,257 @@ export function WorkspaceBillingTab() {
                 )}
               </Badge>
             </div>
-            <span className="text-sm text-(--text-muted)">
-              {billingState.hasPaidPlan
-                ? formatPeriod(summary.periodStart, summary.periodEnd)
-                : "No billing period"}
-            </span>
-          </div>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <p className="text-sm text-(--text-muted)">
-            {billingState.hasPaidPlan
-              ? "Manage plan, usage, and renewal."
-              : "Upgrade for more capacity and audit features."}
-          </p>
-          {summary.pendingPlanCode && summary.pendingPlanCode !== "free" && (
-            <p className="mt-2 text-xs text-(--text-muted)">
-              Scheduled to downgrade to {PLAN_LABELS[summary.pendingPlanCode] ?? summary.pendingPlanCode} on {formatDate(summary.periodEnd)}.
+            {billingState.hasPaidPlan && currentPlanItem && currentPlanItem.priceMonthlyCents > 0 && (
+              <p className="mt-2 text-base font-medium text-(--text-primary)">
+                {formatPriceMonthly(currentPlanItem.priceMonthlyCents)} / month
+              </p>
+            )}
+            {nextChargeDate && billingState.hasPaidPlan && (
+              <p className="mt-1 text-sm text-(--text-muted)">
+                Next charge · {nextChargeDate}
+              </p>
+            )}
+            <p className="mt-3 text-sm text-(--text-secondary)">
+              Usage this period · {summary.used} / {allowance > 0 ? allowance : summary.included} requests
+              {summary.rolloverAvailable > 0 ? ` (${summary.rolloverAvailable} rollover)` : ""}
             </p>
-          )}
-        </CardContent>
-        <CardFooter className="flex flex-wrap items-center gap-2 border-t border-(--border-subtle) pt-3">
-          {showChangePlan && (
-            <button
-              type="button"
-              onClick={handleOpenChangePlan}
-              className="inline-flex h-9 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover)"
-            >
-              Change plan
-            </button>
-          )}
-        </CardFooter>
-      </CardRoot>
+            {summary.pendingPlanCode && summary.pendingPlanCode !== "free" && (
+              <p className="mt-2 text-xs text-(--text-muted)">
+                Scheduled to downgrade to {PLAN_LABELS[summary.pendingPlanCode] ?? summary.pendingPlanCode} on {formatDate(summary.periodEnd)}.
+              </p>
+            )}
+          </CardHeader>
+          <CardFooter className="flex flex-wrap items-center gap-2 border-t border-(--border-subtle) pt-3">
+            {showChangePlan && (
+              <button
+                type="button"
+                onClick={handleOpenChangePlan}
+                className="inline-flex h-9 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover)"
+              >
+                Change plan
+              </button>
+            )}
+          </CardFooter>
+        </CardRoot>
 
-      {/* Usage card */}
-      <CardRoot>
-        <CardHeader>
-          <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">
-            Usage
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="text-(--text-secondary)">Requests</span>
-            <span className="text-(--text-primary)">
-              {summary.used} / {allowance > 0 ? allowance : summary.included}
-              {summary.rolloverAvailable > 0 &&
-                ` (${summary.rolloverAvailable} rollover)`}
-            </span>
-          </div>
-          <div
-            className="h-2 w-full overflow-hidden rounded-full bg-(--border-subtle)"
-            role="progressbar"
-            aria-valuenow={usagePct}
-            aria-valuemin={0}
-            aria-valuemax={100}
-          >
-            <div
-              className={`h-full rounded-full transition-[width] ${
-                summary.threshold100
-                  ? "bg-(--destructive)"
-                  : summary.threshold80
-                    ? "bg-amber-500"
-                    : "bg-(--color-primary)"
-              }`}
-              style={{ width: `${usagePct}%` }}
-            />
-          </div>
-          {summary.threshold80 && !summary.threshold100 && (
-            <p className="text-xs text-amber-600 dark:text-amber-400">
-              You&apos;ve used 80% or more of your request allowance.
-            </p>
-          )}
-          {summary.threshold100 && (
-            <p className="text-xs text-(--destructive)">
-              You&apos;ve reached your request allowance for this period.
-            </p>
-          )}
-          {summary.overageEstimate > 0 && (
-            <p className="text-xs text-(--text-muted)">
-              Overage estimate: ${(summary.overageEstimate / 100).toFixed(2)}
-              {summary.overageCapReached && " (cap reached)"}
-            </p>
-          )}
-        </CardContent>
-      </CardRoot>
-
-      {/* Payments: only show when the workspace has at least one transaction */}
-      {transactions.length > 0 && (
-        <CardRoot>
+        {/* Usage */}
+        <CardRoot className="shadow-sm">
           <CardHeader>
             <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">
-              Payments
+              Usage
             </p>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
+            <div>
+              <p className="text-sm font-medium text-(--text-primary)">
+                Requests used
+              </p>
+              <p className="mt-0.5 text-lg font-semibold text-(--text-primary)">
+                {summary.used} / {allowance > 0 ? allowance : summary.included} requests
+              </p>
+            </div>
+            <div
+              className="h-2.5 w-full overflow-hidden rounded-full bg-(--border-subtle)"
+              role="progressbar"
+              aria-valuenow={usagePct}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
+              <div
+                className={`h-full rounded-full transition-[width] ${
+                  summary.threshold100
+                    ? "bg-(--destructive)"
+                    : summary.threshold80
+                      ? "bg-amber-500"
+                      : "bg-(--color-primary)"
+                }`}
+                style={{ width: `${usagePct}%` }}
+              />
+            </div>
+            {nextChargeDate && (
+              <p className="text-xs text-(--text-muted)">
+                Resets {nextChargeDate}
+              </p>
+            )}
+            {summary.threshold80 && !summary.threshold100 && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                You&apos;ve used 80% or more of your request allowance.
+              </p>
+            )}
+            {summary.threshold100 && (
+              <p className="text-xs text-(--destructive)">
+                You&apos;ve reached your request allowance for this period.
+              </p>
+            )}
+            {summary.overageEstimate > 0 && (
+              <p className="text-xs text-(--text-muted)">
+                Overage estimate: ${(summary.overageEstimate / 100).toFixed(2)}
+                {summary.overageCapReached && " (cap reached)"}
+              </p>
+            )}
+          </CardContent>
+        </CardRoot>
+      </div>
+
+      {/* Row 2: Next Invoice | Payment Method — only when at least one is relevant */}
+      {(billingState.hasPaidPlan && nextChargeDate) || (billingState.hasPaidPlan || billingState.isPastDue || billingState.isSuspended) ? (
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        {/* Next Invoice — only when we have a billing period and plan info */}
+        {billingState.hasPaidPlan && nextChargeDate && (
+          <CardRoot className="shadow-sm">
+            <CardHeader>
+              <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">
+                Next invoice
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <p className="text-sm font-medium text-(--text-primary)">
+                {nextChargeDate}
+              </p>
+              <p className="text-sm text-(--text-secondary)">
+                {planLabel} plan · {formatPriceMonthly(nextInvoicePlanCents)}
+              </p>
+              {nextInvoiceOverageCents > 0 && (
+                <p className="text-sm text-(--text-secondary)">
+                  Estimated overage · ${(nextInvoiceOverageCents / 100).toFixed(2)}
+                </p>
+              )}
+              <p className="pt-2 text-base font-semibold text-(--text-primary) border-t border-(--border-subtle)">
+                Estimated total · {formatPriceMonthly(nextInvoiceTotalCents)}
+              </p>
+            </CardContent>
+          </CardRoot>
+        )}
+        {/* Payment method */}
+        {(billingState.hasPaidPlan || billingState.isPastDue || billingState.isSuspended) && (
+          <CardRoot className="shadow-sm">
+            <CardHeader>
+              <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">
+                Payment method
+              </p>
+            </CardHeader>
+            <CardContent>
+              {paymentMethodLoading ? (
+                <Skeleton className="h-14 w-full max-w-sm" />
+              ) : paymentMethod ? (
+                <>
+                  <div className="flex items-start gap-3">
+                    <CardBrandIcon brand={paymentMethod.brand} className="shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-(--text-primary)">
+                        {formatCardBrand(paymentMethod.brand)} •••• {paymentMethod.last4}
+                      </p>
+                      <p className="mt-0.5 text-xs text-(--text-muted)">
+                        Expires {formatExpiry(paymentMethod.expiryMonth, paymentMethod.expiryYear)}
+                      </p>
+                    </div>
+                  </div>
+                  {nextChargeDate && (
+                    <p className="mt-2 text-xs text-(--text-muted)">
+                      Used for next invoice {nextChargeDate}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-(--text-muted)">
+                  No payment method on file.
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={handleChangePaymentMethod}
+                disabled={paymentMethodUpdateLoading}
+                className="mt-4 inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
+              >
+                {paymentMethodUpdateLoading ? "Loading…" : "Change payment method"}
+              </button>
+            </CardContent>
+          </CardRoot>
+        )}
+      </div>
+      ) : null}
+
+      {/* Row 3: Invoices — full width */}
+      {transactions.length > 0 && (
+        <CardRoot className="w-full shadow-sm">
+          <CardHeader>
+            <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">
+              Invoices
+            </p>
+          </CardHeader>
+          <CardContent className="p-0">
             {transactionsLoading ? (
-              <Skeleton className="h-20 w-full" />
+              <div className="p-4">
+                <Skeleton className="h-20 w-full" />
+              </div>
             ) : (
               <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-(--border-subtle)">
-                    <th className="pb-2 pr-4 text-left font-medium text-(--text-muted)">Invoice #</th>
-                    <th className="pb-2 pr-4 text-left font-medium text-(--text-muted)">Date</th>
-                    <th className="pb-2 pr-4 text-left font-medium text-(--text-muted)">Status</th>
-                    <th className="pb-2 pr-4 text-right font-medium text-(--text-muted)">Amount</th>
-                    <th className="pb-2 text-right font-medium text-(--text-muted)"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {transactions.map((t) => (
-                    <tr key={t.id} className="border-b border-(--border-subtle)">
-                      <td className="py-2 pr-4 text-(--text-primary)">{t.receiptNumber ?? "—"}</td>
-                      <td className="py-2 pr-4 text-(--text-primary)">{formatDate(t.billedAt)}</td>
-                      <td className="py-2 pr-4 text-(--text-secondary)">{t.status}</td>
-                      <td className="py-2 pr-4 text-right text-(--text-primary)">
-                        {(t.total.cents / 100).toFixed(2)} {t.total.currency}
-                      </td>
-                      <td className="py-2 text-right">
-                        <div className="flex items-center justify-end gap-3">
-                          {(t.status?.toLowerCase() === "failed" ||
-                            t.status?.toLowerCase() === "past_due") &&
-                          t.providerTransactionId ? (
-                            <button
-                              type="button"
-                              onClick={() => openPaidInvoiceCheckout(t.providerTransactionId!)}
-                              className="inline-flex items-center gap-1.5 rounded-md bg-(--color-primary) px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
-                            >
-                              Paid invoice
-                            </button>
-                          ) : null}
-                          {t.status?.toLowerCase() === "completed" && !t.isRevised ? (
-                            <button
-                              type="button"
-                              onClick={() => openEditBillingModal(t.id)}
-                              className="inline-flex items-center gap-1.5 text-sm text-(--color-primary) underline hover:no-underline"
-                            >
-                              <IconPencil size={14} />
-                              Edit billing details
-                            </button>
-                          ) : null}
-                          {t.status?.toLowerCase() === "completed" && t.isRevised ? (
-                            <Badge variant="secondary">Edited</Badge>
-                          ) : null}
-                          {t.status?.toLowerCase() === "completed" ? (
-                            <a
-                              href={`/api/billing/transactions/${t.id}/invoice-redirect`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 text-sm text-(--color-primary) underline hover:no-underline"
-                            >
-                              <IconEye size={14} />
-                              View invoice
-                            </a>
-                          ) : null}
-                        </div>
-                      </td>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-(--border-subtle) bg-(--bg-surface-elev)">
+                      <th className="px-4 py-3 text-left font-medium text-(--text-muted)">Invoice</th>
+                      <th className="px-4 py-3 text-left font-medium text-(--text-muted)">Period</th>
+                      <th className="px-4 py-3 text-left font-medium text-(--text-muted)">Status</th>
+                      <th className="px-4 py-3 text-right font-medium text-(--text-muted)">Amount</th>
+                      <th className="px-4 py-3 text-right font-medium text-(--text-muted)">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {transactions.map((t) => {
+                      const statusLower = t.status?.toLowerCase() ?? "";
+                      const statusVariant =
+                        statusLower === "completed"
+                          ? "success"
+                          : statusLower === "pending" || statusLower === "past_due"
+                            ? "warning"
+                            : statusLower === "failed"
+                              ? "destructive"
+                              : "secondary";
+                      return (
+                        <tr
+                          key={t.id}
+                          className="border-b border-(--border-subtle) transition-colors hover:bg-(--bg-surface-elev)"
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => {
+                            if ((e.target as HTMLElement).closest("[data-invoice-action]")) return;
+                            if (t.status?.toLowerCase() === "completed") {
+                              window.open(`/api/billing/transactions/${t.id}/invoice-redirect`, "_blank");
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && t.status?.toLowerCase() === "completed") {
+                              window.open(`/api/billing/transactions/${t.id}/invoice-redirect`, "_blank");
+                            }
+                            if (e.key === "Enter" && (e.target as HTMLElement).closest("[data-invoice-action]")) return;
+                          }}
+                        >
+                          <td className="px-4 py-3 text-(--text-primary) font-medium">
+                            {t.receiptNumber ?? "—"}
+                          </td>
+                          <td className="px-4 py-3 text-(--text-secondary)">{formatDate(t.billedAt)}</td>
+                          <td className="px-4 py-3">
+                            <Badge variant={statusVariant}>
+                              {t.status ?? "—"}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3 text-right text-(--text-primary)">
+                            {(t.total.cents / 100).toFixed(2)} {t.total.currency}
+                          </td>
+                          <td className="px-4 py-3 text-right" data-invoice-action>
+                            <InvoiceRowActions
+                              transaction={t}
+                              onViewInvoice={() => window.open(`/api/billing/transactions/${t.id}/invoice-redirect`, "_blank")}
+                              onEditBilling={() => openEditBillingModal(t.id)}
+                              onPaidInvoice={t.providerTransactionId ? () => openPaidInvoiceCheckout(t.providerTransactionId!) : undefined}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             )}
           </CardContent>
         </CardRoot>
@@ -1654,47 +1864,12 @@ export function WorkspaceBillingTab() {
         </div>
       </Dialog>
 
-      {/* Billing profile: only show if user has ever checked out (paid plan now or in the past) */}
-      {(billingState.hasPaidPlan || transactions.length > 0) && <BillingProfileSection />}
-
-      {/* Payment method */}
-      {(billingState.hasPaidPlan || billingState.isPastDue || billingState.isSuspended) && (
-        <CardRoot>
-          <CardHeader>
-            <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">
-              Payment method
-            </p>
-          </CardHeader>
-          <CardContent>
-            {paymentMethodLoading ? (
-              <Skeleton className="h-14 w-full max-w-sm" />
-            ) : paymentMethod ? (
-              <div className="flex items-start gap-3">
-                <CardBrandIcon brand={paymentMethod.brand} />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-(--text-primary)">
-                    {formatCardBrand(paymentMethod.brand)} ending in {paymentMethod.last4}
-                  </p>
-                  <p className="mt-0.5 text-xs text-(--text-muted)">
-                    Expires {formatExpiry(paymentMethod.expiryMonth, paymentMethod.expiryYear)}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-(--text-muted)">
-                No payment method on file.
-              </p>
-            )}
-            <button
-              type="button"
-              onClick={handleChangePaymentMethod}
-              disabled={paymentMethodUpdateLoading}
-              className="mt-3 inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
-            >
-              {paymentMethodUpdateLoading ? "Loading…" : "Change payment method"}
-            </button>
-          </CardContent>
-        </CardRoot>
+      {/* Row 4: Billing profile (half) | optional placeholder */}
+      {(billingState.hasPaidPlan || transactions.length > 0) && (
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+          <BillingProfileSection />
+          {/* Billing contact placeholder — reserved for future use */}
+        </div>
       )}
 
       {/* Change plan dialog */}
@@ -1809,16 +1984,21 @@ export function WorkspaceBillingTab() {
                   <p className="mt-2 text-xs text-(--text-muted)">
                     {plan.bestFor}
                   </p>
-                  <ul className="mt-3 list-inside list-disc space-y-1 text-xs text-(--text-secondary)">
+                  <ul className="mt-3 space-y-1.5 text-xs text-(--text-secondary)">
                     {plan.includes.slice(0, 5).map((item, i) => (
-                      <li key={i}>{item}</li>
+                      <li key={i} className="flex items-start gap-2">
+                        <span className="mt-0.5 shrink-0 text-(--color-primary)" aria-hidden>✓</span>
+                        <span>{item}</span>
+                      </li>
                     ))}
                   </ul>
-                  <ul className="mt-2 list-inside list-disc space-y-1 text-xs text-(--text-muted)">
-                    {plan.limits.slice(0, 3).map((item, i) => (
-                      <li key={i}>{item}</li>
-                    ))}
-                  </ul>
+                  {plan.limits.length > 0 && (
+                    <ul className="mt-2 space-y-1 text-xs text-(--text-muted)">
+                      {plan.limits.slice(0, 3).map((item, i) => (
+                        <li key={i}>{item}</li>
+                      ))}
+                    </ul>
+                  )}
                   <div className="mt-4">
                     {isCurrent ? (
                       <button
@@ -1914,11 +2094,11 @@ export function WorkspaceBillingTab() {
         );
       })()}
 
-      {/* Confirm plan change dialog ? overlay close prevented to avoid accidental dismiss */}
+      {/* Confirm plan change dialog — overlay close prevented to avoid accidental dismiss */}
       <Dialog
         open={confirmPlanOpen}
         onClose={closeConfirm}
-        title="Confirm change"
+        title={confirmTarget?.direction === "upgrade" ? "Confirm upgrade" : "Confirm change"}
         closeDisabled={scheduleLoading || checkoutLoading}
         allowOverlayClose={false}
         contentClassName="max-h-[90vh] overflow-hidden flex flex-col max-w-md"
@@ -1928,38 +2108,52 @@ export function WorkspaceBillingTab() {
           <div className="space-y-4">
             {confirmTarget.direction === "upgrade" ? (
               <>
-                <div className="text-sm text-(--text-primary) space-y-2">
-                  <p>
-                    <span className="text-(--text-muted)">Current plan: </span>
-                    {PLAN_LABELS[changePlanPreview?.currentPlanCode ?? summary?.planCode ?? "free"] ?? (changePlanPreview?.currentPlanCode ?? summary?.planCode ?? "free")}
-                  </p>
-                  <p>
-                    <span className="text-(--text-muted)">Target plan: </span>
-                    {confirmTarget.plan.name}
-                    {changePlanPreview?.nextPriceCents != null && (
-                      <span className="text-(--text-muted)"> — {formatPriceMonthly(changePlanPreview.nextPriceCents)}/month</span>
-                    )}
-                  </p>
+                <div className="space-y-3 text-sm">
+                  <div>
+                    <p className="text-xs font-medium text-(--text-muted)">Current plan</p>
+                    <p className="mt-0.5 font-medium text-(--text-primary)">
+                      {PLAN_LABELS[changePlanPreview?.currentPlanCode ?? summary?.planCode ?? "free"] ?? (changePlanPreview?.currentPlanCode ?? summary?.planCode ?? "free")}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-(--text-muted)">New plan</p>
+                    <p className="mt-0.5 font-medium text-(--text-primary)">
+                      {confirmTarget.plan.name}
+                      {changePlanPreview?.nextPriceCents != null && (
+                        <span className="font-normal text-(--text-secondary)"> — {formatPriceMonthly(changePlanPreview.nextPriceCents)}/month</span>
+                      )}
+                    </p>
+                  </div>
+                  {changePlanPreview?.effectiveAt === "immediate" && changePlanPreview?.nextPriceCents != null && (
+                    <div>
+                      <p className="text-xs font-medium text-(--text-muted)">Due now</p>
+                      <p className="mt-0.5 text-(--text-primary)">
+                        {formatPriceMonthly(changePlanPreview.nextPriceCents)} (prorated)
+                      </p>
+                    </div>
+                  )}
                   {changePlanPreview?.effectiveAt === "next_period" && changePlanPreview?.effectiveFromDate && (
-                    <p>
-                      <span className="text-(--text-muted)">Effective: </span>
-                      {formatDate(changePlanPreview.effectiveFromDate)}
+                    <p className="text-(--text-muted)">
+                      Effective {formatDate(changePlanPreview.effectiveFromDate)}.
                     </p>
                   )}
                   <p className="text-(--text-muted)">
                     {changePlanPreview?.requiresCheckout
                       ? "You'll enter your payment details in the next step."
                       : changePlanPreview?.effectiveAt === "immediate"
-                        ? "You'll be charged a prorated amount now. Your plan will update after payment is confirmed (same billing cycle)."
+                        ? "Billing cycle remains the same. Your plan will update after payment is confirmed."
                         : "Your new amount will be charged at the end of the current billing cycle."}
                   </p>
                   {paymentMethod && !changePlanPreview?.requiresCheckout && (
-                    <p className="text-(--text-muted)">
-                      Payment method: {formatCardBrand(paymentMethod.brand)} •••• {paymentMethod.last4}
-                    </p>
+                    <div>
+                      <p className="text-xs font-medium text-(--text-muted)">Payment method</p>
+                      <p className="mt-0.5 text-(--text-primary)">
+                        {formatCardBrand(paymentMethod.brand)} •••• {paymentMethod.last4}
+                      </p>
+                    </div>
                   )}
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2 pt-2">
                   <button
                     type="button"
                     onClick={handleConfirmUpgrade}
@@ -1972,7 +2166,7 @@ export function WorkspaceBillingTab() {
                         Preparing…
                       </>
                     ) : (
-                      "Confirm"
+                      `Upgrade to ${confirmTarget.plan.name}`
                     )}
                   </button>
                   <button
@@ -2026,10 +2220,38 @@ export function WorkspaceBillingTab() {
       >
         <div className="space-y-4">
           <p className="text-sm text-(--text-primary)">
-            Your card was declined. Please update your payment method to continue with your upgrade
-            {paymentDeclinedPlanCode ? ` to ${PLAN_LABELS[paymentDeclinedPlanCode] ?? paymentDeclinedPlanCode}` : ""}.
+            {paymentMethod ? (
+              <>Your {formatCardBrand(paymentMethod.brand)} •••• {paymentMethod.last4} was declined while attempting to upgrade your workspace.</>
+            ) : (
+              <>Your card was declined while attempting to upgrade your workspace.</>
+            )}
           </p>
-          <div className="flex flex-wrap gap-2">
+          {paymentDeclinedPlanCode && (
+            <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 py-2">
+              <p className="text-xs font-medium text-(--text-muted)">Upgrade plan</p>
+              <p className="mt-0.5 text-sm font-medium text-(--text-primary)">
+                {PLAN_LABELS[paymentDeclinedPlanCode] ?? paymentDeclinedPlanCode} — {(() => {
+                  const plan = IN_APP_PLAN_CATALOG.find((p) => p.code === paymentDeclinedPlanCode);
+                  return plan ? formatPriceMonthly(plan.priceMonthlyCents) + "/month" : "";
+                })()}
+              </p>
+            </div>
+          )}
+          <div>
+            <p className="text-xs font-medium text-(--text-muted)">Possible reasons</p>
+            <ul className="mt-1 list-inside list-disc space-y-0.5 text-sm text-(--text-secondary)">
+              <li>Insufficient funds</li>
+              <li>Card expired</li>
+              <li>Bank blocked the transaction</li>
+            </ul>
+          </div>
+          <p className="text-sm text-(--text-primary)">
+            Please update your payment method to continue.
+          </p>
+          <p className="text-xs text-(--text-muted)">
+            Your upgrade will resume automatically after updating your payment method.
+          </p>
+          <div className="flex flex-wrap gap-2 pt-2">
             <button
               type="button"
               onClick={handlePaymentDeclinedUpdateMethod}
