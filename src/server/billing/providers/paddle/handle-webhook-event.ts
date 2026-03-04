@@ -245,6 +245,8 @@ async function handleBusinessCreatedOrUpdated(envelope: {
 
   const companyName = business.name?.trim?.()?.slice(0, 160) ?? null;
   const vatId = business.tax_identifier?.trim?.()?.slice(0, 64) ?? null;
+  const hasMeaningfulBusiness = !!(companyName || vatId);
+  const providerBusinessIdToStore = hasMeaningfulBusiness ? (business.id?.slice(0, 191) ?? null) : null;
 
   await prisma.tenantBillingProfile.upsert({
     where: { tenantId },
@@ -256,17 +258,17 @@ async function handleBusinessCreatedOrUpdated(envelope: {
       city: null,
       addressLine1: null,
       addressLine2: null,
-      companyName,
-      vatId,
+      companyName: hasMeaningfulBusiness ? companyName : null,
+      vatId: hasMeaningfulBusiness ? vatId : null,
       providerCustomerId,
-      providerBusinessId: business.id?.slice(0, 191) ?? null,
+      providerBusinessId: providerBusinessIdToStore,
       lastSyncedAt: new Date(),
       syncSource: "webhook",
     },
     update: {
-      companyName: companyName ?? undefined,
-      vatId: vatId ?? undefined,
-      providerBusinessId: business.id?.slice(0, 191) ?? undefined,
+      companyName: hasMeaningfulBusiness ? companyName : null,
+      vatId: hasMeaningfulBusiness ? vatId : null,
+      providerBusinessId: providerBusinessIdToStore,
       lastSyncedAt: new Date(),
       syncSource: "webhook",
     },

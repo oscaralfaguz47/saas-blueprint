@@ -27,6 +27,7 @@ export type PaddleBusiness = {
   tax_identifier?: string | null;
 };
 
+/** Only persist optional address fields when user actually provided them (non-empty). Country/postal are required from checkout. */
 export function mapAddressToProfile(address: PaddleAddress | null): {
   countryCode: string;
   postalCode: string | null;
@@ -52,15 +53,28 @@ export function mapAddressToProfile(address: PaddleAddress | null): {
     rawCountry && rawCountry.length >= 2
       ? rawCountry.slice(0, 2).toUpperCase()
       : "US";
+  const postal = address.postal_code?.trim?.();
+  const firstLine = address.first_line?.trim?.();
+  const secondLine = address.second_line?.trim?.();
+  const city = address.city?.trim?.();
+  const region = address.region?.trim?.();
   return {
     countryCode,
-    postalCode: address.postal_code?.slice(0, 32) ?? null,
-    addressLine1: address.first_line?.slice(0, 120) ?? null,
-    addressLine2: address.second_line?.slice(0, 120) ?? null,
-    city: address.city?.slice(0, 80) ?? null,
-    region: address.region?.slice(0, 80) ?? null,
+    postalCode: postal ? postal.slice(0, 32) : null,
+    addressLine1: firstLine ? firstLine.slice(0, 120) : null,
+    addressLine2: secondLine ? secondLine.slice(0, 120) : null,
+    city: city ? city.slice(0, 80) : null,
+    region: region ? region.slice(0, 80) : null,
     providerAddressId: address.id?.slice(0, 191) ?? null,
   };
+}
+
+/** Only persist business when user provided VAT and/or company name in checkout. Do not save business if they left it blank. */
+function hasMeaningfulBusinessData(business: PaddleBusiness | null): boolean {
+  if (!business) return false;
+  const name = business.name?.trim?.();
+  const taxId = business.tax_identifier?.trim?.();
+  return !!(name || taxId);
 }
 
 function mapBusinessToProfile(business: PaddleBusiness | null): {
@@ -68,7 +82,7 @@ function mapBusinessToProfile(business: PaddleBusiness | null): {
   vatId: string | null;
   providerBusinessId: string | null;
 } {
-  if (!business) {
+  if (!business || !hasMeaningfulBusinessData(business)) {
     return { companyName: null, vatId: null, providerBusinessId: null };
   }
   return {
@@ -111,6 +125,21 @@ export async function syncBillingProfileFromPaddle(params: {
     const firstBusiness = businessesJson?.data?.[0] ?? null;
     businessMapped = mapBusinessToProfile(firstBusiness);
   }
+  // Update: clear business fields when not meaningful (use null so DB is cleared)
+  const updatePayload = {
+    countryCode: mapped.countryCode,
+    postalCode: mapped.postalCode,
+    region: mapped.region,
+    city: mapped.city,
+    addressLine1: mapped.addressLine1,
+    addressLine2: mapped.addressLine2,
+    providerAddressId: mapped.providerAddressId,
+    companyName: businessMapped.companyName,
+    vatId: businessMapped.vatId,
+    providerBusinessId: businessMapped.providerBusinessId,
+    lastSyncedAt: new Date(),
+    syncSource: "fetch",
+  };
 
   await prisma.tenantBillingProfile.upsert({
     where: { tenantId },
@@ -130,20 +159,7 @@ export async function syncBillingProfileFromPaddle(params: {
       lastSyncedAt: new Date(),
       syncSource: "fetch",
     },
-    update: {
-      countryCode: mapped.countryCode,
-      postalCode: mapped.postalCode,
-      region: mapped.region,
-      city: mapped.city,
-      addressLine1: mapped.addressLine1,
-      addressLine2: mapped.addressLine2,
-      providerAddressId: mapped.providerAddressId,
-      companyName: businessMapped.companyName ?? undefined,
-      vatId: businessMapped.vatId ?? undefined,
-      providerBusinessId: businessMapped.providerBusinessId ?? undefined,
-      lastSyncedAt: new Date(),
-      syncSource: "fetch",
-    },
+    update: updatePayload,
   });
   return { updated: true };
 }
