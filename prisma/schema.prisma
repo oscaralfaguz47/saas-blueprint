@@ -307,6 +307,11 @@ model BillingTransaction {
   subscriptionId         String?
   providerSubscriptionId String?   @db.VarChar(191)
 
+  /// Invoice-specific edit: revised once via Paddle "Revise transaction customer details".
+  revisedAt              DateTime?
+  revisedByUserId        String?   @db.VarChar(191)
+  revisionRequestPayload Json?
+
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 

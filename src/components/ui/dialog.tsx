@@ -76,7 +76,7 @@ export function Dialog({
       aria-modal="true"
       aria-labelledby={titleId}
       aria-describedby={descId}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4"
       onPointerDown={handleOverlayPointerDown}
       onPointerUp={handleOverlayPointerUp}
       onPointerLeave={() => setPointerDownOnOverlay(false)}
@@ -85,14 +85,14 @@ export function Dialog({
       <div
         className={
           contentClassName
-            ? `relative w-full rounded-xl border border-(--border-subtle) bg-(--bg-surface) shadow-xl ${contentClassName}`
-            : "relative w-full max-w-md rounded-xl border border-(--border-subtle) bg-(--bg-surface) shadow-xl"
+            ? `relative flex max-h-[90vh] w-full flex-col rounded-xl border border-(--border-subtle) bg-(--bg-surface) shadow-xl sm:max-h-[85dvh] ${contentClassName}`
+            : "relative flex max-h-[90vh] w-full max-w-md flex-col rounded-xl border border-(--border-subtle) bg-(--bg-surface) shadow-xl sm:max-h-[85dvh]"
         }
         onPointerDown={handleContentPointerDown}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-(--border-subtle) px-6 py-4">
-          <div className="min-w-0">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-(--border-subtle) px-4 py-3 sm:gap-4 sm:px-6 sm:py-4">
+          <div className="min-w-0 flex-1">
             <h2 id={titleId} className="text-base font-semibold text-(--text-primary)">
               {title}
             </h2>
@@ -106,13 +106,15 @@ export function Dialog({
             type="button"
             onClick={canCloseByEscOrX ? onClose : undefined}
             disabled={!canCloseByEscOrX}
-            className="shrink-0 rounded-md p-1.5 text-(--text-muted) hover:bg-(--bg-surface-elev) hover:text-(--text-primary) disabled:pointer-events-none disabled:opacity-50"
+            className="shrink-0 rounded-md p-2 text-(--text-muted) hover:bg-(--bg-surface-elev) hover:text-(--text-primary) disabled:pointer-events-none disabled:opacity-50 touch-manipulation sm:p-1.5"
             aria-label="Close"
           >
             <IconX size={18} />
           </button>
         </div>
-        <div className="p-6">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6">
+          {children}
+        </div>
       </div>
     </div>
   );

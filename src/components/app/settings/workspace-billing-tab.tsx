@@ -25,8 +25,9 @@ import {
   type InAppPlanItem,
 } from "@/lib/billing/plan-catalog";
 import { useSession } from "next-auth/react";
-import { IconEye } from "@/components/ui/icons";
+import { IconEye, IconPencil } from "@/components/ui/icons";
 import { BillingProfileSection } from "@/components/app/settings/billing-profile-section";
+import { Input } from "@/components/ui/input";
 
 const PADDLE_SCRIPT_URL = "https://cdn.paddle.com/paddle/v2/paddle.js";
 const CHECKOUT_SUCCESS_REDIRECT =
@@ -71,6 +72,8 @@ type BillingTransactionItem = {
   status: string;
   total: { cents: number; currency: string };
   invoiceUrl?: string;
+  receiptNumber?: string;
+  isRevised?: boolean;
 };
 
 type PaymentMethodDisplay = {
@@ -288,6 +291,33 @@ export function WorkspaceBillingTab() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [transactions, setTransactions] = useState<BillingTransactionItem[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
+  const [editBillingTransactionId, setEditBillingTransactionId] = useState<string | null>(null);
+  const [editBillingDetails, setEditBillingDetails] = useState<{
+    invoiceNumber: string | null;
+    billedAt: string | null;
+    totalCents: number;
+    currency: string;
+    fullName: string;
+    companyName: string | null;
+    taxId: string | null;
+    addressLine1: string | null;
+    addressLine2: string | null;
+    city: string | null;
+    region: string | null;
+  } | null>(null);
+  const [editBillingDetailsLoading, setEditBillingDetailsLoading] = useState(false);
+  const [editBillingForm, setEditBillingForm] = useState({
+    fullName: "",
+    companyName: "",
+    taxId: "",
+    addressLine1: "",
+    addressLine2: "",
+    city: "",
+    region: "",
+  });
+  const [editBillingSaving, setEditBillingSaving] = useState(false);
+  const [editBillingSubmitError, setEditBillingSubmitError] = useState<string | null>(null);
+  const [editBillingFieldErrors, setEditBillingFieldErrors] = useState<Record<string, string>>({});
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodDisplay | null | undefined>(undefined);
   const [paymentMethodLoading, setPaymentMethodLoading] = useState(false);
   const [paddleReady, setPaddleReady] = useState(false);
@@ -388,6 +418,126 @@ export function WorkspaceBillingTab() {
       setTransactionsLoading(false);
     }
   }, [apiFetch, showAllActivity]);
+
+  const openEditBillingModal = useCallback(
+    async (transactionId: string) => {
+      setEditBillingTransactionId(transactionId);
+      setEditBillingDetails(null);
+      setEditBillingSubmitError(null);
+      setEditBillingFieldErrors({});
+      setEditBillingDetailsLoading(true);
+      try {
+        const res = await apiFetch(`/api/billing/paddle/transactions/${transactionId}`, {
+          showToastOnError: true,
+        });
+        if (!res.ok) {
+          setEditBillingTransactionId(null);
+          return;
+        }
+        const json = await res.json();
+        const d = json.data as {
+          invoiceNumber?: string | null;
+          billedAt?: string | null;
+          totalCents?: number;
+          currency?: string;
+          fullName?: string;
+          companyName?: string | null;
+          taxId?: string | null;
+          addressLine1?: string | null;
+          addressLine2?: string | null;
+          city?: string | null;
+          region?: string | null;
+        };
+        setEditBillingDetails({
+          invoiceNumber: d.invoiceNumber ?? null,
+          billedAt: d.billedAt ?? null,
+          totalCents: d.totalCents ?? 0,
+          currency: d.currency ?? "USD",
+          fullName: d.fullName ?? "",
+          companyName: d.companyName ?? null,
+          taxId: d.taxId ?? null,
+          addressLine1: d.addressLine1 ?? null,
+          addressLine2: d.addressLine2 ?? null,
+          city: d.city ?? null,
+          region: d.region ?? null,
+        });
+        setEditBillingForm({
+          fullName: d.fullName ?? "",
+          companyName: d.companyName ?? "",
+          taxId: d.taxId ?? "",
+          addressLine1: d.addressLine1 ?? "",
+          addressLine2: d.addressLine2 ?? "",
+          city: d.city ?? "",
+          region: d.region ?? "",
+        });
+      } catch {
+        setEditBillingTransactionId(null);
+      } finally {
+        setEditBillingDetailsLoading(false);
+      }
+    },
+    [apiFetch]
+  );
+
+  const closeEditBillingModal = useCallback(() => {
+    if (!editBillingSaving) {
+      setEditBillingTransactionId(null);
+      setEditBillingDetails(null);
+      setEditBillingSubmitError(null);
+      setEditBillingFieldErrors({});
+    }
+  }, [editBillingSaving]);
+
+  const submitEditBilling = useCallback(async () => {
+    if (!editBillingTransactionId) return;
+    const fullName = editBillingForm.fullName.trim();
+    if (!fullName) {
+      setEditBillingFieldErrors((e) => ({ ...e, fullName: "Full name is required" }));
+      return;
+    }
+    setEditBillingSaving(true);
+    setEditBillingSubmitError(null);
+    setEditBillingFieldErrors({});
+    try {
+      const cityAlreadyPresent = Boolean(editBillingDetails?.city?.trim());
+      const regionAlreadyPresent = Boolean(editBillingDetails?.region?.trim());
+      const res = await apiFetch(`/api/billing/paddle/transactions/${editBillingTransactionId}/revise`, {
+        method: "POST",
+        body: JSON.stringify({
+          fullName,
+          companyName: editBillingForm.companyName.trim() || null,
+          taxId: editBillingForm.taxId.trim() || null,
+          addressLine1: editBillingForm.addressLine1.trim() || null,
+          addressLine2: editBillingForm.addressLine2.trim() || null,
+          city: editBillingForm.city.trim() || null,
+          region: editBillingForm.region.trim() || null,
+          cityAlreadyPresent: cityAlreadyPresent || undefined,
+          regionAlreadyPresent: regionAlreadyPresent || undefined,
+        }),
+        showToastOnError: false,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const details = json.details as { fieldErrors?: Record<string, string> } | undefined;
+        setEditBillingSubmitError((json.message as string) ?? "Failed to update billing details.");
+        const raw = details?.fieldErrors ?? {};
+        const fieldErrors: Record<string, string> = { ...raw };
+        if (raw.tax_identifier != null && fieldErrors.taxId == null) {
+          fieldErrors.taxId = typeof raw.tax_identifier === "string" ? raw.tax_identifier : String(raw.tax_identifier);
+        }
+        setEditBillingFieldErrors(fieldErrors);
+        return;
+      }
+      toast.addToast("success", "Billing details updated for this invoice.");
+      setEditBillingTransactionId(null);
+      setEditBillingDetails(null);
+      fetchTransactions();
+    } catch {
+      setEditBillingSubmitError("Failed to update billing details.");
+    } finally {
+      setEditBillingSaving(false);
+    }
+  }, [editBillingTransactionId, editBillingForm, editBillingDetails, apiFetch, toast, fetchTransactions]);
 
   const fetchPaymentMethod = useCallback(async () => {
     setPaymentMethodLoading(true);
@@ -1262,19 +1412,33 @@ export function WorkspaceBillingTab() {
                       <td className="py-2 pr-4 text-right text-(--text-primary)">
                         {(t.total.cents / 100).toFixed(2)} {t.total.currency}
                       </td>
-                      {/* EPIC 5: Payments are read-only. Only "View invoice"; no per-row "Edit billing details". */}
                       <td className="py-2 text-right">
-                        {t.status?.toLowerCase() === "completed" ? (
-                          <a
-                            href={`/api/billing/transactions/${t.id}/invoice-redirect`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 text-sm text-(--color-primary) underline hover:no-underline"
-                          >
-                            <IconEye size={14} />
-                            View invoice
-                          </a>
-                        ) : null}
+                        <div className="flex items-center justify-end gap-3">
+                          {t.status?.toLowerCase() === "completed" && !t.isRevised ? (
+                            <button
+                              type="button"
+                              onClick={() => openEditBillingModal(t.id)}
+                              className="inline-flex items-center gap-1.5 text-sm text-(--color-primary) underline hover:no-underline"
+                            >
+                              <IconPencil size={14} />
+                              Edit billing details
+                            </button>
+                          ) : null}
+                          {t.status?.toLowerCase() === "completed" && t.isRevised ? (
+                            <Badge variant="secondary">Edited</Badge>
+                          ) : null}
+                          {t.status?.toLowerCase() === "completed" ? (
+                            <a
+                              href={`/api/billing/transactions/${t.id}/invoice-redirect`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 text-sm text-(--color-primary) underline hover:no-underline"
+                            >
+                              <IconEye size={14} />
+                              View invoice
+                            </a>
+                          ) : null}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1284,6 +1448,221 @@ export function WorkspaceBillingTab() {
           )}
         </CardContent>
       </CardRoot>
+
+      {/* Edit billing details (invoice-specific) modal */}
+      <Dialog
+        open={editBillingTransactionId != null}
+        onClose={closeEditBillingModal}
+        title="Edit billing details"
+        description="Update customer and address for this invoice only."
+        closeDisabled={editBillingSaving}
+        allowOverlayClose={!editBillingSaving}
+        contentClassName="max-w-md"
+      >
+        <div className="space-y-4">
+          {editBillingDetailsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Spinner className="h-8 w-8" />
+            </div>
+          ) : editBillingDetails ? (
+            <>
+              <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) p-3 text-sm">
+                <p className="font-medium text-(--text-primary)">Invoice summary</p>
+                <p className="mt-1 text-(--text-secondary)">
+                  {editBillingDetails.invoiceNumber
+                    ? `Invoice ${editBillingDetails.invoiceNumber}`
+                    : "Invoice"}
+                  {editBillingDetails.billedAt
+                    ? ` · ${formatDate(editBillingDetails.billedAt)}`
+                    : ""}
+                </p>
+                <p className="mt-0.5 text-(--text-primary)">
+                  {(editBillingDetails.totalCents / 100).toFixed(2)} {editBillingDetails.currency}
+                </p>
+              </div>
+              {editBillingSubmitError && (
+                <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+                  {editBillingSubmitError}
+                </p>
+              )}
+              <div className="grid gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-(--text-muted)">Full name</label>
+                  <Input
+                    value={editBillingForm.fullName}
+                    onChange={(e) =>
+                      setEditBillingForm((f) => ({ ...f, fullName: e.target.value }))
+                    }
+                    placeholder="Required"
+                    maxLength={255}
+                    aria-invalid={!!editBillingFieldErrors.fullName}
+                    aria-describedby={editBillingFieldErrors.fullName ? "edit-fullName-error" : undefined}
+                  />
+                  {editBillingFieldErrors.fullName && (
+                    <p id="edit-fullName-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
+                      {editBillingFieldErrors.fullName}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-(--text-muted)">Company name</label>
+                  <Input
+                    value={editBillingForm.companyName}
+                    onChange={(e) =>
+                      setEditBillingForm((f) => ({ ...f, companyName: e.target.value }))
+                    }
+                    placeholder="Optional"
+                    maxLength={255}
+                    aria-invalid={!!editBillingFieldErrors.companyName}
+                  />
+                  {editBillingFieldErrors.companyName && (
+                    <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                      {editBillingFieldErrors.companyName}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-(--text-muted)">Tax ID</label>
+                  <p className="mb-1.5 text-xs text-(--text-muted)">
+                    Ensure the tax identifier matches the correct format for the customer&apos;s country to ensure tax is calculated accurately.{" "}
+                    <a
+                      href="https://www.paddle.com/help/start/set-up-paddle/what-format-should-i-use-for-my-vat-id"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-(--color-primary) underline hover:no-underline"
+                    >
+                      Check valid formats
+                    </a>
+                  </p>
+                  <Input
+                    value={editBillingForm.taxId}
+                    onChange={(e) =>
+                      setEditBillingForm((f) => ({ ...f, taxId: e.target.value }))
+                    }
+                    placeholder="Optional"
+                    maxLength={64}
+                    aria-invalid={!!editBillingFieldErrors.taxId}
+                    aria-describedby={editBillingFieldErrors.taxId ? "edit-taxId-error" : undefined}
+                  />
+                  {editBillingFieldErrors.taxId && (
+                    <p id="edit-taxId-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
+                      {editBillingFieldErrors.taxId}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-(--text-muted)">First line of address</label>
+                  <Input
+                    value={editBillingForm.addressLine1}
+                    onChange={(e) =>
+                      setEditBillingForm((f) => ({ ...f, addressLine1: e.target.value }))
+                    }
+                    placeholder="Optional"
+                    maxLength={255}
+                    aria-invalid={!!editBillingFieldErrors.addressLine1}
+                  />
+                  {editBillingFieldErrors.addressLine1 && (
+                    <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                      {editBillingFieldErrors.addressLine1}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-(--text-muted)">Second line of address</label>
+                  <Input
+                    value={editBillingForm.addressLine2}
+                    onChange={(e) =>
+                      setEditBillingForm((f) => ({ ...f, addressLine2: e.target.value }))
+                    }
+                    placeholder="Optional"
+                    maxLength={255}
+                    aria-invalid={!!editBillingFieldErrors.addressLine2}
+                  />
+                  {editBillingFieldErrors.addressLine2 && (
+                    <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                      {editBillingFieldErrors.addressLine2}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-(--text-muted)">City</label>
+                  <Input
+                    value={editBillingForm.city}
+                    onChange={(e) =>
+                      setEditBillingForm((f) => ({ ...f, city: e.target.value }))
+                    }
+                    placeholder={editBillingDetails.city?.trim() ? undefined : "Optional"}
+                    maxLength={255}
+                    aria-invalid={!!editBillingFieldErrors.city}
+                    disabled={!!editBillingDetails.city?.trim()}
+                    readOnly={!!editBillingDetails.city?.trim()}
+                    className={editBillingDetails.city?.trim() ? "bg-(--muted) cursor-not-allowed" : undefined}
+                  />
+                  {editBillingDetails.city?.trim() ? (
+                    <p className="mt-1 text-xs text-(--text-muted)">Cannot be changed for this invoice.</p>
+                  ) : null}
+                  {editBillingFieldErrors.city && (
+                    <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                      {editBillingFieldErrors.city}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-(--text-muted)">Region / State</label>
+                  <Input
+                    value={editBillingForm.region}
+                    onChange={(e) =>
+                      setEditBillingForm((f) => ({ ...f, region: e.target.value }))
+                    }
+                    placeholder={editBillingDetails.region?.trim() ? undefined : "Optional"}
+                    maxLength={255}
+                    aria-invalid={!!editBillingFieldErrors.region}
+                    disabled={!!editBillingDetails.region?.trim()}
+                    readOnly={!!editBillingDetails.region?.trim()}
+                    className={editBillingDetails.region?.trim() ? "bg-(--muted) cursor-not-allowed" : undefined}
+                  />
+                  {editBillingDetails.region?.trim() ? (
+                    <p className="mt-1 text-xs text-(--text-muted)">Cannot be changed for this invoice.</p>
+                  ) : null}
+                  {editBillingFieldErrors.region && (
+                    <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                      {editBillingFieldErrors.region}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <Alert variant="warning" className="text-sm font-medium">
+                This invoice can only be edited once. Please review all fields before submitting.
+              </Alert>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={closeEditBillingModal}
+                  disabled={editBillingSaving}
+                  className="rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 py-2 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={submitEditBilling}
+                  disabled={editBillingSaving}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-(--color-primary) px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+                >
+                  {editBillingSaving ? (
+                    <>
+                      <Spinner className="h-4 w-4" />
+                      Saving…
+                    </>
+                  ) : (
+                    "Save changes"
+                  )}
+                </button>
+              </div>
+            </>
+          ) : null}
+        </div>
+      </Dialog>
 
       {/* Billing profile (tenant-level; future invoices only) */}
       <BillingProfileSection />

@@ -54,6 +54,8 @@ export const GET = withErrorHandler(async (req: Request) => {
       currency: true,
       totalCents: true,
       invoiceUrl: true,
+      receiptNumber: true,
+      revisedAt: true,
     },
   });
 
@@ -84,6 +86,8 @@ export const GET = withErrorHandler(async (req: Request) => {
           currency: true,
           totalCents: true,
           invoiceUrl: true,
+          receiptNumber: true,
+          revisedAt: true,
         },
       });
     } catch {
@@ -97,6 +101,8 @@ export const GET = withErrorHandler(async (req: Request) => {
     status: normalizeTransactionStatus(t.status),
     total: { cents: t.totalCents, currency: t.currency },
     invoiceUrl: t.invoiceUrl ?? undefined,
+    receiptNumber: t.receiptNumber ?? undefined,
+    isRevised: t.revisedAt != null,
   }));
 
   return apiSuccess({ transactions: list });
