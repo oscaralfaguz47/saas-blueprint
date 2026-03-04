@@ -803,25 +803,11 @@ export function WorkspaceBillingTab() {
         toast.addToast("error", "Could not open payment method update. Please try again.");
         return;
       }
-      let defaultCountry: string | null = null;
-      try {
-        const geoRes = await apiFetch("/api/billing/geo-country");
-        if (geoRes.ok) {
-          const geoJson = await geoRes.json().catch(() => null);
-          defaultCountry = (geoJson?.data as { countryCode?: string | null })?.countryCode ?? null;
-        }
-      } catch {
-        // ignore; checkout still opens without prefilled country
-      }
-      const customerEmail = session?.user?.email?.trim();
-      const Paddle = typeof window !== "undefined" ? (window as { Paddle?: { Checkout?: { open: (opts: { transactionId: string; settings?: { displayMode: string }; customer?: { email?: string; address?: { countryCode: string } } }) => void } } }).Paddle : undefined;
+      const Paddle = typeof window !== "undefined" ? (window as { Paddle?: { Checkout?: { open: (opts: { transactionId: string; settings?: { displayMode: string } }) => void } } }).Paddle : undefined;
       if (Paddle?.Checkout?.open) {
         Paddle.Checkout.open({
           transactionId,
           settings: { displayMode: "overlay" },
-          ...(defaultCountry && customerEmail
-            ? { customer: { email: customerEmail, address: { countryCode: defaultCountry } } }
-            : {}),
         });
       } else {
         toast.addToast("error", "Payment window could not open. Refresh the page and try again.");
@@ -829,37 +815,23 @@ export function WorkspaceBillingTab() {
     } finally {
       setPaymentMethodUpdateLoading(false);
     }
-  }, [apiFetch, toast, session?.user?.email]);
+  }, [toast]);
 
   const openPaidInvoiceCheckout = useCallback(
     async (providerTransactionId: string) => {
-      let defaultCountry: string | null = null;
-      try {
-        const geoRes = await apiFetch("/api/billing/geo-country");
-        if (geoRes.ok) {
-          const geoJson = await geoRes.json().catch(() => null);
-          defaultCountry = (geoJson?.data as { countryCode?: string | null })?.countryCode ?? null;
-        }
-      } catch {
-        // ignore
-      }
-      const customerEmail = session?.user?.email?.trim();
       const Paddle = typeof window !== "undefined"
-        ? (window as { Paddle?: { Checkout?: { open: (opts: { transactionId: string; settings?: { displayMode: string }; customer?: { email?: string; address?: { countryCode: string } } }) => void } } }).Paddle
+        ? (window as { Paddle?: { Checkout?: { open: (opts: { transactionId: string; settings?: { displayMode: string } }) => void } } }).Paddle
         : undefined;
       if (Paddle?.Checkout?.open) {
         Paddle.Checkout.open({
           transactionId: providerTransactionId,
           settings: { displayMode: "overlay" },
-          ...(defaultCountry && customerEmail
-            ? { customer: { email: customerEmail, address: { countryCode: defaultCountry } } }
-            : {}),
         });
       } else {
         toast.addToast("error", "Payment window could not open. Refresh the page and try again.");
       }
     },
-    [apiFetch, toast, session?.user?.email]
+    [toast]
   );
 
   const handleSelectPlan = useCallback(
@@ -937,25 +909,11 @@ export function WorkspaceBillingTab() {
           } catch {
             // ignore
           }
-          let defaultCountry: string | null = null;
-          try {
-            const geoRes = await apiFetch("/api/billing/geo-country");
-            if (geoRes.ok) {
-              const geoJson = await geoRes.json().catch(() => null);
-              defaultCountry = (geoJson?.data as { countryCode?: string | null })?.countryCode ?? null;
-            }
-          } catch {
-            // ignore; checkout still opens without prefilled country
-          }
-          const customerEmail = session?.user?.email?.trim();
-          const Paddle = typeof window !== "undefined" ? (window as { Paddle?: { Checkout?: { open: (opts: { transactionId: string; settings?: { displayMode: string }; customer?: { email?: string; address?: { countryCode: string } } }) => void } } }).Paddle : undefined;
+          const Paddle = typeof window !== "undefined" ? (window as { Paddle?: { Checkout?: { open: (opts: { transactionId: string; settings?: { displayMode: string } }) => void } } }).Paddle : undefined;
           if (Paddle?.Checkout?.open) {
             Paddle.Checkout.open({
               transactionId: data.transactionId,
               settings: { displayMode: "overlay" },
-              ...(defaultCountry && customerEmail
-                ? { customer: { email: customerEmail, address: { countryCode: defaultCountry } } }
-                : {}),
             });
           } else {
             toast.addToast("error", "Payment window could not open. Refresh the page and try again.");
@@ -1400,20 +1358,19 @@ export function WorkspaceBillingTab() {
         </CardContent>
       </CardRoot>
 
-      {/* Transaction history (EPIC 4/5) */}
-      <CardRoot>
-        <CardHeader>
-          <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">
-            Payments
-          </p>
-        </CardHeader>
-        <CardContent>
-          {transactionsLoading ? (
-            <Skeleton className="h-20 w-full" />
-          ) : transactions.length === 0 ? (
-            <p className="text-sm text-(--text-muted)">No transactions yet.</p>
-          ) : (
-            <div className="overflow-x-auto">
+      {/* Payments: only show when the workspace has at least one transaction */}
+      {transactions.length > 0 && (
+        <CardRoot>
+          <CardHeader>
+            <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">
+              Payments
+            </p>
+          </CardHeader>
+          <CardContent>
+            {transactionsLoading ? (
+              <Skeleton className="h-20 w-full" />
+            ) : (
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-(--border-subtle)">
@@ -1477,9 +1434,10 @@ export function WorkspaceBillingTab() {
                 </tbody>
               </table>
             </div>
-          )}
-        </CardContent>
-      </CardRoot>
+            )}
+          </CardContent>
+        </CardRoot>
+      )}
 
       {/* Edit billing details (invoice-specific) modal */}
       <Dialog
@@ -1696,8 +1654,8 @@ export function WorkspaceBillingTab() {
         </div>
       </Dialog>
 
-      {/* Billing profile (tenant-level; future invoices only) */}
-      <BillingProfileSection />
+      {/* Billing profile: only show if user has ever checked out (paid plan now or in the past) */}
+      {(billingState.hasPaidPlan || transactions.length > 0) && <BillingProfileSection />}
 
       {/* Payment method */}
       {(billingState.hasPaidPlan || billingState.isPastDue || billingState.isSuspended) && (
