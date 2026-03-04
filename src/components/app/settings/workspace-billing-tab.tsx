@@ -68,6 +68,7 @@ const PLAN_LABELS: Record<string, string> = {
 
 type BillingTransactionItem = {
   id: string;
+  providerTransactionId?: string;
   billedAt: string;
   status: string;
   total: { cents: number; currency: string };
@@ -397,12 +398,10 @@ export function WorkspaceBillingTab() {
     [apiFetch, toast]
   );
 
-  const [showAllActivity, setShowAllActivity] = useState(false);
   const fetchTransactions = useCallback(async () => {
     setTransactionsLoading(true);
     try {
-      const filter = showAllActivity ? "all" : "completed";
-      const res = await apiFetch(`/api/billing/transactions?filter=${filter}`, {
+      const res = await apiFetch("/api/billing/transactions?filter=completed", {
         showToastOnError: false,
       });
       if (!res.ok) {
@@ -417,7 +416,7 @@ export function WorkspaceBillingTab() {
     } finally {
       setTransactionsLoading(false);
     }
-  }, [apiFetch, showAllActivity]);
+  }, [apiFetch]);
 
   const openEditBillingModal = useCallback(
     async (transactionId: string) => {
@@ -831,6 +830,37 @@ export function WorkspaceBillingTab() {
       setPaymentMethodUpdateLoading(false);
     }
   }, [apiFetch, toast, session?.user?.email]);
+
+  const openPaidInvoiceCheckout = useCallback(
+    async (providerTransactionId: string) => {
+      let defaultCountry: string | null = null;
+      try {
+        const geoRes = await apiFetch("/api/billing/geo-country");
+        if (geoRes.ok) {
+          const geoJson = await geoRes.json().catch(() => null);
+          defaultCountry = (geoJson?.data as { countryCode?: string | null })?.countryCode ?? null;
+        }
+      } catch {
+        // ignore
+      }
+      const customerEmail = session?.user?.email?.trim();
+      const Paddle = typeof window !== "undefined"
+        ? (window as { Paddle?: { Checkout?: { open: (opts: { transactionId: string; settings?: { displayMode: string }; customer?: { email?: string; address?: { countryCode: string } } }) => void } } }).Paddle
+        : undefined;
+      if (Paddle?.Checkout?.open) {
+        Paddle.Checkout.open({
+          transactionId: providerTransactionId,
+          settings: { displayMode: "overlay" },
+          ...(defaultCountry && customerEmail
+            ? { customer: { email: customerEmail, address: { countryCode: defaultCountry } } }
+            : {}),
+        });
+      } else {
+        toast.addToast("error", "Payment window could not open. Refresh the page and try again.");
+      }
+    },
+    [apiFetch, toast, session?.user?.email]
+  );
 
   const handleSelectPlan = useCallback(
     async (plan: InAppPlanItem) => {
@@ -1373,20 +1403,9 @@ export function WorkspaceBillingTab() {
       {/* Transaction history (EPIC 4/5) */}
       <CardRoot>
         <CardHeader>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">
-              Payments
-            </p>
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-(--text-secondary)">
-              <input
-                type="checkbox"
-                checked={showAllActivity}
-                onChange={(e) => setShowAllActivity(e.target.checked)}
-                className="h-4 w-4 rounded border-(--border-subtle)"
-              />
-              Show all activity
-            </label>
-          </div>
+          <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">
+            Payments
+          </p>
         </CardHeader>
         <CardContent>
           {transactionsLoading ? (
@@ -1398,6 +1417,7 @@ export function WorkspaceBillingTab() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-(--border-subtle)">
+                    <th className="pb-2 pr-4 text-left font-medium text-(--text-muted)">Invoice #</th>
                     <th className="pb-2 pr-4 text-left font-medium text-(--text-muted)">Date</th>
                     <th className="pb-2 pr-4 text-left font-medium text-(--text-muted)">Status</th>
                     <th className="pb-2 pr-4 text-right font-medium text-(--text-muted)">Amount</th>
@@ -1407,6 +1427,7 @@ export function WorkspaceBillingTab() {
                 <tbody>
                   {transactions.map((t) => (
                     <tr key={t.id} className="border-b border-(--border-subtle)">
+                      <td className="py-2 pr-4 text-(--text-primary)">{t.receiptNumber ?? "—"}</td>
                       <td className="py-2 pr-4 text-(--text-primary)">{formatDate(t.billedAt)}</td>
                       <td className="py-2 pr-4 text-(--text-secondary)">{t.status}</td>
                       <td className="py-2 pr-4 text-right text-(--text-primary)">
@@ -1414,6 +1435,17 @@ export function WorkspaceBillingTab() {
                       </td>
                       <td className="py-2 text-right">
                         <div className="flex items-center justify-end gap-3">
+                          {(t.status?.toLowerCase() === "failed" ||
+                            t.status?.toLowerCase() === "past_due") &&
+                          t.providerTransactionId ? (
+                            <button
+                              type="button"
+                              onClick={() => openPaidInvoiceCheckout(t.providerTransactionId!)}
+                              className="inline-flex items-center gap-1.5 rounded-md bg-(--color-primary) px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
+                            >
+                              Paid invoice
+                            </button>
+                          ) : null}
                           {t.status?.toLowerCase() === "completed" && !t.isRevised ? (
                             <button
                               type="button"

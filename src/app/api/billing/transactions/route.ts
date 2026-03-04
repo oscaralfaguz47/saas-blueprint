@@ -12,7 +12,8 @@ const filterSchema = z.enum(["completed", "all"]);
 
 /**
  * GET /api/billing/transactions?filter=completed|all
- * Default filter=completed: only completed/paid/billed with totalCents > 0 (excludes $0 payment-method-update).
+ * Default filter=completed: completed/paid/billed plus failed/past_due (payable), totalCents > 0.
+ * Excludes ready/draft. providerTransactionId returned so client can open Paddle Checkout for past_due/failed.
  * filter=all: show ready/draft/incomplete/$0 etc.
  */
 export const GET = withErrorHandler(async (req: Request) => {
@@ -38,7 +39,7 @@ export const GET = withErrorHandler(async (req: Request) => {
   const statusFilter: { status?: { in: string[] }; totalCents?: { gt: number } } =
     filter === "completed"
       ? {
-          status: { in: ["completed", "paid", "billed"] },
+          status: { in: ["completed", "paid", "billed", "failed", "past_due"] },
           totalCents: { gt: 0 },
         }
       : {};
@@ -49,6 +50,7 @@ export const GET = withErrorHandler(async (req: Request) => {
     take: DEFAULT_LIMIT,
     select: {
       id: true,
+      providerTransactionId: true,
       billedAt: true,
       status: true,
       currency: true,
@@ -81,6 +83,7 @@ export const GET = withErrorHandler(async (req: Request) => {
         take: DEFAULT_LIMIT,
         select: {
           id: true,
+          providerTransactionId: true,
           billedAt: true,
           status: true,
           currency: true,
@@ -97,6 +100,7 @@ export const GET = withErrorHandler(async (req: Request) => {
 
   const list = transactions.map((t) => ({
     id: t.id,
+    providerTransactionId: t.providerTransactionId ?? undefined,
     billedAt: t.billedAt?.toISOString() ?? t.id,
     status: normalizeTransactionStatus(t.status),
     total: { cents: t.totalCents, currency: t.currency },
@@ -115,5 +119,6 @@ function normalizeTransactionStatus(raw: string): string {
   if (s === "draft") return "draft";
   if (["canceled", "cancelled"].includes(s)) return "canceled";
   if (s === "failed") return "failed";
+  if (s === "past_due") return "past_due";
   return raw || "unknown";
 }
