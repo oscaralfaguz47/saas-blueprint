@@ -45,88 +45,93 @@ type PaddleTransactionItem = {
 };
 
 /**
- * Fetch transactions for a Paddle customer and upsert into BillingTransaction.
- * Only processes transactions whose subscription_id is in providerSubscriptionIds so we never
- * attach another tenant's transactions to this tenant (same Paddle customer can have multiple subscriptions).
+ * Fetch transactions for this tenant's Paddle subscription(s) and upsert into BillingTransaction.
+ * Uses subscription_id filter so we only ever pull transactions for this tenant's subscription(s),
+ * never other tenants' (same Paddle customer can have multiple subscriptions across workspaces).
  */
 export async function syncTransactionsFromPaddle(params: {
   tenantId: string;
-  providerCustomerId: string;
-  /** This tenant's Paddle subscription ID(s). Only transactions for these subscriptions are upserted. */
+  /** This tenant's Paddle subscription ID(s). We fetch only these subscriptions' transactions. */
   providerSubscriptionIds: string[];
 }): Promise<{ synced: number }> {
-  const { tenantId, providerCustomerId, providerSubscriptionIds } = params;
-  const subscriptionIdSet = new Set(providerSubscriptionIds.map((id) => id?.trim()).filter(Boolean));
-  if (subscriptionIdSet.size === 0) return { synced: 0 };
+  const { tenantId, providerSubscriptionIds } = params;
+  const subscriptionIds = providerSubscriptionIds.map((id) => id?.trim()).filter(Boolean);
+  if (subscriptionIds.length === 0) return { synced: 0 };
 
-  const url = new URL(`${PADDLE_API_BASE}/transactions`);
-  url.searchParams.set("customer_id", providerCustomerId);
-  url.searchParams.set("per_page", "30");
-  url.searchParams.set("order_by", "billed_at[DESC]");
-
-  const res = await fetch(url.toString(), {
-    method: "GET",
-    headers: { Authorization: `Bearer ${getApiKey()}` },
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Paddle List Transactions failed: ${res.status} ${err}`);
-  }
-
-  const json = (await res.json()) as { data?: PaddleTransactionItem[] };
-  const list = json?.data ?? [];
-  if (list.length === 0) return { synced: 0 };
-
+  const subscriptionIdSet = new Set(subscriptionIds);
+  const seenTransactionIds = new Set<string>();
   let synced = 0;
-  for (const txn of list) {
-    const providerTransactionId = txn?.id?.trim();
-    if (!providerTransactionId || providerTransactionId.length > 191) continue;
 
-    const totals = txn?.details?.totals;
-    const subtotalCents = parseAmount(totals?.subtotal);
-    const taxCents = parseAmount(totals?.tax);
-    const totalCents = parseAmount(totals?.total);
-    const currency = (txn?.currency_code ?? "USD").slice(0, 10);
-    const status = (txn?.status ?? "completed").slice(0, 40);
-    const billedAt = parseDate(txn?.billed_at ?? txn?.created_at);
-    const subId = txn?.subscription_id?.slice(0, 191) ?? null;
-    if (!subId || !subscriptionIdSet.has(subId)) continue;
+  for (const subId of subscriptionIds) {
+    const url = new URL(`${PADDLE_API_BASE}/transactions`);
+    url.searchParams.set("subscription_id", subId);
+    url.searchParams.set("per_page", "30");
+    url.searchParams.set("order_by", "billed_at[DESC]");
 
-    const receiptNumber = txn?.invoice_number?.slice(0, 120) ?? null;
-    const providerInvoiceId =
-      typeof txn?.invoice_id === "string" && txn.invoice_id.trim().length > 0 && txn.invoice_id.length <= 191
-        ? txn.invoice_id.trim()
-        : null;
-
-    await prisma.billingTransaction.upsert({
-      where: { providerTransactionId },
-      create: {
-        tenantId,
-        provider: "paddle",
-        providerTransactionId,
-        status,
-        billedAt,
-        currency,
-        subtotalCents,
-        taxCents,
-        totalCents,
-        providerInvoiceId,
-        receiptNumber,
-        planCode: null,
-        providerSubscriptionId: subId,
-      },
-      update: {
-        status,
-        billedAt,
-        subtotalCents,
-        taxCents,
-        totalCents,
-        providerInvoiceId: providerInvoiceId ?? undefined,
-        receiptNumber: receiptNumber ?? undefined,
-        providerSubscriptionId: subId ?? undefined,
-      },
+    const res = await fetch(url.toString(), {
+      method: "GET",
+      headers: { Authorization: `Bearer ${getApiKey()}` },
     });
-    synced += 1;
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Paddle List Transactions failed: ${res.status} ${err}`);
+    }
+
+    const json = (await res.json()) as { data?: PaddleTransactionItem[] };
+    const list = json?.data ?? [];
+
+    for (const txn of list) {
+      const providerTransactionId = txn?.id?.trim();
+      if (!providerTransactionId || providerTransactionId.length > 191) continue;
+      if (seenTransactionIds.has(providerTransactionId)) continue;
+      seenTransactionIds.add(providerTransactionId);
+
+      const txnSubId = txn?.subscription_id?.slice(0, 191) ?? null;
+      if (!txnSubId || !subscriptionIdSet.has(txnSubId)) continue;
+
+      const totals = txn?.details?.totals;
+      const subtotalCents = parseAmount(totals?.subtotal);
+      const taxCents = parseAmount(totals?.tax);
+      const totalCents = parseAmount(totals?.total);
+      const currency = (txn?.currency_code ?? "USD").slice(0, 10);
+      const status = (txn?.status ?? "completed").slice(0, 40);
+      const billedAt = parseDate(txn?.billed_at ?? txn?.created_at);
+      const receiptNumber = txn?.invoice_number?.slice(0, 120) ?? null;
+      const providerInvoiceId =
+        typeof txn?.invoice_id === "string" && txn.invoice_id.trim().length > 0 && txn.invoice_id.length <= 191
+          ? txn.invoice_id.trim()
+          : null;
+
+      await prisma.billingTransaction.upsert({
+        where: { providerTransactionId },
+        create: {
+          tenantId,
+          provider: "paddle",
+          providerTransactionId,
+          status,
+          billedAt,
+          currency,
+          subtotalCents,
+          taxCents,
+          totalCents,
+          providerInvoiceId,
+          receiptNumber,
+          planCode: null,
+          providerSubscriptionId: txnSubId,
+        },
+        update: {
+          status,
+          billedAt,
+          subtotalCents,
+          taxCents,
+          totalCents,
+          providerInvoiceId: providerInvoiceId ?? undefined,
+          receiptNumber: receiptNumber ?? undefined,
+          providerSubscriptionId: txnSubId ?? undefined,
+        },
+      });
+      synced += 1;
+    }
   }
 
   return { synced };

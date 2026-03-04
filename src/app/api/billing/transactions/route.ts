@@ -61,20 +61,18 @@ export const GET = withErrorHandler(async (req: Request) => {
     },
   });
 
-  // Sync from Paddle by customer; only upsert transactions for this tenant's subscription(s)
+  // Sync from Paddle by subscription_id only (never by customer_id) so we never pull other tenants' transactions
   const subscriptions = await prisma.subscription.findMany({
     where: { tenantId, provider: "paddle" },
-    select: { providerCustomerId: true, providerSubscriptionId: true },
+    select: { providerSubscriptionId: true },
   });
-  const subscription = subscriptions[0];
-  if (subscription?.providerCustomerId && subscription?.providerSubscriptionId) {
+  const providerSubscriptionIds = subscriptions
+    .map((s) => s.providerSubscriptionId)
+    .filter((id): id is string => Boolean(id));
+  if (providerSubscriptionIds.length > 0) {
     try {
-      const providerSubscriptionIds = subscriptions
-        .map((s) => s.providerSubscriptionId)
-        .filter((id): id is string => Boolean(id));
       await syncTransactionsFromPaddle({
         tenantId,
-        providerCustomerId: subscription.providerCustomerId,
         providerSubscriptionIds,
       });
       transactions = await prisma.billingTransaction.findMany({

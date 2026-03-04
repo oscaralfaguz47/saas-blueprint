@@ -113,7 +113,7 @@ export const PUT = withErrorHandler(async (req: Request) => {
 
   const profile = await prisma.tenantBillingProfile.findUnique({
     where: { tenantId },
-    select: { providerAddressId: true, providerBusinessId: true },
+    select: { providerAddressId: true, providerBusinessId: true, countryCode: true },
   });
 
   let addressIdUsed: string | undefined = undefined;
