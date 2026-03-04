@@ -20,7 +20,7 @@ Implement a **robust, hierarchy-enforced security governance layer** that allows
 4. Revoke all active sessions  
 5. Revoke all remembered devices  
 
-While guaranteeing:
+# While guaranteeing:
 
 - Strict RBAC hierarchy enforcement
 - Governance safety constraints preservation
