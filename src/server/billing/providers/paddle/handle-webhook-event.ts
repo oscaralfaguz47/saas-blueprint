@@ -722,14 +722,35 @@ export async function handleWebhookEvent(params: {
         select: { id: true },
       });
     } else {
-      sub = await tx.subscription.create({
-        data: {
-          tenantId,
-          provider: "paddle",
-          ...baseData,
-        },
-        select: { id: true },
-      });
+      try {
+        sub = await tx.subscription.create({
+          data: {
+            tenantId,
+            provider: "paddle",
+            ...baseData,
+          },
+          select: { id: true },
+        });
+      } catch (createErr: unknown) {
+        const code = (createErr as { code?: string })?.code;
+        if (code === "P2002") {
+          const byTenantProvider = await tx.subscription.findUnique({
+            where: { tenantId_provider: { tenantId, provider: "paddle" } },
+            select: { id: true },
+          });
+          if (byTenantProvider) {
+            sub = await tx.subscription.update({
+              where: { id: byTenantProvider.id },
+              data: baseData,
+              select: { id: true },
+            });
+          } else {
+            throw createErr;
+          }
+        } else {
+          throw createErr;
+        }
+      }
     }
 
     if (actorUserId) {

@@ -37,8 +37,8 @@ export async function resolveEffectiveSubscription(
   tenantId: string
 ): Promise<EffectiveSubscription | null> {
   const sub = await prisma.subscription.findFirst({
-    where: { tenantId },
-    orderBy: { currentPeriodEnd: "desc" },
+    where: { tenantId, provider: "paddle" },
+    orderBy: [{ currentPeriodEnd: "desc" }, { id: "desc" }],
     select: {
       id: true,
       tenantId: true,

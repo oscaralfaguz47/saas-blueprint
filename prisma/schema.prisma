@@ -607,6 +607,7 @@ model Subscription {
 
   billingEvents BillingEvent[]
 
+  @@unique([tenantId, provider])
   @@index([tenantId, status])
   @@index([provider, providerSubscriptionId])
 }
