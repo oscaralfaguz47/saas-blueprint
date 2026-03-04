@@ -62,7 +62,7 @@ export const POST = withErrorHandler(async (req: Request, { params }: { params: 
     const raw = await req.json();
     body = reviseBodySchema.parse(raw);
   } catch (e) {
-    const message = e instanceof z.ZodError ? e.errors.map((x) => x.message).join("; ") : "Invalid request body";
+    const message = e instanceof z.ZodError ? e.issues.map((x) => x.message).join("; ") : "Invalid request body";
     return ApiErrors.VALIDATION_ERROR(message, e instanceof z.ZodError ? { fieldErrors: e.flatten().fieldErrors } : undefined);
   }
 
