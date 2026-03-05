@@ -1998,33 +1998,10 @@ export function WorkspaceBillingTab() {
         }
         contentClassName="max-w-6xl w-full"
       >
-        <div className="overflow-y-auto max-h-[75vh]">
-          <div className="space-y-4">
-            {!scheduledCancellation && summary.pendingPlanCode && summary.pendingPlanCode !== "free" && (
-              <Alert
-                variant="info"
-                title="Downgrade scheduled"
-                description={`Downgrade scheduled to ${PLAN_LABELS[summary.pendingPlanCode] ?? summary.pendingPlanCode} on ${formatDate(summary.periodEnd)}. You'll keep your current plan until then.`}
-              >
-                <button
-                  type="button"
-                  onClick={handleClearScheduledChange}
-                  disabled={clearScheduledChangeLoading}
-                  className="mt-2 inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 text-sm font-medium hover:bg-(--bg-surface-elev) disabled:opacity-50"
-                >
-                  {clearScheduledChangeLoading ? (
-                    <>
-                      <Spinner size="sm" />
-                      Updating…
-                    </>
-                  ) : (
-                    `Cancel schedule downgrade and keep the ${PLAN_LABELS[summary.planCode] ?? summary.planCode} plan`
-                  )}
-                </button>
-              </Alert>
-            )}
-            <div className="overflow-x-auto pb-2 -mx-1 px-1">
-              <div className="flex gap-4 min-w-max">
+        {/* Plan cards: horizontal scroll only on small viewports; grid on md+ so no scroll on desktop */}
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="overflow-x-auto md:overflow-x-visible px-4 pb-2 pt-4 sm:px-6">
+            <div className="flex gap-4 min-w-max md:min-w-0 md:grid md:grid-cols-2 md:auto-rows-fr lg:grid-cols-4">
             {IN_APP_PLAN_CATALOG.map((plan) => {
               const isCurrent = plan.code === billingState.currentPlan;
               const isScheduled =
@@ -2054,60 +2031,63 @@ export function WorkspaceBillingTab() {
               return (
                 <div
                   key={plan.code}
-                  className={`shrink-0 w-64 min-w-64 rounded-xl border p-4 ${
+                  className={`flex min-h-0 flex-col shrink-0 w-64 min-w-64 md:w-auto md:min-w-0 rounded-xl border p-4 ${
                     plan.mostPopular
                       ? "border-(--color-primary)/50 bg-(--bg-surface-elev)"
                       : "border-(--border-subtle) bg-(--bg-surface)"
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="font-semibold text-(--text-primary)">
-                      {plan.name}
-                    </h3>
-                    <div className="flex flex-wrap items-center gap-1.5 justify-end">
-                      {isCurrent && (
-                        <Badge variant="secondary">Current</Badge>
-                      )}
-                      {(isScheduled || isScheduledFree) && (
-                        <Badge variant="secondary">Scheduled</Badge>
-                      )}
-                      {plan.mostPopular && !isCurrent && !isScheduled && !isScheduledFree && (
-                        <Badge variant="secondary">Most popular</Badge>
-                      )}
+                  <div className="min-h-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="font-semibold text-(--text-primary)">
+                        {plan.name}
+                      </h3>
+                      <div className="flex flex-wrap items-center gap-1.5 justify-end">
+                        {isCurrent && (
+                          <Badge variant="secondary">Current</Badge>
+                        )}
+                        {(isScheduled || isScheduledFree) && (
+                          <Badge variant="secondary">Scheduled</Badge>
+                        )}
+                        {plan.mostPopular && !isCurrent && !isScheduled && !isScheduledFree && (
+                          <Badge variant="secondary">Most popular</Badge>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  <p className="mt-1 text-lg font-medium text-(--text-primary)">
-                    {formatPriceMonthly(plan.priceMonthlyCents)}/month
-                  </p>
-                  {isCurrent && (hasScheduledDowngrade || scheduledCancellation) && effectiveDate && (
-                    <p className="mt-1 text-xs text-(--text-muted)">
-                      Current until {effectiveDate}
+                    <p className="mt-1 text-lg font-medium text-(--text-primary)">
+                      {formatPriceMonthly(plan.priceMonthlyCents)}/month
                     </p>
-                  )}
-                  {(isScheduled || isScheduledFree) && effectiveDate && (
-                    <p className="mt-1 text-xs text-(--text-muted)">
-                      Will become active on {effectiveDate}
+                    {isCurrent && (hasScheduledDowngrade || scheduledCancellation) && effectiveDate && (
+                      <p className="mt-1 text-xs text-(--text-muted)">
+                        Current until {effectiveDate}
+                      </p>
+                    )}
+                    {(isScheduled || isScheduledFree) && effectiveDate && (
+                      <p className="mt-1 text-xs text-(--text-muted)">
+                        Will become active on {effectiveDate}
+                      </p>
+                    )}
+                    <p className="mt-2 text-xs text-(--text-muted)">
+                      {plan.bestFor}
                     </p>
-                  )}
-                  <p className="mt-2 text-xs text-(--text-muted)">
-                    {plan.bestFor}
-                  </p>
-                  <ul className="mt-3 space-y-1.5 text-xs text-(--text-secondary)">
-                    {plan.includes.slice(0, 5).map((item, i) => (
-                      <li key={i} className="flex items-start gap-2">
-                        <span className="mt-0.5 shrink-0 text-(--color-primary)" aria-hidden>✓</span>
-                        <span>{item}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  {plan.limits.length > 0 && (
-                    <ul className="mt-2 space-y-1 text-xs text-(--text-muted)">
-                      {plan.limits.slice(0, 3).map((item, i) => (
-                        <li key={i}>{item}</li>
+                    <ul className="mt-3 space-y-1.5 text-xs text-(--text-secondary)">
+                      {plan.includes.slice(0, 5).map((item, i) => (
+                        <li key={i} className="flex items-start gap-2">
+                          <span className="mt-0.5 shrink-0 text-(--color-primary)" aria-hidden>✓</span>
+                          <span>{item}</span>
+                        </li>
                       ))}
                     </ul>
-                  )}
-                  <div className="mt-4">
+                    {plan.limits.length > 0 && (
+                      <ul className="mt-2 space-y-1 text-xs text-(--text-muted)">
+                        {plan.limits.slice(0, 3).map((item, i) => (
+                          <li key={i}>{item}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <div className="mt-auto shrink-0 pt-4">
+                    <span className="mb-4 block h-px w-full bg-(--border-subtle)" aria-hidden />
                     {isCurrent ? (
                       <button
                         type="button"
@@ -2143,6 +2123,9 @@ export function WorkspaceBillingTab() {
                       </button>
                     ) : isResumePaidPlan ? (
                       <>
+                        <p className="mb-2 text-center text-xs text-(--text-muted)">
+                          Replaces your scheduled cancellation.
+                        </p>
                         <button
                           type="button"
                           onClick={() => handleSelectPlan(plan)}
@@ -2152,12 +2135,14 @@ export function WorkspaceBillingTab() {
                         >
                           Resume with this plan
                         </button>
-                        <p className="mt-1.5 text-xs text-(--text-muted)">
-                          Replaces your scheduled cancellation.
-                        </p>
                       </>
                     ) : isOtherLowerWithScheduled ? (
                       <>
+                        {effectiveDate ? (
+                          <p className="mb-2 text-center text-xs text-(--text-muted)">
+                            Replaces your scheduled downgrade. Effective on {effectiveDate}.
+                          </p>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => handleSelectPlan(plan)}
@@ -2167,11 +2152,6 @@ export function WorkspaceBillingTab() {
                         >
                           Schedule instead
                         </button>
-                        {effectiveDate && (
-                          <p className="mt-1.5 text-xs text-(--text-muted)">
-                            Replaces your scheduled downgrade. Effective on {effectiveDate}.
-                          </p>
-                        )}
                       </>
                     ) : canDowngrade && !scheduledCancellation ? (
                       <button
@@ -2194,7 +2174,6 @@ export function WorkspaceBillingTab() {
                 </div>
               );
             })}
-              </div>
             </div>
           </div>
         </div>
