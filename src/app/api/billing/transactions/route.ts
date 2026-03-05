@@ -7,14 +7,16 @@ import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { prisma } from "@/server/db";
 import { z } from "zod";
 
-const DEFAULT_LIMIT = 50;
+const DEFAULT_LIMIT = 20;
+const MAX_LIMIT = 50;
 const filterSchema = z.enum(["completed", "all"]);
+const limitSchema = z.coerce.number().int().min(1).max(MAX_LIMIT);
+const offsetSchema = z.coerce.number().int().min(0);
 
 /**
- * GET /api/billing/transactions?filter=completed|all
- * Default filter=completed: completed/paid/billed plus failed/past_due (payable), totalCents > 0.
- * Excludes ready/draft. providerTransactionId returned so client can open Paddle Checkout for past_due/failed.
- * filter=all: show ready/draft/incomplete/$0 etc.
+ * GET /api/billing/transactions?filter=completed|all&limit=20&offset=0
+ * Paginated. Default filter=completed; limit=20, offset=0.
+ * Returns { transactions, hasMore } for infinite scroll / load-more.
  */
 export const GET = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
@@ -35,6 +37,12 @@ export const GET = withErrorHandler(async (req: Request) => {
   const url = new URL(req.url);
   const filterParam = url.searchParams.get("filter") ?? "completed";
   const filter = filterSchema.safeParse(filterParam).success ? filterParam : "completed";
+  const limit = limitSchema.safeParse(url.searchParams.get("limit")).success
+    ? limitSchema.parse(url.searchParams.get("limit"))
+    : DEFAULT_LIMIT;
+  const offset = offsetSchema.safeParse(url.searchParams.get("offset")).success
+    ? offsetSchema.parse(url.searchParams.get("offset"))
+    : 0;
 
   const statusFilter: { status?: { in: string[] }; totalCents?: { gt: number } } =
     filter === "completed"
@@ -44,24 +52,21 @@ export const GET = withErrorHandler(async (req: Request) => {
         }
       : {};
 
-  let transactions = await prisma.billingTransaction.findMany({
-    where: { tenantId, ...statusFilter },
-    orderBy: [{ billedAt: "desc" }, { createdAt: "desc" }],
-    take: DEFAULT_LIMIT,
-    select: {
-      id: true,
-      providerTransactionId: true,
-      billedAt: true,
-      status: true,
-      currency: true,
-      totalCents: true,
-      invoiceUrl: true,
-      receiptNumber: true,
-      revisedAt: true,
-    },
-  });
+  const where = { tenantId, ...statusFilter };
+  const orderBy = [{ billedAt: "desc" as const }, { createdAt: "desc" as const }];
+  const select = {
+    id: true,
+    providerTransactionId: true,
+    billedAt: true,
+    status: true,
+    currency: true,
+    totalCents: true,
+    invoiceUrl: true,
+    receiptNumber: true,
+    revisedAt: true,
+  };
 
-  // Sync from Paddle by subscription_id only (never by customer_id) so we never pull other tenants' transactions
+  // Sync from Paddle once (on first page) so list is fresh before we paginate
   const subscriptions = await prisma.subscription.findMany({
     where: { tenantId, provider: "paddle" },
     select: { providerSubscriptionId: true },
@@ -69,32 +74,27 @@ export const GET = withErrorHandler(async (req: Request) => {
   const providerSubscriptionIds = subscriptions
     .map((s) => s.providerSubscriptionId)
     .filter((id): id is string => Boolean(id));
-  if (providerSubscriptionIds.length > 0) {
+  if (providerSubscriptionIds.length > 0 && offset === 0) {
     try {
       await syncTransactionsFromPaddle({
         tenantId,
         providerSubscriptionIds,
       });
-      transactions = await prisma.billingTransaction.findMany({
-        where: { tenantId, ...statusFilter },
-        orderBy: [{ billedAt: "desc" }, { createdAt: "desc" }],
-        take: DEFAULT_LIMIT,
-        select: {
-          id: true,
-          providerTransactionId: true,
-          billedAt: true,
-          status: true,
-          currency: true,
-          totalCents: true,
-          invoiceUrl: true,
-          receiptNumber: true,
-          revisedAt: true,
-        },
-      });
     } catch {
-      // Ignore sync errors (e.g. API key, network); keep existing list
+      // Ignore sync errors; keep existing list
     }
   }
+
+  let transactions = await prisma.billingTransaction.findMany({
+    where,
+    orderBy,
+    take: limit + 1,
+    skip: offset,
+    select,
+  });
+
+  const hasMore = transactions.length > limit;
+  if (hasMore) transactions = transactions.slice(0, limit);
 
   const list = transactions.map((t) => ({
     id: t.id,
@@ -107,7 +107,7 @@ export const GET = withErrorHandler(async (req: Request) => {
     isRevised: t.revisedAt != null,
   }));
 
-  return apiSuccess({ transactions: list });
+  return apiSuccess({ transactions: list, hasMore });
 });
 
 function normalizeTransactionStatus(raw: string): string {

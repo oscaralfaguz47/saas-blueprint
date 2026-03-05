@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import Script from "next/script";
 import { Spinner } from "@/components/ui/spinner";
@@ -25,7 +26,7 @@ import {
   type InAppPlanItem,
 } from "@/lib/billing/plan-catalog";
 import { useSession } from "next-auth/react";
-import { IconEye, IconPencil } from "@/components/ui/icons";
+import { IconAlertCircle, IconEye, IconPencil } from "@/components/ui/icons";
 import { BillingProfileSection } from "@/components/app/settings/billing-profile-section";
 import { Input } from "@/components/ui/input";
 
@@ -270,7 +271,7 @@ const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 30000;
 const MAX_POLL_ATTEMPTS = Math.floor(POLL_TIMEOUT_MS / POLL_INTERVAL_MS);
 
-/** Actions menu for a single invoice row (••• dropdown). */
+/** Actions menu for a single invoice row (••• dropdown). Rendered in a portal so it is not clipped by the card's overflow. */
 function InvoiceRowActions({
   transaction,
   onViewInvoice,
@@ -283,24 +284,50 @@ function InvoiceRowActions({
   onPaidInvoice?: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [menuRect, setMenuRect] = useState<{ top: number; right: number } | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const statusLower = transaction.status?.toLowerCase() ?? "";
   const isCompleted = statusLower === "completed";
   const isFailedOrPastDue = statusLower === "failed" || statusLower === "past_due";
 
+  const updateMenuPosition = useCallback(() => {
+    const btn = buttonRef.current;
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    setMenuRect({ top: rect.top, right: rect.right });
+  }, []);
+
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    if (open) {
-      document.addEventListener("click", handleClickOutside);
-      return () => document.removeEventListener("click", handleClickOutside);
+    if (!open) {
+      setMenuRect(null);
+      return;
     }
-  }, [open]);
+    updateMenuPosition();
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        buttonRef.current?.contains(target) ||
+        menuRef.current?.contains(target)
+      )
+        return;
+      setOpen(false);
+    };
+    const handleScrollOrResize = () => updateMenuPosition();
+    document.addEventListener("click", handleClickOutside, true);
+    window.addEventListener("scroll", handleScrollOrResize, true);
+    window.addEventListener("resize", handleScrollOrResize);
+    return () => {
+      document.removeEventListener("click", handleClickOutside, true);
+      window.removeEventListener("scroll", handleScrollOrResize, true);
+      window.removeEventListener("resize", handleScrollOrResize);
+    };
+  }, [open, updateMenuPosition]);
 
   return (
-    <div className="relative inline-block" ref={ref}>
+    <div className="relative inline-block">
       <button
+        ref={buttonRef}
         type="button"
         onClick={(e) => {
           e.stopPropagation();
@@ -308,72 +335,73 @@ function InvoiceRowActions({
         }}
         className="inline-flex h-8 w-8 items-center justify-center rounded-md text-(--text-muted) hover:bg-(--bg-surface-elev) hover:text-(--text-primary)"
         aria-label="Invoice actions"
+        aria-expanded={open}
+        aria-haspopup="menu"
       >
         <span className="text-base leading-none">•••</span>
       </button>
-      {open && (
-        <div
-          className="absolute right-0 top-full z-10 mt-1 min-w-[180px] rounded-lg border border-(--border-subtle) bg-(--bg-surface) py-1 shadow-lg"
-          role="menu"
-        >
-          {isCompleted && (
-            <>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onViewInvoice();
-                  setOpen(false);
-                }}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-(--text-primary) hover:bg-(--bg-surface-elev)"
-              >
-                <IconEye size={14} />
-                View invoice
-              </button>
-              {!transaction.isRevised && (
+      {open &&
+        menuRect != null &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            className="fixed z-[100] min-w-[180px] rounded-lg border border-(--border-subtle) bg-(--bg-surface) py-1 shadow-lg"
+            style={{
+              bottom: `calc(100vh - ${menuRect.top}px + 4px)`,
+              right: `calc(100vw - ${menuRect.right}px)`,
+            }}
+          >
+            {isCompleted && (
+              <>
                 <button
                   type="button"
                   role="menuitem"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onEditBilling();
+                    onViewInvoice();
                     setOpen(false);
                   }}
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-(--text-primary) hover:bg-(--bg-surface-elev)"
                 >
-                  <IconPencil size={14} />
-                  Edit billing details
+                  <IconEye size={14} />
+                  View invoice
                 </button>
-              )}
-              <a
-                href={`/api/billing/transactions/${transaction.id}/invoice-redirect`}
-                target="_blank"
-                rel="noopener noreferrer"
+                {!transaction.isRevised && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEditBilling();
+                      setOpen(false);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-(--text-primary) hover:bg-(--bg-surface-elev)"
+                  >
+                    <IconPencil size={14} />
+                    Edit billing details
+                  </button>
+                )}
+              </>
+            )}
+            {isFailedOrPastDue && onPaidInvoice && (
+              <button
+                type="button"
                 role="menuitem"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPaidInvoice();
+                  setOpen(false);
+                }}
                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-(--text-primary) hover:bg-(--bg-surface-elev)"
-                onClick={() => setOpen(false)}
               >
-                Download PDF
-              </a>
-            </>
-          )}
-          {isFailedOrPastDue && onPaidInvoice && (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={(e) => {
-                e.stopPropagation();
-                onPaidInvoice();
-                setOpen(false);
-              }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-(--text-primary) hover:bg-(--bg-surface-elev)"
-            >
-              Paid invoice
-            </button>
-          )}
-        </div>
-      )}
+                Paid invoice
+              </button>
+            )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
@@ -400,6 +428,8 @@ export function WorkspaceBillingTab() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [transactions, setTransactions] = useState<BillingTransactionItem[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
+  const [transactionsHasMore, setTransactionsHasMore] = useState(false);
+  const transactionsScrollSentinelRef = useRef<HTMLTableRowElement>(null);
   const [editBillingTransactionId, setEditBillingTransactionId] = useState<string | null>(null);
   const [editBillingDetails, setEditBillingDetails] = useState<{
     invoiceNumber: string | null;
@@ -506,25 +536,70 @@ export function WorkspaceBillingTab() {
     [apiFetch, toast]
   );
 
-  const fetchTransactions = useCallback(async () => {
-    setTransactionsLoading(true);
-    try {
-      const res = await apiFetch("/api/billing/transactions?filter=completed", {
-        showToastOnError: false,
-      });
-      if (!res.ok) {
-        setTransactions([]);
-        return;
+  const TRANSACTIONS_PAGE_SIZE = 20;
+
+  const [transactionsLoadingMore, setTransactionsLoadingMore] = useState(false);
+
+  const fetchTransactions = useCallback(
+    async (append: boolean = false) => {
+      if (append) {
+        setTransactionsLoadingMore(true);
+      } else {
+        setTransactionsLoading(true);
       }
-      const json = await res.json();
-      const list = (json.data as { transactions?: BillingTransactionItem[] })?.transactions ?? [];
-      setTransactions(Array.isArray(list) ? list : []);
-    } catch {
-      setTransactions([]);
-    } finally {
-      setTransactionsLoading(false);
-    }
-  }, [apiFetch]);
+      try {
+        const offset = append ? transactions.length : 0;
+        const res = await apiFetch(
+          `/api/billing/transactions?filter=completed&limit=${TRANSACTIONS_PAGE_SIZE}&offset=${offset}`,
+          { showToastOnError: false }
+        );
+        if (!res.ok) {
+          if (!append) setTransactions([]);
+          setTransactionsHasMore(false);
+          return;
+        }
+        const json = await res.json();
+        const data = json.data as {
+          transactions?: BillingTransactionItem[];
+          hasMore?: boolean;
+        };
+        const list = Array.isArray(data?.transactions) ? data.transactions : [];
+        setTransactionsHasMore(Boolean(data?.hasMore));
+        if (append) {
+          setTransactions((prev) => [...prev, ...list]);
+        } else {
+          setTransactions(list);
+        }
+      } catch {
+        if (!append) setTransactions([]);
+        setTransactionsHasMore(false);
+      } finally {
+        if (append) {
+          setTransactionsLoadingMore(false);
+        } else {
+          setTransactionsLoading(false);
+        }
+      }
+    },
+    [apiFetch, transactions.length]
+  );
+
+  useEffect(() => {
+    const sentinel = transactionsScrollSentinelRef.current;
+    if (!sentinel || !transactionsHasMore || transactionsLoading || transactionsLoadingMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [e] = entries;
+        if (!e?.isIntersecting) return;
+        if (transactionsHasMore && !transactionsLoading && !transactionsLoadingMore) {
+          fetchTransactions(true);
+        }
+      },
+      { root: null, rootMargin: "120px", threshold: 0 }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [transactionsHasMore, transactionsLoading, transactionsLoadingMore, fetchTransactions]);
 
   const openEditBillingModal = useCallback(
     async (transactionId: string) => {
@@ -1198,8 +1273,28 @@ export function WorkspaceBillingTab() {
 
   const nextChargeDate = summary?.periodEnd ? formatDate(summary.periodEnd) : null;
   const currentPlanItem = IN_APP_PLAN_CATALOG.find((p) => p.code === billingState.currentPlan);
-  const nextInvoicePlanCents = currentPlanItem?.priceMonthlyCents ?? 0;
-  const nextInvoiceOverageCents = summary?.overageEstimate ?? 0;
+
+  // Next invoice reflects scheduled downgrade or cancellation (not current plan when a change is scheduled)
+  const isScheduledCancelToFree =
+    summary?.pendingChangeType === "cancel_to_free_end_of_period" ||
+    (Boolean(summary?.cancelAtPeriodEnd) && (summary?.pendingPlanCode === "free" || summary?.pendingPlanCode == null));
+  const isScheduledDowngradeToPaid =
+    summary?.pendingChangeType === "downgrade_end_of_period" &&
+    summary?.pendingPlanCode &&
+    summary.pendingPlanCode !== "free";
+
+  let nextInvoicePlanLabel = planLabel;
+  let nextInvoicePlanCents = currentPlanItem?.priceMonthlyCents ?? 0;
+  if (isScheduledCancelToFree) {
+    nextInvoicePlanLabel = "Free";
+    nextInvoicePlanCents = 0;
+  } else if (isScheduledDowngradeToPaid && summary?.pendingPlanCode) {
+    const targetPlanItem = IN_APP_PLAN_CATALOG.find((p) => p.code === summary.pendingPlanCode);
+    nextInvoicePlanLabel = PLAN_LABELS[summary.pendingPlanCode] ?? summary.pendingPlanCode;
+    nextInvoicePlanCents = targetPlanItem?.priceMonthlyCents ?? 0;
+  }
+
+  const nextInvoiceOverageCents = isScheduledCancelToFree ? 0 : (summary?.overageEstimate ?? 0);
   const nextInvoiceTotalCents = nextInvoicePlanCents + nextInvoiceOverageCents;
 
   return (
@@ -1488,7 +1583,7 @@ export function WorkspaceBillingTab() {
       {/* Row 2: Next Invoice | Payment Method — only when at least one is relevant */}
       {(billingState.hasPaidPlan && nextChargeDate) || (billingState.hasPaidPlan || billingState.isPastDue || billingState.isSuspended) ? (
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        {/* Next Invoice — only when we have a billing period and plan info */}
+        {/* Next Invoice — reflects scheduled downgrade or cancellation; no charge when moving to Free */}
         {billingState.hasPaidPlan && nextChargeDate && (
           <CardRoot className="shadow-sm">
             <CardHeader>
@@ -1497,20 +1592,33 @@ export function WorkspaceBillingTab() {
               </p>
             </CardHeader>
             <CardContent className="space-y-2">
-              <p className="text-sm font-medium text-(--text-primary)">
-                {nextChargeDate}
-              </p>
-              <p className="text-sm text-(--text-secondary)">
-                {planLabel} plan · {formatPriceMonthly(nextInvoicePlanCents)}
-              </p>
-              {nextInvoiceOverageCents > 0 && (
-                <p className="text-sm text-(--text-secondary)">
-                  Estimated overage · ${(nextInvoiceOverageCents / 100).toFixed(2)}
-                </p>
+              {isScheduledCancelToFree ? (
+                <>
+                  <p className="text-sm font-medium text-(--text-primary)">
+                    No upcoming invoice
+                  </p>
+                  <p className="text-sm text-(--text-secondary)">
+                    You&apos;re moving to Free on {nextChargeDate}. No charge after that.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium text-(--text-primary)">
+                    {nextChargeDate}
+                  </p>
+                  <p className="text-sm text-(--text-secondary)">
+                    {nextInvoicePlanLabel} plan · {formatPriceMonthly(nextInvoicePlanCents)}
+                  </p>
+                  {nextInvoiceOverageCents > 0 && (
+                    <p className="text-sm text-(--text-secondary)">
+                      Estimated overage · ${(nextInvoiceOverageCents / 100).toFixed(2)}
+                    </p>
+                  )}
+                  <p className="pt-2 text-base font-semibold text-(--text-primary) border-t border-(--border-subtle)">
+                    Estimated total · {formatPriceMonthly(nextInvoiceTotalCents)}
+                  </p>
+                </>
               )}
-              <p className="pt-2 text-base font-semibold text-(--text-primary) border-t border-(--border-subtle)">
-                Estimated total · {formatPriceMonthly(nextInvoiceTotalCents)}
-              </p>
             </CardContent>
           </CardRoot>
         )}
@@ -1579,13 +1687,13 @@ export function WorkspaceBillingTab() {
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-(--border-subtle) bg-(--bg-surface-elev)">
-                      <th className="px-4 py-3 text-left font-medium text-(--text-muted)">Invoice</th>
-                      <th className="px-4 py-3 text-left font-medium text-(--text-muted)">Period</th>
-                      <th className="px-4 py-3 text-left font-medium text-(--text-muted)">Status</th>
-                      <th className="px-4 py-3 text-right font-medium text-(--text-muted)">Amount</th>
-                      <th className="px-4 py-3 text-right font-medium text-(--text-muted)">Actions</th>
+                  <thead className="sticky top-0 z-10 border-b border-(--border-subtle) bg-(--bg-surface) shadow-[0_1px_0_0_var(--border-subtle)]">
+                    <tr>
+                      <th className="bg-(--bg-surface) px-4 py-3 text-left font-medium text-(--text-muted)">Invoice</th>
+                      <th className="bg-(--bg-surface) px-4 py-3 text-left font-medium text-(--text-muted)">Period</th>
+                      <th className="bg-(--bg-surface) px-4 py-3 text-left font-medium text-(--text-muted)">Status</th>
+                      <th className="bg-(--bg-surface) px-4 py-3 text-right font-medium text-(--text-muted)">Amount</th>
+                      <th className="bg-(--bg-surface) px-4 py-3 text-right font-medium text-(--text-muted)">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1603,20 +1711,6 @@ export function WorkspaceBillingTab() {
                         <tr
                           key={t.id}
                           className="border-b border-(--border-subtle) transition-colors hover:bg-(--bg-surface-elev)"
-                          role="button"
-                          tabIndex={0}
-                          onClick={(e) => {
-                            if ((e.target as HTMLElement).closest("[data-invoice-action]")) return;
-                            if (t.status?.toLowerCase() === "completed") {
-                              window.open(`/api/billing/transactions/${t.id}/invoice-redirect`, "_blank");
-                            }
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && t.status?.toLowerCase() === "completed") {
-                              window.open(`/api/billing/transactions/${t.id}/invoice-redirect`, "_blank");
-                            }
-                            if (e.key === "Enter" && (e.target as HTMLElement).closest("[data-invoice-action]")) return;
-                          }}
                         >
                           <td className="px-4 py-3 text-(--text-primary) font-medium">
                             {t.receiptNumber ?? "—"}
@@ -1641,6 +1735,20 @@ export function WorkspaceBillingTab() {
                         </tr>
                       );
                     })}
+                    {transactions.length > 0 && (transactionsHasMore || transactionsLoadingMore) && (
+                      <tr ref={transactionsScrollSentinelRef}>
+                        <td colSpan={5} className="px-4 py-3 text-center">
+                          {transactionsLoadingMore ? (
+                            <span className="inline-flex items-center gap-2 text-sm text-(--text-muted)">
+                              <Spinner size="sm" />
+                              Loading more…
+                            </span>
+                          ) : (
+                            <span className="text-sm text-(--text-muted)">Scroll for more</span>
+                          )}
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -2211,25 +2319,42 @@ export function WorkspaceBillingTab() {
         )}
       </Dialog>
 
-      {/* Payment declined — ask user to update payment method; after update we retry upgrade when billing=updated */}
+      {/* Payment declined — UI only: layout, spacing, amber accent. No logic/handler changes. */}
       <Dialog
         open={paymentDeclinedModalOpen}
         onClose={closePaymentDeclinedModal}
-        title="Payment declined"
-        contentClassName="max-w-md"
+        title={
+          <span className="inline-flex items-center gap-2">
+            <IconAlertCircle size={20} className="shrink-0 text-amber-600 dark:text-amber-500" aria-hidden />
+            <span>Payment declined</span>
+          </span>
+        }
+        contentClassName="max-w-md border-l-4 border-amber-500"
       >
-        <div className="space-y-4">
+        <div className="flex flex-col gap-5">
+          {/* Amber alert banner — presentational only */}
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-200">
+            <p className="font-medium">
+              Payment could not be processed. Update your payment method to continue.
+            </p>
+          </div>
+
+          {/* Context: card brand + last4 emphasized */}
           <p className="text-sm text-(--text-primary)">
             {paymentMethod ? (
-              <>Your {formatCardBrand(paymentMethod.brand)} •••• {paymentMethod.last4} was declined while attempting to upgrade your workspace.</>
+              <>
+                Your <span className="font-medium text-(--text-primary)">{formatCardBrand(paymentMethod.brand)} •••• {paymentMethod.last4}</span> was declined while attempting to upgrade your workspace.
+              </>
             ) : (
               <>Your card was declined while attempting to upgrade your workspace.</>
             )}
           </p>
+
+          {/* Upgrade plan — existing data, neutral info card */}
           {paymentDeclinedPlanCode && (
-            <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 py-2">
-              <p className="text-xs font-medium text-(--text-muted)">Upgrade plan</p>
-              <p className="mt-0.5 text-sm font-medium text-(--text-primary)">
+            <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-4 py-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">Upgrade plan</p>
+              <p className="mt-1.5 text-sm font-semibold text-(--text-primary)">
                 {PLAN_LABELS[paymentDeclinedPlanCode] ?? paymentDeclinedPlanCode} — {(() => {
                   const plan = IN_APP_PLAN_CATALOG.find((p) => p.code === paymentDeclinedPlanCode);
                   return plan ? formatPriceMonthly(plan.priceMonthlyCents) + "/month" : "";
@@ -2237,26 +2362,34 @@ export function WorkspaceBillingTab() {
               </p>
             </div>
           )}
+
+          {/* Possible reasons — neutral tone, clean spacing */}
           <div>
             <p className="text-xs font-medium text-(--text-muted)">Possible reasons</p>
-            <ul className="mt-1 list-inside list-disc space-y-0.5 text-sm text-(--text-secondary)">
+            <ul className="mt-2 list-inside list-disc space-y-1 text-sm leading-relaxed text-(--text-secondary)">
               <li>Insufficient funds</li>
               <li>Card expired</li>
               <li>Bank blocked the transaction</li>
             </ul>
           </div>
-          <p className="text-sm text-(--text-primary)">
+
+          {/* Primary instruction */}
+          <p className="text-sm font-medium text-(--text-primary)">
             Please update your payment method to continue.
           </p>
+
+          {/* Reassurance — smaller, muted */}
           <p className="text-xs text-(--text-muted)">
             Your upgrade will resume automatically after updating your payment method.
           </p>
-          <div className="flex flex-wrap gap-2 pt-2">
+
+          {/* Buttons: same handlers, no logic change. Spacing and visual hierarchy only. */}
+          <div className="flex flex-wrap items-center gap-3 pt-1">
             <button
               type="button"
               onClick={handlePaymentDeclinedUpdateMethod}
               disabled={paymentMethodUpdateLoading}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-50"
+              className="inline-flex h-9 min-w-36 items-center justify-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:ring-offset-2 disabled:opacity-50"
             >
               {paymentMethodUpdateLoading ? (
                 <>
@@ -2270,7 +2403,7 @@ export function WorkspaceBillingTab() {
             <button
               type="button"
               onClick={closePaymentDeclinedModal}
-              className="inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev)"
+              className="inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) focus:outline-none focus:ring-2 focus:ring-(--border-subtle) focus:ring-offset-2"
             >
               Cancel
             </button>

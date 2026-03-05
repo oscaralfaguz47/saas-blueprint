@@ -6,7 +6,8 @@ import { IconX } from "@/components/ui/icons";
 type DialogProps = {
   open: boolean;
   onClose: () => void;
-  title: string;
+  /** Title (string or ReactNode for e.g. icon + text) */
+  title: React.ReactNode;
   children: React.ReactNode;
   /** Optional description for a11y */
   description?: string;
@@ -76,12 +77,12 @@ export function Dialog({
       aria-modal="true"
       aria-labelledby={titleId}
       aria-describedby={descId}
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4"
+      className="fixed inset-0 z-50 flex min-h-dvh min-h-screen items-center justify-center p-3 sm:p-4"
       onPointerDown={handleOverlayPointerDown}
       onPointerUp={handleOverlayPointerUp}
       onPointerLeave={() => setPointerDownOnOverlay(false)}
     >
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" aria-hidden="true" />
+      <div className="absolute inset-0 min-h-dvh min-h-screen bg-black/50 backdrop-blur-sm" aria-hidden="true" />
       <div
         className={
           contentClassName
