@@ -1,6 +1,3 @@
----
-alwaysApply: true
----
 
 ────────────────────────────────────────
 UI/UX CONTRACT (Tailwind + shadcn)
