@@ -36,68 +36,6 @@ function getEnvironment(): "sandbox" | "production" {
 }
 
 /**
- * List customers by exact email (GET /customers?email=...).
- */
-async function findPaddleCustomerByEmail(email: string): Promise<{ id: string } | null> {
-  const url = new URL(`${PADDLE_API_BASE}/customers`);
-  url.searchParams.set("email", email);
-  url.searchParams.set("per_page", "1");
-  const res = await fetch(url.toString(), {
-    method: "GET",
-    headers: { Authorization: `Bearer ${getApiKey()}` },
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Paddle List Customers failed: ${res.status} ${err}`);
-  }
-  const json = (await res.json()) as { data?: Array<{ id: string }> };
-  const first = json?.data?.[0];
-  return first ? { id: first.id } : null;
-}
-
-/**
- * Create Paddle customer (POST /customers).
- */
-async function createPaddleCustomer(params: {
-  email: string;
-  name: string | null;
-  customData: Record<string, string>;
-}): Promise<{ id: string }> {
-  const res = await fetch(`${PADDLE_API_BASE}/customers`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${getApiKey()}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      email: params.email,
-      name: params.name ?? undefined,
-      custom_data: params.customData,
-    }),
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Paddle Create Customer failed: ${res.status} ${err}`);
-  }
-  const json = (await res.json()) as { data: { id: string } };
-  if (!json?.data?.id) throw new Error("Paddle Create Customer: missing data.id");
-  return { id: json.data.id };
-}
-
-/**
- * Get existing Paddle customer by email, or create one.
- */
-async function getOrCreatePaddleCustomer(params: {
-  email: string;
-  name: string | null;
-  customData: Record<string, string>;
-}): Promise<{ id: string }> {
-  const existing = await findPaddleCustomerByEmail(params.email);
-  if (existing) return existing;
-  return createPaddleCustomer(params);
-}
-
-/**
  * Create Paddle transaction (POST /transactions). No address_id — checkout opens on "Your details";
  * user selects country, enters ZIP, clicks Continue so Paddle can calculate tax before Payment.
  * Returns transactionId for Paddle.Checkout.open({ transactionId }) and optional checkoutUrl fallback.
@@ -148,8 +86,8 @@ async function createPaddleTransaction(params: {
 export type CreateCheckoutSessionParams = {
   tenantId: string;
   planCode: PlanCode;
-  customerEmail: string;
-  customerName: string | null;
+  /** Tenant-scoped Paddle customer id (from ensureTenantPaddleCustomer). Required. */
+  providerCustomerId: string;
 };
 
 export type CreateCheckoutSessionResult = {
@@ -160,9 +98,10 @@ export type CreateCheckoutSessionResult = {
 };
 
 /**
- * Create Paddle checkout for overlay: customer (get-or-create by email), then transaction.
+ * Create Paddle checkout for overlay: uses provided tenant-scoped customer id, then creates transaction.
  * No address/business stored; Paddle overlay collects email + country and VAT in payment step.
  * Does NOT create Subscription (webhook-only truth).
+ * Customer creation is done by the caller via ensureTenantPaddleCustomer.
  */
 export async function createCheckoutSession(
   params: CreateCheckoutSessionParams
@@ -189,15 +128,9 @@ export async function createCheckoutSession(
     throw new Error("Already have an active subscription for this plan");
   }
 
-  const customer = await getOrCreatePaddleCustomer({
-    email: params.customerEmail,
-    name: params.customerName,
-    customData: { tenantId: params.tenantId },
-  });
-
   const priceId = getPriceId(params.planCode);
   const { transactionId, checkoutUrl } = await createPaddleTransaction({
-    customerId: customer.id,
+    customerId: params.providerCustomerId,
     priceId,
     customData: { tenantId: params.tenantId, planCode: params.planCode },
   });

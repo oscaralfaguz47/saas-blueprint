@@ -43,6 +43,7 @@ export type WebhookLogResult =
   | "validation_error"
   | "signature_invalid"
   | "tenant_mismatch"
+  | "tenant_customer_mismatch"
   | "process_failure";
 
 export function logWebhookReceived(params: {

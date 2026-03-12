@@ -48,14 +48,19 @@ export const GET = withErrorHandler(async (req: Request) => {
     where: { tenantId },
   });
 
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { providerCustomerId: true },
+  });
   const sub = await prisma.subscription.findFirst({
     where: { tenantId, provider: "paddle" },
     select: { providerCustomerId: true },
   });
-  if ((!profile || !profile.lastSyncedAt) && sub?.providerCustomerId) {
+  const providerCustomerIdForSync = tenant?.providerCustomerId ?? sub?.providerCustomerId;
+  if ((!profile || !profile.lastSyncedAt) && providerCustomerIdForSync) {
     await syncBillingProfileFromPaddle({
       tenantId,
-      providerCustomerId: sub.providerCustomerId,
+      providerCustomerId: providerCustomerIdForSync,
     });
     profile = await prisma.tenantBillingProfile.findUnique({
       where: { tenantId },
@@ -106,10 +111,15 @@ export const PUT = withErrorHandler(async (req: Request) => {
 
   const body = await parseBody(req, putBodySchema);
 
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { providerCustomerId: true },
+  });
   const sub = await prisma.subscription.findFirst({
     where: { tenantId, provider: "paddle" },
     select: { providerCustomerId: true, providerSubscriptionId: true },
   });
+  const providerCustomerId = tenant?.providerCustomerId ?? sub?.providerCustomerId;
 
   const profile = await prisma.tenantBillingProfile.findUnique({
     where: { tenantId },
@@ -118,9 +128,9 @@ export const PUT = withErrorHandler(async (req: Request) => {
 
   let addressIdUsed: string | undefined = undefined;
   let businessIdUsed: string | undefined = undefined;
-  if (sub?.providerCustomerId) {
+  if (providerCustomerId) {
     const result = await updatePaddleBillingDetails({
-      providerCustomerId: sub.providerCustomerId,
+      providerCustomerId,
       providerAddressId: profile?.providerAddressId ?? undefined,
       providerBusinessId: profile?.providerBusinessId ?? undefined,
       countryCode: body.countryCode ?? undefined,
@@ -131,7 +141,7 @@ export const PUT = withErrorHandler(async (req: Request) => {
       city: body.city ?? undefined,
       region: body.region ?? undefined,
       postalCode: body.postalCode ?? undefined,
-      description: sub.providerSubscriptionId ?? undefined,
+      description: sub?.providerSubscriptionId ?? undefined,
     });
     if (!result.ok) {
       return ApiErrors.VALIDATION_ERROR(
@@ -142,16 +152,17 @@ export const PUT = withErrorHandler(async (req: Request) => {
     addressIdUsed = result.addressIdUsed;
     businessIdUsed = result.businessIdUsed;
 
-    if (addressIdUsed && sub.providerSubscriptionId) {
+    const subscriptionId = sub?.providerSubscriptionId;
+    if (addressIdUsed && subscriptionId) {
       try {
-        await updateSubscriptionAddress(sub.providerSubscriptionId, addressIdUsed);
+        await updateSubscriptionAddress(subscriptionId, addressIdUsed);
       } catch {
         // Non-blocking: customer address and profile are updated; subscription address best-effort
       }
     }
-    if (businessIdUsed && sub.providerSubscriptionId) {
+    if (businessIdUsed && subscriptionId) {
       try {
-        await updateSubscriptionBusiness(sub.providerSubscriptionId, businessIdUsed);
+        await updateSubscriptionBusiness(subscriptionId, businessIdUsed);
       } catch {
         // Non-blocking: customer business and profile are updated; subscription business best-effort
       }

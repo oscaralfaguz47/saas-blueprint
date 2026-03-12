@@ -27,18 +27,23 @@ export const GET = withErrorHandler(async (req: Request) => {
   });
   if (permError) return permError;
 
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { providerCustomerId: true },
+  });
   const subscription = await prisma.subscription.findFirst({
     where: { tenantId, provider: "paddle" },
     select: { providerCustomerId: true, providerSubscriptionId: true },
   });
+  const providerCustomerId = tenant?.providerCustomerId ?? subscription?.providerCustomerId;
 
-  if (!subscription?.providerCustomerId) {
+  if (!providerCustomerId) {
     return apiSuccess({ paymentMethod: null });
   }
 
   const paymentMethod = await getSubscriptionPaymentMethod({
-    providerCustomerId: subscription.providerCustomerId,
-    providerSubscriptionId: subscription.providerSubscriptionId ?? undefined,
+    providerCustomerId,
+    providerSubscriptionId: subscription?.providerSubscriptionId ?? undefined,
   });
 
   return apiSuccess({ paymentMethod });

@@ -4,8 +4,13 @@ import { authOptions } from "@/server/auth-options";
 import { requireFullSession } from "@/server/require-full-session";
 import { getCurrentTenantId, requireTenantPermission } from "@/server/billing/tenant-context";
 import { writeAuditLog } from "@/server/services/audit";
+import {
+  getOrCreatePaddleCustomerForTenant,
+  BillingEmailConflictError,
+} from "@/server/billing/providers/paddle/customer/get-or-create-tenant-customer";
 import { createCheckoutSession } from "@/server/billing/providers/paddle/create-checkout-session";
 import { logCheckoutInitiated } from "@/server/billing/billing-log";
+import { prisma } from "@/server/db";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 
 const checkoutBodySchema = z.object({
@@ -43,17 +48,35 @@ export const POST = withErrorHandler(async (req: Request) => {
   }
   const { planCode } = parsed.data;
 
-  const customerEmail = session.user.email?.trim();
-  if (!customerEmail) {
-    return ApiErrors.VALIDATION_ERROR("User email is required for checkout.");
+  const mapping = await prisma.tenantProviderCustomer.findUnique({
+    where: { tenantId },
+    select: { billingEmail: true },
+  });
+  const billingEmail = mapping?.billingEmail?.trim();
+  if (!billingEmail) {
+    return ApiErrors.VALIDATION_ERROR(
+      "Billing email is required. Please set a billing email for this workspace before checkout.",
+      { hint: "You can use an email alias (e.g. name+workspace@domain.com) if you want multiple workspaces." }
+    );
   }
 
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { name: true },
+  });
+  const customerName = tenant?.name?.trim() ?? session.user.name ?? null;
+
   try {
+    const { id: providerCustomerId } = await getOrCreatePaddleCustomerForTenant({
+      tenantId,
+      billingEmail,
+      customerName,
+    });
+
     const result = await createCheckoutSession({
       tenantId,
       planCode,
-      customerEmail,
-      customerName: session.user.name ?? null,
+      providerCustomerId,
     });
 
     logCheckoutInitiated({
@@ -75,6 +98,9 @@ export const POST = withErrorHandler(async (req: Request) => {
       environment: result.environment,
     });
   } catch (err) {
+    if (err instanceof BillingEmailConflictError) {
+      return ApiErrors.VALIDATION_ERROR(err.message);
+    }
     const message = err instanceof Error ? err.message : String(err);
     if (message.includes("Cannot checkout free plan")) {
       return ApiErrors.VALIDATION_ERROR("Free plan cannot be checked out.");

@@ -230,6 +230,9 @@ model Tenant {
   slug   String       @unique @db.VarChar(80)
   status TenantStatus @default(ACTIVE)
 
+  /// Paddle customer id (ctm_xxx). Synced from TenantProviderCustomer; used by webhooks for tenant resolution.
+  providerCustomerId String? @unique @db.VarChar(191)
+
   // A5: first-time setup — creator and claim time
   createdByUserId String
   createdByUser   User   @relation("TenantCreatedByUser", fields: [createdByUserId], references: [id], onDelete: Restrict)
@@ -268,6 +271,8 @@ model Tenant {
 
   /// EPIC 5: Billing profile snapshot (future invoices; Country/Postal locked).
   tenantBillingProfile   TenantBillingProfile?
+  /// Tenant-scoped Paddle customer mapping: 1 tenant = 1 billing email = 1 provider customer (ctm_).
+  tenantProviderCustomers TenantProviderCustomer[]
   /// EPIC 5: Support requests for existing invoice billing detail changes.
   billingSupportRequests BillingSupportRequest[]
   /// EPIC 5: Rollover lots (paid plans; 60d expiry, cap 400 for Starter).
@@ -318,6 +323,21 @@ model BillingTransaction {
   @@index([tenantId, billedAt])
   @@index([tenantId, status])
   @@index([provider, providerSubscriptionId])
+}
+
+/// Tenant -> Paddle customer mapping. One tenant = one billing email = one Paddle customer. Billing email required for checkout.
+model TenantProviderCustomer {
+  tenantId             String   @id
+  provider             String   @db.VarChar(30) // "paddle"
+  providerCustomerId   String?  @unique @db.VarChar(191)
+  billingEmail         String   @unique @db.VarChar(191)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([providerCustomerId])
+  @@index([billingEmail])
 }
 
 /// EPIC 5: Billing profile snapshot for future invoices. Country/Postal locked (set by Paddle checkout).

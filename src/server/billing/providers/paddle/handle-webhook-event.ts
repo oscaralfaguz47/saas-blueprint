@@ -31,11 +31,23 @@ function getAuditActorUserId(): string | null {
 }
 
 /**
- * Resolve tenantId for a Paddle customer_id. Tries (1) Subscription by providerCustomerId,
- * (2) TenantBillingProfile by providerCustomerId, (3) Paddle API list subscriptions by customer_id
- * then our Subscription by providerSubscriptionId (and backfill providerCustomerId).
+ * Resolve tenantId for a Paddle customer_id.
+ * Order: (1) Tenant.providerCustomerId (canonical), (2) Subscription by providerCustomerId,
+ * (3) TenantBillingProfile by providerCustomerId, (4) Paddle API list subscriptions then match our Subscription.
  */
 async function resolveTenantIdByProviderCustomerId(providerCustomerId: string): Promise<string | null> {
+  const tenant = await prisma.tenant.findFirst({
+    where: { providerCustomerId },
+    select: { id: true },
+  });
+  if (tenant) return tenant.id;
+
+  const mapping = await prisma.tenantProviderCustomer.findFirst({
+    where: { providerCustomerId },
+    select: { tenantId: true },
+  });
+  if (mapping) return mapping.tenantId;
+
   const sub = await prisma.subscription.findFirst({
     where: { provider: "paddle", providerCustomerId },
     select: { tenantId: true },
@@ -155,6 +167,26 @@ async function handleAddressCreatedOrUpdated(envelope: {
     return { processed: false };
   }
 
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { providerCustomerId: true },
+  });
+  if (tenant?.providerCustomerId != null && tenant.providerCustomerId !== providerCustomerId) {
+    logWebhookReceived({
+      eventType,
+      providerEventId: eventId,
+      extractedTenantId: tenantId,
+      result: "tenant_customer_mismatch",
+    });
+    return { processed: true };
+  }
+  if (tenant && tenant.providerCustomerId === null) {
+    await prisma.tenant.update({
+      where: { id: tenantId },
+      data: { providerCustomerId },
+    });
+  }
+
   const mapped = mapAddressToProfile(address);
   await prisma.tenantBillingProfile.upsert({
     where: { tenantId },
@@ -181,6 +213,7 @@ async function handleAddressCreatedOrUpdated(envelope: {
       addressLine1: mapped.addressLine1,
       addressLine2: mapped.addressLine2,
       providerAddressId: mapped.providerAddressId,
+      providerCustomerId,
       lastSyncedAt: new Date(),
       syncSource: "webhook",
     },
@@ -243,6 +276,26 @@ async function handleBusinessCreatedOrUpdated(envelope: {
     return { processed: false };
   }
 
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { providerCustomerId: true },
+  });
+  if (tenant?.providerCustomerId != null && tenant.providerCustomerId !== providerCustomerId) {
+    logWebhookReceived({
+      eventType,
+      providerEventId: eventId,
+      extractedTenantId: tenantId,
+      result: "tenant_customer_mismatch",
+    });
+    return { processed: true };
+  }
+  if (tenant && tenant.providerCustomerId === null) {
+    await prisma.tenant.update({
+      where: { id: tenantId },
+      data: { providerCustomerId },
+    });
+  }
+
   const companyName = business.name?.trim?.()?.slice(0, 160) ?? null;
   const vatId = business.tax_identifier?.trim?.()?.slice(0, 64) ?? null;
   const hasMeaningfulBusiness = !!(companyName || vatId);
@@ -269,6 +322,7 @@ async function handleBusinessCreatedOrUpdated(envelope: {
       companyName: hasMeaningfulBusiness ? companyName : null,
       vatId: hasMeaningfulBusiness ? vatId : null,
       providerBusinessId: providerBusinessIdToStore,
+      providerCustomerId,
       lastSyncedAt: new Date(),
       syncSource: "webhook",
     },
@@ -469,7 +523,7 @@ export async function handleWebhookEvent(params: {
   const tenantId = resolvedMetadata.tenantId;
   const tenant = await prisma.tenant.findUnique({
     where: { id: tenantId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, providerCustomerId: true },
   });
   if (!tenant) {
     logWebhookReceived({
@@ -493,6 +547,30 @@ export async function handleWebhookEvent(params: {
     });
     return { processed: false };
   }
+
+  const customerIdFromData = (dataToUse.customer_id ?? "").trim().slice(0, 191) || null;
+  if (customerIdFromData && tenant.providerCustomerId != null && tenant.providerCustomerId !== customerIdFromData) {
+    logWebhookReceived({
+      eventType,
+      providerEventId: eventId,
+      providerSubscriptionId,
+      extractedTenantId: tenantId,
+      extractedPlanCode: resolvedMetadata.planCode,
+      result: "tenant_customer_mismatch",
+    });
+    return { processed: true, tenantMismatch: true };
+  }
+  if (tenant.providerCustomerId === null && customerIdFromData) {
+    await prisma.tenant.update({
+      where: { id: tenantId },
+      data: { providerCustomerId: customerIdFromData },
+    });
+    await prisma.tenantBillingProfile.updateMany({
+      where: { tenantId },
+      data: { providerCustomerId: customerIdFromData },
+    });
+  }
+  const canonicalCustomerId = tenant.providerCustomerId ?? customerIdFromData ?? dataToUse.customer_id ?? "";
 
   const existingSub = await prisma.subscription.findFirst({
     where: { provider: "paddle", providerSubscriptionId },
@@ -699,7 +777,7 @@ export async function handleWebhookEvent(params: {
           };
 
     const baseData = {
-      providerCustomerId: dataToUse.customer_id,
+      providerCustomerId: canonicalCustomerId,
       providerSubscriptionId,
       status,
       currentPeriodStart,
