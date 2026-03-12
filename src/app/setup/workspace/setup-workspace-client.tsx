@@ -50,13 +50,13 @@ export default function SetupWorkspaceClient({
         router.replace("/app");
         return;
       }
-      const data = (await res.json().catch(() => ({}))) as { details?: { code?: string }; message?: string };
-      if (res.status === 404 || data.details?.code === REVOKED_OR_EXPIRED_CODE) {
+      const data = (await res.json().catch(() => ({}))) as { error?: { code?: string; message?: string; details?: { code?: string } } };
+      if (res.status === 404 || data.error?.details?.code === REVOKED_OR_EXPIRED_CODE) {
         setPendingInvitations((prev) => prev.filter((inv) => inv.id !== id));
         addToast("info", "This invitation was revoked or has expired.");
         return;
       }
-      addToast("error", data.message ?? "Something went wrong. Please try again.");
+      addToast("error", data.error?.message ?? "Something went wrong. Please try again.");
     } finally {
       setAcceptingId(null);
     }
@@ -75,13 +75,13 @@ export default function SetupWorkspaceClient({
         setPendingInvitations((prev) => prev.filter((inv) => inv.id !== id));
         return;
       }
-      const data = (await res.json().catch(() => ({}))) as { details?: { code?: string }; message?: string };
-      if (res.status === 404 || data.details?.code === REVOKED_OR_EXPIRED_CODE) {
+      const data = (await res.json().catch(() => ({}))) as { error?: { code?: string; message?: string; details?: { code?: string } } };
+      if (res.status === 404 || data.error?.details?.code === REVOKED_OR_EXPIRED_CODE) {
         setPendingInvitations((prev) => prev.filter((inv) => inv.id !== id));
         addToast("info", "This invitation was revoked or has expired.");
         return;
       }
-      addToast("error", data.message ?? "Something went wrong. Please try again.");
+      addToast("error", data.error?.message ?? "Something went wrong. Please try again.");
     } finally {
       setDecliningId(null);
     }
@@ -137,12 +137,14 @@ export default function SetupWorkspaceClient({
         router.replace("/app/requests");
         return;
       }
-      const err = json?.error ?? json?.message ?? "Something went wrong";
-      const details = json?.details as { code?: string; slug?: string } | undefined;
+      const err = json?.error;
+      const errCode = typeof err === "object" && err !== null ? (err as { code?: string }).code : (typeof err === "string" ? err : undefined);
+      const errMessage = typeof err === "object" && err !== null ? (err as { message?: string }).message : (json?.message as string | undefined);
+      const details = typeof err === "object" && err !== null ? (err as { details?: { code?: string; slug?: string } }).details : undefined;
       if (details?.code === "SLUG_TAKEN") {
         setError("This workspace URL is already taken. Choose another.");
       } else {
-        setError(typeof err === "string" ? err : "Failed to claim workspace");
+        setError(errMessage ?? (typeof errCode === "string" ? errCode : "Failed to claim workspace"));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to claim workspace");

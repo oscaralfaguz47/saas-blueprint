@@ -2,36 +2,38 @@ import { NextResponse } from "next/server";
 import { ValidationError } from "@/lib/validations/common";
 
 /**
- * Standardized API error response
+ * Standardized API error response.
+ * Follows the architecture-mandated format:
+ * { error: { code: "ERROR_CODE", message: "...", details: {} } }
  */
 export type ApiError = {
-  error: string;
-  message?: string;
-  details?: unknown;
+  error: {
+    code: string;
+    message?: string;
+    details?: unknown;
+  };
 };
 
 /**
  * Creates a standardized error response
  */
 export function apiError(
-  error: string,
+  code: string,
   status: number = 400,
   message?: string,
   details?: unknown
 ): NextResponse<ApiError> {
-  const response: ApiError = {
-    error,
-  };
+  const errorBody: ApiError["error"] = { code };
 
   if (message) {
-    response.message = message;
+    errorBody.message = message;
   }
 
   if (details !== undefined) {
-    response.details = details;
+    errorBody.details = details;
   }
 
-  return NextResponse.json(response, { status });
+  return NextResponse.json({ error: errorBody }, { status });
 }
 
 /**

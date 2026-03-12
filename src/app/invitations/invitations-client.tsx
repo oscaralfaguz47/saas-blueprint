@@ -64,13 +64,13 @@ export default function InvitationsClient({
         router.refresh();
         return;
       }
-      const data = (await res.json().catch(() => ({}))) as { details?: { code?: string }; message?: string };
-      if (res.status === 404 || data.details?.code === REVOKED_OR_EXPIRED_CODE) {
+      const data = (await res.json().catch(() => ({}))) as { error?: { code?: string; message?: string; details?: { code?: string } } };
+      if (res.status === 404 || data.error?.details?.code === REVOKED_OR_EXPIRED_CODE) {
         setPendingInvitations((prev) => prev.filter((inv) => inv.id !== id));
         setRevokedOrExpiredMessage("This invitation was revoked or has expired and was removed from the list.");
         return;
       }
-      addToast("error", data.message ?? "Something went wrong. Please try again.");
+      addToast("error", data.error?.message ?? "Something went wrong. Please try again.");
     } finally {
       setAcceptingId(null);
     }
@@ -93,13 +93,13 @@ export default function InvitationsClient({
         router.refresh();
         return;
       }
-      const data = (await res.json().catch(() => ({}))) as { details?: { code?: string }; message?: string };
-      if (res.status === 404 || data.details?.code === REVOKED_OR_EXPIRED_CODE) {
+      const data = (await res.json().catch(() => ({}))) as { error?: { code?: string; message?: string; details?: { code?: string } } };
+      if (res.status === 404 || data.error?.details?.code === REVOKED_OR_EXPIRED_CODE) {
         setPendingInvitations((prev) => prev.filter((inv) => inv.id !== id));
         setRevokedOrExpiredMessage("This invitation was revoked or has expired and was removed from the list.");
         return;
       }
-      addToast("error", data.message ?? "Something went wrong. Please try again.");
+      addToast("error", data.error?.message ?? "Something went wrong. Please try again.");
     } finally {
       setDecliningId(null);
     }

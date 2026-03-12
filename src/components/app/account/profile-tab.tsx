@@ -62,14 +62,12 @@ export function ProfileTab({ profile: initialProfile, loginMethod }: Props) {
         }),
       });
       const data = (await res.json()) as {
-        error?: string;
-        message?: string;
-        details?: { code?: string };
+        error?: { code?: string; message?: string; details?: { code?: string } };
       };
       if (!res.ok) {
         setSaveError(getApiErrorMessage(res, data));
         setSaveStatus("error");
-        if (data.details?.code === "NEED_STEP_UP") {
+        if (data.error?.details?.code === "NEED_STEP_UP") {
           setSaveError("Sign in again to change your phone number.");
         }
         return;
@@ -101,11 +99,10 @@ export function ProfileTab({ profile: initialProfile, loginMethod }: Props) {
       });
       const uploadData = (await uploadRes.json()) as {
         data?: { uploadUrl?: string; objectKey?: string };
-        error?: string;
-        message?: string;
+        error?: { code?: string; message?: string };
       };
       if (!uploadRes.ok || !uploadData.data?.uploadUrl || !uploadData.data?.objectKey) {
-        setPhotoError(uploadData.message ?? "Failed to get upload URL.");
+        setPhotoError(uploadData.error?.message ?? "Failed to get upload URL.");
         setPhotoStatus("error");
         return;
       }
@@ -125,8 +122,8 @@ export function ProfileTab({ profile: initialProfile, loginMethod }: Props) {
         body: JSON.stringify({ objectKey: uploadData.data.objectKey }),
       });
       if (!confirmRes.ok) {
-        const confirmData = (await confirmRes.json()) as { message?: string };
-        setPhotoError(confirmData.message ?? "Failed to save photo.");
+        const confirmData = (await confirmRes.json()) as { error?: { message?: string } };
+        setPhotoError(confirmData.error?.message ?? "Failed to save photo.");
         setPhotoStatus("error");
         return;
       }

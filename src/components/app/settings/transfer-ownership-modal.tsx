@@ -92,12 +92,10 @@ export function TransferOwnershipModal({
       });
       const data = (await res.json()) as {
         data?: { ok?: boolean };
-        error?: string;
-        message?: string;
-        details?: { code?: string };
+        error?: { code?: string; message?: string; details?: { code?: string } };
       };
       if (!res.ok) {
-        const code = data.details?.code;
+        const code = data.error?.details?.code;
         const msg =
           code === "NEED_STEP_UP"
             ? "Please sign in again to perform this action."
@@ -107,7 +105,7 @@ export function TransferOwnershipModal({
                 ? "Target user is no longer active."
                 : code === "PRIMARY_OWNER_CHANGED"
                   ? "Primary Owner has changed during this operation."
-                  : (data.message as string) ?? "Transfer could not be completed.";
+                  : (data.error?.message as string) ?? "Transfer could not be completed.";
         setError(msg);
         setSubmitting(false);
         return;

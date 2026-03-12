@@ -140,7 +140,7 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
           description: description.trim() || undefined,
         }),
       });
-      const data = (await res.json()) as { data?: { tenant?: Tenant }; error?: string; message?: string };
+      const data = (await res.json()) as { data?: { tenant?: Tenant }; error?: { code?: string; message?: string } };
       if (!res.ok) {
         setSaveError(getApiErrorMessage(res, data));
         setSaveStatus("error");
@@ -177,11 +177,10 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
       });
       const urlData = (await resUrl.json()) as {
         data?: { uploadUrl?: string; objectKey?: string };
-        error?: string;
-        message?: string;
+        error?: { code?: string; message?: string };
       };
       if (!resUrl.ok || !urlData.data?.uploadUrl || !urlData.data?.objectKey) {
-        setLogoError(urlData.message ?? "Failed to get upload URL.");
+        setLogoError(urlData.error?.message ?? "Failed to get upload URL.");
         setLogoStatus("error");
         e.target.value = "";
         return;
@@ -203,8 +202,8 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
         body: JSON.stringify({ objectKey: urlData.data.objectKey }),
       });
       if (!resConfirm.ok) {
-        const confirmData = (await resConfirm.json()) as { message?: string };
-        setLogoError(confirmData.message ?? "Could not confirm upload.");
+        const confirmData = (await resConfirm.json()) as { error?: { message?: string } };
+        setLogoError(confirmData.error?.message ?? "Could not confirm upload.");
         setLogoStatus("error");
         e.target.value = "";
         return;

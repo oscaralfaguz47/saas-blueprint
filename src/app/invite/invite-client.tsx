@@ -117,16 +117,17 @@ export default function InviteClient({ hasActiveWorkspace = false }: InviteClien
         return;
       }
 
-      const details = (body.details ?? payload?.details) as { expectedEmail?: string; currentEmail?: string | null } | undefined;
-      const expectedEmail = (payload?.expectedEmail ?? details?.expectedEmail ?? body.expectedEmail) as string | undefined;
+      const errObj = (isObject(body.error) ? body.error : undefined) as { code?: string; message?: string; details?: Record<string, unknown> } | undefined;
+      const details = (errObj?.details ?? payload?.details) as { expectedEmail?: string; currentEmail?: string | null } | undefined;
+      const expectedEmail = (payload?.expectedEmail ?? details?.expectedEmail ?? errObj?.details?.expectedEmail) as string | undefined;
       if (expectedEmail != null) {
         setResult({
           kind: "email_mismatch",
           data: {
             error: "EMAIL_MISMATCH",
-            message: (payload?.message ?? body.message) as string | undefined,
+            message: (payload?.message ?? errObj?.message) as string | undefined,
             expectedEmail,
-            currentEmail: (payload?.currentEmail ?? details?.currentEmail ?? body.currentEmail) as string | null | undefined,
+            currentEmail: (payload?.currentEmail ?? details?.currentEmail ?? errObj?.details?.currentEmail) as string | null | undefined,
           },
         });
         return;
@@ -135,8 +136,8 @@ export default function InviteClient({ hasActiveWorkspace = false }: InviteClien
       setResult({
         kind: "error",
         data: {
-          error: (payload?.error ?? body.error) as string ?? "UNKNOWN",
-          message: (payload?.message ?? body.message) as string | undefined,
+          error: (errObj?.code ?? payload?.error) as string ?? "UNKNOWN",
+          message: (errObj?.message ?? payload?.message) as string | undefined,
         },
       });
     } catch (err) {

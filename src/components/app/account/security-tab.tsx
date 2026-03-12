@@ -98,11 +98,10 @@ export function SecurityTab({ security: initialSecurity }: Props) {
       const res = await apiFetch("/api/account/2fa/setup", { method: "POST" });
       const data = (await res.json()) as {
         data?: { otpauthUri?: string; manualKey?: string };
-        error?: string;
-        message?: string;
+        error?: { code?: string; message?: string };
       };
       if (!res.ok) {
-        setError(data.message ?? data.error ?? "Failed to start setup.");
+        setError(data.error?.message ?? data.error?.code ?? "Failed to start setup.");
         setLoading(false);
         return;
       }
@@ -131,11 +130,10 @@ export function SecurityTab({ security: initialSecurity }: Props) {
       });
       const data = (await res.json()) as {
         data?: { backupCodes?: string[]; verified?: boolean };
-        error?: string;
-        message?: string;
+        error?: { code?: string; message?: string };
       };
       if (!res.ok) {
-        setError(data.message ?? data.error ?? "Invalid code.");
+        setError(data.error?.message ?? data.error?.code ?? "Invalid code.");
         setLoading(false);
         return;
       }
@@ -167,8 +165,8 @@ export function SecurityTab({ security: initialSecurity }: Props) {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(getApiErrorMessage(res, data as { error?: string; message?: string }));
-        if ((data as { details?: { code?: string } }).details?.code === "STEP_UP_REQUIRED") {
+        setError(getApiErrorMessage(res, data as { error?: { code?: string; message?: string } }));
+        if ((data as { error?: { details?: { code?: string } } }).error?.details?.code === "STEP_UP_REQUIRED") {
           setError("Sign in again to disable 2FA.");
         }
         setLoadingDisable(false);
@@ -196,12 +194,11 @@ export function SecurityTab({ security: initialSecurity }: Props) {
       });
       const data = (await res.json()) as {
         data?: { backupCodes?: string[] };
-        error?: string;
-        message?: string;
+        error?: { code?: string; message?: string };
       };
       if (!res.ok) {
         setError(getApiErrorMessage(res, data));
-        if ((data as { details?: { code?: string } }).details?.code === "STEP_UP_REQUIRED") {
+        if ((data as { error?: { details?: { code?: string } } }).error?.details?.code === "STEP_UP_REQUIRED") {
           setError("Sign in again to regenerate backup codes.");
         }
         setLoadingRegenerate(false);
@@ -241,9 +238,9 @@ export function SecurityTab({ security: initialSecurity }: Props) {
         const data = await res.json();
         if (!res.ok) {
           setAutoLogoutError(
-            (data as { details?: { code?: string } }).details?.code === "STEP_UP_REQUIRED"
+            (data as { error?: { details?: { code?: string } } }).error?.details?.code === "STEP_UP_REQUIRED"
               ? "Sign in again to change this setting."
-              : getApiErrorMessage(res, data as { error?: string; message?: string })
+              : getApiErrorMessage(res, data as { error?: { code?: string; message?: string } })
           );
           return;
         }
@@ -268,9 +265,9 @@ export function SecurityTab({ security: initialSecurity }: Props) {
         const data = await res.json();
         if (!res.ok) {
           setAutoLogoutError(
-            (data as { details?: { code?: string } }).details?.code === "STEP_UP_REQUIRED"
+            (data as { error?: { details?: { code?: string } } }).error?.details?.code === "STEP_UP_REQUIRED"
               ? "Sign in again to change this setting."
-              : getApiErrorMessage(res, data as { error?: string; message?: string })
+              : getApiErrorMessage(res, data as { error?: { code?: string; message?: string } })
           );
           return;
         }

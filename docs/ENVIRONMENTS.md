@@ -59,6 +59,8 @@ BOOTSTRAP_ADMIN_EMAIL=demo-admin@yourdomain.com
 # R2_ACCESS_KEY_ID=
 # R2_SECRET_ACCESS_KEY=
 # R2_BUCKET_NAME=
+# CSP: exact R2 bucket origin for browser uploads (e.g. https://<account-id>.r2.cloudflarestorage.com)
+# NEXT_PUBLIC_R2_BUCKET_URL=
 ```
 
 #### Production Environment
