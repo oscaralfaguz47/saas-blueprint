@@ -1,10 +1,15 @@
 // app/privacy/page.tsx (or wherever your route lives)
 import Link from "next/link";
 import { Container } from "@/components/ui/container";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/server/auth-options";
 
 const LAST_UPDATED = "2026-02-19"; // update when you change this policy
 
-export default function PrivacyPage() {
+export default async function PrivacyPage() {
+  const session = await getServerSession(authOptions);
+  const isLoggedIn = !!session?.user;
+
   return (
     <main className="min-h-screen bg-(--bg-main)">
       {/* Header */}
@@ -29,10 +34,10 @@ export default function PrivacyPage() {
                 Terms
               </Link>
               <Link
-                href="/auth/sign-in"
+                href={isLoggedIn ? "/app/requests" : "/auth/sign-in"}
                 className="text-(--text-secondary) hover:text-(--text-primary)"
               >
-                Sign in
+                {isLoggedIn ? "Go to app" : "Sign in"}
               </Link>
             </nav>
           </div>

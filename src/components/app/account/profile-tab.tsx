@@ -42,10 +42,7 @@ export function ProfileTab({ profile: initialProfile, loginMethod }: Props) {
   const [photoError, setPhotoError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const timeZoneOptions = useMemo(
-    () => getTimeZones().map((tz) => ({ value: tz, label: tz })),
-    []
-  );
+  const timeZoneOptions = useMemo(() => getTimeZones().map((tz) => ({ value: tz, label: tz })), []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -152,11 +149,7 @@ export function ProfileTab({ profile: initialProfile, loginMethod }: Props) {
         <div className="mt-4 flex flex-wrap items-center gap-3 sm:gap-4">
           <div className="h-20 w-20 shrink-0 overflow-hidden rounded-full border border-(--border-subtle) bg-(--bg-surface-elev)">
             {initialProfile.avatarUrl ? (
-              <img
-                src={initialProfile.avatarUrl}
-                alt=""
-                className="h-full w-full object-cover"
-              />
+              <img src={initialProfile.avatarUrl} alt="" className="h-full w-full object-cover" />
             ) : (
               <div className="flex h-full w-full items-center justify-center text-2xl font-semibold text-(--text-muted)">
                 {(initialProfile.name ?? initialProfile.email ?? "U").slice(0, 1).toUpperCase()}
@@ -192,7 +185,10 @@ export function ProfileTab({ profile: initialProfile, loginMethod }: Props) {
 
         <form onSubmit={handleSubmit} className="mt-4 space-y-4 sm:mt-6">
           <div>
-            <label htmlFor="profile-name" className="block text-sm font-medium text-(--text-primary)">
+            <label
+              htmlFor="profile-name"
+              className="block text-sm font-medium text-(--text-primary)"
+            >
               Name
             </label>
             <Input
@@ -205,7 +201,10 @@ export function ProfileTab({ profile: initialProfile, loginMethod }: Props) {
             />
           </div>
           <div>
-            <label htmlFor="profile-email" className="block text-sm font-medium text-(--text-primary)">
+            <label
+              htmlFor="profile-email"
+              className="block text-sm font-medium text-(--text-primary)"
+            >
               Email
             </label>
             <Input
@@ -219,7 +218,10 @@ export function ProfileTab({ profile: initialProfile, loginMethod }: Props) {
             <p className="mt-1 text-xs text-(--text-muted)">Email cannot be changed here.</p>
           </div>
           <div>
-            <label htmlFor="profile-phone" className="block text-sm font-medium text-(--text-primary)">
+            <label
+              htmlFor="profile-phone"
+              className="block text-sm font-medium text-(--text-primary)"
+            >
               Phone
             </label>
             <Input
@@ -232,7 +234,10 @@ export function ProfileTab({ profile: initialProfile, loginMethod }: Props) {
             />
           </div>
           <div>
-            <label htmlFor="profile-timezone" className="block text-sm font-medium text-(--text-primary)">
+            <label
+              htmlFor="profile-timezone"
+              className="block text-sm font-medium text-(--text-primary)"
+            >
               Timezone
             </label>
             <SearchableSelect
@@ -248,7 +253,7 @@ export function ProfileTab({ profile: initialProfile, loginMethod }: Props) {
             <button
               type="submit"
               disabled={saveStatus === "submitting"}
-              className="inline-flex h-11 min-w-[140px] items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-60 disabled:cursor-not-allowed"
+              className="inline-flex h-11 min-w-[140px] items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
             >
               {saveStatus === "submitting" ? (
                 <>

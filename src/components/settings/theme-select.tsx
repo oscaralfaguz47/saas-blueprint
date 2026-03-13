@@ -30,9 +30,7 @@ export default function ThemeSelect() {
   return (
     <div className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-6">
       <div className="mb-4">
-        <h2 className="text-base font-semibold text-(--text-primary)">
-          Appearance
-        </h2>
+        <h2 className="text-base font-semibold text-(--text-primary)">Appearance</h2>
         <p className="mt-1 text-sm text-(--text-secondary)">
           Choose how the interface looks for your account.
         </p>
@@ -58,14 +56,12 @@ export default function ThemeSelect() {
                 value={opt.value}
                 checked={checked}
                 onChange={() => setTheme(opt.value)}
-                className="mt-1 h-4 w-4 accent-[var(--color-primary)]"
+                className="mt-1 h-4 w-4 accent-(--color-primary)"
               />
 
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-(--text-primary)">
-                    {opt.label}
-                  </span>
+                  <span className="text-sm font-semibold text-(--text-primary)">{opt.label}</span>
                   {opt.value === "dark" ? (
                     <span className="rounded-md border border-(--border-subtle) bg-(--bg-surface) px-2 py-0.5 text-[11px] font-medium text-(--text-secondary)">
                       Default
@@ -73,9 +69,7 @@ export default function ThemeSelect() {
                   ) : null}
                 </div>
 
-                <p className="mt-1 text-sm text-(--text-secondary)">
-                  {opt.description}
-                </p>
+                <p className="mt-1 text-sm text-(--text-secondary)">{opt.description}</p>
               </div>
             </label>
           );

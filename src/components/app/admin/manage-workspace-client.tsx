@@ -186,11 +186,14 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
   const handleStatusChange = async (membershipId: string, status: "ACTIVE" | "DISABLED") => {
     setStatusLoadingId(membershipId);
     try {
-      const res = await apiFetch(`/api/admin/workspaces/${tenantId}/members/${membershipId}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
+      const res = await apiFetch(
+        `/api/admin/workspaces/${tenantId}/members/${membershipId}/status`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status }),
+        },
+      );
       if (res.ok) {
         toast.addToast("success", status === "ACTIVE" ? "Member enabled" : "Member disabled");
         fetchMembers();
@@ -203,10 +206,9 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
   const handleRevokeInvite = async (inviteId: string) => {
     setRevokeLoadingId(inviteId);
     try {
-      const res = await apiFetch(
-        `/api/admin/workspaces/${tenantId}/invites/${inviteId}/revoke`,
-        { method: "POST" }
-      );
+      const res = await apiFetch(`/api/admin/workspaces/${tenantId}/invites/${inviteId}/revoke`, {
+        method: "POST",
+      });
       if (res.ok) {
         toast.addToast("success", "Invitation revoked");
         fetchInvites();
@@ -219,10 +221,9 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
   const handleResendInvite = async (inviteId: string) => {
     setResendLoadingId(inviteId);
     try {
-      const res = await apiFetch(
-        `/api/admin/workspaces/${tenantId}/invites/${inviteId}/resend`,
-        { method: "POST" }
-      );
+      const res = await apiFetch(`/api/admin/workspaces/${tenantId}/invites/${inviteId}/resend`, {
+        method: "POST",
+      });
       if (res.ok) {
         toast.addToast("success", "Invitation resent");
         fetchInvites();
@@ -238,10 +239,9 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
   const handleReinvite = async (inviteId: string) => {
     setReinviteLoadingId(inviteId);
     try {
-      const res = await apiFetch(
-        `/api/admin/workspaces/${tenantId}/invites/${inviteId}/reinvite`,
-        { method: "POST" }
-      );
+      const res = await apiFetch(`/api/admin/workspaces/${tenantId}/invites/${inviteId}/reinvite`, {
+        method: "POST",
+      });
       if (res.ok) {
         toast.addToast("success", "Re-invitation sent");
         fetchInvites();
@@ -267,7 +267,7 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ confirm: "RESET 2FA" }),
-        }
+        },
       );
       if (res.ok) {
         toast.addToast("success", "Primary owner 2FA has been reset");
@@ -277,7 +277,10 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
       } else {
         const data = await res.json().catch(() => ({}));
         if (data?.details?.code === "STEP_UP_REQUIRED") {
-          toast.addToast("error", "Recent authentication required. Please sign out and sign in again, then retry.");
+          toast.addToast(
+            "error",
+            "Recent authentication required. Please sign out and sign in again, then retry.",
+          );
         } else {
           toast.addToast("error", data?.message ?? "Failed to reset 2FA");
         }
@@ -338,20 +341,17 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
 
   const primaryOwner = members.find((m) => m.isPrimaryOwner);
   const eligibleForTransfer = members.filter(
-    (m) =>
-      !m.isPrimaryOwner &&
-      (m.role === "Owner" || m.role === "Admin") &&
-      m.status === "ACTIVE"
+    (m) => !m.isPrimaryOwner && (m.role === "Owner" || m.role === "Admin") && m.status === "ACTIVE",
   );
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
-        <Link href="/admin/workspaces" className="hover:text-[var(--text-primary)]">
+      <div className="flex items-center gap-2 text-sm text-(--text-muted)">
+        <Link href="/admin/workspaces" className="hover:text-(--text-primary)">
           Workspaces
         </Link>
         <span>/</span>
-        <span className="text-[var(--text-primary)]">Manage</span>
+        <span className="text-(--text-primary)">Manage</span>
       </div>
 
       <div className="rounded-lg border border-amber-200 bg-amber-50/80 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
@@ -361,43 +361,43 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
       {workspaceLoading ? (
         <div className="flex flex-col items-center justify-center gap-3 py-12">
           <Spinner size="md" />
-          <p className="text-sm text-[var(--text-muted)]">Loading workspace…</p>
+          <p className="text-sm text-(--text-muted)">Loading workspace…</p>
         </div>
       ) : workspaceError || !workspace ? (
         <p className="text-sm text-red-600">{workspaceError ?? "Workspace not found"}</p>
       ) : (
-        <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-elev)] p-4">
-          <h1 className="text-2xl font-semibold text-[var(--text-primary)]">{workspace.name}</h1>
+        <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) p-4">
+          <h1 className="text-2xl font-semibold text-(--text-primary)">{workspace.name}</h1>
           <dl className="mt-3 grid gap-1 text-sm">
             <div>
-              <span className="text-[var(--text-muted)]">Slug: </span>
+              <span className="text-(--text-muted)">Slug: </span>
               <span>{workspace.slug}</span>
             </div>
             <div>
-              <span className="text-[var(--text-muted)]">Status: </span>
+              <span className="text-(--text-muted)">Status: </span>
               <span>{workspace.status}</span>
             </div>
             {workspace.timezone && (
               <div>
-                <span className="text-[var(--text-muted)]">Timezone: </span>
+                <span className="text-(--text-muted)">Timezone: </span>
                 <span>{workspace.timezone}</span>
               </div>
             )}
             {workspace.currency && (
               <div>
-                <span className="text-[var(--text-muted)]">Currency: </span>
+                <span className="text-(--text-muted)">Currency: </span>
                 <span>{workspace.currency}</span>
               </div>
             )}
             {workspace.dateFormat && (
               <div>
-                <span className="text-[var(--text-muted)]">Date format: </span>
+                <span className="text-(--text-muted)">Date format: </span>
                 <span>{workspace.dateFormat}</span>
               </div>
             )}
             {workspace.description && (
               <div>
-                <span className="text-[var(--text-muted)]">Description: </span>
+                <span className="text-(--text-muted)">Description: </span>
                 <span>{workspace.description}</span>
               </div>
             )}
@@ -425,20 +425,18 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
           ) : (
             <>
               {primaryOwner && (
-                <div className="mb-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-elev)] p-4">
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+                <div className="mb-4 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) p-4">
+                  <h3 className="text-sm font-semibold text-(--text-primary)">
                     Transfer primary ownership
                   </h3>
-                  <p className="mt-1 text-sm text-[var(--text-muted)]">
-                    When the Primary Owner leaves, you can assign the Primary Owner role to an active
-                    member who has the <strong>Owner</strong> or <strong>Admin</strong> role. That
-                    member will become the new Primary Owner; the current one becomes Owner.
+                  <p className="mt-1 text-sm text-(--text-muted)">
+                    When the Primary Owner leaves, you can assign the Primary Owner role to an
+                    active member who has the <strong>Owner</strong> or <strong>Admin</strong> role.
+                    That member will become the new Primary Owner; the current one becomes Owner.
                   </p>
                   {eligibleForTransfer.length > 0 ? (
                     <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <span className="text-sm text-[var(--text-muted)]">
-                        Transfer to:
-                      </span>
+                      <span className="text-sm text-(--text-muted)">Transfer to:</span>
                       {eligibleForTransfer.map((m) => (
                         <button
                           key={m.membershipId}
@@ -447,17 +445,18 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
                             setTransferUserId(m.userId);
                             setTransferOpen(true);
                           }}
-                          className="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-subtle)] bg-[var(--bg-main)] px-3 text-sm font-medium hover:bg-[var(--bg-surface-elev)]"
+                          className="inline-flex h-8 items-center justify-center rounded-md border border-(--border-subtle) bg-(--bg-main) px-3 text-sm font-medium hover:bg-(--bg-surface-elev)"
                         >
                           {m.email ?? m.name ?? m.userId}
                         </button>
                       ))}
                     </div>
                   ) : (
-                    <p className="mt-3 text-sm text-[var(--text-muted)]">
+                    <p className="mt-3 text-sm text-(--text-muted)">
                       No eligible members yet. Assign the <strong>Owner</strong> or{" "}
-                      <strong>Admin</strong> role to the person who should become Primary Owner, then
-                      use &quot;Transfer ownership&quot; on their row below or here once they appear.
+                      <strong>Admin</strong> role to the person who should become Primary Owner,
+                      then use &quot;Transfer ownership&quot; on their row below or here once they
+                      appear.
                     </p>
                   )}
                 </div>
@@ -479,7 +478,7 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
                       <TableCell>
                         {m.name ?? "—"} {m.isPrimaryOwner && "(Primary Owner)"}
                       </TableCell>
-                      <TableCell className="text-[var(--text-muted)]">{m.email ?? "—"}</TableCell>
+                      <TableCell className="text-(--text-muted)">{m.email ?? "—"}</TableCell>
                       <TableCell>
                         {m.isPrimaryOwner ? (
                           m.role
@@ -488,7 +487,7 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
                             value={m.role}
                             onChange={(e) => handleRoleChange(m.membershipId, e.target.value)}
                             disabled={roleLoadingId === m.membershipId}
-                            className="rounded border border-[var(--border-subtle)] bg-transparent px-2 py-1 text-sm"
+                            className="rounded border border-(--border-subtle) bg-transparent px-2 py-1 text-sm"
                           >
                             {ROLES.map((r) => (
                               <option key={r} value={r}>
@@ -508,10 +507,10 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
                             onClick={() =>
                               handleStatusChange(
                                 m.membershipId,
-                                m.status === "ACTIVE" ? "DISABLED" : "ACTIVE"
+                                m.status === "ACTIVE" ? "DISABLED" : "ACTIVE",
                               )
                             }
-                            className="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-subtle)] px-3 text-sm font-medium hover:bg-[var(--bg-surface-elev)] disabled:opacity-60"
+                            className="inline-flex h-8 items-center justify-center rounded-md border border-(--border-subtle) px-3 text-sm font-medium hover:bg-(--bg-surface-elev) disabled:opacity-60"
                           >
                             {statusLoadingId === m.membershipId ? (
                               <Spinner size="sm" />
@@ -531,7 +530,7 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
                         {!m.isPrimaryOwner && (m.role === "Owner" || m.role === "Admin") && (
                           <button
                             type="button"
-                            className="mr-2 inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-subtle)] px-3 text-sm font-medium hover:bg-[var(--bg-surface-elev)]"
+                            className="mr-2 inline-flex h-8 items-center justify-center rounded-md border border-(--border-subtle) px-3 text-sm font-medium hover:bg-(--bg-surface-elev)"
                             onClick={() => {
                               setTransferUserId(m.userId);
                               setTransferOpen(true);
@@ -555,7 +554,7 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
                 </TableBody>
               </Table>
               {members.length === 0 && (
-                <p className="py-4 text-center text-[var(--text-muted)]">No members.</p>
+                <p className="py-4 text-center text-(--text-muted)">No members.</p>
               )}
             </>
           )}
@@ -599,7 +598,7 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
                     <TableRow key={inv.id}>
                       <TableCell>{inv.email}</TableCell>
                       <TableCell>{inv.status}</TableCell>
-                      <TableCell className="text-[var(--text-muted)]">
+                      <TableCell className="text-(--text-muted)">
                         {new Date(inv.expiresAt).toLocaleDateString()}
                       </TableCell>
                       <TableCell>
@@ -610,7 +609,7 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
                                 type="button"
                                 disabled={resendLoadingId === inv.id}
                                 onClick={() => handleResendInvite(inv.id)}
-                                className="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-subtle)] px-3 text-sm font-medium hover:bg-[var(--bg-surface-elev)] disabled:opacity-60"
+                                className="inline-flex h-8 items-center justify-center rounded-md border border-(--border-subtle) px-3 text-sm font-medium hover:bg-(--bg-surface-elev) disabled:opacity-60"
                               >
                                 {resendLoadingId === inv.id ? <Spinner size="sm" /> : "Resend"}
                               </button>
@@ -618,18 +617,20 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
                                 type="button"
                                 disabled={revokeLoadingId === inv.id}
                                 onClick={() => handleRevokeInvite(inv.id)}
-                                className="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-subtle)] px-3 text-sm font-medium hover:bg-[var(--bg-surface-elev)] disabled:opacity-60"
+                                className="inline-flex h-8 items-center justify-center rounded-md border border-(--border-subtle) px-3 text-sm font-medium hover:bg-(--bg-surface-elev) disabled:opacity-60"
                               >
                                 {revokeLoadingId === inv.id ? <Spinner size="sm" /> : "Revoke"}
                               </button>
                             </>
                           )}
-                          {(inv.status === "REVOKED" || inv.status === "EXPIRED" || inv.status === "REJECTED") && (
+                          {(inv.status === "REVOKED" ||
+                            inv.status === "EXPIRED" ||
+                            inv.status === "REJECTED") && (
                             <button
                               type="button"
                               disabled={reinviteLoadingId === inv.id}
                               onClick={() => handleReinvite(inv.id)}
-                              className="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-subtle)] px-3 text-sm font-medium hover:bg-[var(--bg-surface-elev)] disabled:opacity-60"
+                              className="inline-flex h-8 items-center justify-center rounded-md border border-(--border-subtle) px-3 text-sm font-medium hover:bg-(--bg-surface-elev) disabled:opacity-60"
                             >
                               {reinviteLoadingId === inv.id ? <Spinner size="sm" /> : "Re-invite"}
                             </button>
@@ -641,7 +642,7 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
                 </TableBody>
               </Table>
               {invites.length === 0 && (
-                <p className="py-4 text-center text-[var(--text-muted)]">No pending invites.</p>
+                <p className="py-4 text-center text-(--text-muted)">No pending invites.</p>
               )}
             </>
           )}
@@ -652,7 +653,8 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
         <div className="rounded-lg border border-amber-300 bg-amber-50/50 p-4 dark:border-amber-700 dark:bg-amber-950/20">
           <h3 className="font-medium text-amber-900 dark:text-amber-200">Break-glass</h3>
           <p className="mt-1 text-sm text-amber-800 dark:text-amber-300">
-            Reset 2FA for the Primary Owner ({primaryOwner.email ?? primaryOwner.userId}) so they can re-enroll on next login.
+            Reset 2FA for the Primary Owner ({primaryOwner.email ?? primaryOwner.userId}) so they
+            can re-enroll on next login.
           </p>
           <button
             type="button"
@@ -666,10 +668,11 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
 
       {breakGlassOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-lg bg-[var(--bg-surface-elev)] p-4 shadow-lg">
-            <h3 className="font-semibold text-[var(--text-primary)]">Reset Primary Owner 2FA</h3>
-            <p className="mt-2 text-sm text-[var(--text-muted)]">
-              Type <strong>RESET 2FA</strong> below to confirm. This will clear 2FA and log out the primary owner.
+          <div className="w-full max-w-md rounded-lg bg-(--bg-surface-elev) p-4 shadow-lg">
+            <h3 className="font-semibold text-(--text-primary)">Reset Primary Owner 2FA</h3>
+            <p className="mt-2 text-sm text-(--text-muted)">
+              Type <strong>RESET 2FA</strong> below to confirm. This will clear 2FA and log out the
+              primary owner.
             </p>
             <Input
               className="mt-3"
@@ -680,8 +683,11 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
             <div className="mt-4 flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => { setBreakGlassOpen(false); setBreakGlassConfirm(""); }}
-                className="inline-flex h-9 items-center justify-center rounded-md border border-[var(--border-subtle)] px-4 text-sm font-medium hover:bg-[var(--bg-surface-elev)]"
+                onClick={() => {
+                  setBreakGlassOpen(false);
+                  setBreakGlassConfirm("");
+                }}
+                className="inline-flex h-9 items-center justify-center rounded-md border border-(--border-subtle) px-4 text-sm font-medium hover:bg-(--bg-surface-elev)"
               >
                 Cancel
               </button>
@@ -689,7 +695,7 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
                 type="button"
                 disabled={breakGlassConfirm !== "RESET 2FA" || breakGlassSubmitting}
                 onClick={handleBreakGlassSubmit}
-                className="inline-flex h-9 items-center justify-center rounded-md bg-[var(--color-primary)] px-4 text-sm font-medium text-white hover:bg-[var(--color-primary-hover)] disabled:opacity-60"
+                className="inline-flex h-9 items-center justify-center rounded-md bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-60"
               >
                 {breakGlassSubmitting ? <Spinner size="sm" /> : "Confirm"}
               </button>
@@ -699,9 +705,12 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
       )}
 
       {inviteOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" key="invite-modal">
-          <div className="w-full max-w-md rounded-lg bg-[var(--bg-surface-elev)] p-4 shadow-lg">
-            <h3 className="font-semibold text-[var(--text-primary)]">Invite member</h3>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          key="invite-modal"
+        >
+          <div className="w-full max-w-md rounded-lg bg-(--bg-surface-elev) p-4 shadow-lg">
+            <h3 className="font-semibold text-(--text-primary)">Invite member</h3>
             <Input
               id="admin-invite-modal-email"
               name="invite-email"
@@ -715,8 +724,11 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
             <div className="mt-4 flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => { setInviteOpen(false); setInviteEmail(""); }}
-                className="inline-flex h-9 items-center justify-center rounded-md border border-[var(--border-subtle)] px-4 text-sm font-medium hover:bg-[var(--bg-surface-elev)]"
+                onClick={() => {
+                  setInviteOpen(false);
+                  setInviteEmail("");
+                }}
+                className="inline-flex h-9 items-center justify-center rounded-md border border-(--border-subtle) px-4 text-sm font-medium hover:bg-(--bg-surface-elev)"
               >
                 Cancel
               </button>
@@ -724,7 +736,7 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
                 type="button"
                 disabled={!inviteEmail.trim() || inviteSubmitting}
                 onClick={handleInviteSubmit}
-                className="inline-flex h-9 items-center justify-center rounded-md bg-[var(--color-primary)] px-4 text-sm font-medium text-white hover:bg-[var(--color-primary-hover)] disabled:opacity-60"
+                className="inline-flex h-9 items-center justify-center rounded-md bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-60"
               >
                 {inviteSubmitting ? <Spinner size="sm" /> : "Send invite"}
               </button>
@@ -735,14 +747,15 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
 
       {transferOpen && workspace && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-lg bg-[var(--bg-surface-elev)] p-4 shadow-lg">
-            <h3 className="font-semibold text-[var(--text-primary)]">Transfer primary ownership</h3>
+          <div className="w-full max-w-md rounded-lg bg-(--bg-surface-elev) p-4 shadow-lg">
+            <h3 className="font-semibold text-(--text-primary)">Transfer primary ownership</h3>
             {transferUserId && (
-              <p className="mt-2 text-sm text-[var(--text-muted)]">
-                Transfer to: {members.find((m) => m.userId === transferUserId)?.email ?? transferUserId}
+              <p className="mt-2 text-sm text-(--text-muted)">
+                Transfer to:{" "}
+                {members.find((m) => m.userId === transferUserId)?.email ?? transferUserId}
               </p>
             )}
-            <p className="mt-2 text-sm text-[var(--text-muted)]">
+            <p className="mt-2 text-sm text-(--text-muted)">
               Type the workspace slug <strong>{workspace.slug}</strong> to confirm.
             </p>
             <Input
@@ -759,7 +772,7 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
                   setTransferUserId("");
                   setTransferSlugConfirm("");
                 }}
-                className="inline-flex h-9 items-center justify-center rounded-md border border-[var(--border-subtle)] px-4 text-sm font-medium hover:bg-[var(--bg-surface-elev)]"
+                className="inline-flex h-9 items-center justify-center rounded-md border border-(--border-subtle) px-4 text-sm font-medium hover:bg-(--bg-surface-elev)"
               >
                 Cancel
               </button>
@@ -767,7 +780,7 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
                 type="button"
                 disabled={transferSlugConfirm !== workspace.slug || transferSubmitting}
                 onClick={handleTransferSubmit}
-                className="inline-flex h-9 items-center justify-center rounded-md bg-[var(--color-primary)] px-4 text-sm font-medium text-white hover:bg-[var(--color-primary-hover)] disabled:opacity-60"
+                className="inline-flex h-9 items-center justify-center rounded-md bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-60"
               >
                 {transferSubmitting ? <Spinner size="sm" /> : "Transfer"}
               </button>

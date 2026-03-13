@@ -17,12 +17,24 @@ import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/components/ui/h
 import { IconCopy, IconCheck, IconHelpCircle } from "@/components/ui/icons";
 
 const ROLE_HELP = (
-  <div className="text-xs space-y-1.5">
-    <p><strong>Primary Owner:</strong> Full control, billing, roles; exactly one per workspace. Only they can manage Owners or transfer Primary Ownership.</p>
-    <p><strong>Owner:</strong> Same permissions as Primary Owner; cannot manage Owners or transfer Primary Ownership.</p>
-    <p><strong>Admin:</strong> Manage workspace and members (no billing).</p>
-    <p><strong>Finance:</strong> Finance-related workflows and approvals (per RBAC).</p>
-    <p><strong>Member:</strong> Standard access, limited management rights.</p>
+  <div className="space-y-1.5 text-xs">
+    <p>
+      <strong>Primary Owner:</strong> Full control, billing, roles; exactly one per workspace. Only
+      they can manage Owners or transfer Primary Ownership.
+    </p>
+    <p>
+      <strong>Owner:</strong> Same permissions as Primary Owner; cannot manage Owners or transfer
+      Primary Ownership.
+    </p>
+    <p>
+      <strong>Admin:</strong> Manage workspace and members (no billing).
+    </p>
+    <p>
+      <strong>Finance:</strong> Finance-related workflows and approvals (per RBAC).
+    </p>
+    <p>
+      <strong>Member:</strong> Standard access, limited management rights.
+    </p>
   </div>
 );
 import { useApiFetch } from "@/hooks/use-api-fetch";
@@ -39,10 +51,7 @@ const ROLES_ASSIGN = [
   { value: "Member", label: "Member" },
 ];
 /** Role options for filter dropdown (includes Primary Owner). */
-const ROLES_FILTER = [
-  { value: "Primary Owner", label: "Primary Owner" },
-  ...ROLES_ASSIGN,
-];
+const ROLES_FILTER = [{ value: "Primary Owner", label: "Primary Owner" }, ...ROLES_ASSIGN];
 const STATUSES = [
   { value: "ACTIVE", label: "Active" },
   { value: "DISABLED", label: "Disabled" },
@@ -141,11 +150,7 @@ export function WorkspaceMembersTab({
   const loadingMoreRef = useRef(false);
 
   const fetchPage = useCallback(
-    async (
-      cursor: string | null,
-      append: boolean,
-      signal?: AbortSignal | null
-    ) => {
+    async (cursor: string | null, append: boolean, signal?: AbortSignal | null) => {
       const params = new URLSearchParams();
       params.set("limit", String(PAGE_SIZE));
       if (cursor) params.set("cursor", cursor);
@@ -155,10 +160,9 @@ export function WorkspaceMembersTab({
       if (roles.length) params.set("roles", roles.join(","));
       if (statuses.length) params.set("statuses", statuses.join(","));
       try {
-        const res = await apiFetch(
-          `/api/settings/workspace/members?${params.toString()}`,
-          { signal }
-        );
+        const res = await apiFetch(`/api/settings/workspace/members?${params.toString()}`, {
+          signal,
+        });
         if (signal?.aborted) return null;
         const data = (await res.json()) as {
           data?: { items?: MemberItem[]; nextCursor?: string | null };
@@ -183,7 +187,7 @@ export function WorkspaceMembersTab({
         throw err;
       }
     },
-    [apiFetch, sortBy, sortDir, searchSent, roles, statuses]
+    [apiFetch, sortBy, sortDir, searchSent, roles, statuses],
   );
 
   const loadInitial = useCallback(
@@ -193,7 +197,7 @@ export function WorkspaceMembersTab({
         if (!signal?.aborted) setLoading(false);
       });
     },
-    [fetchPage]
+    [fetchPage],
   );
 
   useEffect(() => {
@@ -224,7 +228,7 @@ export function WorkspaceMembersTab({
   }, [loadMore]);
 
   const ownerLevelCount = items.filter(
-    (u) => u.role === "Primary Owner" || u.role === "Owner"
+    (u) => u.role === "Primary Owner" || u.role === "Owner",
   ).length;
 
   const handleStatus = async (userId: string, status: "ACTIVE" | "DISABLED") => {
@@ -236,11 +240,7 @@ export function WorkspaceMembersTab({
         body: JSON.stringify({ status }),
       });
       if (res.ok) {
-        setItems((prev) =>
-          prev.map((m) =>
-            m.userId === userId ? { ...m, status } : m
-          )
-        );
+        setItems((prev) => prev.map((m) => (m.userId === userId ? { ...m, status } : m)));
       }
     } finally {
       setStatusLoadingId(null);
@@ -256,9 +256,7 @@ export function WorkspaceMembersTab({
         body: JSON.stringify({ role }),
       });
       if (res.ok) {
-        setItems((prev) =>
-          prev.map((m) => (m.userId === userId ? { ...m, role } : m))
-        );
+        setItems((prev) => prev.map((m) => (m.userId === userId ? { ...m, role } : m)));
       }
     } finally {
       setRoleLoadingId(null);
@@ -278,7 +276,12 @@ export function WorkspaceMembersTab({
   const baseSecurityUrl = "/api/settings/workspace/members";
   const runSecurityAction = async (
     userId: string,
-    action: "force-2fa" | "reset-2fa" | "disable-2fa" | "revoke-sessions" | "revoke-remembered-devices"
+    action:
+      | "force-2fa"
+      | "reset-2fa"
+      | "disable-2fa"
+      | "revoke-sessions"
+      | "revoke-remembered-devices",
   ) => {
     setSecurityLoadingId(userId);
     try {
@@ -303,11 +306,13 @@ export function WorkspaceMembersTab({
           if (action === "force-2fa" && data.data?.alreadyEnforced) {
             message = "Member is already required to use 2FA.";
           } else if (action === "force-2fa") {
-            message = "2FA enforcement has been applied. The member must set up 2FA at next sign-in.";
+            message =
+              "2FA enforcement has been applied. The member must set up 2FA at next sign-in.";
           } else if (action === "reset-2fa" && data.data?.skipped) {
             message = "No 2FA to reset for this member.";
           } else if (action === "reset-2fa") {
-            message = "2FA has been reset for this member. They will need to set it up again at next sign-in.";
+            message =
+              "2FA has been reset for this member. They will need to set it up again at next sign-in.";
           } else if (action === "disable-2fa" && data.data?.alreadyDisabled) {
             message = "2FA was already disabled for this member.";
           } else if (action === "disable-2fa") {
@@ -356,13 +361,7 @@ export function WorkspaceMembersTab({
       setSortDir("desc");
     }
   };
-  const SortHeader = ({
-    col,
-    label,
-  }: {
-    col: SortBy;
-    label: string;
-  }) => (
+  const SortHeader = ({ col, label }: { col: SortBy; label: string }) => (
     <TableHead>
       <button
         type="button"
@@ -404,9 +403,7 @@ export function WorkspaceMembersTab({
 
       <div className="flex flex-wrap gap-2">
         <div className="min-w-[200px] flex-1">
-          <label className="block text-sm font-medium text-(--text-primary)">
-            Search
-          </label>
+          <label className="block text-sm font-medium text-(--text-primary)">Search</label>
           <Input
             placeholder="Search by name or email"
             value={search}
@@ -446,7 +443,7 @@ export function WorkspaceMembersTab({
               setRoles([]);
               setStatuses([]);
             }}
-            className="self-end cursor-pointer text-sm font-medium text-(--color-primary) hover:underline disabled:cursor-not-allowed"
+            className="cursor-pointer self-end text-sm font-medium text-(--color-primary) hover:underline disabled:cursor-not-allowed"
           >
             Clear filters
           </button>
@@ -474,7 +471,7 @@ export function WorkspaceMembersTab({
             (m) =>
               m.userId !== currentUserId &&
               m.status === "ACTIVE" &&
-              (m.role === "Owner" || m.role === "Admin")
+              (m.role === "Owner" || m.role === "Admin"),
           )}
           onSuccess={loadInitial}
         />
@@ -496,12 +493,24 @@ export function WorkspaceMembersTab({
             <TableBody>
               {[1, 2, 3, 4, 5, 6].map((i) => (
                 <TableRow key={i}>
-                  <TableCell><Skeleton className="h-5 w-32" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-16" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-14" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-16" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-20" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-24 ml-auto" /></TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-32" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-16" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-14" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-16" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-20" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="ml-auto h-5 w-24" />
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -509,14 +518,12 @@ export function WorkspaceMembersTab({
         </div>
       ) : isEmpty ? (
         <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface) p-8 text-center">
-          <p className="text-sm text-(--text-secondary)">
-            No members found matching the filters.
-          </p>
+          <p className="text-sm text-(--text-secondary)">No members found matching the filters.</p>
         </div>
       ) : (
         <div
           ref={scrollRef}
-          className="overflow-auto rounded-lg border border-(--border-subtle) max-h-[72vh] min-h-[320px]"
+          className="max-h-[72vh] min-h-[320px] overflow-auto rounded-lg border border-(--border-subtle)"
         >
           <Table>
             <TableHeader>
@@ -535,17 +542,15 @@ export function WorkspaceMembersTab({
                 <SortHeader col="status" label="Status" />
                 <TableHead className="whitespace-nowrap">2FA</TableHead>
                 <SortHeader col="joined" label="Joined" />
-                <TableHead className="text-right min-w-[120px]">Actions</TableHead>
+                <TableHead className="min-w-[120px] text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {items.map((m) => {
                 const isCurrentUser = m.userId === currentUserId;
-                const isOwnerLevel =
-                  m.role === "Primary Owner" || m.role === "Owner";
+                const isOwnerLevel = m.role === "Primary Owner" || m.role === "Owner";
                 const isPrimaryOwner = m.role === "Primary Owner";
-                const isLastOwnerLevel =
-                  isOwnerLevel && ownerLevelCount <= 1;
+                const isLastOwnerLevel = isOwnerLevel && ownerLevelCount <= 1;
                 const showRoleSelect =
                   canManageRoles &&
                   !isLastOwnerLevel &&
@@ -554,12 +559,9 @@ export function WorkspaceMembersTab({
                   roleRank(currentUserRole) > roleRank(m.role) &&
                   assignableRoles.length > 0;
                 const showStatusButtons =
-                  canShowStatusButtonsFor(currentUserRole, m.role) &&
-                  !isCurrentUser;
+                  canShowStatusButtonsFor(currentUserRole, m.role) && !isCurrentUser;
                 const showSecurityActions =
-                  canManage &&
-                  canShowSecurityActionsFor(currentUserRole, m.role) &&
-                  !isCurrentUser;
+                  canManage && canShowSecurityActionsFor(currentUserRole, m.role) && !isCurrentUser;
                 const securityMenuOpen = securityMenuUserId === m.userId;
                 const securityLoading = securityLoadingId === m.userId;
                 return (
@@ -596,9 +598,7 @@ export function WorkspaceMembersTab({
                         ) : showRoleSelect ? (
                           <select
                             value={m.role}
-                            onChange={(e) =>
-                              handleRole(m.userId, e.target.value)
-                            }
+                            onChange={(e) => handleRole(m.userId, e.target.value)}
                             disabled={roleLoadingId === m.userId}
                             className="min-h-[44px] min-w-[100px] cursor-pointer rounded border border-(--border-subtle) bg-(--bg-surface) px-2 py-1 text-xs text-(--text-primary) disabled:opacity-60"
                           >
@@ -615,7 +615,11 @@ export function WorkspaceMembersTab({
                         )}
                         <HoverCard>
                           <HoverCardTrigger>
-                            <IconHelpCircle size={14} className="shrink-0 cursor-help text-(--text-muted)" aria-label="Role descriptions" />
+                            <IconHelpCircle
+                              size={14}
+                              className="shrink-0 cursor-help text-(--text-muted)"
+                              aria-label="Role descriptions"
+                            />
                           </HoverCardTrigger>
                           <HoverCardContent side="bottom" className="text-xs">
                             {ROLE_HELP}
@@ -625,17 +629,13 @@ export function WorkspaceMembersTab({
                     </TableCell>
                     <TableCell className="text-(--text-secondary)">{m.status}</TableCell>
                     <TableCell className="text-(--text-muted)">
-                      {m.mfaEnforced
-                        ? "Enforced"
-                        : m.totpEnabled
-                          ? "Enabled"
-                          : "Off"}
+                      {m.mfaEnforced ? "Enforced" : m.totpEnabled ? "Enabled" : "Off"}
                     </TableCell>
                     <TableCell className="text-(--text-muted)">
                       {m.joinedAt ? new Date(m.joinedAt).toLocaleDateString() : "—"}
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1 flex-wrap">
+                      <div className="flex flex-wrap items-center justify-end gap-1">
                         <button
                           type="button"
                           onClick={() => copyEmail(m.userId, m.email)}
@@ -657,54 +657,41 @@ export function WorkspaceMembersTab({
                           !isLastOwnerLevel &&
                           (canDisable || canManage) &&
                           m.status === "ACTIVE" && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleStatus(m.userId, "DISABLED")
-                            }
-                            disabled={
-                              statusLoadingId === m.userId ||
-                              isLastOwnerLevel
-                            }
-                            className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded px-2 py-1 text-xs text-(--color-danger) hover:bg-(--bg-surface-elev) disabled:opacity-60 disabled:cursor-not-allowed"
-                          >
-                            {statusLoadingId === m.userId ? <Spinner size="sm" /> : "Disable"}
-                          </button>
-                        )}
+                            <button
+                              type="button"
+                              onClick={() => handleStatus(m.userId, "DISABLED")}
+                              disabled={statusLoadingId === m.userId || isLastOwnerLevel}
+                              className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded px-2 py-1 text-xs text-(--color-danger) hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {statusLoadingId === m.userId ? <Spinner size="sm" /> : "Disable"}
+                            </button>
+                          )}
                         {showStatusButtons &&
                           !isLastOwnerLevel &&
                           canEnable &&
                           m.status !== "ACTIVE" && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleStatus(m.userId, "ACTIVE")
-                            }
-                            disabled={statusLoadingId === m.userId}
-                            className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded px-2 py-1 text-xs text-(--color-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60 disabled:cursor-not-allowed"
-                          >
-                            {statusLoadingId === m.userId ? <Spinner size="sm" /> : "Enable"}
-                          </button>
-                        )}
+                            <button
+                              type="button"
+                              onClick={() => handleStatus(m.userId, "ACTIVE")}
+                              disabled={statusLoadingId === m.userId}
+                              className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded px-2 py-1 text-xs text-(--color-primary) hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {statusLoadingId === m.userId ? <Spinner size="sm" /> : "Enable"}
+                            </button>
+                          )}
                         {showSecurityActions ? (
                           <div className="relative inline-block">
                             <button
                               type="button"
                               onClick={() =>
-                                setSecurityMenuUserId((id) =>
-                                  id === m.userId ? null : m.userId
-                                )
+                                setSecurityMenuUserId((id) => (id === m.userId ? null : m.userId))
                               }
                               disabled={securityLoading}
-                              className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded px-2 py-1 text-xs text-(--text-primary) bg-(--bg-surface-elev) hover:bg-[color-mix(in_srgb,var(--border-subtle)_30%,transparent)] disabled:opacity-60 disabled:cursor-not-allowed"
+                              className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded bg-(--bg-surface-elev) px-2 py-1 text-xs text-(--text-primary) hover:bg-[color-mix(in_srgb,var(--border-subtle)_30%,transparent)] disabled:cursor-not-allowed disabled:opacity-60"
                               aria-expanded={securityMenuOpen}
                               aria-haspopup="true"
                             >
-                              {securityLoading ? (
-                                <Spinner size="sm" />
-                              ) : (
-                                "Security ▼"
-                              )}
+                              {securityLoading ? <Spinner size="sm" /> : "Security ▼"}
                             </button>
                             {securityMenuOpen ? (
                               <>
@@ -714,7 +701,7 @@ export function WorkspaceMembersTab({
                                   onClick={() => setSecurityMenuUserId(null)}
                                 />
                                 <div
-                                  className="absolute right-0 top-full z-20 mt-1 min-w-[180px] rounded-lg border border-(--border-subtle) bg-(--bg-surface) py-1 shadow-md"
+                                  className="absolute top-full right-0 z-20 mt-1 min-w-[180px] rounded-lg border border-(--border-subtle) bg-(--bg-surface) py-1 shadow-md"
                                   role="menu"
                                 >
                                   {!m.mfaEnforced && (
@@ -722,9 +709,7 @@ export function WorkspaceMembersTab({
                                       type="button"
                                       role="menuitem"
                                       className="block w-full px-3 py-2 text-left text-sm text-(--text-primary) hover:bg-(--bg-surface-elev)"
-                                      onClick={() =>
-                                        runSecurityAction(m.userId, "force-2fa")
-                                      }
+                                      onClick={() => runSecurityAction(m.userId, "force-2fa")}
                                     >
                                       Force 2FA
                                     </button>
@@ -734,9 +719,7 @@ export function WorkspaceMembersTab({
                                       type="button"
                                       role="menuitem"
                                       className="block w-full px-3 py-2 text-left text-sm text-(--text-primary) hover:bg-(--bg-surface-elev)"
-                                      onClick={() =>
-                                        runSecurityAction(m.userId, "reset-2fa")
-                                      }
+                                      onClick={() => runSecurityAction(m.userId, "reset-2fa")}
                                     >
                                       Reset 2FA
                                     </button>
@@ -746,9 +729,7 @@ export function WorkspaceMembersTab({
                                       type="button"
                                       role="menuitem"
                                       className="block w-full px-3 py-2 text-left text-sm text-(--text-primary) hover:bg-(--bg-surface-elev)"
-                                      onClick={() =>
-                                        runSecurityAction(m.userId, "disable-2fa")
-                                      }
+                                      onClick={() => runSecurityAction(m.userId, "disable-2fa")}
                                     >
                                       Disable 2FA
                                     </button>
@@ -757,9 +738,7 @@ export function WorkspaceMembersTab({
                                     type="button"
                                     role="menuitem"
                                     className="block w-full px-3 py-2 text-left text-sm text-(--text-primary) hover:bg-(--bg-surface-elev)"
-                                    onClick={() =>
-                                      runSecurityAction(m.userId, "revoke-sessions")
-                                    }
+                                    onClick={() => runSecurityAction(m.userId, "revoke-sessions")}
                                   >
                                     Revoke sessions
                                   </button>
@@ -791,9 +770,7 @@ export function WorkspaceMembersTab({
             </div>
           )}
           {nextCursor && !loadingMore && (
-            <div className="py-2 text-center text-sm text-(--text-muted)">
-              Scroll for more
-            </div>
+            <div className="py-2 text-center text-sm text-(--text-muted)">Scroll for more</div>
           )}
         </div>
       )}

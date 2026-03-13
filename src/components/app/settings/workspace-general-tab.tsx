@@ -46,7 +46,8 @@ const DATE_FORMAT_OPTIONS: { value: string; label: string }[] = [
 function getTimeZones(): string[] {
   if (typeof Intl !== "undefined" && "supportedValuesOf" in Intl) {
     try {
-      const supportedValuesOf = (Intl as { supportedValuesOf: (key: string) => string[] }).supportedValuesOf;
+      const supportedValuesOf = (Intl as { supportedValuesOf: (key: string) => string[] })
+        .supportedValuesOf;
       return supportedValuesOf("timeZone").sort();
     } catch {
       return ["UTC"];
@@ -119,10 +120,7 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
     return () => controller.abort();
   }, [initialTenant.id]);
 
-  const timeZoneOptions = useMemo(
-    () => getTimeZones().map((tz) => ({ value: tz, label: tz })),
-    []
-  );
+  const timeZoneOptions = useMemo(() => getTimeZones().map((tz) => ({ value: tz, label: tz })), []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,7 +138,10 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
           description: description.trim() || undefined,
         }),
       });
-      const data = (await res.json()) as { data?: { tenant?: Tenant }; error?: { code?: string; message?: string; details?: { code?: string } } };
+      const data = (await res.json()) as {
+        data?: { tenant?: Tenant };
+        error?: { code?: string; message?: string; details?: { code?: string } };
+      };
       if (!res.ok) {
         setSaveError(getApiErrorMessage(res, data));
         setSaveStatus("error");
@@ -283,7 +284,9 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
         </div>
       </div>
       <div>
-        <label htmlFor="ws-name" className="block text-sm font-medium text-(--text-primary)">Name</label>
+        <label htmlFor="ws-name" className="block text-sm font-medium text-(--text-primary)">
+          Name
+        </label>
         <Input
           id="ws-name"
           value={name}
@@ -294,7 +297,9 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
         />
       </div>
       <div>
-        <label htmlFor="ws-timezone" className="block text-sm font-medium text-(--text-primary)">Timezone</label>
+        <label htmlFor="ws-timezone" className="block text-sm font-medium text-(--text-primary)">
+          Timezone
+        </label>
         <SearchableSelect
           id="ws-timezone"
           options={timeZoneOptions}
@@ -306,7 +311,9 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
         />
       </div>
       <div>
-        <label htmlFor="ws-currency" className="block text-sm font-medium text-(--text-primary)">Currency</label>
+        <label htmlFor="ws-currency" className="block text-sm font-medium text-(--text-primary)">
+          Currency
+        </label>
         <SearchableSelect
           id="ws-currency"
           options={CURRENCY_OPTIONS}
@@ -318,7 +325,9 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
         />
       </div>
       <div>
-        <label htmlFor="ws-dateFormat" className="block text-sm font-medium text-(--text-primary)">Date format</label>
+        <label htmlFor="ws-dateFormat" className="block text-sm font-medium text-(--text-primary)">
+          Date format
+        </label>
         <SearchableSelect
           id="ws-dateFormat"
           options={DATE_FORMAT_OPTIONS}
@@ -330,7 +339,9 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
         />
       </div>
       <div>
-        <label htmlFor="ws-description" className="block text-sm font-medium text-(--text-primary)">Description</label>
+        <label htmlFor="ws-description" className="block text-sm font-medium text-(--text-primary)">
+          Description
+        </label>
         <Textarea
           id="ws-description"
           value={description}
@@ -342,13 +353,18 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
         />
       </div>
       {saveError ? (
-        <div role="alert" className="rounded-lg border border-(--color-danger) bg-(--bg-surface) p-3 text-sm text-(--text-primary)">{saveError}</div>
+        <div
+          role="alert"
+          className="rounded-lg border border-(--color-danger) bg-(--bg-surface) p-3 text-sm text-(--text-primary)"
+        >
+          {saveError}
+        </div>
       ) : null}
       <div className="flex justify-end gap-2">
         <button
           type="submit"
           disabled={saveStatus === "submitting"}
-          className="inline-flex h-11 min-w-[140px] cursor-pointer items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-60 disabled:cursor-not-allowed"
+          className="inline-flex h-11 min-w-[140px] cursor-pointer items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
         >
           {saveStatus === "submitting" ? (
             <>

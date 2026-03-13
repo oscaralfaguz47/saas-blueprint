@@ -40,7 +40,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         setTimeout(() => removeToast(id), duration);
       }
     },
-    [removeToast]
+    [removeToast],
   );
 
   return (
@@ -51,11 +51,17 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-function ToastList({ toasts, onDismiss }: { toasts: ToastItem[]; onDismiss: (id: string) => void }) {
+function ToastList({
+  toasts,
+  onDismiss,
+}: {
+  toasts: ToastItem[];
+  onDismiss: (id: string) => void;
+}) {
   if (toasts.length === 0) return null;
   return (
     <div
-      className="fixed bottom-4 right-4 z-100 flex flex-col gap-2"
+      className="fixed right-4 bottom-4 z-100 flex flex-col gap-2"
       role="region"
       aria-label="Notifications"
     >
@@ -82,7 +88,7 @@ function Toast({ item, onDismiss }: { item: ToastItem; onDismiss: () => void }) 
 
   return (
     <div
-      className={`flex min-w-[280px] max-w-[420px] items-start gap-3 rounded-lg border px-4 py-3 shadow-lg ${bg}`}
+      className={`flex max-w-[420px] min-w-[280px] items-start gap-3 rounded-lg border px-4 py-3 shadow-lg ${bg}`}
       role="alert"
     >
       <p className={`flex-1 text-sm ${text}`}>{item.message}</p>

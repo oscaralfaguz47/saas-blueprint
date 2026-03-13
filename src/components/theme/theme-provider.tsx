@@ -40,9 +40,7 @@ type ThemeProviderProps = {
 
 export function ThemeProvider({ children, initialTheme }: ThemeProviderProps) {
   // Prefer initialTheme from server (L1), then localStorage, then "dark" for hydration.
-  const [theme, setThemeState] = useState<Theme>(
-    isTheme(initialTheme) ? initialTheme : "dark"
-  );
+  const [theme, setThemeState] = useState<Theme>(isTheme(initialTheme) ? initialTheme : "dark");
 
   useEffect(() => {
     const fromServer = isTheme(initialTheme) ? initialTheme : null;

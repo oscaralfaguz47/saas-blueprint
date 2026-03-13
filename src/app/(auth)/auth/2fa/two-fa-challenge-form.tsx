@@ -41,15 +41,23 @@ export function TwoFaChallengeForm({ hasBackupCodes = true }: Props) {
       });
       const json = (await res.json()) as {
         data?: { verified?: boolean };
-        error?: string;
+        error?: string | {
+          code?: string;
+          message?: string;
+          details?: { code?: string };
+        };
         message?: string;
         details?: { code?: string };
       };
       if (!res.ok) {
+        const errorObj = typeof json.error === "object" && json.error !== null ? json.error : null;
+        const errDetailsCode = errorObj?.details?.code || json.details?.code;
+        const errMessage = errorObj?.message || (typeof json.error === "string" ? json.error : json.message);
+
         const msg =
-          json.details?.code === "MFA_CHALLENGE_EXPIRED"
+          errDetailsCode === "MFA_CHALLENGE_EXPIRED"
             ? "This sign-in attempt expired. Please sign in again."
-            : json.message ?? json.error ?? "Invalid code. Try again.";
+            : errMessage || "Invalid code. Try again.";
         setError(msg);
         setLoading(false);
         return;

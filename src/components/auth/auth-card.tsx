@@ -45,13 +45,9 @@ export default function AuthCard({
           <div className="mb-6 flex items-center justify-between">
             <Link href="/" className="flex items-center gap-3">
               <div className="grid h-9 w-9 place-items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface)">
-                <span className="text-xs font-semibold text-(--text-primary)">
-                  ATL
-                </span>
+                <span className="text-xs font-semibold text-(--text-primary)">ATL</span>
               </div>
-              <span className="text-sm font-medium text-(--text-primary)">
-                ATL
-              </span>
+              <span className="text-sm font-medium text-(--text-primary)">ATL</span>
             </Link>
 
             <span className="rounded-md border border-(--border-subtle) bg-(--bg-surface) px-2 py-1 text-xs font-medium text-(--text-secondary)">
@@ -62,9 +58,7 @@ export default function AuthCard({
           {/* Card */}
           <div className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-6">
             <div className="text-center">
-              <h1 className="text-xl font-semibold text-(--text-primary)">
-                {title}
-              </h1>
+              <h1 className="text-xl font-semibold text-(--text-primary)">{title}</h1>
               {subtitle != null ? (
                 <div className="mt-2 text-sm leading-relaxed text-(--text-secondary)">
                   {subtitle}
@@ -73,21 +67,12 @@ export default function AuthCard({
             </div>
 
             {message ? (
-              <div
-                className={[
-                  "mt-6 rounded-xl border p-4",
-                  toneStyles(message.tone),
-                ].join(" ")}
-              >
+              <div className={["mt-6 rounded-xl border p-4", toneStyles(message.tone)].join(" ")}>
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-(--text-primary)">
-                      {message.title}
-                    </p>
+                    <p className="text-sm font-semibold text-(--text-primary)">{message.title}</p>
                     {message.description ? (
-                      <p className="mt-1 text-sm text-(--text-secondary)">
-                        {message.description}
-                      </p>
+                      <p className="mt-1 text-sm text-(--text-secondary)">{message.description}</p>
                     ) : null}
                   </div>
 
@@ -104,17 +89,11 @@ export default function AuthCard({
 
             <p className="mt-6 text-center text-xs text-(--text-muted)">
               By continuing, you agree to our{" "}
-              <Link
-                href="/terms"
-                className="text-(--text-secondary) hover:text-(--text-primary)"
-              >
+              <Link href="/terms" className="text-(--text-secondary) hover:text-(--text-primary)">
                 Terms
               </Link>{" "}
               and{" "}
-              <Link
-                href="/privacy"
-                className="text-(--text-secondary) hover:text-(--text-primary)"
-              >
+              <Link href="/privacy" className="text-(--text-secondary) hover:text-(--text-primary)">
                 Privacy Policy
               </Link>
               .

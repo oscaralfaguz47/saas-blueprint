@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-} from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 
 type TenantPermissionsContextValue = {
@@ -16,9 +10,7 @@ type TenantPermissionsContextValue = {
   hasAny: (codes: string[]) => boolean;
 };
 
-const TenantPermissionsContext = createContext<TenantPermissionsContextValue | null>(
-  null
-);
+const TenantPermissionsContext = createContext<TenantPermissionsContextValue | null>(null);
 
 export function TenantPermissionsProvider({ children }: { children: React.ReactNode }) {
   const apiFetch = useApiFetch();
@@ -42,13 +34,10 @@ export function TenantPermissionsProvider({ children }: { children: React.ReactN
     return () => controller.abort();
   }, [apiFetch]);
 
-  const has = useCallback(
-    (code: string) => permissions.includes(code),
-    [permissions]
-  );
+  const has = useCallback((code: string) => permissions.includes(code), [permissions]);
   const hasAny = useCallback(
     (codes: string[]) => codes.some((c) => permissions.includes(c)),
-    [permissions]
+    [permissions],
   );
 
   const value: TenantPermissionsContextValue = {
@@ -59,9 +48,7 @@ export function TenantPermissionsProvider({ children }: { children: React.ReactN
   };
 
   return (
-    <TenantPermissionsContext.Provider value={value}>
-      {children}
-    </TenantPermissionsContext.Provider>
+    <TenantPermissionsContext.Provider value={value}>{children}</TenantPermissionsContext.Provider>
   );
 }
 

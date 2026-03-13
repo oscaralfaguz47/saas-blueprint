@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { getServerSession } from "next-auth";
-import { redirect } from "next/navigation";
 import { authOptions } from "@/server/auth-options";
 
 /* -------------------------------------------------------------------------- */
@@ -17,11 +16,7 @@ import { Card } from "@/components/ui/card";
 
 export default async function PublicHomePage() {
   const session = await getServerSession(authOptions);
-
-  // Logged-in users go directly to the app
-  if (session?.user) {
-    redirect("/app/requests");
-  }
+  const isLoggedIn = !!session?.user;
 
   return (
     <main className="min-h-screen bg-(--bg-main)">
@@ -97,8 +92,10 @@ export default async function PublicHomePage() {
                 </p>
 
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-                 <ButtonLink href="/auth/sign-in" variant="primary">Get started</ButtonLink>
-                 <ButtonLink href="/pricing" variant="secondary">View pricing</ButtonLink>
+                  <ButtonLink href={isLoggedIn ? "/app/requests" : "/auth/sign-in"} variant="primary">
+                    {isLoggedIn ? "Go to app" : "Get started"}
+                  </ButtonLink>
+                  <ButtonLink href="/pricing" variant="secondary">View pricing</ButtonLink>
                 </div>
 
                 <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-xs text-(--text-muted)">
@@ -218,8 +215,10 @@ export default async function PublicHomePage() {
             </div>
 
             <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center">
-             <ButtonLink href="/auth/sign-in" variant="primary">Get started</ButtonLink>
-            <ButtonLink href="/pricing" variant="secondary">View pricing</ButtonLink>
+              <ButtonLink href={isLoggedIn ? "/app/requests" : "/auth/sign-in"} variant="primary">
+                {isLoggedIn ? "Go to app" : "Get started"}
+              </ButtonLink>
+              <ButtonLink href="/pricing" variant="secondary">View pricing</ButtonLink>
             </div>
           </div>
         </Container>
@@ -249,10 +248,10 @@ export default async function PublicHomePage() {
                 Terms
               </Link>
               <Link
-                href="/auth/sign-in"
+                href={isLoggedIn ? "/app/requests" : "/auth/sign-in"}
                 className="text-(--text-secondary) transition-colors hover:text-(--text-primary)"
               >
-                Sign in
+                {isLoggedIn ? "Go to app" : "Sign in"}
               </Link>
             </div>
           </div>

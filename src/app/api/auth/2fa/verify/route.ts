@@ -46,12 +46,7 @@ function checkRateLimit(key: string): boolean {
   return true;
 }
 
-function getSessionCookieName(): string {
-  const isSecure =
-    process.env.NODE_ENV === "production" &&
-    (process.env.NEXTAUTH_URL ?? "").startsWith("https://");
-  return isSecure ? "__Secure-next-auth.session-token" : "next-auth.session-token";
-}
+
 
 /**
  * POST /api/auth/2fa/verify
@@ -120,7 +115,7 @@ export const POST = withErrorHandler(async (req: Request) => {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
   const userAgent = req.headers.get("user-agent")?.slice(0, 300) ?? null;
 
-  const { encodedJwt } = await rotateSessionAfterMfa({
+  const { newSessionToken } = await rotateSessionAfterMfa({
     userId: session.user.id,
     oldSessionToken: sessionToken,
     ip,
@@ -128,14 +123,6 @@ export const POST = withErrorHandler(async (req: Request) => {
   });
 
   const res = apiSuccess({ verified: true });
-  const cookieName = getSessionCookieName();
-  res.cookies.set(cookieName, encodedJwt, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 8 * 60 * 60,
-  });
 
   if (body.rememberDevice && body.rememberDays && isValidRememberDays(Number(body.rememberDays))) {
     const days = Number(body.rememberDays) as 30 | 60 | 90;

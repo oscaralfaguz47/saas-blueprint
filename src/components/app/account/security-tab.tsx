@@ -57,7 +57,9 @@ export function SecurityTab({ security: initialSecurity }: Props) {
   const router = useRouter();
   const apiFetch = useApiFetch();
   const [totpSetupStep, setTotpSetupStep] = useState<"idle" | "qr" | "verify">("idle");
-  const [setupData, setSetupData] = useState<{ otpauthUri: string; manualKey: string } | null>(null);
+  const [setupData, setSetupData] = useState<{ otpauthUri: string; manualKey: string } | null>(
+    null,
+  );
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [verifyCode, setVerifyCode] = useState("");
   const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
@@ -70,7 +72,7 @@ export function SecurityTab({ security: initialSecurity }: Props) {
   const [autoLogoutEnabled, setAutoLogoutEnabled] = useState(initialSecurity.autoLogoutEnabled);
   /** When enabled from server: server value. When user just turned on: null until they select. */
   const [autoLogoutMinutes, setAutoLogoutMinutes] = useState<number | null>(
-    initialSecurity.autoLogoutEnabled ? initialSecurity.autoLogoutMinutes : null
+    initialSecurity.autoLogoutEnabled ? initialSecurity.autoLogoutMinutes : null,
   );
   const [autoLogoutLoading, setAutoLogoutLoading] = useState(false);
   const [autoLogoutError, setAutoLogoutError] = useState<string | null>(null);
@@ -163,7 +165,9 @@ export function SecurityTab({ security: initialSecurity }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: disableCode.trim() }),
       });
-      const data = (await res.json()) as { error?: { code?: string; message?: string; details?: { code?: string } } };
+      const data = (await res.json()) as {
+        error?: { code?: string; message?: string; details?: { code?: string } };
+      };
       if (!res.ok) {
         setError(getApiErrorMessage(res, data));
         if (data.error?.details?.code === "STEP_UP_REQUIRED") {
@@ -235,12 +239,14 @@ export function SecurityTab({ security: initialSecurity }: Props) {
       body: JSON.stringify({ enabled: false }),
     })
       .then(async (res) => {
-        const data = (await res.json()) as { error?: { code?: string; message?: string; details?: { code?: string } } };
+        const data = (await res.json()) as {
+          error?: { code?: string; message?: string; details?: { code?: string } };
+        };
         if (!res.ok) {
           setAutoLogoutError(
             data.error?.details?.code === "STEP_UP_REQUIRED"
               ? "Sign in again to change this setting."
-              : getApiErrorMessage(res, data)
+              : getApiErrorMessage(res, data),
           );
           return;
         }
@@ -262,12 +268,14 @@ export function SecurityTab({ security: initialSecurity }: Props) {
       body: JSON.stringify({ enabled: true, minutes }),
     })
       .then(async (res) => {
-        const data = (await res.json()) as { error?: { code?: string; message?: string; details?: { code?: string } } };
+        const data = (await res.json()) as {
+          error?: { code?: string; message?: string; details?: { code?: string } };
+        };
         if (!res.ok) {
           setAutoLogoutError(
             data.error?.details?.code === "STEP_UP_REQUIRED"
               ? "Sign in again to change this setting."
-              : getApiErrorMessage(res, data)
+              : getApiErrorMessage(res, data),
           );
           return;
         }
@@ -283,9 +291,7 @@ export function SecurityTab({ security: initialSecurity }: Props) {
     <div className="space-y-6 sm:space-y-8">
       {/* Two-Factor Authentication */}
       <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
-        <h2 className="text-base font-semibold text-(--text-primary)">
-          Two-Factor Authentication
-        </h2>
+        <h2 className="text-base font-semibold text-(--text-primary)">Two-Factor Authentication</h2>
         <p className="mt-1 text-sm text-(--text-secondary)">
           Add an extra layer of security with an authenticator app.
         </p>
@@ -301,18 +307,20 @@ export function SecurityTab({ security: initialSecurity }: Props) {
           )}
         </div>
 
-        {!totpEnabled && !(backupCodes && backupCodes.length > 0) && !(totpSetupStep === "qr" && setupData) && (
-          <div className="mt-4">
-            <button
-              type="button"
-              onClick={handleStartSetup}
-              disabled={loading}
-              className="inline-flex h-10 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-60"
-            >
-              {loading ? "Starting…" : "Enable 2FA"}
-            </button>
-          </div>
-        )}
+        {!totpEnabled &&
+          !(backupCodes && backupCodes.length > 0) &&
+          !(totpSetupStep === "qr" && setupData) && (
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={handleStartSetup}
+                disabled={loading}
+                className="inline-flex h-10 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-60"
+              >
+                {loading ? "Starting…" : "Enable 2FA"}
+              </button>
+            </div>
+          )}
 
         {totpSetupStep === "qr" && setupData && (
           <div className="mt-4 space-y-4 sm:mt-6">
@@ -332,8 +340,8 @@ export function SecurityTab({ security: initialSecurity }: Props) {
                 </div>
               )}
               <div className="min-w-0 flex-1">
-                <p className="text-xs text-(--text-muted) mb-1">Manual entry key:</p>
-                <p className="font-mono text-sm break-all text-(--text-primary) bg-(--bg-surface-elev) p-3 rounded-lg">
+                <p className="mb-1 text-xs text-(--text-muted)">Manual entry key:</p>
+                <p className="rounded-lg bg-(--bg-surface-elev) p-3 font-mono text-sm break-all text-(--text-primary)">
                   {setupData.manualKey}
                 </p>
               </div>
@@ -406,7 +414,10 @@ export function SecurityTab({ security: initialSecurity }: Props) {
                 {loadingDisable ? "Disabling…" : "Disable 2FA"}
               </button>
             </form>
-            <form onSubmit={handleRegenerateBackupCodes} className="mt-4 flex flex-wrap items-end gap-3">
+            <form
+              onSubmit={handleRegenerateBackupCodes}
+              className="mt-4 flex flex-wrap items-end gap-3"
+            >
               <div>
                 <label htmlFor="regen-code" className="block text-sm text-(--text-secondary)">
                   Regenerate backup codes (enter current app code)
@@ -435,8 +446,7 @@ export function SecurityTab({ security: initialSecurity }: Props) {
 
         {formatBackupCodesDate(initialSecurity.backupCodesGeneratedAt) && (
           <p className="mt-2 text-sm text-(--text-muted)">
-            Backup codes generated:{" "}
-            {formatBackupCodesDate(initialSecurity.backupCodesGeneratedAt)}
+            Backup codes generated: {formatBackupCodesDate(initialSecurity.backupCodesGeneratedAt)}
           </p>
         )}
         {error && <p className="mt-4 text-sm text-(--color-danger)">{error}</p>}
@@ -444,9 +454,7 @@ export function SecurityTab({ security: initialSecurity }: Props) {
 
       {/* Inactivity auto-logout */}
       <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
-        <h2 className="text-base font-semibold text-(--text-primary)">
-          Inactivity auto-logout
-        </h2>
+        <h2 className="text-base font-semibold text-(--text-primary)">Inactivity auto-logout</h2>
         <p className="mt-1 text-sm text-(--text-secondary)">
           {autoLogoutEnabled
             ? autoLogoutMinutes != null
@@ -461,7 +469,7 @@ export function SecurityTab({ security: initialSecurity }: Props) {
             aria-checked={autoLogoutEnabled}
             onClick={() => handleAutoLogoutToggle(!autoLogoutEnabled)}
             disabled={autoLogoutLoading}
-            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-60 ${
+            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors focus:ring-2 focus:ring-(--color-primary) focus:outline-none disabled:opacity-60 ${
               autoLogoutEnabled
                 ? "border-(--color-primary) bg-(--color-primary)"
                 : "border-(--border-subtle) bg-(--bg-surface-elev)"
@@ -479,7 +487,8 @@ export function SecurityTab({ security: initialSecurity }: Props) {
           {autoLogoutEnabled && (
             <select
               value={
-                autoLogoutMinutes != null && AUTO_LOGOUT_OPTIONS.some((o) => o.value === autoLogoutMinutes)
+                autoLogoutMinutes != null &&
+                AUTO_LOGOUT_OPTIONS.some((o) => o.value === autoLogoutMinutes)
                   ? autoLogoutMinutes
                   : ""
               }
@@ -489,7 +498,7 @@ export function SecurityTab({ security: initialSecurity }: Props) {
                 handleAutoLogoutDurationChange(Number(v));
               }}
               disabled={autoLogoutLoading}
-              className="ml-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2 text-sm text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-60"
+              className="ml-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2 text-sm text-(--text-primary) focus:ring-2 focus:ring-(--color-primary) focus:outline-none disabled:opacity-60"
               aria-label="Inactivity duration"
             >
               <option value="">Select time</option>
@@ -501,9 +510,7 @@ export function SecurityTab({ security: initialSecurity }: Props) {
             </select>
           )}
         </div>
-        {autoLogoutError && (
-          <p className="mt-2 text-sm text-(--color-danger)">{autoLogoutError}</p>
-        )}
+        {autoLogoutError && <p className="mt-2 text-sm text-(--color-danger)">{autoLogoutError}</p>}
       </section>
     </div>
   );

@@ -10,9 +10,7 @@ export function CardRoot({
   className?: string;
 }) {
   return (
-    <div className={className ? `${cardRootClass} ${className}` : cardRootClass}>
-      {children}
-    </div>
+    <div className={className ? `${cardRootClass} ${className}` : cardRootClass}>{children}</div>
   );
 }
 
@@ -43,9 +41,7 @@ export function CardContent({
   children: React.ReactNode;
   className?: string;
 }) {
-  return (
-    <div className={className ? `p-4 ${className}` : "p-4"}>{children}</div>
-  );
+  return <div className={className ? `p-4 ${className}` : "p-4"}>{children}</div>;
 }
 
 export function CardFooter({
@@ -69,21 +65,11 @@ export function CardFooter({
 }
 
 /** Simple card with title and description (existing API). */
-export function Card({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
+export function Card({ title, description }: { title: string; description: string }) {
   return (
     <div className={`${cardRootClass} p-6`}>
-      <h3 className="text-xl font-semibold leading-snug text-(--text-primary)">
-        {title}
-      </h3>
-      <p className="mt-2 text-sm leading-relaxed text-(--text-secondary)">
-        {description}
-      </p>
+      <h3 className="text-xl leading-snug font-semibold text-(--text-primary)">{title}</h3>
+      <p className="mt-2 text-sm leading-relaxed text-(--text-secondary)">{description}</p>
     </div>
   );
 }

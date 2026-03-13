@@ -142,7 +142,10 @@ export function BillingProfileSection() {
       });
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
-        const err = json as { message?: string; details?: { fieldErrors?: Array<{ field: string; message: string }> } };
+        const err = json as {
+          message?: string;
+          details?: { fieldErrors?: Array<{ field: string; message: string }> };
+        };
         setSubmitError(err.message ?? "Failed to update billing details.");
         const list = err.details?.fieldErrors;
         if (Array.isArray(list) && list.length > 0) {
@@ -166,13 +169,19 @@ export function BillingProfileSection() {
 
   const addressLines = [profile?.addressLine1, profile?.addressLine2].filter(Boolean).join(", ");
   const cityRegion = [profile?.city, profile?.region].filter(Boolean).join(", ");
-  const addressBlock = [addressLines, cityRegion, profile?.countryCode ? countryDisplayName(profile.countryCode) : null].filter(Boolean).join("\n");
+  const addressBlock = [
+    addressLines,
+    cityRegion,
+    profile?.countryCode ? countryDisplayName(profile.countryCode) : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   if (loading) {
     return (
       <CardRoot className="shadow-sm">
         <CardHeader>
-          <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">
+          <p className="text-xs font-medium tracking-wide text-(--text-muted) uppercase">
             Billing profile
           </p>
         </CardHeader>
@@ -187,14 +196,15 @@ export function BillingProfileSection() {
     <>
       <CardRoot className="shadow-sm">
         <CardHeader>
-          <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">
+          <p className="text-xs font-medium tracking-wide text-(--text-muted) uppercase">
             Billing profile
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
           {profile === null ? (
             <p className="text-sm text-(--text-secondary)">
-              No billing profile yet. Complete a purchase to set billing details, or they will appear here after your first invoice.
+              No billing profile yet. Complete a purchase to set billing details, or they will
+              appear here after your first invoice.
             </p>
           ) : profile ? (
             <div className="space-y-3 text-sm">
@@ -239,7 +249,8 @@ export function BillingProfileSection() {
       >
         <div className="space-y-4">
           <p className="text-sm text-(--text-muted)">
-            Changes apply to future invoices only. For already-issued invoices, submit a support request.
+            Changes apply to future invoices only. For already-issued invoices, submit a support
+            request.
           </p>
           {submitError && (
             <p className="text-sm text-red-600 dark:text-red-400" role="alert">
@@ -252,7 +263,7 @@ export function BillingProfileSection() {
               <select
                 value={form.countryCode}
                 onChange={(e) => setForm((f) => ({ ...f, countryCode: e.target.value }))}
-                className="flex h-9 w-full rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-1 text-sm text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-(--color-primary) aria-invalid:border-red-500"
+                className="flex h-9 w-full rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-1 text-sm text-(--text-primary) focus:ring-2 focus:ring-(--color-primary) focus:outline-none aria-invalid:border-red-500"
                 aria-invalid={!!fieldErrors.countryCode}
                 aria-describedby={fieldErrors.countryCode ? "countryCode-error" : undefined}
               >
@@ -269,7 +280,9 @@ export function BillingProfileSection() {
               )}
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-(--text-muted)">Postal code</label>
+              <label className="mb-1 block text-xs font-medium text-(--text-muted)">
+                Postal code
+              </label>
               <Input
                 value={form.postalCode}
                 onChange={(e) => setForm((f) => ({ ...f, postalCode: e.target.value }))}
@@ -285,7 +298,9 @@ export function BillingProfileSection() {
               )}
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-(--text-muted)">Company name</label>
+              <label className="mb-1 block text-xs font-medium text-(--text-muted)">
+                Company name
+              </label>
               <Input
                 value={form.companyName}
                 onChange={(e) => setForm((f) => ({ ...f, companyName: e.target.value }))}
@@ -301,9 +316,12 @@ export function BillingProfileSection() {
               )}
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-(--text-muted)">VAT / Tax ID</label>
+              <label className="mb-1 block text-xs font-medium text-(--text-muted)">
+                VAT / Tax ID
+              </label>
               <p className="mb-1.5 text-xs text-(--text-muted)">
-                Ensure the tax identifier matches the correct format for the customer&apos;s country to ensure tax is calculated accurately.{" "}
+                Ensure the tax identifier matches the correct format for the customer&apos;s country
+                to ensure tax is calculated accurately.{" "}
                 <a
                   href="https://www.paddle.com/help/start/set-up-paddle/what-format-should-i-use-for-my-vat-id"
                   target="_blank"
@@ -328,7 +346,9 @@ export function BillingProfileSection() {
               )}
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-(--text-muted)">Address line 1</label>
+              <label className="mb-1 block text-xs font-medium text-(--text-muted)">
+                Address line 1
+              </label>
               <Input
                 value={form.addressLine1}
                 onChange={(e) => setForm((f) => ({ ...f, addressLine1: e.target.value }))}
@@ -344,7 +364,9 @@ export function BillingProfileSection() {
               )}
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-(--text-muted)">Address line 2</label>
+              <label className="mb-1 block text-xs font-medium text-(--text-muted)">
+                Address line 2
+              </label>
               <Input
                 value={form.addressLine2}
                 onChange={(e) => setForm((f) => ({ ...f, addressLine2: e.target.value }))}
@@ -377,7 +399,9 @@ export function BillingProfileSection() {
                 )}
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-(--text-muted)">Region / State</label>
+                <label className="mb-1 block text-xs font-medium text-(--text-muted)">
+                  Region / State
+                </label>
                 <Input
                   value={form.region}
                   onChange={(e) => setForm((f) => ({ ...f, region: e.target.value }))}

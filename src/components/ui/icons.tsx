@@ -2,11 +2,7 @@ import React from "react";
 
 type IconProps = React.SVGProps<SVGSVGElement> & { size?: number };
 
-function BaseIcon({
-  size = 18,
-  children,
-  ...props
-}: IconProps & { children: React.ReactNode }) {
+function BaseIcon({ size = 18, children, ...props }: IconProps & { children: React.ReactNode }) {
   return (
     <svg
       width={size}

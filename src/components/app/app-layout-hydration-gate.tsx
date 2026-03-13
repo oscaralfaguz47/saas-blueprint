@@ -1,6 +1,5 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
 import { CreateWorkspaceModalProvider } from "@/components/app/workspace/create-workspace-modal-context";
 import { TenantPermissionsProvider } from "@/components/app/tenant-permissions-context";
 import { WorkspaceReadyNotifier } from "@/components/app/workspace-ready-notifier";
@@ -33,15 +32,6 @@ type AppLayoutHydrationGateProps = {
   children: React.ReactNode;
 };
 
-function emptySubscribe() {
-  return () => {};
-}
-
-/**
- * Renders a consistent placeholder until after client mount to avoid hydration
- * mismatch with Next.js metadata/viewport boundaries (hidden/display:contents).
- * useSyncExternalStore: server/getServerSnapshot returns false, client/getClientSnapshot returns true.
- */
 export function AppLayoutHydrationGate({
   user,
   workspace,
@@ -51,22 +41,6 @@ export function AppLayoutHydrationGate({
   canAccessPlatformAdmin = false,
   children,
 }: AppLayoutHydrationGateProps) {
-  const mounted = useSyncExternalStore(
-    emptySubscribe,
-    () => true,
-    () => false
-  );
-
-  if (!mounted) {
-    return (
-      <div
-        className="min-h-screen w-full bg-(--bg-main)"
-        aria-hidden
-        suppressHydrationWarning
-      />
-    );
-  }
-
   return (
     <>
       <ThemeBootstrap />
@@ -74,7 +48,12 @@ export function AppLayoutHydrationGate({
       <ThemeProvider initialTheme={initialTheme}>
         <TenantPermissionsProvider>
           <CreateWorkspaceModalProvider>
-            <AppLayoutClient user={user} workspace={workspace} pendingInvitationsCount={pendingInvitationsCount} canAccessPlatformAdmin={canAccessPlatformAdmin}>
+            <AppLayoutClient
+              user={user}
+              workspace={workspace}
+              pendingInvitationsCount={pendingInvitationsCount}
+              canAccessPlatformAdmin={canAccessPlatformAdmin}
+            >
               {children}
             </AppLayoutClient>
           </CreateWorkspaceModalProvider>

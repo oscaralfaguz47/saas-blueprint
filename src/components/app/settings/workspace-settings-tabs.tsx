@@ -48,7 +48,7 @@ export function WorkspaceSettingsTabs({
   const visibleTabs = ALL_TABS.filter((t) => permSet.has(t.permission));
   const tabFromUrl = (searchParams.get("tab") as WorkspaceSettingsTab) || "general";
   const tabAllowed = visibleTabs.some((t) => t.id === tabFromUrl);
-  const effectiveTab = tabAllowed ? tabFromUrl : visibleTabs[0]?.id ?? "general";
+  const effectiveTab = tabAllowed ? tabFromUrl : (visibleTabs[0]?.id ?? "general");
 
   const [activeTab, setActiveTab] = useState(effectiveTab);
 
@@ -67,9 +67,7 @@ export function WorkspaceSettingsTabs({
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      <h1 className="text-xl font-semibold text-(--text-primary)">
-        Workspace Settings
-      </h1>
+      <h1 className="text-xl font-semibold text-(--text-primary)">Workspace Settings</h1>
 
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList>

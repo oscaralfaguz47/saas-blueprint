@@ -43,24 +43,22 @@ export default function AppLayoutClient({
   }, []);
 
   return (
-    <div className="flex min-h-screen w-full bg-[var(--bg-main)]">
+    <div className="flex min-h-screen w-full bg-(--bg-main)">
       <AppSidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         isMobile={isMobile}
         canAccessPlatformAdmin={canAccessPlatformAdmin}
       />
-      <div className="flex min-w-0 flex-1 flex-col border-l border-[var(--border-subtle)] w-full overflow-hidden">
+      <div className="flex w-full min-w-0 flex-1 flex-col overflow-hidden border-l border-(--border-subtle)">
         <AppHeader
           user={user}
           workspace={workspace}
           pendingInvitationsCount={pendingInvitationsCount}
           onMenuClick={isMobile ? () => setSidebarOpen(true) : undefined}
         />
-        <main className="min-h-0 flex-1 w-full overflow-auto text-[var(--text-primary)]">
-          <div className="w-full px-3 py-4 sm:px-6 sm:py-6">
-            {children}
-          </div>
+        <main className="min-h-0 w-full flex-1 overflow-auto text-(--text-primary)">
+          <div className="w-full px-3 py-4 sm:px-6 sm:py-6">{children}</div>
         </main>
       </div>
     </div>

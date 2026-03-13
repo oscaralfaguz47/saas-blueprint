@@ -56,11 +56,7 @@ export function Dialog({
   };
 
   const handleOverlayPointerUp = (e: React.PointerEvent) => {
-    if (
-      e.target === overlayRef.current &&
-      pointerDownOnOverlay &&
-      canCloseByOverlay
-    ) {
+    if (e.target === overlayRef.current && pointerDownOnOverlay && canCloseByOverlay) {
       onClose();
     }
     setPointerDownOnOverlay(false);
@@ -82,7 +78,10 @@ export function Dialog({
       onPointerUp={handleOverlayPointerUp}
       onPointerLeave={() => setPointerDownOnOverlay(false)}
     >
-      <div className="absolute inset-0 min-h-dvh min-h-screen bg-black/50 backdrop-blur-sm" aria-hidden="true" />
+      <div
+        className="absolute inset-0 min-h-dvh min-h-screen bg-black/50 backdrop-blur-sm"
+        aria-hidden="true"
+      />
       <div
         className={
           contentClassName
@@ -107,7 +106,7 @@ export function Dialog({
             type="button"
             onClick={canCloseByEscOrX ? onClose : undefined}
             disabled={!canCloseByEscOrX}
-            className="shrink-0 rounded-md p-2 text-(--text-muted) hover:bg-(--bg-surface-elev) hover:text-(--text-primary) disabled:pointer-events-none disabled:opacity-50 touch-manipulation sm:p-1.5"
+            className="shrink-0 touch-manipulation rounded-md p-2 text-(--text-muted) hover:bg-(--bg-surface-elev) hover:text-(--text-primary) disabled:pointer-events-none disabled:opacity-50 sm:p-1.5"
             aria-label="Close"
           >
             <IconX size={18} />

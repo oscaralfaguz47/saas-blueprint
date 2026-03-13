@@ -50,10 +50,9 @@ export function CreateWorkspaceModal({ open, onClose, onCloseAfterCreate }: Prop
     setChecking(true);
     setAvailable(null);
     try {
-      const res = await apiFetch(
-        `/api/workspaces/check-slug?slug=${encodeURIComponent(raw)}`,
-        { showToastOnError: false }
-      );
+      const res = await apiFetch(`/api/workspaces/check-slug?slug=${encodeURIComponent(raw)}`, {
+        showToastOnError: false,
+      });
       const json = await res.json();
       const data = json?.data ?? json;
       setAvailable(typeof data?.available === "boolean" ? data.available : null);
@@ -99,11 +98,14 @@ export function CreateWorkspaceModal({ open, onClose, onCloseAfterCreate }: Prop
         return;
       }
       // Switch to the new workspace (set as default)
-      const hasDefault = await apiFetch("/api/tenant", { showToastOnError: false }).then(async (r) => {
-        const j = await r.json();
-        const tenants = (j.data as { tenants?: { id: string; isDefaultTenant: boolean }[] })?.tenants ?? [];
-        return tenants.some((t) => t.isDefaultTenant && t.id === created.id);
-      });
+      const hasDefault = await apiFetch("/api/tenant", { showToastOnError: false }).then(
+        async (r) => {
+          const j = await r.json();
+          const tenants =
+            (j.data as { tenants?: { id: string; isDefaultTenant: boolean }[] })?.tenants ?? [];
+          return tenants.some((t) => t.isDefaultTenant && t.id === created.id);
+        },
+      );
       if (!hasDefault) {
         await apiFetch("/api/tenant", {
           method: "PATCH",
@@ -142,7 +144,10 @@ export function CreateWorkspaceModal({ open, onClose, onCloseAfterCreate }: Prop
     >
       <form onSubmit={handleCreateSubmit} className="space-y-4">
         <div>
-          <label htmlFor="workspace-slug" className="mb-1 block text-xs font-medium text-(--text-secondary)">
+          <label
+            htmlFor="workspace-slug"
+            className="mb-1 block text-xs font-medium text-(--text-secondary)"
+          >
             Workspace URL
           </label>
           <div className="flex gap-2">
@@ -155,7 +160,7 @@ export function CreateWorkspaceModal({ open, onClose, onCloseAfterCreate }: Prop
                   e.target.value
                     .replace(/[^a-zA-Z0-9-]/g, "")
                     .toLowerCase()
-                    .slice(0, CLAIM_SLUG_MAX)
+                    .slice(0, CLAIM_SLUG_MAX),
                 );
                 setAvailable(null);
                 setCreateError(null);
@@ -165,9 +170,13 @@ export function CreateWorkspaceModal({ open, onClose, onCloseAfterCreate }: Prop
               maxLength={CLAIM_SLUG_MAX}
               disabled={isSubmitting}
               autoFocus
-              className="h-11 flex-1 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2.5 text-sm text-(--text-primary) placeholder:text-(--text-muted) focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-60"
+              className="h-11 flex-1 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2.5 text-sm text-(--text-primary) placeholder:text-(--text-muted) focus:ring-2 focus:ring-(--color-primary) focus:outline-none disabled:opacity-60"
               aria-describedby={
-                createError ? "workspace-slug-error" : available !== null ? "workspace-slug-availability" : undefined
+                createError
+                  ? "workspace-slug-error"
+                  : available !== null
+                    ? "workspace-slug-availability"
+                    : undefined
               }
               aria-invalid={!!createError}
             />
@@ -191,7 +200,11 @@ export function CreateWorkspaceModal({ open, onClose, onCloseAfterCreate }: Prop
             </p>
           )}
           {createError ? (
-            <p id="workspace-slug-error" className="mt-1 text-sm text-(--color-danger)" role="alert">
+            <p
+              id="workspace-slug-error"
+              className="mt-1 text-sm text-(--color-danger)"
+              role="alert"
+            >
               {createError}
             </p>
           ) : null}
@@ -201,7 +214,7 @@ export function CreateWorkspaceModal({ open, onClose, onCloseAfterCreate }: Prop
             type="button"
             onClick={() => handleClose()}
             disabled={createStatus === "submitting"}
-            className="rounded-lg border border-(--border-subtle) px-4 py-2 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60 disabled:pointer-events-none"
+            className="rounded-lg border border-(--border-subtle) px-4 py-2 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:pointer-events-none disabled:opacity-60"
           >
             Cancel
           </button>

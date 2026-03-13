@@ -44,10 +44,7 @@ export function TabsList({ children, className = "" }: TabsListProps) {
     <nav
       role="tablist"
       aria-label="Settings sections"
-      className={
-        "flex flex-nowrap gap-1.5 overflow-x-auto scrollbar-thin items-end " +
-        className
-      }
+      className={"scrollbar-thin flex flex-nowrap items-end gap-1.5 overflow-x-auto " + className}
     >
       {children}
     </nav>
@@ -74,10 +71,10 @@ export function TabsTrigger({ value, children, className = "" }: TabsTriggerProp
       aria-selected={isActive}
       onClick={() => onValueChange(value)}
       className={
-        "shrink-0 min-h-[44px] flex cursor-pointer items-center justify-center px-4 py-3 text-sm font-medium transition-all rounded-t-lg " +
+        "flex min-h-[44px] shrink-0 cursor-pointer items-center justify-center rounded-t-lg px-4 py-3 text-sm font-medium transition-all " +
         (isActive
-          ? "bg-(--bg-surface) text-(--text-primary) font-semibold shadow-sm border border-(--border-subtle) border-b-0 rounded-b-none"
-          : "bg-(--bg-surface-elev) text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-surface-elev)/90 rounded-lg shadow-sm border border-(--border-subtle)") +
+          ? "rounded-b-none border border-b-0 border-(--border-subtle) bg-(--bg-surface) font-semibold text-(--text-primary) shadow-sm"
+          : "rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) text-(--text-secondary) shadow-sm hover:bg-(--bg-surface-elev)/90 hover:text-(--text-primary)") +
         " " +
         className
       }
@@ -102,7 +99,7 @@ export function TabsContent({ value, children, className = "" }: TabsContentProp
   return (
     <div
       className={
-        "rounded-b-lg rounded-t-none border border-t border-(--border-subtle) bg-(--bg-surface) shadow-sm -mt-px p-8 " +
+        "-mt-px rounded-t-none rounded-b-lg border border-t border-(--border-subtle) bg-(--bg-surface) p-8 shadow-sm " +
         className
       }
     >

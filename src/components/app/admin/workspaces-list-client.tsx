@@ -94,7 +94,7 @@ export function WorkspacesListClient() {
       setError(null);
       return next;
     },
-    [apiFetch, qSent, status, userIdsKey]
+    [apiFetch, qSent, status, userIdsKey],
   );
 
   const searchUsers = useCallback(
@@ -107,7 +107,7 @@ export function WorkspacesListClient() {
       try {
         const res = await apiFetch(
           `/api/admin/users/search?q=${encodeURIComponent(term.trim())}&limit=10`,
-          { showToastOnError: false }
+          { showToastOnError: false },
         );
         if (!res.ok) {
           setUserSearchResults([]);
@@ -121,7 +121,7 @@ export function WorkspacesListClient() {
         setUserSearchLoading(false);
       }
     },
-    [apiFetch]
+    [apiFetch],
   );
 
   useEffect(() => {
@@ -149,7 +149,7 @@ export function WorkspacesListClient() {
         if (!signal?.aborted) setLoading(false);
       });
     },
-    [fetchPage]
+    [fetchPage],
   );
 
   useEffect(() => {
@@ -189,7 +189,7 @@ export function WorkspacesListClient() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-[var(--text-primary)]">Workspaces</h1>
+      <h1 className="text-xl font-semibold text-(--text-primary)">Workspaces</h1>
 
       <div className="flex flex-wrap items-center gap-3">
         <Input
@@ -201,7 +201,7 @@ export function WorkspacesListClient() {
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value)}
-          className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-main)] px-3 py-2 text-sm text-[var(--text-primary)]"
+          className="rounded-md border border-(--border-subtle) bg-(--bg-main) px-3 py-2 text-sm text-(--text-primary)"
         >
           {STATUS_OPTIONS.map((o) => (
             <option key={o.value || "all"} value={o.value}>
@@ -209,7 +209,7 @@ export function WorkspacesListClient() {
             </option>
           ))}
         </select>
-        <div ref={userSearchRef} className="relative w-full min-w-[200px] max-w-[280px]">
+        <div ref={userSearchRef} className="relative w-full max-w-[280px] min-w-[200px]">
           <Input
             placeholder="Filter by member (type to search)"
             value={userSearch}
@@ -220,22 +220,20 @@ export function WorkspacesListClient() {
             onFocus={() => setUserSearchOpen(true)}
           />
           {selectedUsers.length > 0 && (
-            <div className="mt-1.5 flex max-h-20 flex-wrap gap-1.5 overflow-y-auto rounded border border-[var(--border-subtle)] bg-[var(--bg-main)] p-1.5">
+            <div className="mt-1.5 flex max-h-20 flex-wrap gap-1.5 overflow-y-auto rounded border border-(--border-subtle) bg-(--bg-main) p-1.5">
               {selectedUsers.map((u) => {
                 const label = u.email ?? u.name ?? u.id;
                 return (
                   <span
                     key={u.id}
-                    className="inline-flex max-w-full shrink-0 items-center gap-1 rounded-md bg-[var(--bg-surface-elev)] px-2 py-0.5 text-xs text-[var(--text-primary)]"
+                    className="inline-flex max-w-full shrink-0 items-center gap-1 rounded-md bg-(--bg-surface-elev) px-2 py-0.5 text-xs text-(--text-primary)"
                   >
                     <span className="min-w-0 truncate" title={label}>
                       {label}
                     </span>
                     <button
                       type="button"
-                      onClick={() =>
-                        setSelectedUsers((prev) => prev.filter((x) => x.id !== u.id))
-                      }
+                      onClick={() => setSelectedUsers((prev) => prev.filter((x) => x.id !== u.id))}
                       className="shrink-0 hover:text-red-600"
                       aria-label={`Remove ${label}`}
                     >
@@ -245,26 +243,24 @@ export function WorkspacesListClient() {
                 );
               })}
               {selectedUsers.length >= MAX_USER_FILTER && (
-                <span className="self-center text-xs text-[var(--text-muted)]">
+                <span className="self-center text-xs text-(--text-muted)">
                   (max {MAX_USER_FILTER})
                 </span>
               )}
             </div>
           )}
           {userSearchOpen && (
-            <div className="absolute z-10 mt-1 max-h-52 w-full overflow-auto rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] py-1 shadow-lg">
+            <div className="absolute z-10 mt-1 max-h-52 w-full overflow-auto rounded-md border border-(--border-subtle) bg-(--bg-surface) py-1 shadow-lg">
               {userSearchLoading ? (
                 <div className="flex items-center justify-center py-4">
                   <Spinner size="sm" />
                 </div>
               ) : userSearch.trim().length < 2 ? (
-                <p className="px-3 py-2 text-sm text-[var(--text-muted)]">
+                <p className="px-3 py-2 text-sm text-(--text-muted)">
                   Type at least 2 characters to search users
                 </p>
               ) : userSearchResults.length === 0 ? (
-                <p className="px-3 py-2 text-sm text-[var(--text-muted)]">
-                  No users found
-                </p>
+                <p className="px-3 py-2 text-sm text-(--text-muted)">No users found</p>
               ) : (
                 userSearchResults.map((u) => {
                   const alreadySelected = selectedUsers.some((s) => s.id === u.id);
@@ -281,7 +277,7 @@ export function WorkspacesListClient() {
                         setUserSearch("");
                         setUserSearchResults([]);
                       }}
-                      className="w-full px-3 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-[var(--bg-surface-elev)] disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full px-3 py-2 text-left text-sm text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {label}
                       {alreadySelected ? " (added)" : ""}
@@ -294,22 +290,19 @@ export function WorkspacesListClient() {
         </div>
       </div>
 
-      <div ref={scrollRef} className="max-h-[60vh] overflow-auto rounded-md border border-[var(--border-subtle)]">
-        {error && (
-          <div className="p-4 text-sm text-red-600 dark:text-red-400">
-            {error}
-          </div>
-        )}
+      <div
+        ref={scrollRef}
+        className="max-h-[60vh] overflow-auto rounded-md border border-(--border-subtle)"
+      >
+        {error && <div className="p-4 text-sm text-red-600 dark:text-red-400">{error}</div>}
         {loading ? (
-          <div className="p-4 space-y-2">
+          <div className="space-y-2 p-4">
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
           </div>
         ) : items.length === 0 ? (
-          <div className="p-8 text-center text-[var(--text-muted)]">
-            No workspaces found.
-          </div>
+          <div className="p-8 text-center text-(--text-muted)">No workspaces found.</div>
         ) : (
           <Table>
             <TableHeader>
@@ -325,15 +318,15 @@ export function WorkspacesListClient() {
               {items.map((t) => (
                 <TableRow key={t.id}>
                   <TableCell className="font-medium">{t.name}</TableCell>
-                  <TableCell className="text-[var(--text-muted)]">{t.slug}</TableCell>
+                  <TableCell className="text-(--text-muted)">{t.slug}</TableCell>
                   <TableCell>{t.status}</TableCell>
-                  <TableCell className="text-[var(--text-muted)]">
+                  <TableCell className="text-(--text-muted)">
                     {new Date(t.createdAt).toLocaleDateString()}
                   </TableCell>
                   <TableCell>
                     <Link
                       href={`/admin/workspaces/${t.id}`}
-                      className="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface-elev)] px-3 text-sm font-medium hover:bg-[var(--bg-surface-elev)]/90"
+                      className="inline-flex h-8 items-center justify-center rounded-md border border-(--border-subtle) bg-(--bg-surface-elev) px-3 text-sm font-medium hover:bg-(--bg-surface-elev)/90"
                     >
                       Manage
                     </Link>

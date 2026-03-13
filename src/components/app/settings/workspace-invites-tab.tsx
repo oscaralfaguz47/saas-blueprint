@@ -57,16 +57,14 @@ export function WorkspaceInvitesTab({ tenant, permissions }: Props) {
   const [sortBy, setSortBy] = useState<SortBy>("invitedAt");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [actionLoading, setActionLoading] = useState<{ id: string; action: ActionType } | null>(null);
+  const [actionLoading, setActionLoading] = useState<{ id: string; action: ActionType } | null>(
+    null,
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
   const loadingMoreRef = useRef(false);
 
   const fetchPage = useCallback(
-    async (
-      cursor: string | null,
-      append: boolean,
-      signal?: AbortSignal | null
-    ) => {
+    async (cursor: string | null, append: boolean, signal?: AbortSignal | null) => {
       const params = new URLSearchParams();
       params.set("limit", String(PAGE_SIZE));
       if (cursor) params.set("cursor", cursor);
@@ -75,10 +73,9 @@ export function WorkspaceInvitesTab({ tenant, permissions }: Props) {
       if (searchSent.trim()) params.set("search", searchSent.trim());
       if (statuses.length) params.set("statuses", statuses.join(","));
       try {
-        const res = await apiFetch(
-          `/api/settings/workspace/invitations?${params.toString()}`,
-          { signal }
-        );
+        const res = await apiFetch(`/api/settings/workspace/invitations?${params.toString()}`, {
+          signal,
+        });
         if (signal?.aborted) return null;
         const data = (await res.json()) as {
           data?: { items?: InvitationItem[]; nextCursor?: string | null };
@@ -103,7 +100,7 @@ export function WorkspaceInvitesTab({ tenant, permissions }: Props) {
         throw err;
       }
     },
-    [apiFetch, sortBy, sortDir, searchSent, statuses]
+    [apiFetch, sortBy, sortDir, searchSent, statuses],
   );
 
   const loadInitial = useCallback(
@@ -113,7 +110,7 @@ export function WorkspaceInvitesTab({ tenant, permissions }: Props) {
         if (!signal?.aborted) setLoading(false);
       });
     },
-    [fetchPage]
+    [fetchPage],
   );
 
   useEffect(() => {
@@ -150,16 +147,14 @@ export function WorkspaceInvitesTab({ tenant, permissions }: Props) {
       if (res.ok) {
         if (action === "revoke") {
           setItems((prev) =>
-            prev.map((inv) =>
-              inv.id === id ? { ...inv, status: "REVOKED" } : inv
-            )
+            prev.map((inv) => (inv.id === id ? { ...inv, status: "REVOKED" } : inv)),
           );
         } else if (action === "reinvite") {
           const newExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
           setItems((prev) =>
             prev.map((inv) =>
-              inv.id === id ? { ...inv, status: "ACTIVE", expiresAt: newExpiresAt } : inv
-            )
+              inv.id === id ? { ...inv, status: "ACTIVE", expiresAt: newExpiresAt } : inv,
+            ),
           );
         }
       }
@@ -216,9 +211,7 @@ export function WorkspaceInvitesTab({ tenant, permissions }: Props) {
 
       <div className="flex flex-wrap gap-2">
         <div className="min-w-[200px] flex-1">
-          <label className="block text-sm font-medium text-(--text-primary)">
-            Search
-          </label>
+          <label className="block text-sm font-medium text-(--text-primary)">Search</label>
           <Input
             placeholder="Search by email"
             value={search}
@@ -248,7 +241,7 @@ export function WorkspaceInvitesTab({ tenant, permissions }: Props) {
               setSearchSent("");
               setStatuses([]);
             }}
-            className="self-end cursor-pointer text-sm font-medium text-(--color-primary) hover:underline disabled:cursor-not-allowed"
+            className="cursor-pointer self-end text-sm font-medium text-(--color-primary) hover:underline disabled:cursor-not-allowed"
           >
             Clear filters
           </button>
@@ -278,12 +271,24 @@ export function WorkspaceInvitesTab({ tenant, permissions }: Props) {
             <TableBody>
               {[1, 2, 3, 4, 5, 6].map((i) => (
                 <TableRow key={i}>
-                  <TableCell><Skeleton className="h-5 w-40" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-16" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-24" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-28" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-28" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-20 ml-auto" /></TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-40" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-16" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-24" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-28" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-28" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="ml-auto h-5 w-20" />
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -296,7 +301,7 @@ export function WorkspaceInvitesTab({ tenant, permissions }: Props) {
       ) : (
         <div
           ref={scrollRef}
-          className="overflow-auto rounded-lg border border-(--border-subtle) max-h-[72vh] min-h-[320px]"
+          className="max-h-[72vh] min-h-[320px] overflow-auto rounded-lg border border-(--border-subtle)"
         >
           <Table>
             <TableHeader>
@@ -306,7 +311,7 @@ export function WorkspaceInvitesTab({ tenant, permissions }: Props) {
                 <TableHead>Invited by</TableHead>
                 <SortHeader col="invitedAt" label="Invited at" />
                 <SortHeader col="expiresAt" label="Expires at" />
-                <TableHead className="text-right min-w-[180px]">Actions</TableHead>
+                <TableHead className="min-w-[180px] text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -335,7 +340,7 @@ export function WorkspaceInvitesTab({ tenant, permissions }: Props) {
                             type="button"
                             onClick={() => runAction(inv.id, "resend")}
                             disabled={isRowLoading(inv.id)}
-                            className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded px-2 py-1 text-xs text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60 disabled:cursor-not-allowed"
+                            className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded px-2 py-1 text-xs text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {isActionLoading(inv.id, "resend") ? <Spinner size="sm" /> : "Resend"}
                           </button>
@@ -343,22 +348,29 @@ export function WorkspaceInvitesTab({ tenant, permissions }: Props) {
                             type="button"
                             onClick={() => runAction(inv.id, "revoke")}
                             disabled={isRowLoading(inv.id)}
-                            className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded px-2 py-1 text-xs text-(--color-danger) hover:bg-(--bg-surface-elev) disabled:opacity-60 disabled:cursor-not-allowed"
+                            className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded px-2 py-1 text-xs text-(--color-danger) hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {isActionLoading(inv.id, "revoke") ? <Spinner size="sm" /> : "Revoke"}
                           </button>
                         </>
                       )}
-                      {canManageInvites && (inv.status === "EXPIRED" || inv.status === "REVOKED" || inv.status === "REJECTED") && (
-                        <button
-                          type="button"
-                          onClick={() => runAction(inv.id, "reinvite")}
-                          disabled={isRowLoading(inv.id)}
-                          className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded px-2 py-1 text-xs text-(--color-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60 disabled:cursor-not-allowed"
-                        >
-                          {isActionLoading(inv.id, "reinvite") ? <Spinner size="sm" /> : "Re-invite"}
-                        </button>
-                      )}
+                      {canManageInvites &&
+                        (inv.status === "EXPIRED" ||
+                          inv.status === "REVOKED" ||
+                          inv.status === "REJECTED") && (
+                          <button
+                            type="button"
+                            onClick={() => runAction(inv.id, "reinvite")}
+                            disabled={isRowLoading(inv.id)}
+                            className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded px-2 py-1 text-xs text-(--color-primary) hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {isActionLoading(inv.id, "reinvite") ? (
+                              <Spinner size="sm" />
+                            ) : (
+                              "Re-invite"
+                            )}
+                          </button>
+                        )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -371,9 +383,7 @@ export function WorkspaceInvitesTab({ tenant, permissions }: Props) {
             </div>
           )}
           {nextCursor && !loadingMore && (
-            <div className="py-2 text-center text-sm text-(--text-muted)">
-              Scroll for more
-            </div>
+            <div className="py-2 text-center text-sm text-(--text-muted)">Scroll for more</div>
           )}
         </div>
       )}

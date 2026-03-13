@@ -27,7 +27,10 @@ export default function CreateWorkspaceForm() {
         body: JSON.stringify({ name: name.trim() }),
       });
 
-      const data = (await res.json()) as { data?: { tenant?: unknown }; error?: { code?: string; message?: string; details?: { code?: string } } };
+      const data = (await res.json()) as {
+        data?: { tenant?: unknown };
+        error?: { code?: string; message?: string; details?: { code?: string } };
+      };
 
       if (!res.ok) {
         setErrorMessage(getApiErrorMessage(res, data));
@@ -64,7 +67,7 @@ export default function CreateWorkspaceForm() {
             disabled={isLoading}
             autoFocus
             autoComplete="organization"
-            className="mt-1.5 w-full rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2.5 text-sm text-(--text-primary) placeholder:text-(--text-muted) focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-60"
+            className="mt-1.5 w-full rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2.5 text-sm text-(--text-primary) placeholder:text-(--text-muted) focus:ring-2 focus:ring-(--color-primary) focus:outline-none disabled:opacity-60"
             aria-invalid={status === "error"}
             aria-describedby={status === "error" ? "workspace-error" : undefined}
           />
@@ -87,7 +90,7 @@ export default function CreateWorkspaceForm() {
           <button
             type="submit"
             disabled={isLoading || !name.trim()}
-            className="inline-flex h-11 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white transition hover:bg-(--color-primary-hover) focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-60 disabled:pointer-events-none"
+            className="inline-flex h-11 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white transition hover:bg-(--color-primary-hover) focus:ring-2 focus:ring-(--color-primary) focus:outline-none disabled:pointer-events-none disabled:opacity-60"
           >
             {isLoading ? "Creating…" : "Create workspace"}
           </button>

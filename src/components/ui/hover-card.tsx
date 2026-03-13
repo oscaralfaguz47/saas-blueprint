@@ -23,11 +23,7 @@ export type HoverCardProps = {
   onOpenChange?: (open: boolean) => void;
 };
 
-export function HoverCard({
-  children,
-  open: controlledOpen,
-  onOpenChange,
-}: HoverCardProps) {
+export function HoverCard({ children, open: controlledOpen, onOpenChange }: HoverCardProps) {
   const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false);
   const triggerRef = React.useRef<HTMLSpanElement | null>(null);
   const isControlled = controlledOpen !== undefined;
@@ -37,7 +33,7 @@ export function HoverCard({
       if (!isControlled) setUncontrolledOpen(next);
       onOpenChange?.(next);
     },
-    [isControlled, onOpenChange]
+    [isControlled, onOpenChange],
   );
   return (
     <HoverCardContext.Provider value={{ open, setOpen, triggerRef }}>
@@ -52,10 +48,7 @@ export type HoverCardTriggerProps = {
   className?: string;
 };
 
-export function HoverCardTrigger({
-  children,
-  className = "",
-}: HoverCardTriggerProps) {
+export function HoverCardTrigger({ children, className = "" }: HoverCardTriggerProps) {
   const { setOpen, triggerRef } = useHoverCard();
   return (
     <span

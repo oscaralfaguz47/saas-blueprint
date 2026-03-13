@@ -16,8 +16,7 @@ export function ButtonLink({
 
   const variants: Record<ButtonVariant, string> = {
     primary: "bg-(--color-primary) text-white hover:bg-(--color-primary-hover)",
-    secondary:
-      "border border-(--border-subtle) text-(--text-primary) hover:bg-(--bg-surface-elev)",
+    secondary: "border border-(--border-subtle) text-(--text-primary) hover:bg-(--bg-surface-elev)",
   };
 
   return (

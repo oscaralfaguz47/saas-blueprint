@@ -40,10 +40,9 @@ export function SearchableSelect({
   const filtered =
     q === ""
       ? options.slice(0, 200)
-      : options.filter(
-          (o) =>
-            o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q)
-        ).slice(0, 200);
+      : options
+          .filter((o) => o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q))
+          .slice(0, 200);
 
   useEffect(() => {
     if (!open) {
@@ -88,9 +87,7 @@ export function SearchableSelect({
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
-        setHighlightIndex((i) =>
-          i <= 0 ? Math.max(0, filtered.length - 1) : i - 1
-        );
+        setHighlightIndex((i) => (i <= 0 ? Math.max(0, filtered.length - 1) : i - 1));
         return;
       }
       if (e.key === "Enter" && filtered[highlightIndex]) {
@@ -114,11 +111,9 @@ export function SearchableSelect({
         aria-controls={id ? `${id}-listbox` : undefined}
         disabled={disabled}
         onClick={() => !disabled && setOpen((o) => !o)}
-        className="mt-1.5 flex h-10 w-full cursor-pointer items-center justify-between rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2.5 text-left text-sm text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-60 disabled:cursor-not-allowed"
+        className="mt-1.5 flex h-10 w-full cursor-pointer items-center justify-between rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2.5 text-left text-sm text-(--text-primary) focus:ring-2 focus:ring-(--color-primary) focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
       >
-        <span className={value ? "" : "text-(--text-muted)"}>
-          {displayValue || placeholder}
-        </span>
+        <span className={value ? "" : "text-(--text-muted)"}>{displayValue || placeholder}</span>
         <IconChevronDown size={16} className="ml-2 shrink-0 text-(--text-muted)" aria-hidden />
       </button>
       {open && (
@@ -134,15 +129,13 @@ export function SearchableSelect({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={placeholder}
-              className="w-full rounded-md border border-(--border-subtle) bg-(--bg-main) px-2.5 py-1.5 text-sm text-(--text-primary) placeholder:text-(--text-muted) focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+              className="w-full rounded-md border border-(--border-subtle) bg-(--bg-main) px-2.5 py-1.5 text-sm text-(--text-primary) placeholder:text-(--text-muted) focus:ring-2 focus:ring-(--color-primary) focus:outline-none"
               autoFocus
               onKeyDown={(e) => e.stopPropagation()}
             />
           </div>
           {filtered.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-(--text-muted)">
-              No matches
-            </div>
+            <div className="px-3 py-2 text-sm text-(--text-muted)">No matches</div>
           ) : (
             filtered.map((opt, i) => {
               const isSelected = opt.value === value;

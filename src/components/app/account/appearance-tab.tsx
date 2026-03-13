@@ -22,11 +22,7 @@ export function AppearanceTab({ initialMode }: Props) {
   const [status, setStatus] = useState<"idle" | "saving" | "error">("idle");
 
   const currentTheme: Theme =
-    initialMode === "LIGHT"
-      ? "light"
-      : initialMode === "DARK"
-        ? "dark"
-        : "system";
+    initialMode === "LIGHT" ? "light" : initialMode === "DARK" ? "dark" : "system";
 
   const handleChange = async (value: Theme) => {
     setTheme(value);
@@ -72,7 +68,7 @@ export function AppearanceTab({ initialMode }: Props) {
                 value={opt.value}
                 checked={checked}
                 onChange={() => handleChange(opt.value)}
-                className="mt-1 h-4 w-4 accent-[var(--color-primary)]"
+                className="mt-1 h-4 w-4 accent-(--color-primary)"
               />
               <div className="min-w-0">
                 <span className="text-sm font-semibold text-(--text-primary)">{opt.label}</span>
@@ -83,9 +79,7 @@ export function AppearanceTab({ initialMode }: Props) {
         })}
       </div>
       {status === "error" && (
-        <p className="mt-4 text-sm text-(--color-danger)">
-          Failed to save preference. Try again.
-        </p>
+        <p className="mt-4 text-sm text-(--color-danger)">Failed to save preference. Try again.</p>
       )}
     </div>
   );

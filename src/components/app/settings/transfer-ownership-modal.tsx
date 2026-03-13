@@ -49,7 +49,7 @@ export function TransferOwnershipModal({
 
   const selectedMember = useMemo(
     () => eligibleMembers.find((m) => m.userId === selectedUserId) ?? null,
-    [eligibleMembers, selectedUserId]
+    [eligibleMembers, selectedUserId],
   );
 
   const filteredMembers = useMemo(() => {
@@ -107,7 +107,7 @@ export function TransferOwnershipModal({
                 ? "Target user is no longer active."
                 : code === "PRIMARY_OWNER_CHANGED"
                   ? "Primary Owner has changed during this operation."
-                  : (data.message as string) ?? "Transfer could not be completed.";
+                  : ((data.message as string) ?? "Transfer could not be completed.");
         setError(msg);
         setSubmitting(false);
         return;
@@ -136,10 +136,7 @@ export function TransferOwnershipModal({
 
   if (!open) return null;
 
-  const title =
-    step === "select"
-      ? "Transfer Primary Ownership"
-      : "Confirm transfer";
+  const title = step === "select" ? "Transfer Primary Ownership" : "Confirm transfer";
 
   return (
     <Dialog
@@ -156,11 +153,15 @@ export function TransferOwnershipModal({
       {step === "select" ? (
         <div className="space-y-4">
           <p className="text-sm text-(--text-secondary)">
-            Current Primary Owner: <strong className="text-(--text-primary)">{currentPrimaryOwnerName}</strong>.
-            You are about to give up the Primary Owner role. Only Owners or Admins can be selected.
+            Current Primary Owner:{" "}
+            <strong className="text-(--text-primary)">{currentPrimaryOwnerName}</strong>. You are
+            about to give up the Primary Owner role. Only Owners or Admins can be selected.
           </p>
           <div>
-            <label htmlFor="transfer-search" className="block text-sm font-medium text-(--text-primary)">
+            <label
+              htmlFor="transfer-search"
+              className="block text-sm font-medium text-(--text-primary)"
+            >
               Search members
             </label>
             <Input
@@ -201,7 +202,10 @@ export function TransferOwnershipModal({
                           {isSelected ? (
                             <IconCheck size={14} className="text-(--color-primary)" aria-hidden />
                           ) : (
-                            <span className="h-2.5 w-2.5 rounded-full border border-(--border-subtle)" aria-hidden />
+                            <span
+                              className="h-2.5 w-2.5 rounded-full border border-(--border-subtle)"
+                              aria-hidden
+                            />
                           )}
                         </span>
                         <span className="min-w-0 flex-1 overflow-hidden">
@@ -209,9 +213,7 @@ export function TransferOwnershipModal({
                             {m.name ?? m.email ?? "—"}
                           </span>
                           {m.email && m.name ? (
-                            <span className="block truncate text-(--text-muted)">
-                              {m.email}
-                            </span>
+                            <span className="block truncate text-(--text-muted)">{m.email}</span>
                           ) : null}
                         </span>
                         <span className="shrink-0 rounded-full bg-(--bg-surface-elev) px-2 py-0.5 text-xs text-(--text-secondary)">
@@ -237,7 +239,7 @@ export function TransferOwnershipModal({
               type="button"
               onClick={handleClose}
               disabled={submitting}
-              className="cursor-pointer rounded-lg border border-(--border-subtle) px-4 py-2 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60 disabled:cursor-not-allowed"
+              className="cursor-pointer rounded-lg border border-(--border-subtle) px-4 py-2 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
             >
               Cancel
             </button>
@@ -245,7 +247,7 @@ export function TransferOwnershipModal({
               type="button"
               onClick={handleContinue}
               disabled={!selectedUserId}
-              className="inline-flex h-10 cursor-pointer items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-60 disabled:cursor-not-allowed"
+              className="inline-flex h-10 cursor-pointer items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
             >
               Continue
             </button>
@@ -255,7 +257,8 @@ export function TransferOwnershipModal({
         <div className="space-y-4">
           <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) p-4 text-sm">
             <p className="text-(--text-secondary)">
-              Previous Primary Owner: <strong className="text-(--text-primary)">{currentPrimaryOwnerName}</strong>
+              Previous Primary Owner:{" "}
+              <strong className="text-(--text-primary)">{currentPrimaryOwnerName}</strong>
             </p>
             <p className="mt-2 text-(--text-secondary)">
               New Primary Owner:{" "}
@@ -271,7 +274,10 @@ export function TransferOwnershipModal({
             </p>
           </div>
           <div>
-            <label htmlFor="transfer-slug-confirm" className="block text-sm font-medium text-(--text-primary)">
+            <label
+              htmlFor="transfer-slug-confirm"
+              className="block text-sm font-medium text-(--text-primary)"
+            >
               Type the workspace slug to confirm: <strong>{workspaceSlug}</strong>
             </label>
             <Input
@@ -298,7 +304,7 @@ export function TransferOwnershipModal({
               type="button"
               onClick={handleBack}
               disabled={submitting}
-              className="cursor-pointer rounded-lg border border-(--border-subtle) px-4 py-2 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60 disabled:cursor-not-allowed"
+              className="cursor-pointer rounded-lg border border-(--border-subtle) px-4 py-2 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
             >
               Back
             </button>
@@ -306,7 +312,7 @@ export function TransferOwnershipModal({
               type="button"
               onClick={handleTransfer}
               disabled={!canConfirm || submitting}
-              className="inline-flex h-10 cursor-pointer items-center justify-center rounded-lg bg-(--color-danger) px-4 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="inline-flex h-10 cursor-pointer items-center justify-center rounded-lg bg-(--color-danger) px-4 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {submitting ? (
                 <span className="inline-flex items-center gap-2">

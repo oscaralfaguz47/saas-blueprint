@@ -8,12 +8,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { useToast } from "@/components/ui/toast";
-import {
-  CardRoot,
-  CardHeader,
-  CardContent,
-  CardFooter,
-} from "@/components/ui/card";
+import { CardRoot, CardHeader, CardContent, CardFooter } from "@/components/ui/card";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
@@ -31,8 +26,7 @@ import { BillingProfileSection } from "@/components/app/settings/billing-profile
 import { Input } from "@/components/ui/input";
 
 const PADDLE_SCRIPT_URL = "https://cdn.paddle.com/paddle/v2/paddle.js";
-const CHECKOUT_SUCCESS_REDIRECT =
-  "/app/settings/workspace?tab=billing&billing=updated";
+const CHECKOUT_SUCCESS_REDIRECT = "/app/settings/workspace?tab=billing&billing=updated";
 
 type BillingSummary = {
   planCode: string;
@@ -106,7 +100,10 @@ const CARD_BRAND_LABELS: Record<string, string> = {
 };
 
 function formatCardBrand(brand: string): string {
-  return CARD_BRAND_LABELS[brand.toLowerCase()] ?? brand.charAt(0).toUpperCase() + brand.slice(1).toLowerCase();
+  return (
+    CARD_BRAND_LABELS[brand.toLowerCase()] ??
+    brand.charAt(0).toUpperCase() + brand.slice(1).toLowerCase()
+  );
 }
 
 /** Card brand icon (Visa, Mastercard, Amex, Discover) for payment method display. */
@@ -120,7 +117,15 @@ function CardBrandIcon({ brand, className }: { brand: string; className?: string
       <div className={containerClassName} aria-hidden title="Visa">
         <svg width={40} height={26} viewBox="0 0 40 26" fill="none">
           <rect width={40} height={26} rx={4} fill="#1A1F71" fillOpacity={0.15} />
-          <text x={20} y={17} textAnchor="middle" fill="#1A1F71" fontSize={10} fontWeight="bold" fontFamily="system-ui, sans-serif">
+          <text
+            x={20}
+            y={17}
+            textAnchor="middle"
+            fill="#1A1F71"
+            fontSize={10}
+            fontWeight="bold"
+            fontFamily="system-ui, sans-serif"
+          >
             VISA
           </text>
         </svg>
@@ -134,7 +139,10 @@ function CardBrandIcon({ brand, className }: { brand: string; className?: string
           <rect width={40} height={26} rx={4} fill="#EB001B" fillOpacity={0.12} />
           <circle cx={15} cy={13} r={8} fill="#EB001B" />
           <circle cx={25} cy={13} r={8} fill="#F79E1B" fillOpacity={0.95} />
-          <path fill="#FF5F00" d="M25 7.3a8 8 0 000 11.4 8 8 0 010-11.4zM15 7.3a8 8 0 010 11.4 8 8 0 000-11.4z" />
+          <path
+            fill="#FF5F00"
+            d="M25 7.3a8 8 0 000 11.4 8 8 0 010-11.4zM15 7.3a8 8 0 010 11.4 8 8 0 000-11.4z"
+          />
         </svg>
       </div>
     );
@@ -144,7 +152,15 @@ function CardBrandIcon({ brand, className }: { brand: string; className?: string
       <div className={containerClassName} aria-hidden title="American Express">
         <svg width={40} height={26} viewBox="0 0 40 26" fill="none">
           <rect width={40} height={26} rx={4} fill="#006FCF" fillOpacity={0.15} />
-          <text x={20} y={16} textAnchor="middle" fill="#006FCF" fontSize={7} fontWeight="bold" fontFamily="system-ui, sans-serif">
+          <text
+            x={20}
+            y={16}
+            textAnchor="middle"
+            fill="#006FCF"
+            fontSize={7}
+            fontWeight="bold"
+            fontFamily="system-ui, sans-serif"
+          >
             AMEX
           </text>
         </svg>
@@ -156,7 +172,15 @@ function CardBrandIcon({ brand, className }: { brand: string; className?: string
       <div className={containerClassName} aria-hidden title="Discover">
         <svg width={40} height={26} viewBox="0 0 40 26" fill="none">
           <rect width={40} height={26} rx={4} fill="#FF6000" fillOpacity={0.2} />
-          <text x={20} y={16} textAnchor="middle" fill="#FF6000" fontSize={8} fontWeight="bold" fontFamily="system-ui, sans-serif">
+          <text
+            x={20}
+            y={16}
+            textAnchor="middle"
+            fill="#FF6000"
+            fontSize={8}
+            fontWeight="bold"
+            fontFamily="system-ui, sans-serif"
+          >
             DISCOVER
           </text>
         </svg>
@@ -165,11 +189,7 @@ function CardBrandIcon({ brand, className }: { brand: string; className?: string
   }
 
   return (
-    <div
-      className={containerClassName}
-      aria-hidden
-      title={formatCardBrand(brand)}
-    >
+    <div className={containerClassName} aria-hidden title={formatCardBrand(brand)}>
       <span className="text-xs font-semibold text-(--text-muted)">
         {formatCardBrand(brand).slice(0, 2).toUpperCase()}
       </span>
@@ -236,7 +256,7 @@ function useBillingState(summary: BillingSummary | null) {
 }
 
 function statusBadgeVariant(
-  status: string
+  status: string,
 ): "default" | "success" | "warning" | "destructive" | "secondary" {
   const s = status.toUpperCase();
   if (s === "ACTIVE" || s === "TRIAL") return "success";
@@ -250,11 +270,12 @@ function statusBadgeLabel(
   cancelAtPeriodEnd?: boolean,
   pendingPlanCode?: string | null,
   periodEnd?: string,
-  pendingChangeType?: string | null
+  pendingChangeType?: string | null,
 ): string {
   // Only show "Canceling" for scheduled cancellation to Free. Paid->paid downgrade shows "Active".
   if (pendingChangeType === "cancel_to_free_end_of_period") return "Canceling";
-  if (cancelAtPeriodEnd && (pendingPlanCode === "free" || pendingPlanCode == null)) return "Canceling";
+  if (cancelAtPeriodEnd && (pendingPlanCode === "free" || pendingPlanCode == null))
+    return "Canceling";
   if (cancelAtPeriodEnd && pendingPlanCode && pendingPlanCode !== "free") {
     return periodEnd ? `Active until ${formatDate(periodEnd)}` : "Active";
   }
@@ -306,11 +327,7 @@ function InvoiceRowActions({
     updateMenuPosition();
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as Node;
-      if (
-        buttonRef.current?.contains(target) ||
-        menuRef.current?.contains(target)
-      )
-        return;
+      if (buttonRef.current?.contains(target) || menuRef.current?.contains(target)) return;
       setOpen(false);
     };
     const handleScrollOrResize = () => updateMenuPosition();
@@ -400,7 +417,7 @@ function InvoiceRowActions({
               </button>
             )}
           </div>,
-          document.body
+          document.body,
         )}
     </div>
   );
@@ -457,7 +474,9 @@ export function WorkspaceBillingTab() {
   const [editBillingSaving, setEditBillingSaving] = useState(false);
   const [editBillingSubmitError, setEditBillingSubmitError] = useState<string | null>(null);
   const [editBillingFieldErrors, setEditBillingFieldErrors] = useState<Record<string, string>>({});
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodDisplay | null | undefined>(undefined);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodDisplay | null | undefined>(
+    undefined,
+  );
   const [paymentMethodLoading, setPaymentMethodLoading] = useState(false);
   const [paddleReady, setPaddleReady] = useState(false);
   const [postCheckoutState, setPostCheckoutState] = useState<
@@ -493,10 +512,7 @@ export function WorkspaceBillingTab() {
         if (signal?.aborted) return;
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          setError(
-            (data as { message?: string }).message ??
-              "Failed to load billing summary."
-          );
+          setError((data as { message?: string }).message ?? "Failed to load billing summary.");
           setSummary(null);
           return;
         }
@@ -510,7 +526,7 @@ export function WorkspaceBillingTab() {
         if (!signal?.aborted) setLoading(false);
       }
     },
-    [apiFetch]
+    [apiFetch],
   );
 
   const refetchBillingState = useCallback(
@@ -533,7 +549,7 @@ export function WorkspaceBillingTab() {
         if (!silent) setIsRefreshing(false);
       }
     },
-    [apiFetch, toast]
+    [apiFetch, toast],
   );
 
   const TRANSACTIONS_PAGE_SIZE = 20;
@@ -551,7 +567,7 @@ export function WorkspaceBillingTab() {
         const offset = append ? transactions.length : 0;
         const res = await apiFetch(
           `/api/billing/transactions?filter=completed&limit=${TRANSACTIONS_PAGE_SIZE}&offset=${offset}`,
-          { showToastOnError: false }
+          { showToastOnError: false },
         );
         if (!res.ok) {
           if (!append) setTransactions([]);
@@ -581,7 +597,7 @@ export function WorkspaceBillingTab() {
         }
       }
     },
-    [apiFetch, transactions.length]
+    [apiFetch, transactions.length],
   );
 
   useEffect(() => {
@@ -595,7 +611,7 @@ export function WorkspaceBillingTab() {
           fetchTransactions(true);
         }
       },
-      { root: null, rootMargin: "120px", threshold: 0 }
+      { root: null, rootMargin: "120px", threshold: 0 },
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
@@ -658,7 +674,7 @@ export function WorkspaceBillingTab() {
         setEditBillingDetailsLoading(false);
       }
     },
-    [apiFetch]
+    [apiFetch],
   );
 
   const closeEditBillingModal = useCallback(() => {
@@ -683,21 +699,24 @@ export function WorkspaceBillingTab() {
     try {
       const cityAlreadyPresent = Boolean(editBillingDetails?.city?.trim());
       const regionAlreadyPresent = Boolean(editBillingDetails?.region?.trim());
-      const res = await apiFetch(`/api/billing/paddle/transactions/${editBillingTransactionId}/revise`, {
-        method: "POST",
-        body: JSON.stringify({
-          fullName,
-          companyName: editBillingForm.companyName.trim() || null,
-          taxId: editBillingForm.taxId.trim() || null,
-          addressLine1: editBillingForm.addressLine1.trim() || null,
-          addressLine2: editBillingForm.addressLine2.trim() || null,
-          city: editBillingForm.city.trim() || null,
-          region: editBillingForm.region.trim() || null,
-          cityAlreadyPresent: cityAlreadyPresent || undefined,
-          regionAlreadyPresent: regionAlreadyPresent || undefined,
-        }),
-        showToastOnError: false,
-      });
+      const res = await apiFetch(
+        `/api/billing/paddle/transactions/${editBillingTransactionId}/revise`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            fullName,
+            companyName: editBillingForm.companyName.trim() || null,
+            taxId: editBillingForm.taxId.trim() || null,
+            addressLine1: editBillingForm.addressLine1.trim() || null,
+            addressLine2: editBillingForm.addressLine2.trim() || null,
+            city: editBillingForm.city.trim() || null,
+            region: editBillingForm.region.trim() || null,
+            cityAlreadyPresent: cityAlreadyPresent || undefined,
+            regionAlreadyPresent: regionAlreadyPresent || undefined,
+          }),
+          showToastOnError: false,
+        },
+      );
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         const details = json.details as { fieldErrors?: Record<string, string> } | undefined;
@@ -705,7 +724,10 @@ export function WorkspaceBillingTab() {
         const raw = details?.fieldErrors ?? {};
         const fieldErrors: Record<string, string> = { ...raw };
         if (raw.tax_identifier != null && fieldErrors.taxId == null) {
-          fieldErrors.taxId = typeof raw.tax_identifier === "string" ? raw.tax_identifier : String(raw.tax_identifier);
+          fieldErrors.taxId =
+            typeof raw.tax_identifier === "string"
+              ? raw.tax_identifier
+              : String(raw.tax_identifier);
         }
         setEditBillingFieldErrors(fieldErrors);
         return;
@@ -719,7 +741,14 @@ export function WorkspaceBillingTab() {
     } finally {
       setEditBillingSaving(false);
     }
-  }, [editBillingTransactionId, editBillingForm, editBillingDetails, apiFetch, toast, fetchTransactions]);
+  }, [
+    editBillingTransactionId,
+    editBillingForm,
+    editBillingDetails,
+    apiFetch,
+    toast,
+    fetchTransactions,
+  ]);
 
   const fetchPaymentMethod = useCallback(async () => {
     setPaymentMethodLoading(true);
@@ -732,7 +761,8 @@ export function WorkspaceBillingTab() {
         return;
       }
       const json = await res.json();
-      const pm = (json.data as { paymentMethod?: PaymentMethodDisplay | null })?.paymentMethod ?? null;
+      const pm =
+        (json.data as { paymentMethod?: PaymentMethodDisplay | null })?.paymentMethod ?? null;
       setPaymentMethod(pm ?? null);
     } catch {
       setPaymentMethod(null);
@@ -827,7 +857,8 @@ export function WorkspaceBillingTab() {
     const retryPlan = ((): PlanCode | null => {
       try {
         const stored = sessionStorage.getItem("billing:retryUpgradePlan");
-        if (stored === "starter" || stored === "pro" || stored === "enterprise") return stored as PlanCode;
+        if (stored === "starter" || stored === "pro" || stored === "enterprise")
+          return stored as PlanCode;
       } catch {
         // ignore
       }
@@ -856,7 +887,9 @@ export function WorkspaceBillingTab() {
             router.replace("/app/settings/workspace?tab=billing", { scroll: false });
           } else {
             const json = await res.json().catch(() => ({}));
-            const msg = (json as { message?: string })?.message ?? "Upgrade could not be applied. Please try again.";
+            const msg =
+              (json as { message?: string })?.message ??
+              "Upgrade could not be applied. Please try again.";
             toastRef.current.addToast("error", msg);
             router.replace("/app/settings/workspace?tab=billing", { scroll: false });
           }
@@ -887,7 +920,11 @@ export function WorkspaceBillingTab() {
       const plan = (data.planCode.toLowerCase() || "free") as PlanCode;
       const status = data.subscriptionStatus.toUpperCase();
       if (targetPlan && plan === targetPlan && status === "ACTIVE") return true;
-      if (!targetPlan && (plan === "starter" || plan === "pro" || plan === "enterprise") && status === "ACTIVE")
+      if (
+        !targetPlan &&
+        (plan === "starter" || plan === "pro" || plan === "enterprise") &&
+        status === "ACTIVE"
+      )
         return true;
       return false;
     };
@@ -943,18 +980,10 @@ export function WorkspaceBillingTab() {
 
   // When summary already shows paid+active while polling (e.g. webhook beat us), transition to resolved so the banner hides
   useEffect(() => {
-    if (
-      billingParam !== "updated" ||
-      postCheckoutState !== "polling" ||
-      !summary
-    )
-      return;
+    if (billingParam !== "updated" || postCheckoutState !== "polling" || !summary) return;
     const plan = (summary.planCode?.toLowerCase() || "free") as PlanCode;
     const status = summary.subscriptionStatus?.toUpperCase() ?? "";
-    if (
-      (plan === "starter" || plan === "pro" || plan === "enterprise") &&
-      status === "ACTIVE"
-    ) {
+    if ((plan === "starter" || plan === "pro" || plan === "enterprise") && status === "ACTIVE") {
       setPostCheckoutState("resolved");
       const planLabel = PLAN_LABELS[summary.planCode] ?? summary.planCode;
       toastRef.current.addToast("success", `Plan updated to ${planLabel}.`);
@@ -986,7 +1015,21 @@ export function WorkspaceBillingTab() {
         toast.addToast("error", "Could not open payment method update. Please try again.");
         return;
       }
-      const Paddle = typeof window !== "undefined" ? (window as { Paddle?: { Checkout?: { open: (opts: { transactionId: string; settings?: { displayMode: string } }) => void } } }).Paddle : undefined;
+      const Paddle =
+        typeof window !== "undefined"
+          ? (
+              window as {
+                Paddle?: {
+                  Checkout?: {
+                    open: (opts: {
+                      transactionId: string;
+                      settings?: { displayMode: string };
+                    }) => void;
+                  };
+                };
+              }
+            ).Paddle
+          : undefined;
       if (Paddle?.Checkout?.open) {
         Paddle.Checkout.open({
           transactionId,
@@ -1002,9 +1045,21 @@ export function WorkspaceBillingTab() {
 
   const openPaidInvoiceCheckout = useCallback(
     async (providerTransactionId: string) => {
-      const Paddle = typeof window !== "undefined"
-        ? (window as { Paddle?: { Checkout?: { open: (opts: { transactionId: string; settings?: { displayMode: string } }) => void } } }).Paddle
-        : undefined;
+      const Paddle =
+        typeof window !== "undefined"
+          ? (
+              window as {
+                Paddle?: {
+                  Checkout?: {
+                    open: (opts: {
+                      transactionId: string;
+                      settings?: { displayMode: string };
+                    }) => void;
+                  };
+                };
+              }
+            ).Paddle
+          : undefined;
       if (Paddle?.Checkout?.open) {
         Paddle.Checkout.open({
           transactionId: providerTransactionId,
@@ -1014,7 +1069,7 @@ export function WorkspaceBillingTab() {
         toast.addToast("error", "Payment window could not open. Refresh the page and try again.");
       }
     },
-    [toast]
+    [toast],
   );
 
   const handleSelectPlan = useCallback(
@@ -1027,7 +1082,7 @@ export function WorkspaceBillingTab() {
         try {
           const res = await apiFetch(
             `/api/billing/change-plan/preview?targetPlanCode=${encodeURIComponent(plan.code)}`,
-            { showToastOnError: false }
+            { showToastOnError: false },
           );
           if (!res.ok) {
             toast.addToast("error", "Could not load plan preview.");
@@ -1048,73 +1103,95 @@ export function WorkspaceBillingTab() {
         setConfirmPlanOpen(true);
       }
     },
-    [billingState.currentPlan, apiFetch, toast]
+    [billingState.currentPlan, apiFetch, toast],
   );
 
-  const handleConfirmUpgrade = useCallback(
-    async () => {
-      if (!confirmTarget || confirmTarget.direction !== "upgrade") return;
-      setCheckoutLoading(true);
-      try {
-        const res = await apiFetch("/api/billing/change-plan", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            targetPlanCode: confirmTarget.plan.code,
-            effective: "immediate",
-          }),
-          showToastOnError: true,
-        });
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          const details = (json as { details?: { code?: string } })?.details;
-          if (details?.code === "PAYMENT_DECLINED") {
-            try {
-              sessionStorage.setItem("billing:retryUpgradePlan", confirmTarget.plan.code);
-            } catch {
-              // ignore
-            }
-            setConfirmPlanOpen(false);
-            setConfirmTarget(null);
-            setChangePlanPreview(null);
-            setPaymentDeclinedPlanCode(confirmTarget.plan.code);
-            setPaymentDeclinedModalOpen(true);
-          }
-          return;
-        }
-        const data = json.data as { mode: string; effective?: string; transactionId?: string; environment?: string };
-        setConfirmPlanOpen(false);
-        setConfirmTarget(null);
-        setChangePlanPreview(null);
-        if (data.mode === "checkout" && data.transactionId) {
+  const handleConfirmUpgrade = useCallback(async () => {
+    if (!confirmTarget || confirmTarget.direction !== "upgrade") return;
+    setCheckoutLoading(true);
+    try {
+      const res = await apiFetch("/api/billing/change-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetPlanCode: confirmTarget.plan.code,
+          effective: "immediate",
+        }),
+        showToastOnError: true,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const details = (json as { details?: { code?: string } })?.details;
+        if (details?.code === "PAYMENT_DECLINED") {
           try {
-            sessionStorage.setItem("billing:postCheckoutPlan", confirmTarget.plan.code);
+            sessionStorage.setItem("billing:retryUpgradePlan", confirmTarget.plan.code);
           } catch {
             // ignore
           }
-          const Paddle = typeof window !== "undefined" ? (window as { Paddle?: { Checkout?: { open: (opts: { transactionId: string; settings?: { displayMode: string } }) => void } } }).Paddle : undefined;
-          if (Paddle?.Checkout?.open) {
-            Paddle.Checkout.open({
-              transactionId: data.transactionId,
-              settings: { displayMode: "overlay" },
-            });
-          } else {
-            toast.addToast("error", "Payment window could not open. Refresh the page and try again.");
-          }
-        } else {
-          if (data.effective === "immediate") {
-            toast.addToast("success", "Upgrade in progress. Your plan will update after payment is confirmed.");
-          } else {
-            toast.addToast("success", `Plan change to ${confirmTarget.plan.name} scheduled for next billing cycle.`);
-          }
-          await fetchSummary();
+          setConfirmPlanOpen(false);
+          setConfirmTarget(null);
+          setChangePlanPreview(null);
+          setPaymentDeclinedPlanCode(confirmTarget.plan.code);
+          setPaymentDeclinedModalOpen(true);
         }
-      } finally {
-        setCheckoutLoading(false);
+        return;
       }
-    },
-    [confirmTarget, apiFetch, toast, fetchSummary, session?.user?.email]
-  );
+      const data = json.data as {
+        mode: string;
+        effective?: string;
+        transactionId?: string;
+        environment?: string;
+      };
+      setConfirmPlanOpen(false);
+      setConfirmTarget(null);
+      setChangePlanPreview(null);
+      if (data.mode === "checkout" && data.transactionId) {
+        try {
+          sessionStorage.setItem("billing:postCheckoutPlan", confirmTarget.plan.code);
+        } catch {
+          // ignore
+        }
+        const Paddle =
+          typeof window !== "undefined"
+            ? (
+                window as {
+                  Paddle?: {
+                    Checkout?: {
+                      open: (opts: {
+                        transactionId: string;
+                        settings?: { displayMode: string };
+                      }) => void;
+                    };
+                  };
+                }
+              ).Paddle
+            : undefined;
+        if (Paddle?.Checkout?.open) {
+          Paddle.Checkout.open({
+            transactionId: data.transactionId,
+            settings: { displayMode: "overlay" },
+          });
+        } else {
+          toast.addToast("error", "Payment window could not open. Refresh the page and try again.");
+        }
+      } else {
+        if (data.effective === "immediate") {
+          toast.addToast(
+            "success",
+            "Upgrade in progress. Your plan will update after payment is confirmed.",
+          );
+        } else {
+          toast.addToast(
+            "success",
+            `Plan change to ${confirmTarget.plan.name} scheduled for next billing cycle.`,
+          );
+        }
+        await fetchSummary();
+      }
+    } finally {
+      setCheckoutLoading(false);
+    }
+  }, [confirmTarget, apiFetch, toast, fetchSummary, session?.user?.email]);
 
   const handleConfirmDowngrade = useCallback(async () => {
     if (!confirmTarget || confirmTarget.direction !== "downgrade") return;
@@ -1133,7 +1210,10 @@ export function WorkspaceBillingTab() {
       if (!res.ok) return;
       setConfirmPlanOpen(false);
       setConfirmTarget(null);
-      toast.addToast("success", confirmTarget.plan.code === "free" ? "Downgrade scheduled." : "Plan change scheduled.");
+      toast.addToast(
+        "success",
+        confirmTarget.plan.code === "free" ? "Downgrade scheduled." : "Plan change scheduled.",
+      );
       await fetchSummary();
     } finally {
       setScheduleLoading(false);
@@ -1185,9 +1265,7 @@ export function WorkspaceBillingTab() {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-lg font-semibold text-(--text-primary)">
-            Billing overview
-          </h2>
+          <h2 className="text-lg font-semibold text-(--text-primary)">Billing overview</h2>
           <p className="mt-1 text-sm text-(--text-secondary)">
             Manage your plan, invoices, and payment methods.
           </p>
@@ -1221,9 +1299,7 @@ export function WorkspaceBillingTab() {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-lg font-semibold text-(--text-primary)">
-            Billing overview
-          </h2>
+          <h2 className="text-lg font-semibold text-(--text-primary)">Billing overview</h2>
           <p className="mt-1 text-sm text-(--text-secondary)">
             Manage your plan, invoices, and payment methods.
           </p>
@@ -1244,9 +1320,7 @@ export function WorkspaceBillingTab() {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-lg font-semibold text-(--text-primary)">
-            Billing overview
-          </h2>
+          <h2 className="text-lg font-semibold text-(--text-primary)">Billing overview</h2>
           <p className="mt-1 text-sm text-(--text-secondary)">
             Manage your plan, invoices, and payment methods.
           </p>
@@ -1261,15 +1335,11 @@ export function WorkspaceBillingTab() {
   }
 
   const allowance = summary.included + summary.rolloverAvailable;
-  const usagePct =
-    allowance > 0 ? Math.min(100, (summary.used / allowance) * 100) : 0;
+  const usagePct = allowance > 0 ? Math.min(100, (summary.used / allowance) * 100) : 0;
   const planLabel = PLAN_LABELS[summary.planCode] ?? summary.planCode;
   const primaryCtaLabel =
-    billingState.isPastDue || billingState.isSuspended
-      ? "Update payment method"
-      : "Change plan";
-  const showChangePlan =
-    !billingState.isPastDue && !billingState.isSuspended;
+    billingState.isPastDue || billingState.isSuspended ? "Update payment method" : "Change plan";
+  const showChangePlan = !billingState.isPastDue && !billingState.isSuspended;
 
   const nextChargeDate = summary?.periodEnd ? formatDate(summary.periodEnd) : null;
   const currentPlanItem = IN_APP_PLAN_CATALOG.find((p) => p.code === billingState.currentPlan);
@@ -1277,7 +1347,8 @@ export function WorkspaceBillingTab() {
   // Next invoice reflects scheduled downgrade or cancellation (not current plan when a change is scheduled)
   const isScheduledCancelToFree =
     summary?.pendingChangeType === "cancel_to_free_end_of_period" ||
-    (Boolean(summary?.cancelAtPeriodEnd) && (summary?.pendingPlanCode === "free" || summary?.pendingPlanCode == null));
+    (Boolean(summary?.cancelAtPeriodEnd) &&
+      (summary?.pendingPlanCode === "free" || summary?.pendingPlanCode == null));
   const isScheduledDowngradeToPaid =
     summary?.pendingChangeType === "downgrade_end_of_period" &&
     summary?.pendingPlanCode &&
@@ -1307,9 +1378,7 @@ export function WorkspaceBillingTab() {
         />
       )}
       <div>
-        <h2 className="text-lg font-semibold text-(--text-primary)">
-          Billing overview
-        </h2>
+        <h2 className="text-lg font-semibold text-(--text-primary)">Billing overview</h2>
         <p className="mt-1 text-sm text-(--text-secondary)">
           Manage your plan, invoices, and payment methods.
         </p>
@@ -1426,12 +1495,15 @@ export function WorkspaceBillingTab() {
           </button>
         </Alert>
       )}
-      {billingState.isInGrace && summary.graceUntil && !billingState.isPastDue && summary.paymentStatus !== "past_due" && (
-        <Alert
-          variant="warning"
-          description={`Grace period until ${formatDate(summary.graceUntil)}.`}
-        />
-      )}
+      {billingState.isInGrace &&
+        summary.graceUntil &&
+        !billingState.isPastDue &&
+        summary.paymentStatus !== "past_due" && (
+          <Alert
+            variant="warning"
+            description={`Grace period until ${formatDate(summary.graceUntil)}.`}
+          />
+        )}
       {billingState.isSuspended && (
         <Alert
           variant="destructive"
@@ -1465,16 +1537,15 @@ export function WorkspaceBillingTab() {
         {/* Plan & Subscription */}
         <CardRoot className="border-(--border-subtle) shadow-sm">
           <CardHeader className="pb-2">
-            <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">
+            <p className="text-xs font-medium tracking-wide text-(--text-muted) uppercase">
               Plan &amp; subscription
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="text-lg font-semibold text-(--text-primary)">
-                {planLabel} plan
-              </span>
+              <span className="text-lg font-semibold text-(--text-primary)">{planLabel} plan</span>
               <Badge
                 variant={
-                  billingState.isCancelingAtPeriodEnd && (summary.pendingPlanCode === "free" || !summary.pendingPlanCode)
+                  billingState.isCancelingAtPeriodEnd &&
+                  (summary.pendingPlanCode === "free" || !summary.pendingPlanCode)
                     ? "secondary"
                     : statusBadgeVariant(summary.subscriptionStatus)
                 }
@@ -1484,27 +1555,30 @@ export function WorkspaceBillingTab() {
                   summary.cancelAtPeriodEnd,
                   summary.pendingPlanCode,
                   summary.periodEnd,
-                  summary.pendingChangeType
+                  summary.pendingChangeType,
                 )}
               </Badge>
             </div>
-            {billingState.hasPaidPlan && currentPlanItem && currentPlanItem.priceMonthlyCents > 0 && (
-              <p className="mt-2 text-base font-medium text-(--text-primary)">
-                {formatPriceMonthly(currentPlanItem.priceMonthlyCents)} / month
-              </p>
-            )}
+            {billingState.hasPaidPlan &&
+              currentPlanItem &&
+              currentPlanItem.priceMonthlyCents > 0 && (
+                <p className="mt-2 text-base font-medium text-(--text-primary)">
+                  {formatPriceMonthly(currentPlanItem.priceMonthlyCents)} / month
+                </p>
+              )}
             {nextChargeDate && billingState.hasPaidPlan && (
-              <p className="mt-1 text-sm text-(--text-muted)">
-                Next charge · {nextChargeDate}
-              </p>
+              <p className="mt-1 text-sm text-(--text-muted)">Next charge · {nextChargeDate}</p>
             )}
             <p className="mt-3 text-sm text-(--text-secondary)">
-              Usage this period · {summary.used} / {allowance > 0 ? allowance : summary.included} requests
+              Usage this period · {summary.used} / {allowance > 0 ? allowance : summary.included}{" "}
+              requests
               {summary.rolloverAvailable > 0 ? ` (${summary.rolloverAvailable} rollover)` : ""}
             </p>
             {summary.pendingPlanCode && summary.pendingPlanCode !== "free" && (
               <p className="mt-2 text-xs text-(--text-muted)">
-                Scheduled to downgrade to {PLAN_LABELS[summary.pendingPlanCode] ?? summary.pendingPlanCode} on {formatDate(summary.periodEnd)}.
+                Scheduled to downgrade to{" "}
+                {PLAN_LABELS[summary.pendingPlanCode] ?? summary.pendingPlanCode} on{" "}
+                {formatDate(summary.periodEnd)}.
               </p>
             )}
           </CardHeader>
@@ -1524,15 +1598,11 @@ export function WorkspaceBillingTab() {
         {/* Usage */}
         <CardRoot className="shadow-sm">
           <CardHeader>
-            <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">
-              Usage
-            </p>
+            <p className="text-xs font-medium tracking-wide text-(--text-muted) uppercase">Usage</p>
           </CardHeader>
           <CardContent className="space-y-3">
             <div>
-              <p className="text-sm font-medium text-(--text-primary)">
-                Requests used
-              </p>
+              <p className="text-sm font-medium text-(--text-primary)">Requests used</p>
               <p className="mt-0.5 text-lg font-semibold text-(--text-primary)">
                 {summary.used} / {allowance > 0 ? allowance : summary.included} requests
               </p>
@@ -1556,9 +1626,7 @@ export function WorkspaceBillingTab() {
               />
             </div>
             {nextChargeDate && (
-              <p className="text-xs text-(--text-muted)">
-                Resets {nextChargeDate}
-              </p>
+              <p className="text-xs text-(--text-muted)">Resets {nextChargeDate}</p>
             )}
             {summary.threshold80 && !summary.threshold100 && (
               <p className="text-xs text-amber-600 dark:text-amber-400">
@@ -1581,101 +1649,99 @@ export function WorkspaceBillingTab() {
       </div>
 
       {/* Row 2: Next Invoice | Payment Method — only when at least one is relevant */}
-      {(billingState.hasPaidPlan && nextChargeDate) || (billingState.hasPaidPlan || billingState.isPastDue || billingState.isSuspended) ? (
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        {/* Next Invoice — reflects scheduled downgrade or cancellation; no charge when moving to Free */}
-        {billingState.hasPaidPlan && nextChargeDate && (
-          <CardRoot className="shadow-sm">
-            <CardHeader>
-              <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">
-                Next invoice
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {isScheduledCancelToFree ? (
-                <>
-                  <p className="text-sm font-medium text-(--text-primary)">
-                    No upcoming invoice
-                  </p>
-                  <p className="text-sm text-(--text-secondary)">
-                    You&apos;re moving to Free on {nextChargeDate}. No charge after that.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="text-sm font-medium text-(--text-primary)">
-                    {nextChargeDate}
-                  </p>
-                  <p className="text-sm text-(--text-secondary)">
-                    {nextInvoicePlanLabel} plan · {formatPriceMonthly(nextInvoicePlanCents)}
-                  </p>
-                  {nextInvoiceOverageCents > 0 && (
-                    <p className="text-sm text-(--text-secondary)">
-                      Estimated overage · ${(nextInvoiceOverageCents / 100).toFixed(2)}
-                    </p>
-                  )}
-                  <p className="pt-2 text-base font-semibold text-(--text-primary) border-t border-(--border-subtle)">
-                    Estimated total · {formatPriceMonthly(nextInvoiceTotalCents)}
-                  </p>
-                </>
-              )}
-            </CardContent>
-          </CardRoot>
-        )}
-        {/* Payment method */}
-        {(billingState.hasPaidPlan || billingState.isPastDue || billingState.isSuspended) && (
-          <CardRoot className="shadow-sm">
-            <CardHeader>
-              <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">
-                Payment method
-              </p>
-            </CardHeader>
-            <CardContent>
-              {paymentMethodLoading ? (
-                <Skeleton className="h-14 w-full max-w-sm" />
-              ) : paymentMethod ? (
-                <>
-                  <div className="flex items-start gap-3">
-                    <CardBrandIcon brand={paymentMethod.brand} className="shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-(--text-primary)">
-                        {formatCardBrand(paymentMethod.brand)} •••• {paymentMethod.last4}
-                      </p>
-                      <p className="mt-0.5 text-xs text-(--text-muted)">
-                        Expires {formatExpiry(paymentMethod.expiryMonth, paymentMethod.expiryYear)}
-                      </p>
-                    </div>
-                  </div>
-                  {nextChargeDate && (
-                    <p className="mt-2 text-xs text-(--text-muted)">
-                      Used for next invoice {nextChargeDate}
-                    </p>
-                  )}
-                </>
-              ) : (
-                <p className="text-sm text-(--text-muted)">
-                  No payment method on file.
+      {(billingState.hasPaidPlan && nextChargeDate) ||
+      billingState.hasPaidPlan ||
+      billingState.isPastDue ||
+      billingState.isSuspended ? (
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+          {/* Next Invoice — reflects scheduled downgrade or cancellation; no charge when moving to Free */}
+          {billingState.hasPaidPlan && nextChargeDate && (
+            <CardRoot className="shadow-sm">
+              <CardHeader>
+                <p className="text-xs font-medium tracking-wide text-(--text-muted) uppercase">
+                  Next invoice
                 </p>
-              )}
-              <button
-                type="button"
-                onClick={handleChangePaymentMethod}
-                disabled={paymentMethodUpdateLoading}
-                className="mt-4 inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
-              >
-                {paymentMethodUpdateLoading ? "Loading…" : "Change payment method"}
-              </button>
-            </CardContent>
-          </CardRoot>
-        )}
-      </div>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {isScheduledCancelToFree ? (
+                  <>
+                    <p className="text-sm font-medium text-(--text-primary)">No upcoming invoice</p>
+                    <p className="text-sm text-(--text-secondary)">
+                      You&apos;re moving to Free on {nextChargeDate}. No charge after that.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-medium text-(--text-primary)">{nextChargeDate}</p>
+                    <p className="text-sm text-(--text-secondary)">
+                      {nextInvoicePlanLabel} plan · {formatPriceMonthly(nextInvoicePlanCents)}
+                    </p>
+                    {nextInvoiceOverageCents > 0 && (
+                      <p className="text-sm text-(--text-secondary)">
+                        Estimated overage · ${(nextInvoiceOverageCents / 100).toFixed(2)}
+                      </p>
+                    )}
+                    <p className="border-t border-(--border-subtle) pt-2 text-base font-semibold text-(--text-primary)">
+                      Estimated total · {formatPriceMonthly(nextInvoiceTotalCents)}
+                    </p>
+                  </>
+                )}
+              </CardContent>
+            </CardRoot>
+          )}
+          {/* Payment method */}
+          {(billingState.hasPaidPlan || billingState.isPastDue || billingState.isSuspended) && (
+            <CardRoot className="shadow-sm">
+              <CardHeader>
+                <p className="text-xs font-medium tracking-wide text-(--text-muted) uppercase">
+                  Payment method
+                </p>
+              </CardHeader>
+              <CardContent>
+                {paymentMethodLoading ? (
+                  <Skeleton className="h-14 w-full max-w-sm" />
+                ) : paymentMethod ? (
+                  <>
+                    <div className="flex items-start gap-3">
+                      <CardBrandIcon brand={paymentMethod.brand} className="shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-(--text-primary)">
+                          {formatCardBrand(paymentMethod.brand)} •••• {paymentMethod.last4}
+                        </p>
+                        <p className="mt-0.5 text-xs text-(--text-muted)">
+                          Expires{" "}
+                          {formatExpiry(paymentMethod.expiryMonth, paymentMethod.expiryYear)}
+                        </p>
+                      </div>
+                    </div>
+                    {nextChargeDate && (
+                      <p className="mt-2 text-xs text-(--text-muted)">
+                        Used for next invoice {nextChargeDate}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-sm text-(--text-muted)">No payment method on file.</p>
+                )}
+                <button
+                  type="button"
+                  onClick={handleChangePaymentMethod}
+                  disabled={paymentMethodUpdateLoading}
+                  className="mt-4 inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
+                >
+                  {paymentMethodUpdateLoading ? "Loading…" : "Change payment method"}
+                </button>
+              </CardContent>
+            </CardRoot>
+          )}
+        </div>
       ) : null}
 
       {/* Row 3: Invoices — full width */}
       {transactions.length > 0 && (
         <CardRoot className="w-full shadow-sm">
           <CardHeader>
-            <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">
+            <p className="text-xs font-medium tracking-wide text-(--text-muted) uppercase">
               Invoices
             </p>
           </CardHeader>
@@ -1689,11 +1755,21 @@ export function WorkspaceBillingTab() {
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 z-10 border-b border-(--border-subtle) bg-(--bg-surface) shadow-[0_1px_0_0_var(--border-subtle)]">
                     <tr>
-                      <th className="bg-(--bg-surface) px-4 py-3 text-left font-medium text-(--text-muted)">Invoice</th>
-                      <th className="bg-(--bg-surface) px-4 py-3 text-left font-medium text-(--text-muted)">Period</th>
-                      <th className="bg-(--bg-surface) px-4 py-3 text-left font-medium text-(--text-muted)">Status</th>
-                      <th className="bg-(--bg-surface) px-4 py-3 text-right font-medium text-(--text-muted)">Amount</th>
-                      <th className="bg-(--bg-surface) px-4 py-3 text-right font-medium text-(--text-muted)">Actions</th>
+                      <th className="bg-(--bg-surface) px-4 py-3 text-left font-medium text-(--text-muted)">
+                        Invoice
+                      </th>
+                      <th className="bg-(--bg-surface) px-4 py-3 text-left font-medium text-(--text-muted)">
+                        Period
+                      </th>
+                      <th className="bg-(--bg-surface) px-4 py-3 text-left font-medium text-(--text-muted)">
+                        Status
+                      </th>
+                      <th className="bg-(--bg-surface) px-4 py-3 text-right font-medium text-(--text-muted)">
+                        Amount
+                      </th>
+                      <th className="bg-(--bg-surface) px-4 py-3 text-right font-medium text-(--text-muted)">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1712,14 +1788,14 @@ export function WorkspaceBillingTab() {
                           key={t.id}
                           className="border-b border-(--border-subtle) transition-colors hover:bg-(--bg-surface-elev)"
                         >
-                          <td className="px-4 py-3 text-(--text-primary) font-medium">
+                          <td className="px-4 py-3 font-medium text-(--text-primary)">
                             {t.receiptNumber ?? "—"}
                           </td>
-                          <td className="px-4 py-3 text-(--text-secondary)">{formatDate(t.billedAt)}</td>
+                          <td className="px-4 py-3 text-(--text-secondary)">
+                            {formatDate(t.billedAt)}
+                          </td>
                           <td className="px-4 py-3">
-                            <Badge variant={statusVariant}>
-                              {t.status ?? "—"}
-                            </Badge>
+                            <Badge variant={statusVariant}>{t.status ?? "—"}</Badge>
                           </td>
                           <td className="px-4 py-3 text-right text-(--text-primary)">
                             {(t.total.cents / 100).toFixed(2)} {t.total.currency}
@@ -1727,28 +1803,38 @@ export function WorkspaceBillingTab() {
                           <td className="px-4 py-3 text-right" data-invoice-action>
                             <InvoiceRowActions
                               transaction={t}
-                              onViewInvoice={() => window.open(`/api/billing/transactions/${t.id}/invoice-redirect`, "_blank")}
+                              onViewInvoice={() =>
+                                window.open(
+                                  `/api/billing/transactions/${t.id}/invoice-redirect`,
+                                  "_blank",
+                                )
+                              }
                               onEditBilling={() => openEditBillingModal(t.id)}
-                              onPaidInvoice={t.providerTransactionId ? () => openPaidInvoiceCheckout(t.providerTransactionId!) : undefined}
+                              onPaidInvoice={
+                                t.providerTransactionId
+                                  ? () => openPaidInvoiceCheckout(t.providerTransactionId!)
+                                  : undefined
+                              }
                             />
                           </td>
                         </tr>
                       );
                     })}
-                    {transactions.length > 0 && (transactionsHasMore || transactionsLoadingMore) && (
-                      <tr ref={transactionsScrollSentinelRef}>
-                        <td colSpan={5} className="px-4 py-3 text-center">
-                          {transactionsLoadingMore ? (
-                            <span className="inline-flex items-center gap-2 text-sm text-(--text-muted)">
-                              <Spinner size="sm" />
-                              Loading more…
-                            </span>
-                          ) : (
-                            <span className="text-sm text-(--text-muted)">Scroll for more</span>
-                          )}
-                        </td>
-                      </tr>
-                    )}
+                    {transactions.length > 0 &&
+                      (transactionsHasMore || transactionsLoadingMore) && (
+                        <tr ref={transactionsScrollSentinelRef}>
+                          <td colSpan={5} className="px-4 py-3 text-center">
+                            {transactionsLoadingMore ? (
+                              <span className="inline-flex items-center gap-2 text-sm text-(--text-muted)">
+                                <Spinner size="sm" />
+                                Loading more…
+                              </span>
+                            ) : (
+                              <span className="text-sm text-(--text-muted)">Scroll for more</span>
+                            )}
+                          </td>
+                        </tr>
+                      )}
                   </tbody>
                 </table>
               </div>
@@ -1795,7 +1881,9 @@ export function WorkspaceBillingTab() {
               )}
               <div className="grid gap-3">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-(--text-muted)">Full name</label>
+                  <label className="mb-1 block text-xs font-medium text-(--text-muted)">
+                    Full name
+                  </label>
                   <Input
                     value={editBillingForm.fullName}
                     onChange={(e) =>
@@ -1804,16 +1892,23 @@ export function WorkspaceBillingTab() {
                     placeholder="Required"
                     maxLength={255}
                     aria-invalid={!!editBillingFieldErrors.fullName}
-                    aria-describedby={editBillingFieldErrors.fullName ? "edit-fullName-error" : undefined}
+                    aria-describedby={
+                      editBillingFieldErrors.fullName ? "edit-fullName-error" : undefined
+                    }
                   />
                   {editBillingFieldErrors.fullName && (
-                    <p id="edit-fullName-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
+                    <p
+                      id="edit-fullName-error"
+                      className="mt-1 text-xs text-red-600 dark:text-red-400"
+                    >
                       {editBillingFieldErrors.fullName}
                     </p>
                   )}
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-(--text-muted)">Company name</label>
+                  <label className="mb-1 block text-xs font-medium text-(--text-muted)">
+                    Company name
+                  </label>
                   <Input
                     value={editBillingForm.companyName}
                     onChange={(e) =>
@@ -1830,9 +1925,12 @@ export function WorkspaceBillingTab() {
                   )}
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-(--text-muted)">Tax ID</label>
+                  <label className="mb-1 block text-xs font-medium text-(--text-muted)">
+                    Tax ID
+                  </label>
                   <p className="mb-1.5 text-xs text-(--text-muted)">
-                    Ensure the tax identifier matches the correct format for the customer&apos;s country to ensure tax is calculated accurately.{" "}
+                    Ensure the tax identifier matches the correct format for the customer&apos;s
+                    country to ensure tax is calculated accurately.{" "}
                     <a
                       href="https://www.paddle.com/help/start/set-up-paddle/what-format-should-i-use-for-my-vat-id"
                       target="_blank"
@@ -1844,22 +1942,25 @@ export function WorkspaceBillingTab() {
                   </p>
                   <Input
                     value={editBillingForm.taxId}
-                    onChange={(e) =>
-                      setEditBillingForm((f) => ({ ...f, taxId: e.target.value }))
-                    }
+                    onChange={(e) => setEditBillingForm((f) => ({ ...f, taxId: e.target.value }))}
                     placeholder="Optional"
                     maxLength={64}
                     aria-invalid={!!editBillingFieldErrors.taxId}
                     aria-describedby={editBillingFieldErrors.taxId ? "edit-taxId-error" : undefined}
                   />
                   {editBillingFieldErrors.taxId && (
-                    <p id="edit-taxId-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
+                    <p
+                      id="edit-taxId-error"
+                      className="mt-1 text-xs text-red-600 dark:text-red-400"
+                    >
                       {editBillingFieldErrors.taxId}
                     </p>
                   )}
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-(--text-muted)">First line of address</label>
+                  <label className="mb-1 block text-xs font-medium text-(--text-muted)">
+                    First line of address
+                  </label>
                   <Input
                     value={editBillingForm.addressLine1}
                     onChange={(e) =>
@@ -1876,7 +1977,9 @@ export function WorkspaceBillingTab() {
                   )}
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-(--text-muted)">Second line of address</label>
+                  <label className="mb-1 block text-xs font-medium text-(--text-muted)">
+                    Second line of address
+                  </label>
                   <Input
                     value={editBillingForm.addressLine2}
                     onChange={(e) =>
@@ -1896,18 +1999,22 @@ export function WorkspaceBillingTab() {
                   <label className="mb-1 block text-xs font-medium text-(--text-muted)">City</label>
                   <Input
                     value={editBillingForm.city}
-                    onChange={(e) =>
-                      setEditBillingForm((f) => ({ ...f, city: e.target.value }))
-                    }
+                    onChange={(e) => setEditBillingForm((f) => ({ ...f, city: e.target.value }))}
                     placeholder={editBillingDetails.city?.trim() ? undefined : "Optional"}
                     maxLength={255}
                     aria-invalid={!!editBillingFieldErrors.city}
                     disabled={!!editBillingDetails.city?.trim()}
                     readOnly={!!editBillingDetails.city?.trim()}
-                    className={editBillingDetails.city?.trim() ? "bg-(--muted) cursor-not-allowed" : undefined}
+                    className={
+                      editBillingDetails.city?.trim()
+                        ? "cursor-not-allowed bg-(--muted)"
+                        : undefined
+                    }
                   />
                   {editBillingDetails.city?.trim() ? (
-                    <p className="mt-1 text-xs text-(--text-muted)">Cannot be changed for this invoice.</p>
+                    <p className="mt-1 text-xs text-(--text-muted)">
+                      Cannot be changed for this invoice.
+                    </p>
                   ) : null}
                   {editBillingFieldErrors.city && (
                     <p className="mt-1 text-xs text-red-600 dark:text-red-400">
@@ -1916,21 +2023,27 @@ export function WorkspaceBillingTab() {
                   )}
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-(--text-muted)">Region / State</label>
+                  <label className="mb-1 block text-xs font-medium text-(--text-muted)">
+                    Region / State
+                  </label>
                   <Input
                     value={editBillingForm.region}
-                    onChange={(e) =>
-                      setEditBillingForm((f) => ({ ...f, region: e.target.value }))
-                    }
+                    onChange={(e) => setEditBillingForm((f) => ({ ...f, region: e.target.value }))}
                     placeholder={editBillingDetails.region?.trim() ? undefined : "Optional"}
                     maxLength={255}
                     aria-invalid={!!editBillingFieldErrors.region}
                     disabled={!!editBillingDetails.region?.trim()}
                     readOnly={!!editBillingDetails.region?.trim()}
-                    className={editBillingDetails.region?.trim() ? "bg-(--muted) cursor-not-allowed" : undefined}
+                    className={
+                      editBillingDetails.region?.trim()
+                        ? "cursor-not-allowed bg-(--muted)"
+                        : undefined
+                    }
                   />
                   {editBillingDetails.region?.trim() ? (
-                    <p className="mt-1 text-xs text-(--text-muted)">Cannot be changed for this invoice.</p>
+                    <p className="mt-1 text-xs text-(--text-muted)">
+                      Cannot be changed for this invoice.
+                    </p>
                   ) : null}
                   {editBillingFieldErrors.region && (
                     <p className="mt-1 text-xs text-red-600 dark:text-red-400">
@@ -1982,202 +2095,204 @@ export function WorkspaceBillingTab() {
 
       {/* Change plan dialog */}
       {(() => {
-        const scheduledCancellation = Boolean(summary.cancelAtPeriodEnd && summary.pendingPlanCode === "free");
+        const scheduledCancellation = Boolean(
+          summary.cancelAtPeriodEnd && summary.pendingPlanCode === "free",
+        );
         const effectiveDateStr = summary.periodEnd ? formatDate(summary.periodEnd) : "";
         return (
-      <Dialog
-        open={changePlanOpen}
-        onClose={() => setChangePlanOpen(false)}
-        title="Change plan"
-        description={
-          scheduledCancellation
-            ? `Subscription cancellation scheduled. Your workspace will move to the Free plan${effectiveDateStr ? ` on ${effectiveDateStr}` : " at the end of your billing period"}. You can resume a paid plan before that date.`
-            : summary.pendingPlanCode && summary.pendingPlanCode !== "free"
-              ? "Compare plans. You have a scheduled downgrade; you can replace it with another plan below."
-              : "Compare plans and choose what fits your workspace. Upgrades apply immediately. Downgrades take effect at the end of your billing period."
-        }
-        contentClassName="max-w-6xl w-full"
-      >
-        {/* Plan cards: horizontal scroll only on small viewports; grid on md+ so no scroll on desktop */}
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-          <div className="overflow-x-auto md:overflow-x-visible px-4 pb-2 pt-4 sm:px-6">
-            <div className="flex gap-4 min-w-max md:min-w-0 md:grid md:grid-cols-2 md:auto-rows-fr lg:grid-cols-4">
-            {IN_APP_PLAN_CATALOG.map((plan) => {
-              const isCurrent = plan.code === billingState.currentPlan;
-              const isScheduled =
-                summary.pendingPlanCode &&
-                summary.pendingPlanCode !== "free" &&
-                plan.code === summary.pendingPlanCode;
-              const isScheduledFree = scheduledCancellation && plan.code === "free";
-              const canUpgrade =
-                isUpgrade(billingState.currentPlan, plan.code) &&
-                !billingState.isPastDue &&
-                !billingState.isSuspended;
-              const canDowngrade = isDowngrade(billingState.currentPlan, plan.code);
-              const hasScheduledDowngrade =
-                summary.pendingPlanCode && summary.pendingPlanCode !== "free";
-              const isOtherLowerWithScheduled =
-                hasScheduledDowngrade &&
-                canDowngrade &&
-                !isCurrent &&
-                !isScheduled;
-              const isResumePaidPlan =
-                scheduledCancellation &&
-                plan.code !== "free" &&
-                !isCurrent;
-              const effectiveDate = summary.periodEnd ? formatDate(summary.periodEnd) : "";
-              const buttonsDisabled = scheduleLoading || checkoutLoading;
+          <Dialog
+            open={changePlanOpen}
+            onClose={() => setChangePlanOpen(false)}
+            title="Change plan"
+            description={
+              scheduledCancellation
+                ? `Subscription cancellation scheduled. Your workspace will move to the Free plan${effectiveDateStr ? ` on ${effectiveDateStr}` : " at the end of your billing period"}. You can resume a paid plan before that date.`
+                : summary.pendingPlanCode && summary.pendingPlanCode !== "free"
+                  ? "Compare plans. You have a scheduled downgrade; you can replace it with another plan below."
+                  : "Compare plans and choose what fits your workspace. Upgrades apply immediately. Downgrades take effect at the end of your billing period."
+            }
+            contentClassName="max-w-6xl w-full"
+          >
+            {/* Plan cards: horizontal scroll only on small viewports; grid on md+ so no scroll on desktop */}
+            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+              <div className="overflow-x-auto px-4 pt-4 pb-2 sm:px-6 md:overflow-x-visible">
+                <div className="flex min-w-max gap-4 md:grid md:min-w-0 md:auto-rows-fr md:grid-cols-2 lg:grid-cols-4">
+                  {IN_APP_PLAN_CATALOG.map((plan) => {
+                    const isCurrent = plan.code === billingState.currentPlan;
+                    const isScheduled =
+                      summary.pendingPlanCode &&
+                      summary.pendingPlanCode !== "free" &&
+                      plan.code === summary.pendingPlanCode;
+                    const isScheduledFree = scheduledCancellation && plan.code === "free";
+                    const canUpgrade =
+                      isUpgrade(billingState.currentPlan, plan.code) &&
+                      !billingState.isPastDue &&
+                      !billingState.isSuspended;
+                    const canDowngrade = isDowngrade(billingState.currentPlan, plan.code);
+                    const hasScheduledDowngrade =
+                      summary.pendingPlanCode && summary.pendingPlanCode !== "free";
+                    const isOtherLowerWithScheduled =
+                      hasScheduledDowngrade && canDowngrade && !isCurrent && !isScheduled;
+                    const isResumePaidPlan =
+                      scheduledCancellation && plan.code !== "free" && !isCurrent;
+                    const effectiveDate = summary.periodEnd ? formatDate(summary.periodEnd) : "";
+                    const buttonsDisabled = scheduleLoading || checkoutLoading;
 
-              return (
-                <div
-                  key={plan.code}
-                  className={`flex min-h-0 flex-col shrink-0 w-64 min-w-64 md:w-auto md:min-w-0 rounded-xl border p-4 ${
-                    plan.mostPopular
-                      ? "border-(--color-primary)/50 bg-(--bg-surface-elev)"
-                      : "border-(--border-subtle) bg-(--bg-surface)"
-                  }`}
-                >
-                  <div className="min-h-0 flex-1">
-                    <div className="flex items-start justify-between gap-2">
-                      <h3 className="font-semibold text-(--text-primary)">
-                        {plan.name}
-                      </h3>
-                      <div className="flex flex-wrap items-center gap-1.5 justify-end">
-                        {isCurrent && (
-                          <Badge variant="secondary">Current</Badge>
-                        )}
-                        {(isScheduled || isScheduledFree) && (
-                          <Badge variant="secondary">Scheduled</Badge>
-                        )}
-                        {plan.mostPopular && !isCurrent && !isScheduled && !isScheduledFree && (
-                          <Badge variant="secondary">Most popular</Badge>
-                        )}
-                      </div>
-                    </div>
-                    <p className="mt-1 text-lg font-medium text-(--text-primary)">
-                      {formatPriceMonthly(plan.priceMonthlyCents)}/month
-                    </p>
-                    {isCurrent && (hasScheduledDowngrade || scheduledCancellation) && effectiveDate && (
-                      <p className="mt-1 text-xs text-(--text-muted)">
-                        Current until {effectiveDate}
-                      </p>
-                    )}
-                    {(isScheduled || isScheduledFree) && effectiveDate && (
-                      <p className="mt-1 text-xs text-(--text-muted)">
-                        Will become active on {effectiveDate}
-                      </p>
-                    )}
-                    <p className="mt-2 text-xs text-(--text-muted)">
-                      {plan.bestFor}
-                    </p>
-                    <ul className="mt-3 space-y-1.5 text-xs text-(--text-secondary)">
-                      {plan.includes.slice(0, 5).map((item, i) => (
-                        <li key={i} className="flex items-start gap-2">
-                          <span className="mt-0.5 shrink-0 text-(--color-primary)" aria-hidden>✓</span>
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    {plan.limits.length > 0 && (
-                      <ul className="mt-2 space-y-1 text-xs text-(--text-muted)">
-                        {plan.limits.slice(0, 3).map((item, i) => (
-                          <li key={i}>{item}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                  <div className="mt-auto shrink-0 pt-4">
-                    <span className="mb-4 block h-px w-full bg-(--border-subtle)" aria-hidden />
-                    {isCurrent ? (
-                      <button
-                        type="button"
-                        disabled
-                        className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--muted) text-sm font-medium text-(--text-muted)"
+                    return (
+                      <div
+                        key={plan.code}
+                        className={`flex min-h-0 w-64 min-w-64 shrink-0 flex-col rounded-xl border p-4 md:w-auto md:min-w-0 ${
+                          plan.mostPopular
+                            ? "border-(--color-primary)/50 bg-(--bg-surface-elev)"
+                            : "border-(--border-subtle) bg-(--bg-surface)"
+                        }`}
                       >
-                        Current plan
-                      </button>
-                    ) : isScheduled ? (
-                      <button
-                        type="button"
-                        disabled
-                        className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--muted) text-sm font-medium text-(--text-muted)"
-                      >
-                        Scheduled
-                      </button>
-                    ) : isScheduledFree ? (
-                      <button
-                        type="button"
-                        disabled
-                        className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--muted) text-sm font-medium text-(--text-muted)"
-                      >
-                        Scheduled
-                      </button>
-                    ) : canUpgrade ? (
-                      <button
-                        type="button"
-                        onClick={() => handleSelectPlan(plan)}
-                        disabled={buttonsDisabled}
-                        className="inline-flex h-9 w-full items-center justify-center rounded-lg bg-(--color-primary) text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-50"
-                      >
-                        Upgrade
-                      </button>
-                    ) : isResumePaidPlan ? (
-                      <>
-                        <p className="mb-2 text-center text-xs text-(--text-muted)">
-                          Replaces your scheduled cancellation.
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => handleSelectPlan(plan)}
-                          disabled={buttonsDisabled}
-                          title="Replaces your scheduled cancellation."
-                          className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
-                        >
-                          Resume with this plan
-                        </button>
-                      </>
-                    ) : isOtherLowerWithScheduled ? (
-                      <>
-                        {effectiveDate ? (
-                          <p className="mb-2 text-center text-xs text-(--text-muted)">
-                            Replaces your scheduled downgrade. Effective on {effectiveDate}.
+                        <div className="min-h-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <h3 className="font-semibold text-(--text-primary)">{plan.name}</h3>
+                            <div className="flex flex-wrap items-center justify-end gap-1.5">
+                              {isCurrent && <Badge variant="secondary">Current</Badge>}
+                              {(isScheduled || isScheduledFree) && (
+                                <Badge variant="secondary">Scheduled</Badge>
+                              )}
+                              {plan.mostPopular &&
+                                !isCurrent &&
+                                !isScheduled &&
+                                !isScheduledFree && <Badge variant="secondary">Most popular</Badge>}
+                            </div>
+                          </div>
+                          <p className="mt-1 text-lg font-medium text-(--text-primary)">
+                            {formatPriceMonthly(plan.priceMonthlyCents)}/month
                           </p>
-                        ) : null}
-                        <button
-                          type="button"
-                          onClick={() => handleSelectPlan(plan)}
-                          disabled={buttonsDisabled}
-                          title="Replaces your scheduled downgrade."
-                          className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
-                        >
-                          Schedule instead
-                        </button>
-                      </>
-                    ) : canDowngrade && !scheduledCancellation ? (
-                      <button
-                        type="button"
-                        onClick={() => handleSelectPlan(plan)}
-                        disabled={buttonsDisabled}
-                        title="Downgrades take effect at the end of your billing period."
-                        className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
-                      >
-                        Downgrade (end of period)
-                      </button>
-                    ) : (
-                      <span className="text-xs text-(--text-muted)">
-                        {billingState.isPastDue || billingState.isSuspended
-                          ? "Update payment method to change plan."
-                          : "?"}
-                      </span>
-                    )}
-                  </div>
+                          {isCurrent &&
+                            (hasScheduledDowngrade || scheduledCancellation) &&
+                            effectiveDate && (
+                              <p className="mt-1 text-xs text-(--text-muted)">
+                                Current until {effectiveDate}
+                              </p>
+                            )}
+                          {(isScheduled || isScheduledFree) && effectiveDate && (
+                            <p className="mt-1 text-xs text-(--text-muted)">
+                              Will become active on {effectiveDate}
+                            </p>
+                          )}
+                          <p className="mt-2 text-xs text-(--text-muted)">{plan.bestFor}</p>
+                          <ul className="mt-3 space-y-1.5 text-xs text-(--text-secondary)">
+                            {plan.includes.slice(0, 5).map((item, i) => (
+                              <li key={i} className="flex items-start gap-2">
+                                <span
+                                  className="mt-0.5 shrink-0 text-(--color-primary)"
+                                  aria-hidden
+                                >
+                                  ✓
+                                </span>
+                                <span>{item}</span>
+                              </li>
+                            ))}
+                          </ul>
+                          {plan.limits.length > 0 && (
+                            <ul className="mt-2 space-y-1 text-xs text-(--text-muted)">
+                              {plan.limits.slice(0, 3).map((item, i) => (
+                                <li key={i}>{item}</li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                        <div className="mt-auto shrink-0 pt-4">
+                          <span
+                            className="mb-4 block h-px w-full bg-(--border-subtle)"
+                            aria-hidden
+                          />
+                          {isCurrent ? (
+                            <button
+                              type="button"
+                              disabled
+                              className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--muted) text-sm font-medium text-(--text-muted)"
+                            >
+                              Current plan
+                            </button>
+                          ) : isScheduled ? (
+                            <button
+                              type="button"
+                              disabled
+                              className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--muted) text-sm font-medium text-(--text-muted)"
+                            >
+                              Scheduled
+                            </button>
+                          ) : isScheduledFree ? (
+                            <button
+                              type="button"
+                              disabled
+                              className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--muted) text-sm font-medium text-(--text-muted)"
+                            >
+                              Scheduled
+                            </button>
+                          ) : canUpgrade ? (
+                            <button
+                              type="button"
+                              onClick={() => handleSelectPlan(plan)}
+                              disabled={buttonsDisabled}
+                              className="inline-flex h-9 w-full items-center justify-center rounded-lg bg-(--color-primary) text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-50"
+                            >
+                              Upgrade
+                            </button>
+                          ) : isResumePaidPlan ? (
+                            <>
+                              <p className="mb-2 text-center text-xs text-(--text-muted)">
+                                Replaces your scheduled cancellation.
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => handleSelectPlan(plan)}
+                                disabled={buttonsDisabled}
+                                title="Replaces your scheduled cancellation."
+                                className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
+                              >
+                                Resume with this plan
+                              </button>
+                            </>
+                          ) : isOtherLowerWithScheduled ? (
+                            <>
+                              {effectiveDate ? (
+                                <p className="mb-2 text-center text-xs text-(--text-muted)">
+                                  Replaces your scheduled downgrade. Effective on {effectiveDate}.
+                                </p>
+                              ) : null}
+                              <button
+                                type="button"
+                                onClick={() => handleSelectPlan(plan)}
+                                disabled={buttonsDisabled}
+                                title="Replaces your scheduled downgrade."
+                                className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
+                              >
+                                Schedule instead
+                              </button>
+                            </>
+                          ) : canDowngrade && !scheduledCancellation ? (
+                            <button
+                              type="button"
+                              onClick={() => handleSelectPlan(plan)}
+                              disabled={buttonsDisabled}
+                              title="Downgrades take effect at the end of your billing period."
+                              className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
+                            >
+                              Downgrade (end of period)
+                            </button>
+                          ) : (
+                            <span className="text-xs text-(--text-muted)">
+                              {billingState.isPastDue || billingState.isSuspended
+                                ? "Update payment method to change plan."
+                                : "?"}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
+              </div>
             </div>
-          </div>
-        </div>
-      </Dialog>
+          </Dialog>
         );
       })()}
 
@@ -2191,109 +2306,119 @@ export function WorkspaceBillingTab() {
         contentClassName="max-h-[90vh] overflow-hidden flex flex-col max-w-md"
       >
         {confirmTarget && (
-          <div className="overflow-y-auto overscroll-contain max-h-[calc(90vh-7rem)] -mx-6 px-6 pb-6">
-          <div className="space-y-4">
-            {confirmTarget.direction === "upgrade" ? (
-              <>
-                <div className="space-y-3 text-sm">
-                  <div>
-                    <p className="text-xs font-medium text-(--text-muted)">Current plan</p>
-                    <p className="mt-0.5 font-medium text-(--text-primary)">
-                      {PLAN_LABELS[changePlanPreview?.currentPlanCode ?? summary?.planCode ?? "free"] ?? (changePlanPreview?.currentPlanCode ?? summary?.planCode ?? "free")}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-(--text-muted)">New plan</p>
-                    <p className="mt-0.5 font-medium text-(--text-primary)">
-                      {confirmTarget.plan.name}
-                      {changePlanPreview?.nextPriceCents != null && (
-                        <span className="font-normal text-(--text-secondary)"> — {formatPriceMonthly(changePlanPreview.nextPriceCents)}/month</span>
+          <div className="-mx-6 max-h-[calc(90vh-7rem)] overflow-y-auto overscroll-contain px-6 pb-6">
+            <div className="space-y-4">
+              {confirmTarget.direction === "upgrade" ? (
+                <>
+                  <div className="space-y-3 text-sm">
+                    <div>
+                      <p className="text-xs font-medium text-(--text-muted)">Current plan</p>
+                      <p className="mt-0.5 font-medium text-(--text-primary)">
+                        {PLAN_LABELS[
+                          changePlanPreview?.currentPlanCode ?? summary?.planCode ?? "free"
+                        ] ??
+                          changePlanPreview?.currentPlanCode ??
+                          summary?.planCode ??
+                          "free"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-(--text-muted)">New plan</p>
+                      <p className="mt-0.5 font-medium text-(--text-primary)">
+                        {confirmTarget.plan.name}
+                        {changePlanPreview?.nextPriceCents != null && (
+                          <span className="font-normal text-(--text-secondary)">
+                            {" "}
+                            — {formatPriceMonthly(changePlanPreview.nextPriceCents)}/month
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    {changePlanPreview?.effectiveAt === "immediate" &&
+                      changePlanPreview?.nextPriceCents != null && (
+                        <div>
+                          <p className="text-xs font-medium text-(--text-muted)">Due now</p>
+                          <p className="mt-0.5 text-(--text-primary)">
+                            {formatPriceMonthly(changePlanPreview.nextPriceCents)} (prorated)
+                          </p>
+                        </div>
                       )}
-                    </p>
-                  </div>
-                  {changePlanPreview?.effectiveAt === "immediate" && changePlanPreview?.nextPriceCents != null && (
-                    <div>
-                      <p className="text-xs font-medium text-(--text-muted)">Due now</p>
-                      <p className="mt-0.5 text-(--text-primary)">
-                        {formatPriceMonthly(changePlanPreview.nextPriceCents)} (prorated)
-                      </p>
-                    </div>
-                  )}
-                  {changePlanPreview?.effectiveAt === "next_period" && changePlanPreview?.effectiveFromDate && (
+                    {changePlanPreview?.effectiveAt === "next_period" &&
+                      changePlanPreview?.effectiveFromDate && (
+                        <p className="text-(--text-muted)">
+                          Effective {formatDate(changePlanPreview.effectiveFromDate)}.
+                        </p>
+                      )}
                     <p className="text-(--text-muted)">
-                      Effective {formatDate(changePlanPreview.effectiveFromDate)}.
+                      {changePlanPreview?.requiresCheckout
+                        ? "You'll enter your payment details in the next step."
+                        : changePlanPreview?.effectiveAt === "immediate"
+                          ? "Billing cycle remains the same. Your plan will update after payment is confirmed."
+                          : "Your new amount will be charged at the end of the current billing cycle."}
                     </p>
-                  )}
-                  <p className="text-(--text-muted)">
-                    {changePlanPreview?.requiresCheckout
-                      ? "You'll enter your payment details in the next step."
-                      : changePlanPreview?.effectiveAt === "immediate"
-                        ? "Billing cycle remains the same. Your plan will update after payment is confirmed."
-                        : "Your new amount will be charged at the end of the current billing cycle."}
-                  </p>
-                  {paymentMethod && !changePlanPreview?.requiresCheckout && (
-                    <div>
-                      <p className="text-xs font-medium text-(--text-muted)">Payment method</p>
-                      <p className="mt-0.5 text-(--text-primary)">
-                        {formatCardBrand(paymentMethod.brand)} •••• {paymentMethod.last4}
-                      </p>
-                    </div>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={handleConfirmUpgrade}
-                    disabled={checkoutLoading}
-                    className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-50"
-                  >
-                    {checkoutLoading ? (
-                      <>
-                        <Spinner size="sm" />
-                        Preparing…
-                      </>
-                    ) : (
-                      `Upgrade to ${confirmTarget.plan.name}`
+                    {paymentMethod && !changePlanPreview?.requiresCheckout && (
+                      <div>
+                        <p className="text-xs font-medium text-(--text-muted)">Payment method</p>
+                        <p className="mt-0.5 text-(--text-primary)">
+                          {formatCardBrand(paymentMethod.brand)} •••• {paymentMethod.last4}
+                        </p>
+                      </div>
                     )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={closeConfirm}
-                    disabled={checkoutLoading}
-                    className="inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                {/* REMOVED: old Activate plan form (EPIC 4) */}
-                <p className="text-sm text-(--text-primary)">
-                  You are downgrading to {confirmTarget.plan.name}. Downgrades take
-                  effect at the end of the current billing period.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={handleConfirmDowngrade}
-                    disabled={scheduleLoading}
-                    className="inline-flex h-9 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-50"
-                  >
-                    {scheduleLoading ? "Loading…" : "Schedule downgrade"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={closeConfirm}
-                    disabled={scheduleLoading}
-                    className="inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={handleConfirmUpgrade}
+                      disabled={checkoutLoading}
+                      className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-50"
+                    >
+                      {checkoutLoading ? (
+                        <>
+                          <Spinner size="sm" />
+                          Preparing…
+                        </>
+                      ) : (
+                        `Upgrade to ${confirmTarget.plan.name}`
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={closeConfirm}
+                      disabled={checkoutLoading}
+                      className="inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* REMOVED: old Activate plan form (EPIC 4) */}
+                  <p className="text-sm text-(--text-primary)">
+                    You are downgrading to {confirmTarget.plan.name}. Downgrades take effect at the
+                    end of the current billing period.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={handleConfirmDowngrade}
+                      disabled={scheduleLoading}
+                      className="inline-flex h-9 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-50"
+                    >
+                      {scheduleLoading ? "Loading…" : "Schedule downgrade"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={closeConfirm}
+                      disabled={scheduleLoading}
+                      className="inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         )}
       </Dialog>
@@ -2304,7 +2429,11 @@ export function WorkspaceBillingTab() {
         onClose={closePaymentDeclinedModal}
         title={
           <span className="inline-flex items-center gap-2">
-            <IconAlertCircle size={20} className="shrink-0 text-amber-600 dark:text-amber-500" aria-hidden />
+            <IconAlertCircle
+              size={20}
+              className="shrink-0 text-amber-600 dark:text-amber-500"
+              aria-hidden
+            />
             <span>Payment declined</span>
           </span>
         }
@@ -2322,7 +2451,11 @@ export function WorkspaceBillingTab() {
           <p className="text-sm text-(--text-primary)">
             {paymentMethod ? (
               <>
-                Your <span className="font-medium text-(--text-primary)">{formatCardBrand(paymentMethod.brand)} •••• {paymentMethod.last4}</span> was declined while attempting to upgrade your workspace.
+                Your{" "}
+                <span className="font-medium text-(--text-primary)">
+                  {formatCardBrand(paymentMethod.brand)} •••• {paymentMethod.last4}
+                </span>{" "}
+                was declined while attempting to upgrade your workspace.
               </>
             ) : (
               <>Your card was declined while attempting to upgrade your workspace.</>
@@ -2332,9 +2465,12 @@ export function WorkspaceBillingTab() {
           {/* Upgrade plan — existing data, neutral info card */}
           {paymentDeclinedPlanCode && (
             <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-4 py-3">
-              <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">Upgrade plan</p>
+              <p className="text-xs font-medium tracking-wide text-(--text-muted) uppercase">
+                Upgrade plan
+              </p>
               <p className="mt-1.5 text-sm font-semibold text-(--text-primary)">
-                {PLAN_LABELS[paymentDeclinedPlanCode] ?? paymentDeclinedPlanCode} — {(() => {
+                {PLAN_LABELS[paymentDeclinedPlanCode] ?? paymentDeclinedPlanCode} —{" "}
+                {(() => {
                   const plan = IN_APP_PLAN_CATALOG.find((p) => p.code === paymentDeclinedPlanCode);
                   return plan ? formatPriceMonthly(plan.priceMonthlyCents) + "/month" : "";
                 })()}
@@ -2368,7 +2504,7 @@ export function WorkspaceBillingTab() {
               type="button"
               onClick={handlePaymentDeclinedUpdateMethod}
               disabled={paymentMethodUpdateLoading}
-              className="inline-flex h-9 min-w-36 items-center justify-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:ring-offset-2 disabled:opacity-50"
+              className="inline-flex h-9 min-w-36 items-center justify-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) focus:ring-2 focus:ring-(--color-primary) focus:ring-offset-2 focus:outline-none disabled:opacity-50"
             >
               {paymentMethodUpdateLoading ? (
                 <>
@@ -2382,7 +2518,7 @@ export function WorkspaceBillingTab() {
             <button
               type="button"
               onClick={closePaymentDeclinedModal}
-              className="inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) focus:outline-none focus:ring-2 focus:ring-(--border-subtle) focus:ring-offset-2"
+              className="inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) focus:ring-2 focus:ring-(--border-subtle) focus:ring-offset-2 focus:outline-none"
             >
               Cancel
             </button>

@@ -56,10 +56,7 @@ export function DropdownMultiSelect({
   return (
     <div ref={containerRef} className={"relative " + className}>
       {label ? (
-        <label
-          htmlFor={id}
-          className="block text-sm font-medium text-(--text-primary)"
-        >
+        <label htmlFor={id} className="block text-sm font-medium text-(--text-primary)">
           {label}
         </label>
       ) : null}
@@ -70,11 +67,9 @@ export function DropdownMultiSelect({
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => !disabled && setOpen((o) => !o)}
-        className="mt-1.5 flex h-10 w-full min-w-[120px] cursor-pointer items-center justify-between rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2 text-left text-sm text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-60 disabled:cursor-not-allowed"
+        className="mt-1.5 flex h-10 w-full min-w-[120px] cursor-pointer items-center justify-between rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2 text-left text-sm text-(--text-primary) focus:ring-2 focus:ring-(--color-primary) focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
       >
-        <span className={selected.length === 0 ? "text-(--text-muted)" : ""}>
-          {displayText}
-        </span>
+        <span className={selected.length === 0 ? "text-(--text-muted)" : ""}>{displayText}</span>
         <span className="ml-2 text-(--text-muted)" aria-hidden>
           {open ? "▲" : "▼"}
         </span>
