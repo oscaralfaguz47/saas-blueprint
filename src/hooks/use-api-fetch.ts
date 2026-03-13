@@ -32,16 +32,14 @@ export function useApiFetch() {
           try {
             const clone = res.clone();
             const data = (await clone.json().catch(() => ({}))) as {
-              error?: string;
-              message?: string;
-              details?: { code?: string };
+              error?: { code?: string; message?: string; details?: { code?: string } };
             };
             // Skip toast for validation and rate-limit errors; they are shown inline in the form.
             if (
               res.status === 400 ||
               res.status === 429 ||
-              data.error === "VALIDATION_ERROR" ||
-              data.error === "RATE_LIMITED"
+              data.error?.code === "VALIDATION_ERROR" ||
+              data.error?.code === "RATE_LIMITED"
             )
               return res;
             toast.addToast("error", getApiErrorMessage(res, data));
@@ -58,3 +56,4 @@ export function useApiFetch() {
 
   return apiFetch;
 }
+

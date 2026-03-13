@@ -27,7 +27,7 @@ export default function CreateWorkspaceForm() {
         body: JSON.stringify({ name: name.trim() }),
       });
 
-      const data = (await res.json()) as { data?: { tenant?: unknown }; error?: string; message?: string };
+      const data = (await res.json()) as { data?: { tenant?: unknown }; error?: { code?: string; message?: string; details?: { code?: string } } };
 
       if (!res.ok) {
         setErrorMessage(getApiErrorMessage(res, data));

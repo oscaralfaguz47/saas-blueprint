@@ -140,7 +140,7 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
           description: description.trim() || undefined,
         }),
       });
-      const data = (await res.json()) as { data?: { tenant?: Tenant }; error?: string; message?: string };
+      const data = (await res.json()) as { data?: { tenant?: Tenant }; error?: { code?: string; message?: string; details?: { code?: string } } };
       if (!res.ok) {
         setSaveError(getApiErrorMessage(res, data));
         setSaveStatus("error");

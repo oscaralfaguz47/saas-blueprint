@@ -26,11 +26,9 @@ type ApiAcceptOk = {
 };
 
 type ApiEmailMismatch = {
-  error: string;
-  message?: string;
+  error?: { code?: string; message?: string; details?: { expectedEmail?: string; currentEmail?: string | null } };
   expectedEmail?: string;
   currentEmail?: string | null;
-  details?: { expectedEmail?: string; currentEmail?: string | null };
 };
 
 type AcceptResult =
@@ -38,7 +36,7 @@ type AcceptResult =
   | { kind: "submitting" }
   | { kind: "ok"; data: ApiAcceptOk }
   | { kind: "email_mismatch"; data: ApiEmailMismatch }
-  | { kind: "error"; data: { error: string; message?: string } };
+  | { kind: "error"; data: { error?: { code?: string; message?: string } } };
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
@@ -95,7 +93,7 @@ export default function InviteClient({ hasActiveWorkspace = false }: InviteClien
 
   async function acceptInvitation() {
     if (!token) {
-      setResult({ kind: "error", data: { error: "MISSING_TOKEN", message: "Missing invitation token." } });
+      setResult({ kind: "error", data: { error: { code: "MISSING_TOKEN", message: "Missing invitation token." } } });
       return;
     }
     setResult({ kind: "submitting" });
@@ -117,16 +115,19 @@ export default function InviteClient({ hasActiveWorkspace = false }: InviteClien
         return;
       }
 
-      const details = (body.details ?? payload?.details) as { expectedEmail?: string; currentEmail?: string | null } | undefined;
-      const expectedEmail = (payload?.expectedEmail ?? details?.expectedEmail ?? body.expectedEmail) as string | undefined;
+      const errObj = (payload?.error ?? body.error) as Record<string, unknown> | undefined;
+      const details = (errObj?.details ?? body.details ?? payload?.details) as { expectedEmail?: string; currentEmail?: string | null } | undefined;
+      const expectedEmail = (details?.expectedEmail ?? payload?.expectedEmail ?? body.expectedEmail) as string | undefined;
       if (expectedEmail != null) {
         setResult({
           kind: "email_mismatch",
           data: {
-            error: "EMAIL_MISMATCH",
-            message: (payload?.message ?? body.message) as string | undefined,
+            error: {
+              code: "EMAIL_MISMATCH",
+              message: (errObj?.message ?? payload?.message ?? body.message) as string | undefined,
+            },
             expectedEmail,
-            currentEmail: (payload?.currentEmail ?? details?.currentEmail ?? body.currentEmail) as string | null | undefined,
+            currentEmail: (details?.currentEmail ?? payload?.currentEmail ?? body.currentEmail) as string | null | undefined,
           },
         });
         return;
@@ -135,14 +136,16 @@ export default function InviteClient({ hasActiveWorkspace = false }: InviteClien
       setResult({
         kind: "error",
         data: {
-          error: (payload?.error ?? body.error) as string ?? "UNKNOWN",
-          message: (payload?.message ?? body.message) as string | undefined,
+          error: {
+            code: (errObj?.code as string) ?? "UNKNOWN",
+            message: (errObj?.message as string) ?? "An error occurred",
+          }
         },
       });
     } catch (err) {
       setResult({
         kind: "error",
-        data: { error: "CLIENT_ERROR", message: err instanceof Error ? err.message : "Unknown error" },
+        data: { error: { code: "CLIENT_ERROR", message: err instanceof Error ? err.message : "Unknown error" } },
       });
     }
   }
@@ -415,7 +418,7 @@ export default function InviteClient({ hasActiveWorkspace = false }: InviteClien
           </button>
           {result.kind === "error" && (
             <p className="text-center text-sm text-(--color-danger)" role="alert">
-              {result.data.message ?? result.data.error}
+              {result.data.error?.message ?? "Something went wrong."}
             </p>
           )}
         </div>

@@ -42,17 +42,15 @@ export function InviteMemberModal({ open, onClose, workspaceName, onSuccess }: P
       });
       const data = (await res.json()) as {
         data?: { invitation?: unknown; inviteUrl?: string };
-        error?: string;
-        message?: string;
-        details?: { code?: string };
+        error?: { code?: string; message?: string; details?: { code?: string } };
       };
       if (!res.ok) {
         const msg =
-          data.error === "VALIDATION_ERROR" && typeof data.message === "string" && data.message.toLowerCase().includes("already a member")
+          data.error?.code === "VALIDATION_ERROR" && typeof data.error?.message === "string" && data.error.message.toLowerCase().includes("already a member")
             ? "User is already a member of this workspace."
-            : data.error === "CONFLICT" || data.details?.code === "ACTIVE_INVITE_EXISTS"
+            : data.error?.code === "CONFLICT" || data.error?.details?.code === "ACTIVE_INVITE_EXISTS"
               ? "An active invite already exists for this email."
-              : (data.message as string) ?? "Failed to send invite.";
+              : (data.error?.message as string) ?? "Failed to send invite.";
         setError(msg);
         setStatus("error");
         setSubmittingMode(null);

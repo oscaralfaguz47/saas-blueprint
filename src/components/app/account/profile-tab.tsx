@@ -62,14 +62,12 @@ export function ProfileTab({ profile: initialProfile, loginMethod }: Props) {
         }),
       });
       const data = (await res.json()) as {
-        error?: string;
-        message?: string;
-        details?: { code?: string };
+        error?: { code?: string; message?: string; details?: { code?: string } };
       };
       if (!res.ok) {
         setSaveError(getApiErrorMessage(res, data));
         setSaveStatus("error");
-        if (data.details?.code === "NEED_STEP_UP") {
+        if (data.error?.details?.code === "NEED_STEP_UP") {
           setSaveError("Sign in again to change your phone number.");
         }
         return;

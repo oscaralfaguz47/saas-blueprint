@@ -98,11 +98,10 @@ export function SecurityTab({ security: initialSecurity }: Props) {
       const res = await apiFetch("/api/account/2fa/setup", { method: "POST" });
       const data = (await res.json()) as {
         data?: { otpauthUri?: string; manualKey?: string };
-        error?: string;
-        message?: string;
+        error?: { code?: string; message?: string };
       };
       if (!res.ok) {
-        setError(data.message ?? data.error ?? "Failed to start setup.");
+        setError(data.error?.message ?? "Failed to start setup.");
         setLoading(false);
         return;
       }
@@ -131,11 +130,10 @@ export function SecurityTab({ security: initialSecurity }: Props) {
       });
       const data = (await res.json()) as {
         data?: { backupCodes?: string[]; verified?: boolean };
-        error?: string;
-        message?: string;
+        error?: { code?: string; message?: string };
       };
       if (!res.ok) {
-        setError(data.message ?? data.error ?? "Invalid code.");
+        setError(data.error?.message ?? "Invalid code.");
         setLoading(false);
         return;
       }
@@ -165,10 +163,10 @@ export function SecurityTab({ security: initialSecurity }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: disableCode.trim() }),
       });
-      const data = await res.json();
+      const data = (await res.json()) as { error?: { code?: string; message?: string; details?: { code?: string } } };
       if (!res.ok) {
-        setError(getApiErrorMessage(res, data as { error?: string; message?: string }));
-        if ((data as { details?: { code?: string } }).details?.code === "STEP_UP_REQUIRED") {
+        setError(getApiErrorMessage(res, data));
+        if (data.error?.details?.code === "STEP_UP_REQUIRED") {
           setError("Sign in again to disable 2FA.");
         }
         setLoadingDisable(false);
@@ -196,12 +194,11 @@ export function SecurityTab({ security: initialSecurity }: Props) {
       });
       const data = (await res.json()) as {
         data?: { backupCodes?: string[] };
-        error?: string;
-        message?: string;
+        error?: { code?: string; message?: string; details?: { code?: string } };
       };
       if (!res.ok) {
         setError(getApiErrorMessage(res, data));
-        if ((data as { details?: { code?: string } }).details?.code === "STEP_UP_REQUIRED") {
+        if (data.error?.details?.code === "STEP_UP_REQUIRED") {
           setError("Sign in again to regenerate backup codes.");
         }
         setLoadingRegenerate(false);
@@ -238,12 +235,12 @@ export function SecurityTab({ security: initialSecurity }: Props) {
       body: JSON.stringify({ enabled: false }),
     })
       .then(async (res) => {
-        const data = await res.json();
+        const data = (await res.json()) as { error?: { code?: string; message?: string; details?: { code?: string } } };
         if (!res.ok) {
           setAutoLogoutError(
-            (data as { details?: { code?: string } }).details?.code === "STEP_UP_REQUIRED"
+            data.error?.details?.code === "STEP_UP_REQUIRED"
               ? "Sign in again to change this setting."
-              : getApiErrorMessage(res, data as { error?: string; message?: string })
+              : getApiErrorMessage(res, data)
           );
           return;
         }
@@ -265,12 +262,12 @@ export function SecurityTab({ security: initialSecurity }: Props) {
       body: JSON.stringify({ enabled: true, minutes }),
     })
       .then(async (res) => {
-        const data = await res.json();
+        const data = (await res.json()) as { error?: { code?: string; message?: string; details?: { code?: string } } };
         if (!res.ok) {
           setAutoLogoutError(
-            (data as { details?: { code?: string } }).details?.code === "STEP_UP_REQUIRED"
+            data.error?.details?.code === "STEP_UP_REQUIRED"
               ? "Sign in again to change this setting."
-              : getApiErrorMessage(res, data as { error?: string; message?: string })
+              : getApiErrorMessage(res, data)
           );
           return;
         }

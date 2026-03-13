@@ -81,13 +81,11 @@ export function CreateWorkspaceModal({ open, onClose, onCloseAfterCreate }: Prop
       });
       const data = (await res.json()) as {
         data?: { tenant?: Tenant };
-        error?: string;
-        message?: string;
-        details?: { code?: string; slug?: string };
+        error?: { code?: string; message?: string; details?: { code?: string; slug?: string } };
       };
       if (!res.ok) {
         const msg =
-          data.details?.code === "SLUG_TAKEN" || data.error === "CONFLICT"
+          data.error?.details?.code === "SLUG_TAKEN" || data.error?.code === "CONFLICT"
             ? "This workspace URL is already taken. Choose another."
             : getApiErrorMessage(res, data);
         setCreateError(msg);

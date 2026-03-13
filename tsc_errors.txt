@@ -1,0 +1,14 @@
+.next/dev/types/validator.ts(602,39): error TS2307: Cannot find module '../../../src/app/api/billing/billing-email/route.js' or its corresponding type declarations.
+.next/types/validator.ts(602,39): error TS2307: Cannot find module '../../src/app/api/billing/billing-email/route.js' or its corresponding type declarations.
+src/components/app/account/profile-tab.tsx(70,46): error TS2345: Argument of type '{ error?: string | undefined; message?: string | undefined; details?: { code?: string | undefined; } | undefined; }' is not assignable to parameter of type '{ error?: { code?: string | undefined; message?: string | undefined; details?: { code?: string | undefined; } | undefined; } | undefined; }'.
+  Types of property 'error' are incompatible.
+    Type 'string | undefined' is not assignable to type '{ code?: string | undefined; message?: string | undefined; details?: { code?: string | undefined; } | undefined; } | undefined'.
+      Type 'string' has no properties in common with type '{ code?: string | undefined; message?: string | undefined; details?: { code?: string | undefined; } | undefined; }'.
+src/components/app/settings/workspace-general-tab.tsx(145,46): error TS2345: Argument of type '{ data?: { tenant?: Tenant | undefined; } | undefined; error?: string | undefined; message?: string | undefined; }' is not assignable to parameter of type '{ error?: { code?: string | undefined; message?: string | undefined; details?: { code?: string | undefined; } | undefined; } | undefined; }'.
+  Types of property 'error' are incompatible.
+    Type 'string | undefined' is not assignable to type '{ code?: string | undefined; message?: string | undefined; details?: { code?: string | undefined; } | undefined; } | undefined'.
+      Type 'string' has no properties in common with type '{ code?: string | undefined; message?: string | undefined; details?: { code?: string | undefined; } | undefined; }'.
+src/components/app/workspace/create-workspace-form.tsx(33,49): error TS2345: Argument of type '{ data?: { tenant?: unknown; } | undefined; error?: string | undefined; message?: string | undefined; }' is not assignable to parameter of type '{ error?: { code?: string | undefined; message?: string | undefined; details?: { code?: string | undefined; } | undefined; } | undefined; }'.
+  Types of property 'error' are incompatible.
+    Type 'string | undefined' is not assignable to type '{ code?: string | undefined; message?: string | undefined; details?: { code?: string | undefined; } | undefined; } | undefined'.
+      Type 'string' has no properties in common with type '{ code?: string | undefined; message?: string | undefined; details?: { code?: string | undefined; } | undefined; }'.

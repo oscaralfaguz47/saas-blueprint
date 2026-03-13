@@ -1,0 +1,28 @@
+
+────────────────────────────────────────
+UI/UX CONTRACT (Tailwind + shadcn)
+────────────────────────────────────────
+
+1) Component boundaries
+- UI primitives live in src/components/ui/**
+- Domain components live in:
+  - src/components/app
+  - src/components/auth
+  - src/components/settings
+- Do not duplicate primitives.
+
+2) Screen states
+All user-facing screens must include:
+- loading state
+- empty state
+- error state
+
+3) Upgrade-required UX
+When an action is blocked due to plan limits:
+- show a clear "Upgrade required" message
+- include the relevant limit and current usage when possible
+- provide a single CTA to upgrade/settings
+
+4) Do not leak sensitive data in the UI
+- Never show cross-tenant data.
+- Never show internal IDs unless necessary.

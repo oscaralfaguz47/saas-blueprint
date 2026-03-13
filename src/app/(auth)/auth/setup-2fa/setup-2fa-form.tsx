@@ -35,11 +35,10 @@ export function Setup2faForm() {
       const res = await apiFetch("/api/account/2fa/setup", { method: "POST" });
       const data = (await res.json()) as {
         data?: { otpauthUri?: string; manualKey?: string };
-        error?: string;
-        message?: string;
+        error?: { code?: string; message?: string };
       };
       if (!res.ok) {
-        setError(data.message ?? data.error ?? "Failed to start setup.");
+        setError(data.error?.message ?? "Failed to start setup.");
         setLoading(false);
         return;
       }
@@ -67,11 +66,10 @@ export function Setup2faForm() {
       });
       const data = (await res.json()) as {
         data?: { backupCodes?: string[]; verified?: boolean };
-        error?: string;
-        message?: string;
+        error?: { code?: string; message?: string };
       };
       if (!res.ok) {
-        setError(data.message ?? data.error ?? "Invalid code.");
+        setError(data.error?.message ?? "Invalid code.");
         setLoading(false);
         return;
       }
