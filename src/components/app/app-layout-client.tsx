@@ -43,7 +43,7 @@ export default function AppLayoutClient({
   }, []);
 
   return (
-    <div className="flex min-h-screen w-full bg-(--bg-main)">
+    <div className="flex h-dvh w-full overflow-hidden bg-(--bg-main)">
       <AppSidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -57,7 +57,7 @@ export default function AppLayoutClient({
           pendingInvitationsCount={pendingInvitationsCount}
           onMenuClick={isMobile ? () => setSidebarOpen(true) : undefined}
         />
-        <main className="min-h-0 w-full flex-1 overflow-auto text-(--text-primary)">
+        <main className="min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto text-(--text-primary)">
           <div className="w-full px-3 py-4 sm:px-6 sm:py-6">{children}</div>
         </main>
       </div>

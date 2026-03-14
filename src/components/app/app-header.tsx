@@ -45,7 +45,7 @@ export default function AppHeader({
             <button
               type="button"
               onClick={onMenuClick}
-              className="inline-flex shrink-0 items-center justify-center rounded-md border border-(--border-subtle) bg-(--bg-surface) p-2 text-(--text-secondary) transition-colors duration-150 hover:bg-(--nav-hover) hover:text-(--text-primary) md:hidden"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-(--border-subtle) bg-(--bg-surface) text-(--text-secondary) transition-colors duration-150 hover:bg-(--bg-surface-hover) hover:text-(--text-primary) shadow-sm md:hidden"
               aria-label="Open menu"
             >
               <IconMenu size={18} />
@@ -61,12 +61,12 @@ export default function AppHeader({
                   className="h-8 w-8 shrink-0 rounded-md border border-(--border-subtle) object-cover"
                 />
               ) : (
-                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-(--border-subtle) bg-(--bg-surface-elev) text-xs font-semibold text-(--text-primary) uppercase">
+                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-(--border-strong) bg-(--bg-surface-hover) text-xs font-bold text-(--text-primary) uppercase shadow-sm">
                   {workspaceInitials(workspace.name)}
                 </span>
               )}
               <span
-                className="max-w-72 min-w-0 truncate text-sm font-semibold text-(--text-primary)"
+                className="max-w-72 min-w-0 truncate text-sm font-semibold tracking-tight text-(--text-primary)"
                 title={workspace.name}
               >
                 {workspace.name}
@@ -90,7 +90,7 @@ export default function AppHeader({
           <button
             type="button"
             aria-label="Notifications"
-            className="inline-flex items-center justify-center rounded-md p-2 text-(--text-secondary) transition-colors duration-150 hover:bg-(--nav-hover) hover:text-(--text-primary)"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-(--text-secondary) transition-colors duration-150 hover:bg-(--bg-surface-elev) hover:text-(--text-primary)"
           >
             <IconBell size={18} />
           </button>

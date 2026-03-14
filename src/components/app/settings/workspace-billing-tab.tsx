@@ -1535,13 +1535,13 @@ export function WorkspaceBillingTab() {
       {/* Row 1: Plan & Subscription | Usage */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         {/* Plan & Subscription */}
-        <CardRoot className="border-(--border-subtle) shadow-sm">
-          <CardHeader className="pb-2">
-            <p className="text-xs font-medium tracking-wide text-(--text-muted) uppercase">
+        <CardRoot className="relative overflow-hidden border border-(--border-strong) bg-(--bg-surface-elev) shadow-sm">
+          <CardHeader className="pb-4">
+            <p className="text-xs font-semibold tracking-wider text-(--text-muted) uppercase">
               Plan &amp; subscription
             </p>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="text-lg font-semibold text-(--text-primary)">{planLabel} plan</span>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <span className="text-2xl font-bold tracking-tight text-(--text-primary)">{planLabel} plan</span>
               <Badge
                 variant={
                   billingState.isCancelingAtPeriodEnd &&
@@ -1582,12 +1582,12 @@ export function WorkspaceBillingTab() {
               </p>
             )}
           </CardHeader>
-          <CardFooter className="flex flex-wrap items-center gap-2 border-t border-(--border-subtle) pt-3">
+          <CardFooter className="flex flex-wrap items-center gap-2 border-t border-(--border-strong) bg-[color-mix(in_srgb,var(--color-bg-surface-elev)_50%,transparent)] pt-3">
             {showChangePlan && (
               <button
                 type="button"
                 onClick={handleOpenChangePlan}
-                className="inline-flex h-9 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover)"
+                className="inline-flex h-9 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white shadow-sm ring-1 ring-inset ring-white/20 hover:bg-(--color-primary-hover)"
               >
                 Change plan
               </button>
@@ -1597,13 +1597,13 @@ export function WorkspaceBillingTab() {
 
         {/* Usage */}
         <CardRoot className="shadow-sm">
-          <CardHeader>
-            <p className="text-xs font-medium tracking-wide text-(--text-muted) uppercase">Usage</p>
+          <CardHeader className="pb-3">
+            <p className="text-xs font-semibold tracking-wider text-(--text-muted) uppercase">Usage this month</p>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-4">
             <div>
-              <p className="text-sm font-medium text-(--text-primary)">Requests used</p>
-              <p className="mt-0.5 text-lg font-semibold text-(--text-primary)">
+              <p className="text-sm font-medium text-(--text-secondary)">Requests used</p>
+              <p className="mt-1 text-3xl font-bold tracking-tight text-(--text-primary)">
                 {summary.used} / {allowance > 0 ? allowance : summary.included} requests
               </p>
             </div>
@@ -1656,9 +1656,9 @@ export function WorkspaceBillingTab() {
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           {/* Next Invoice — reflects scheduled downgrade or cancellation; no charge when moving to Free */}
           {billingState.hasPaidPlan && nextChargeDate && (
-            <CardRoot className="shadow-sm">
-              <CardHeader>
-                <p className="text-xs font-medium tracking-wide text-(--text-muted) uppercase">
+            <CardRoot className="shadow-sm border border-(--border-subtle)">
+              <CardHeader className="pb-3">
+                <p className="text-xs font-semibold tracking-wider text-(--text-muted) uppercase">
                   Next invoice
                 </p>
               </CardHeader>
@@ -1691,9 +1691,9 @@ export function WorkspaceBillingTab() {
           )}
           {/* Payment method */}
           {(billingState.hasPaidPlan || billingState.isPastDue || billingState.isSuspended) && (
-            <CardRoot className="shadow-sm">
-              <CardHeader>
-                <p className="text-xs font-medium tracking-wide text-(--text-muted) uppercase">
+            <CardRoot className="shadow-sm border border-(--border-subtle)">
+              <CardHeader className="pb-3">
+                <p className="text-xs font-semibold tracking-wider text-(--text-muted) uppercase">
                   Payment method
                 </p>
               </CardHeader>

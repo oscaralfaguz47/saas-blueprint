@@ -40,8 +40,8 @@ function isRequestsActive(pathname: string) {
 }
 
 const hoverBg = "hover:bg-(--nav-hover)";
-const activeBg = "bg-(--nav-active)";
-const brandBoxBg = "bg-(--bg-surface-elev)";
+const activeBg = "bg-(--nav-active) shadow-elevated ring-1 ring-inset ring-(--color-primary-soft)";
+const brandBoxBg = "bg-(--bg-surface-elev) shadow-elevated ring-1 ring-inset ring-(--border-subtle)";
 
 export default function AppSidebar({
   open,
@@ -200,10 +200,10 @@ export default function AppSidebar({
         <Link
           href="/app/requests"
           onClick={() => isMobile && onClose()}
-          className={`flex flex-1 items-center gap-2 font-semibold text-(--text-primary) transition-colors duration-150 ${showLabels ? "" : "justify-center"} rounded-lg ${brandBoxBg} ${hoverBg} min-h-[2.25rem] ${showLabels ? "pr-2 pl-2" : "p-2"}`}
+          className={`flex flex-1 items-center gap-2 font-semibold text-(--text-primary) transition-colors duration-150 ${showLabels ? "" : "justify-center"} rounded-lg ${brandBoxBg} hover:bg-(--bg-surface-hover) min-h-[2.5rem] ${showLabels ? "pr-3 pl-2" : "p-2"}`}
           title={collapsed ? "Requests" : undefined}
         >
-          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) text-sm">
+          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border-strong)] bg-(--bg-surface) text-xs shadow-sm">
             ATL
           </span>
         </Link>
@@ -269,7 +269,7 @@ export default function AppSidebar({
                   >
                     <span className="min-w-0 truncate text-sm text-(--text-primary)">{t.name}</span>
                     {t.isDefaultTenant ? (
-                      <span className="shrink-0 rounded bg-(--bg-surface-elev) px-2 py-0.5 text-[10px] font-medium text-(--text-muted)">
+                      <span className="shrink-0 rounded-full border border-(--border-subtle) bg-(--bg-surface-elev) px-2 py-0.5 text-[10px] font-medium text-(--text-secondary) shadow-sm">
                         Current
                       </span>
                     ) : (

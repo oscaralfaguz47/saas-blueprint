@@ -180,8 +180,8 @@ export function BillingProfileSection() {
   if (loading) {
     return (
       <CardRoot className="shadow-sm">
-        <CardHeader>
-          <p className="text-xs font-medium tracking-wide text-(--text-muted) uppercase">
+        <CardHeader className="pb-3">
+          <p className="text-xs font-semibold tracking-wider text-(--text-muted) uppercase">
             Billing profile
           </p>
         </CardHeader>
@@ -195,8 +195,8 @@ export function BillingProfileSection() {
   return (
     <>
       <CardRoot className="shadow-sm">
-        <CardHeader>
-          <p className="text-xs font-medium tracking-wide text-(--text-muted) uppercase">
+        <CardHeader className="pb-3">
+          <p className="text-xs font-semibold tracking-wider text-(--text-muted) uppercase">
             Billing profile
           </p>
         </CardHeader>

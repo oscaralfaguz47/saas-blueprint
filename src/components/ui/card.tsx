@@ -1,5 +1,5 @@
 const cardRootClass =
-  "rounded-xl border border-(--border-subtle) bg-(--bg-surface) overflow-hidden";
+  "rounded-xl border border-(--border-strong) bg-(--bg-surface) shadow-sm overflow-hidden";
 
 /** Composable root for CardHeader/CardContent/CardFooter. */
 export function CardRoot({
@@ -25,8 +25,8 @@ export function CardHeader({
     <div
       className={
         className
-          ? `border-b border-(--border-subtle) px-4 py-3 ${className}`
-          : "border-b border-(--border-subtle) px-4 py-3"
+          ? `border-b border-(--border-strong) bg-[color-mix(in_srgb,var(--color-bg-surface-elev)_60%,transparent)] px-4 py-3 ${className}`
+          : "border-b border-(--border-strong) bg-[color-mix(in_srgb,var(--color-bg-surface-elev)_60%,transparent)] px-4 py-3"
       }
     >
       {children}
