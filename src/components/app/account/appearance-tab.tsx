@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme, type Theme } from "@/components/theme/theme-provider";
 import { useApiFetch } from "@/hooks/use-api-fetch";
+import { Spinner } from "@/components/ui/spinner";
 
 const OPTIONS: Array<{ value: Theme; label: string; description: string }> = [
   { value: "light", label: "Light", description: "Clean, light-first palette." },
@@ -21,11 +22,14 @@ export function AppearanceTab({ initialMode }: Props) {
   const apiFetch = useApiFetch();
   const [status, setStatus] = useState<"idle" | "saving" | "error">("idle");
 
+  const [savingTheme, setSavingTheme] = useState<Theme | null>(null);
+
   const currentTheme: Theme =
     initialMode === "LIGHT" ? "light" : initialMode === "DARK" ? "dark" : "system";
 
   const handleChange = async (value: Theme) => {
-    setTheme(value);
+    if (savingTheme) return; // Prevent duplicate requests
+    setSavingTheme(value);
     setStatus("saving");
     try {
       const res = await apiFetch("/api/account/appearance", {
@@ -33,13 +37,18 @@ export function AppearanceTab({ initialMode }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: THEME_TO_MODE[value] }),
       });
-      if (!res.ok) setStatus("error");
-      else {
+      if (!res.ok) {
+        setStatus("error");
+        setSavingTheme(null);
+      } else {
+        setTheme(value);
         setStatus("idle");
+        setSavingTheme(null);
         router.refresh();
       }
     } catch {
       setStatus("error");
+      setSavingTheme(null);
     }
   };
 
@@ -51,28 +60,36 @@ export function AppearanceTab({ initialMode }: Props) {
       </p>
       <div className="mt-4 space-y-2 sm:mt-6 sm:space-y-3">
         {OPTIONS.map((opt) => {
-          const checked = (theme ?? currentTheme) === opt.value;
+          const isSelected = (theme ?? currentTheme) === opt.value;
+          const isSavingThisOpt = savingTheme === opt.value;
+          const isSavingAnything = savingTheme !== null;
+
           return (
             <label
               key={opt.value}
               className={[
-                "flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors sm:p-4",
-                checked
+                "flex items-start gap-3 rounded-xl border p-3 transition-colors sm:p-4",
+                isSelected
                   ? "border-(--color-primary) bg-(--bg-surface-elev)"
                   : "border-(--border-subtle) bg-(--bg-surface) hover:bg-(--bg-surface-elev)",
+                isSavingAnything ? "cursor-not-allowed opacity-60" : "cursor-pointer",
               ].join(" ")}
             >
               <input
                 type="radio"
                 name="appearance"
                 value={opt.value}
-                checked={checked}
+                checked={isSelected}
+                disabled={isSavingAnything}
                 onChange={() => handleChange(opt.value)}
-                className="mt-1 h-4 w-4 accent-(--color-primary)"
+                className="mt-1 h-4 w-4 accent-(--color-primary) disabled:cursor-not-allowed"
               />
-              <div className="min-w-0">
-                <span className="text-sm font-semibold text-(--text-primary)">{opt.label}</span>
-                <p className="mt-1 text-sm text-(--text-secondary)">{opt.description}</p>
+              <div className="flex min-w-0 flex-1 items-center justify-between gap-4">
+                <div>
+                  <span className="text-sm font-semibold text-(--text-primary)">{opt.label}</span>
+                  <p className="mt-1 text-sm text-(--text-secondary)">{opt.description}</p>
+                </div>
+                {isSavingThisOpt && <Spinner className="shrink-0 text-(--color-primary)" />}
               </div>
             </label>
           );
