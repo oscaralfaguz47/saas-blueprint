@@ -9,6 +9,8 @@ import { writeAuditLog } from "@/server/services/audit";
 import { checkAndUpdateSessionActivity } from "@/server/services/inactivity";
 import { getPresignedGetUrlProfilePhoto, isR2Configured } from "@/server/services/r2-profile-photo";
 import { hasVendorPermission } from "@/server/security/vendor-authorization";
+import { cookies } from "next/headers";
+import { trySkipMfaWithRememberedDevice } from "@/server/services/mfa-skip";
 import { AppLayoutHydrationGate } from "@/components/app/app-layout-hydration-gate";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +33,15 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const needsMfa =
     session.user.authLevel === "PENDING_MFA" ||
     (session.user.totpEnabled && !session.user.mfaVerified);
+
   if (needsMfa) {
+    const upgraded = await trySkipMfaWithRememberedDevice(session, await cookies());
+    if (upgraded) {
+      // If upgraded, the session in memory is still old. Redirect to self to pick up new session from DB.
+      // This is 1 hop, but prevents jumping to /auth/2fa and back.
+      redirect("/app/requests");
+    }
+
     // E6: Admin-forced 2FA not yet set up → send to dedicated setup page (avoids redirect loop; account requires full session)
     if (
       session.user.mfaEnforced &&
@@ -43,10 +53,18 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   }
 
   try {
-    const { activeMembershipCount, pendingInvitationsCount } =
-      await getOnboardingCounts(userId);
+    const canAccessPlatformAdmin = await hasVendorPermission({
+      userId,
+      legacyRole: session.user.role,
+      permission: "admin.tenants.read",
+    });
 
+    const { activeMembershipCount, pendingInvitationsCount } = await getOnboardingCounts(userId);
+
+    // If no workspaces, redirect to appropriate destination
     if (activeMembershipCount === 0) {
+      if (canAccessPlatformAdmin) redirect("/admin/workspaces");
+      
       if (pendingInvitationsCount > 0) {
         await writeAuditLog({
           actorUserId: userId,
@@ -60,7 +78,11 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     }
 
     const membership = await getDefaultTenantForUser(userId);
-    if (!membership) redirect("/setup/workspace");
+    if (!membership) {
+      // Fallback if counts said > 0 but no default found (rare edge case)
+      if (canAccessPlatformAdmin) redirect("/admin/workspaces");
+      redirect("/setup/workspace");
+    }
 
     if (membership.tenant.status === "DRAFT") {
       redirect("/setup/workspace");
@@ -84,20 +106,13 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       },
     });
     const appearanceMode = userRecord?.appearance ?? "SYSTEM";
-    const initialTheme =
-      appearanceMode === "LIGHT" ? "light" : appearanceMode === "DARK" ? "dark" : "system";
+    const initialTheme = appearanceMode === "LIGHT" ? "light" : "dark";
 
     let avatarUrl: string | null = null;
     if (userRecord?.profilePhotoObjectKey && isR2Configured()) {
       avatarUrl = await getPresignedGetUrlProfilePhoto(userRecord.profilePhotoObjectKey);
     }
     if (!avatarUrl && userRecord?.image) avatarUrl = userRecord.image;
-
-    const canAccessPlatformAdmin = await hasVendorPermission({
-      userId,
-      legacyRole: session.user.role,
-      permission: "admin.tenants.read",
-    });
 
     return (
       <AppLayoutHydrationGate

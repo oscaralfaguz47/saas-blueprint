@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import {
   IconChevronLeft,
@@ -89,13 +89,20 @@ export default function AppSidebar({
 
   const toggleCollapsed = () => setUserToggled((prev) => !(prev ?? collapsedFromStorage));
 
+  const lastFetchAttemptRef = useRef(0);
+
   // Load workspaces when sidebar is visible: always on desktop, or when mobile drawer is open
   useEffect(() => {
     const sidebarVisible = !isMobile || open;
     if (!sidebarVisible) return;
+
     const controller = new AbortController();
     const signal = controller.signal;
-    queueMicrotask(() => setTenantsLoading(true));
+    
+    // We set loading to true. Even in Strict Mode, the second mount's finally block will clear it.
+    setTenantsLoading(true);
+    lastFetchAttemptRef.current = Date.now();
+
     apiFetch("/api/tenant", { showToastOnError: true, signal })
       .then((r) => (signal.aborted ? null : r.json()))
       .then((json: { data?: { tenants?: TenantItem[] } } | null) => {
@@ -105,24 +112,44 @@ export default function AppSidebar({
         if (!signal.aborted) setTenants([]);
       })
       .finally(() => {
-        if (!signal.aborted) setTenantsLoading(false);
+        if (!signal.aborted) {
+          setTenantsLoading(false);
+        }
       });
-    return () => controller.abort();
-  }, [isMobile, open]);
+      
+    return () => {
+      controller.abort();
+    };
+  }, [isMobile, open, apiFetch]);
 
-  const refetchTenants = () => {
+  const refetchTenants = useCallback(() => {
+    lastFetchAttemptRef.current = Date.now();
+    // For background refetches, we don't necessarily show the spinner unless no data exists
+    if (tenants.length === 0) setTenantsLoading(true);
+
     apiFetch("/api/tenant", { showToastOnError: false })
       .then((r) => r.json())
       .then((json: { data?: { tenants?: TenantItem[] } }) => {
         setTenants(json.data?.tenants ?? []);
+      })
+      .catch(() => {
+        setTenants([]);
+      })
+      .finally(() => {
+        setTenantsLoading(false);
       });
-  };
+  }, [apiFetch, tenants.length]);
 
   // Refetch tenant list when workspace changes (e.g. after creating a new workspace) so "Current" updates
   useEffect(() => {
-    window.addEventListener("workspace-ready", refetchTenants);
-    return () => window.removeEventListener("workspace-ready", refetchTenants);
-  }, []);
+    const onReady = () => {
+      // Deduplicate against the mount-time fetch
+      if (Date.now() - lastFetchAttemptRef.current < 500) return;
+      refetchTenants();
+    };
+    window.addEventListener("workspace-ready", onReady);
+    return () => window.removeEventListener("workspace-ready", onReady);
+  }, [refetchTenants]);
 
   // Refetch when workspace name/icon is updated in settings so sidebar list reflects changes
   useEffect(() => {

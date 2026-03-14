@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 
 type TenantPermissionsContextValue = {
@@ -40,12 +40,15 @@ export function TenantPermissionsProvider({ children }: { children: React.ReactN
     [permissions],
   );
 
-  const value: TenantPermissionsContextValue = {
-    permissions,
-    loading,
-    has,
-    hasAny,
-  };
+  const value: TenantPermissionsContextValue = useMemo(
+    () => ({
+      permissions,
+      loading,
+      has,
+      hasAny,
+    }),
+    [permissions, loading, has, hasAny],
+  );
 
   return (
     <TenantPermissionsContext.Provider value={value}>{children}</TenantPermissionsContext.Provider>

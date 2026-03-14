@@ -5,11 +5,7 @@ import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
 import AuthCard from "@/components/auth/auth-card";
 import { TwoFaChallengeForm } from "./two-fa-challenge-form";
-import {
-  getRememberDeviceCookieName,
-  hashRememberDeviceToken,
-  validateRememberedDevice,
-} from "@/server/services/remember-device";
+import { trySkipMfaWithRememberedDevice } from "@/server/services/mfa-skip";
 
 export const dynamic = "force-dynamic";
 
@@ -29,20 +25,9 @@ export default async function TwoFaPage() {
     session.user.authLevel === "PENDING_MFA" &&
     session.user.sessionToken
   ) {
-    const cookieStore = await cookies();
-    const rmdName = getRememberDeviceCookieName();
-    const rawToken = cookieStore.get(rmdName)?.value;
-    if (rawToken) {
-      const hash = hashRememberDeviceToken(rawToken);
-      const validation = await validateRememberedDevice(hash);
-      if (validation.valid && validation.userId === session.user.id) {
-        const now = new Date();
-        await prisma.session.updateMany({
-          where: { sessionToken: session.user.sessionToken },
-          data: { authLevel: "FULL", mfaVerifiedAt: now },
-        });
-        redirect("/app");
-      }
+    const upgraded = await trySkipMfaWithRememberedDevice(session, await cookies());
+    if (upgraded) {
+      redirect("/app/requests");
     }
   }
 

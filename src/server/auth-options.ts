@@ -259,7 +259,13 @@ export const authOptions: NextAuthOptions = {
   events: {
     async createUser({ user }) {
       // Bootstraps on user creation (idempotent)
-      await runUserBootstraps({ userId: user.id, email: user.email });
+      await Promise.all([
+        runUserBootstraps({ userId: user.id, email: user.email }),
+        prisma.user.update({
+          where: { id: user.id },
+          data: { appearance: "DARK" },
+        }),
+      ]);
 
       // Optional: assign PlatformAdmin based on env allowlist (your existing logic)
       const bootstrapEmail = (process.env.BOOTSTRAP_ADMIN_EMAIL ?? "").trim().toLowerCase();

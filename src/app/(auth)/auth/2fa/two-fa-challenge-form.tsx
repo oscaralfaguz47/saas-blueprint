@@ -62,7 +62,7 @@ export function TwoFaChallengeForm({ hasBackupCodes = true }: Props) {
         setLoading(false);
         return;
       }
-      window.location.href = "/app";
+      window.location.href = "/app/requests";
     } catch {
       setError("Something went wrong. Try again.");
       setLoading(false);
