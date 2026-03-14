@@ -50,7 +50,7 @@ export default function AppLayoutClient({
         isMobile={isMobile}
         canAccessPlatformAdmin={canAccessPlatformAdmin}
       />
-      <div className="flex w-full min-w-0 flex-1 flex-col overflow-hidden border-l border-(--border-subtle)">
+      <div className="flex w-full min-w-0 flex-1 flex-col overflow-hidden">
         <AppHeader
           user={user}
           workspace={workspace}
@@ -58,7 +58,9 @@ export default function AppLayoutClient({
           onMenuClick={isMobile ? () => setSidebarOpen(true) : undefined}
         />
         <main className="min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto text-(--text-primary)">
-          <div className="w-full px-3 py-4 sm:px-6 sm:py-6">{children}</div>
+          <div className="mx-auto w-full max-w-[1440px] px-3 py-4 sm:px-6 sm:py-6">
+            {children}
+          </div>
         </main>
       </div>
     </div>

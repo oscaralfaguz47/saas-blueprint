@@ -13,19 +13,19 @@ export default function RequestsListPage() {
       {/* Optional KPI strip — placeholders when no data */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 py-3">
-          <div className="text-xs font-medium uppercase tracking-wider text-(--text-muted)">
+          <div className="text-quiet-uppercase">
             Open
           </div>
           <div className="mt-1 text-lg font-semibold text-(--text-primary)">—</div>
         </div>
         <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 py-3">
-          <div className="text-xs font-medium uppercase tracking-wider text-(--text-muted)">
+          <div className="text-quiet-uppercase">
             In progress
           </div>
           <div className="mt-1 text-lg font-semibold text-(--text-primary)">—</div>
         </div>
         <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 py-3">
-          <div className="text-xs font-medium uppercase tracking-wider text-(--text-muted)">
+          <div className="text-quiet-uppercase">
             Closed
           </div>
           <div className="mt-1 text-lg font-semibold text-(--text-primary)">—</div>

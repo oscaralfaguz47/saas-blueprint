@@ -40,8 +40,8 @@ function isRequestsActive(pathname: string) {
 }
 
 const hoverBg = "hover:bg-(--nav-hover)";
-const activeBg = "bg-(--nav-active) shadow-elevated ring-1 ring-inset ring-(--color-primary-soft)";
-const brandBoxBg = "bg-(--bg-surface-elev) shadow-elevated ring-1 ring-inset ring-(--border-subtle)";
+const activeBg = "bg-(--nav-active) shadow-sm ring-1 ring-inset ring-(--color-primary-soft)/50";
+const brandBoxBg = "bg-(--bg-surface-elev) shadow-sm border border-(--border-subtle)";
 
 export default function AppSidebar({
   open,
@@ -230,7 +230,7 @@ export default function AppSidebar({
           className={`flex flex-1 items-center gap-2 font-semibold text-(--text-primary) transition-colors duration-150 ${showLabels ? "" : "justify-center"} rounded-lg ${brandBoxBg} hover:bg-(--bg-surface-hover) min-h-[2.5rem] ${showLabels ? "pr-3 pl-2" : "p-2"}`}
           title={collapsed ? "Requests" : undefined}
         >
-          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border-strong)] bg-(--bg-surface) text-xs shadow-sm">
+          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-(--border-subtle) bg-(--bg-surface) text-xs font-semibold shadow-sm text-(--text-muted)">
             ATL
           </span>
         </Link>
@@ -275,7 +275,7 @@ export default function AppSidebar({
       {/* Workspace section — separator, label, scrollable list */}
       <div className="mt-2 flex min-h-0 flex-1 flex-col border-t border-(--border-subtle) px-3 py-2">
         {showLabels ? (
-          <div className="px-1 pb-2 text-xs tracking-widest text-(--text-muted) uppercase">
+          <div className="px-1 pb-2 text-quiet-uppercase">
             Workspace
           </div>
         ) : null}
@@ -296,7 +296,7 @@ export default function AppSidebar({
                   >
                     <span className="min-w-0 truncate text-sm text-(--text-primary)">{t.name}</span>
                     {t.isDefaultTenant ? (
-                      <span className="shrink-0 rounded-full border border-(--border-subtle) bg-(--bg-surface-elev) px-2 py-0.5 text-[10px] font-medium text-(--text-secondary) shadow-sm">
+                      <span className="shrink-0 rounded-full border border-(--border-subtle) bg-(--bg-surface-elev) px-1.5 py-0.5 text-[9px] font-medium text-(--text-muted) opacity-80 shadow-sm">
                         Current
                       </span>
                     ) : (

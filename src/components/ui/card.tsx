@@ -25,8 +25,8 @@ export function CardHeader({
     <div
       className={
         className
-          ? `border-b border-(--border-strong) bg-[color-mix(in_srgb,var(--bg-surface-elev)_35%,transparent)] px-4 py-3 ${className}`
-          : "border-b border-(--border-strong) bg-[color-mix(in_srgb,var(--bg-surface-elev)_35%,transparent)] px-4 py-3"
+          ? `border-b border-(--border-subtle) bg-[color-mix(in_srgb,var(--bg-surface-elev)_25%,transparent)] px-4 py-3 ${className}`
+          : "border-b border-(--border-subtle) bg-[color-mix(in_srgb,var(--bg-surface-elev)_25%,transparent)] px-4 py-3"
       }
     >
       {children}

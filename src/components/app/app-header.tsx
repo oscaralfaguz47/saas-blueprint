@@ -82,9 +82,9 @@ export default function AppHeader({
           {pendingInvitationsCount > 0 ? (
             <Link
               href="/invitations"
-              className="inline-flex items-center gap-1.5 rounded-md bg-(--color-primary-soft) px-2.5 py-1.5 text-xs font-medium text-(--color-primary) transition-colors hover:bg-(--color-primary-soft)"
+              className="inline-flex items-center gap-1.5 rounded-md bg-(--color-primary-soft)/50 px-2 py-1 text-[11px] font-medium text-(--color-primary) ring-1 ring-inset ring-(--color-primary-soft) transition-colors hover:bg-(--color-primary-soft)"
             >
-              {pendingInvitationsCount} pending invitation{pendingInvitationsCount !== 1 ? "s" : ""}
+              {pendingInvitationsCount} {pendingInvitationsCount !== 1 ? "invitations" : "invitation"}
             </Link>
           ) : null}
           <button
