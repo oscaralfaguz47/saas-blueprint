@@ -1875,7 +1875,7 @@ export function WorkspaceBillingTab() {
                 </p>
               </div>
               {editBillingSubmitError && (
-                <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+                <p className="text-sm text-(--color-danger)" role="alert">
                   {editBillingSubmitError}
                 </p>
               )}
@@ -1899,7 +1899,7 @@ export function WorkspaceBillingTab() {
                   {editBillingFieldErrors.fullName && (
                     <p
                       id="edit-fullName-error"
-                      className="mt-1 text-xs text-red-600 dark:text-red-400"
+                      className="mt-1 text-xs text-(--color-danger)"
                     >
                       {editBillingFieldErrors.fullName}
                     </p>
@@ -1919,7 +1919,7 @@ export function WorkspaceBillingTab() {
                     aria-invalid={!!editBillingFieldErrors.companyName}
                   />
                   {editBillingFieldErrors.companyName && (
-                    <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                    <p className="mt-1 text-xs text-(--color-danger)">
                       {editBillingFieldErrors.companyName}
                     </p>
                   )}
@@ -1951,7 +1951,7 @@ export function WorkspaceBillingTab() {
                   {editBillingFieldErrors.taxId && (
                     <p
                       id="edit-taxId-error"
-                      className="mt-1 text-xs text-red-600 dark:text-red-400"
+                      className="mt-1 text-xs text-(--color-danger)"
                     >
                       {editBillingFieldErrors.taxId}
                     </p>
@@ -1971,7 +1971,7 @@ export function WorkspaceBillingTab() {
                     aria-invalid={!!editBillingFieldErrors.addressLine1}
                   />
                   {editBillingFieldErrors.addressLine1 && (
-                    <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                    <p className="mt-1 text-xs text-(--color-danger)">
                       {editBillingFieldErrors.addressLine1}
                     </p>
                   )}
@@ -1990,7 +1990,7 @@ export function WorkspaceBillingTab() {
                     aria-invalid={!!editBillingFieldErrors.addressLine2}
                   />
                   {editBillingFieldErrors.addressLine2 && (
-                    <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                    <p className="mt-1 text-xs text-(--color-danger)">
                       {editBillingFieldErrors.addressLine2}
                     </p>
                   )}
@@ -2017,7 +2017,7 @@ export function WorkspaceBillingTab() {
                     </p>
                   ) : null}
                   {editBillingFieldErrors.city && (
-                    <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                    <p className="mt-1 text-xs text-(--color-danger)">
                       {editBillingFieldErrors.city}
                     </p>
                   )}
@@ -2046,7 +2046,7 @@ export function WorkspaceBillingTab() {
                     </p>
                   ) : null}
                   {editBillingFieldErrors.region && (
-                    <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                    <p className="mt-1 text-xs text-(--color-danger)">
                       {editBillingFieldErrors.region}
                     </p>
                   )}

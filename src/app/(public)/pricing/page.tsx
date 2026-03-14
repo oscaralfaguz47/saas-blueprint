@@ -107,7 +107,9 @@ function PlanCard({ plan, isLoggedIn }: { plan: Plan; isLoggedIn: boolean }) {
   const ctaLabel = isLoggedIn ? "Go to Billing" : plan.ctaLabel;
 
   return (
-    <div className={`rounded-xl border ${borderClass} ${bgClass} p-6`}>
+    <div
+      className={`relative flex flex-col rounded-2xl border bg-(--bg-surface-elev) p-8 shadow-sm ${borderClass} transition-shadow hover:shadow-md`}
+    >
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 className="text-lg font-semibold text-(--text-primary)">
@@ -226,7 +228,7 @@ export default async function PricingPage() {
   const isLoggedIn = !!session?.user;
 
   return (
-    <main className="min-h-screen bg-(--bg-main)">
+    <main className="min-h-screen bg-(--marketing-section-alt)">
       {/* Header */}
       <header className="border-b border-(--border-subtle) bg-(--bg-main)">
         <Container>
@@ -284,9 +286,9 @@ export default async function PricingPage() {
       </header>
 
       {/* Hero */}
-      <section className="bg-(--bg-main)">
+      <section className="bg-(--marketing-hero-bg)">
         <Container>
-          <div className="py-16 md:py-20">
+          <div className="py-20 md:py-24">
             <SectionTitle
               eyebrow="Simple, self-serve"
               title="Pricing per workspace, designed for critical approvals"
@@ -309,8 +311,8 @@ export default async function PricingPage() {
             </div>
 
             {/* Billing clarity (important for Paddle review + conversion) */}
-            <div className="mt-10 rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-6">
-              <h2 className="text-sm font-semibold text-(--text-primary)">
+            <div className="mt-12 rounded-2xl border border-(--border-subtle) bg-(--bg-surface) p-8 shadow-sm">
+              <h2 className="text-lg font-semibold text-(--text-primary)">
                 Billing clarity
               </h2>
               <div className="mt-2 space-y-2 text-sm text-(--text-secondary) leading-relaxed">
@@ -334,9 +336,9 @@ export default async function PricingPage() {
       </section>
 
       {/* FAQ */}
-      <section className="bg-(--bg-app)">
+      <section className="bg-(--marketing-section-alt)">
         <Container>
-          <div className="py-16">
+          <div className="py-20">
             <h2 className="text-2xl font-semibold text-(--text-primary) md:text-3xl">
               FAQ
             </h2>

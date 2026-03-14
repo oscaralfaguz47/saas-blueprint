@@ -234,7 +234,7 @@ export function WorkspacesListClient() {
                     <button
                       type="button"
                       onClick={() => setSelectedUsers((prev) => prev.filter((x) => x.id !== u.id))}
-                      className="shrink-0 hover:text-red-600"
+                      className="shrink-0 hover:text-(--color-danger)"
                       aria-label={`Remove ${label}`}
                     >
                       ×
@@ -294,7 +294,7 @@ export function WorkspacesListClient() {
         ref={scrollRef}
         className="max-h-[60vh] overflow-auto rounded-md border border-(--border-subtle)"
       >
-        {error && <div className="p-4 text-sm text-red-600 dark:text-red-400">{error}</div>}
+        {error && <div className="p-4 text-sm text-(--color-danger)">{error}</div>}
         {loading ? (
           <div className="space-y-2 p-4">
             <Skeleton className="h-10 w-full" />

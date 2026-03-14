@@ -2,10 +2,10 @@ type BadgeVariant = "default" | "success" | "warning" | "destructive" | "seconda
 
 const variantClasses: Record<BadgeVariant, string> = {
   default: "border-(--border-subtle) bg-(--bg-surface) text-(--text-primary)",
-  success: "border-green-500/50 bg-green-500/10 text-green-800 dark:text-green-200",
-  warning: "border-amber-500/50 bg-amber-500/10 text-amber-800 dark:text-amber-200",
-  destructive: "border-(--destructive)/50 bg-(--destructive)/10 text-(--destructive)",
-  secondary: "border-(--border-subtle) bg-(--muted) text-(--text-secondary)",
+  success: "border-(--color-success-soft) bg-(--color-success-soft) text-(--color-success)",
+  warning: "border-(--color-warning-soft) bg-(--color-warning-soft) text-(--color-warning)",
+  destructive: "border-(--color-danger-soft) bg-(--color-danger-soft) text-(--color-danger)",
+  secondary: "border-(--border-subtle) bg-(--bg-surface-elev) text-(--text-secondary)",
 };
 
 export function Badge({

@@ -45,7 +45,7 @@ export default function AppHeader({
             <button
               type="button"
               onClick={onMenuClick}
-              className="inline-flex shrink-0 items-center justify-center rounded-md border border-(--border-subtle) bg-(--bg-surface) p-2 text-(--text-secondary) transition-colors duration-150 hover:bg-[color-mix(in_srgb,var(--color-text-primary)_6%,transparent)] hover:text-(--text-primary) md:hidden"
+              className="inline-flex shrink-0 items-center justify-center rounded-md border border-(--border-subtle) bg-(--bg-surface) p-2 text-(--text-secondary) transition-colors duration-150 hover:bg-(--nav-hover) hover:text-(--text-primary) md:hidden"
               aria-label="Open menu"
             >
               <IconMenu size={18} />
@@ -61,7 +61,7 @@ export default function AppHeader({
                   className="h-8 w-8 shrink-0 rounded-md border border-(--border-subtle) object-cover"
                 />
               ) : (
-                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-(--border-subtle) bg-[color-mix(in_srgb,var(--color-text-primary)_10%,transparent)] text-xs font-semibold text-(--text-primary) uppercase">
+                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-(--border-subtle) bg-(--bg-surface-elev) text-xs font-semibold text-(--text-primary) uppercase">
                   {workspaceInitials(workspace.name)}
                 </span>
               )}
@@ -82,7 +82,7 @@ export default function AppHeader({
           {pendingInvitationsCount > 0 ? (
             <Link
               href="/invitations"
-              className="inline-flex items-center gap-1.5 rounded-md bg-[color-mix(in_srgb,var(--color-primary)_12%,transparent)] px-2.5 py-1.5 text-xs font-medium text-(--color-primary) transition-colors hover:bg-[color-mix(in_srgb,var(--color-primary)_18%,transparent)]"
+              className="inline-flex items-center gap-1.5 rounded-md bg-(--color-primary-soft) px-2.5 py-1.5 text-xs font-medium text-(--color-primary) transition-colors hover:bg-(--color-primary-soft)"
             >
               {pendingInvitationsCount} pending invitation{pendingInvitationsCount !== 1 ? "s" : ""}
             </Link>
@@ -90,7 +90,7 @@ export default function AppHeader({
           <button
             type="button"
             aria-label="Notifications"
-            className="inline-flex items-center justify-center rounded-md p-2 text-(--text-secondary) transition-colors duration-150 hover:bg-[color-mix(in_srgb,var(--color-text-primary)_6%,transparent)] hover:text-(--text-primary)"
+            className="inline-flex items-center justify-center rounded-md p-2 text-(--text-secondary) transition-colors duration-150 hover:bg-(--nav-hover) hover:text-(--text-primary)"
           >
             <IconBell size={18} />
           </button>

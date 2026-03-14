@@ -76,9 +76,9 @@ function Toast({ item, onDismiss }: { item: ToastItem; onDismiss: () => void }) 
   const isError = item.type === "error";
   const isSuccess = item.type === "success";
   const bg = isError
-    ? "bg-(--color-danger)/10 border-(--color-danger)"
+    ? "bg-(--color-danger-soft) border-(--color-danger-soft)"
     : isSuccess
-      ? "bg-(--color-success)/10 border-(--color-success)"
+      ? "bg-(--color-success-soft) border-(--color-success-soft)"
       : "bg-(--bg-surface-elev) border-(--border-subtle)";
   const text = isError
     ? "text-(--color-danger)"

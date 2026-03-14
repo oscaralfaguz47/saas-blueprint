@@ -106,7 +106,7 @@ export function Dialog({
             type="button"
             onClick={canCloseByEscOrX ? onClose : undefined}
             disabled={!canCloseByEscOrX}
-            className="shrink-0 touch-manipulation rounded-md p-2 text-(--text-muted) hover:bg-(--bg-surface-elev) hover:text-(--text-primary) disabled:pointer-events-none disabled:opacity-50 sm:p-1.5"
+            className="shrink-0 touch-manipulation rounded-md p-2 text-(--text-muted) hover:bg-(--bg-surface-hover) hover:text-(--text-primary) disabled:pointer-events-none disabled:opacity-50 sm:p-1.5"
             aria-label="Close"
           >
             <IconX size={18} />

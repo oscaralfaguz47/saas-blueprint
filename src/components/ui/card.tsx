@@ -67,9 +67,9 @@ export function CardFooter({
 /** Simple card with title and description (existing API). */
 export function Card({ title, description }: { title: string; description: string }) {
   return (
-    <div className={`${cardRootClass} p-6`}>
+    <div className={`rounded-2xl border border-(--border-subtle) bg-(--bg-surface-elev) p-8 shadow-sm`}>
       <h3 className="text-xl leading-snug font-semibold text-(--text-primary)">{title}</h3>
-      <p className="mt-2 text-sm leading-relaxed text-(--text-secondary)">{description}</p>
+      <p className="mt-3 text-sm leading-relaxed text-(--text-secondary)">{description}</p>
     </div>
   );
 }

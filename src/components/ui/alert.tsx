@@ -2,9 +2,9 @@ type AlertVariant = "default" | "info" | "warning" | "destructive";
 
 const variantClasses: Record<AlertVariant, string> = {
   default: "border-(--border-subtle) bg-(--bg-surface) text-(--text-primary)",
-  info: "border-blue-500/50 bg-blue-500/10 text-blue-800 dark:text-blue-200",
-  warning: "border-amber-500/50 bg-amber-500/10 text-amber-800 dark:text-amber-200",
-  destructive: "border-(--destructive)/50 bg-(--destructive)/10 text-(--destructive)",
+  info: "border-(--color-primary-soft) bg-(--color-primary-soft) text-(--color-primary)",
+  warning: "border-(--color-warning-soft) bg-(--color-warning-soft) text-(--color-warning)",
+  destructive: "border-(--color-danger-soft) bg-(--color-danger-soft) text-(--color-danger)",
 };
 
 export function Alert({

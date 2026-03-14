@@ -11,7 +11,7 @@ export default async function TermsPage() {
   const isLoggedIn = !!session?.user;
 
   return (
-    <main className="min-h-screen bg-(--bg-main)">
+    <main className="min-h-screen bg-(--marketing-legal-bg)">
       {/* Header */}
       <header className="border-b border-(--border-subtle) bg-(--bg-main)">
         <Container>
@@ -45,10 +45,10 @@ export default async function TermsPage() {
       </header>
 
       {/* Content */}
-      <section>
+      <section className="py-16 md:py-24">
         <Container>
-          <div className="py-16 max-w-3xl">
-            <h1 className="text-3xl font-semibold text-(--text-primary)">
+          <div className="mx-auto max-w-3xl rounded-2xl border border-(--border-subtle) bg-(--bg-surface) p-8 shadow-sm md:p-12">
+            <h1 className="text-3xl font-semibold text-(--text-primary) md:text-4xl">
               Terms of Service
             </h1>
 
@@ -56,14 +56,14 @@ export default async function TermsPage() {
               Last updated: {LAST_UPDATED}
             </p>
 
-            <div className="mt-8 space-y-6 text-sm leading-relaxed text-(--text-secondary)">
+            <div className="mt-10 space-y-8 text-base leading-relaxed text-(--text-secondary)">
               <p>
                 These Terms of Service (&quot;Terms&quot;) govern your access to
                 and use of ATL (the &quot;Service&quot;). By creating an account,
                 accessing, or using the Service, you agree to these Terms.
               </p>
 
-              <h2 className="text-base font-semibold text-(--text-primary)">
+              <h2 className="text-lg font-semibold text-(--text-primary)">
                 1. The Service (B2B SaaS)
               </h2>
               <p>
@@ -74,7 +74,7 @@ export default async function TermsPage() {
                 funds, or provide financial services.
               </p>
 
-              <h2 className="text-base font-semibold text-(--text-primary)">
+              <h2 className="text-lg font-semibold text-(--text-primary)">
                 2. Accounts, workspaces, and responsibilities
               </h2>
               <p>
@@ -84,7 +84,7 @@ export default async function TermsPage() {
                 compliance with applicable laws and these Terms.
               </p>
 
-              <h2 className="text-base font-semibold text-(--text-primary)">
+              <h2 className="text-lg font-semibold text-(--text-primary)">
                 3. Customer Content and External Approvers
               </h2>
               <p>
@@ -96,7 +96,7 @@ export default async function TermsPage() {
                 shared information.
               </p>
 
-              <h2 className="text-base font-semibold text-(--text-primary)">
+              <h2 className="text-lg font-semibold text-(--text-primary)">
                 4. Acceptable use
               </h2>
               <p>
@@ -107,7 +107,7 @@ export default async function TermsPage() {
                 to protect the Service, users, and third parties.
               </p>
 
-              <h2 className="text-base font-semibold text-(--text-primary)">
+              <h2 className="text-lg font-semibold text-(--text-primary)">
                 5. Subscriptions, billing, and taxes
               </h2>
               <p>
@@ -137,7 +137,7 @@ export default async function TermsPage() {
                 </li>
               </ul>
 
-              <h2 className="text-base font-semibold text-(--text-primary)">
+              <h2 className="text-lg font-semibold text-(--text-primary)">
                 6. Refund Policy
               </h2>
               <p>
@@ -155,7 +155,7 @@ export default async function TermsPage() {
                 policies and processing timelines.
               </p>
 
-              <h2 className="text-base font-semibold text-(--text-primary)">
+              <h2 className="text-lg font-semibold text-(--text-primary)">
                 7. Availability and changes to the Service
               </h2>
               <p>
@@ -164,7 +164,7 @@ export default async function TermsPage() {
                 uninterrupted availability.
               </p>
 
-              <h2 className="text-base font-semibold text-(--text-primary)">
+              <h2 className="text-lg font-semibold text-(--text-primary)">
                 8. Disclaimer
               </h2>
               <p>
@@ -175,7 +175,7 @@ export default async function TermsPage() {
                 non-infringement.
               </p>
 
-              <h2 className="text-base font-semibold text-(--text-primary)">
+              <h2 className="text-lg font-semibold text-(--text-primary)">
                 9. Limitation of liability
               </h2>
               <p>
@@ -185,7 +185,7 @@ export default async function TermsPage() {
                 goodwill, arising out of or related to your use of the Service.
               </p>
 
-              <h2 className="text-base font-semibold text-(--text-primary)">
+              <h2 className="text-lg font-semibold text-(--text-primary)">
                 10. Termination.
               </h2>
               <p>
@@ -196,7 +196,7 @@ export default async function TermsPage() {
                 Policy and retention practices.
               </p>
 
-              <h2 className="text-base font-semibold text-(--text-primary)">
+              <h2 className="text-lg font-semibold text-(--text-primary)">
                 11. Contact
               </h2>
               <p>

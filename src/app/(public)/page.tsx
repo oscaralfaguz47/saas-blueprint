@@ -19,7 +19,7 @@ export default async function PublicHomePage() {
   const isLoggedIn = !!session?.user;
 
   return (
-    <main className="min-h-screen bg-(--bg-main)">
+    <main className="min-h-screen bg-(--marketing-section-alt)">
       {/* ------------------------------------------------------------------ */}
       {/* Header                                                             */}
       {/* ------------------------------------------------------------------ */}
@@ -73,10 +73,10 @@ export default async function PublicHomePage() {
       {/* ------------------------------------------------------------------ */}
       {/* Hero                                                               */}
       {/* ------------------------------------------------------------------ */}
-      <section className="bg-(--bg-main)">
+      <section className="bg-(--marketing-hero-bg)">
         <Container>
-          <div className="py-16 md:py-20">
-            <div className="grid gap-10 md:grid-cols-12 md:items-center">
+          <div className="py-20 md:py-24">
+            <div className="grid gap-12 md:grid-cols-12 md:items-center">
               <div className="md:col-span-7">
                 <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">
                   For managers and admin teams
@@ -158,9 +158,9 @@ export default async function PublicHomePage() {
       {/* ------------------------------------------------------------------ */}
       {/* How it works                                                       */}
       {/* ------------------------------------------------------------------ */}
-      <section className="bg-(--bg-app)">
+      <section className="bg-(--marketing-section-alt)">
         <Container>
-          <div className="py-16">
+          <div className="py-20">
             <h2 className="text-3xl font-semibold text-(--text-primary)">
               How it works
             </h2>
@@ -189,9 +189,9 @@ export default async function PublicHomePage() {
       {/* ------------------------------------------------------------------ */}
       {/* Trust & Governance                                                 */}
       {/* ------------------------------------------------------------------ */}
-      <section className="bg-(--bg-main)">
+      <section className="bg-(--marketing-hero-bg)">
         <Container>
-          <div className="py-16">
+          <div className="py-20">
             <h2 className="text-3xl font-semibold text-(--text-primary)">
               Built for trust and governance
             </h2>

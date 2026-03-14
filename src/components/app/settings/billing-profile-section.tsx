@@ -253,7 +253,7 @@ export function BillingProfileSection() {
             request.
           </p>
           {submitError && (
-            <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+            <p className="text-sm text-(--color-danger)" role="alert">
               {submitError}
             </p>
           )}
@@ -274,7 +274,7 @@ export function BillingProfileSection() {
                 ))}
               </select>
               {fieldErrors.countryCode && (
-                <p id="countryCode-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
+                <p id="countryCode-error" className="mt-1 text-xs text-(--color-danger)">
                   {fieldErrors.countryCode}
                 </p>
               )}
@@ -292,7 +292,7 @@ export function BillingProfileSection() {
                 aria-describedby={fieldErrors.postalCode ? "postalCode-error" : undefined}
               />
               {fieldErrors.postalCode && (
-                <p id="postalCode-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
+                <p id="postalCode-error" className="mt-1 text-xs text-(--color-danger)">
                   {fieldErrors.postalCode}
                 </p>
               )}
@@ -310,7 +310,7 @@ export function BillingProfileSection() {
                 aria-describedby={fieldErrors.companyName ? "companyName-error" : undefined}
               />
               {fieldErrors.companyName && (
-                <p id="companyName-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
+                <p id="companyName-error" className="mt-1 text-xs text-(--color-danger)">
                   {fieldErrors.companyName}
                 </p>
               )}
@@ -340,7 +340,7 @@ export function BillingProfileSection() {
                 aria-describedby={fieldErrors.vatId ? "vatId-error" : undefined}
               />
               {fieldErrors.vatId && (
-                <p id="vatId-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
+                <p id="vatId-error" className="mt-1 text-xs text-(--color-danger)">
                   {fieldErrors.vatId}
                 </p>
               )}
@@ -358,7 +358,7 @@ export function BillingProfileSection() {
                 aria-describedby={fieldErrors.addressLine1 ? "addressLine1-error" : undefined}
               />
               {fieldErrors.addressLine1 && (
-                <p id="addressLine1-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
+                <p id="addressLine1-error" className="mt-1 text-xs text-(--color-danger)">
                   {fieldErrors.addressLine1}
                 </p>
               )}
@@ -376,7 +376,7 @@ export function BillingProfileSection() {
                 aria-describedby={fieldErrors.addressLine2 ? "addressLine2-error" : undefined}
               />
               {fieldErrors.addressLine2 && (
-                <p id="addressLine2-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
+                <p id="addressLine2-error" className="mt-1 text-xs text-(--color-danger)">
                   {fieldErrors.addressLine2}
                 </p>
               )}
@@ -393,7 +393,7 @@ export function BillingProfileSection() {
                   aria-describedby={fieldErrors.city ? "city-error" : undefined}
                 />
                 {fieldErrors.city && (
-                  <p id="city-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
+                  <p id="city-error" className="mt-1 text-xs text-(--color-danger)">
                     {fieldErrors.city}
                   </p>
                 )}
@@ -411,7 +411,7 @@ export function BillingProfileSection() {
                   aria-describedby={fieldErrors.region ? "region-error" : undefined}
                 />
                 {fieldErrors.region && (
-                  <p id="region-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
+                  <p id="region-error" className="mt-1 text-xs text-(--color-danger)">
                     {fieldErrors.region}
                   </p>
                 )}

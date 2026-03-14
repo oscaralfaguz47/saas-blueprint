@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Providers from "./providers";
+import ThemeBootstrap from "@/components/theme/theme-bootstrap";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -18,6 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={inter.className} suppressHydrationWarning>
       <body suppressHydrationWarning>
+        <ThemeBootstrap />
         <div id="__app-root" suppressHydrationWarning>
           <Providers>{children}</Providers>
         </div>

@@ -354,7 +354,7 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
         <span className="text-(--text-primary)">Manage</span>
       </div>
 
-      <div className="rounded-lg border border-amber-200 bg-amber-50/80 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+      <div className="rounded-lg border border-(--color-warning-soft) bg-(--color-warning-soft) p-3 text-sm text-(--color-warning)">
         You are in Platform Admin mode. Actions here affect this workspace.
       </div>
 
@@ -364,7 +364,7 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
           <p className="text-sm text-(--text-muted)">Loading workspace…</p>
         </div>
       ) : workspaceError || !workspace ? (
-        <p className="text-sm text-red-600">{workspaceError ?? "Workspace not found"}</p>
+        <p className="text-sm text-(--color-danger)">{workspaceError ?? "Workspace not found"}</p>
       ) : (
         <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) p-4">
           <h1 className="text-2xl font-semibold text-(--text-primary)">{workspace.name}</h1>
@@ -542,7 +542,7 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
                         {m.isPrimaryOwner && canResetPrimaryOwner2FA && (
                           <button
                             type="button"
-                            className="inline-flex h-8 items-center justify-center rounded-md border border-amber-400 px-3 text-sm font-medium text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30"
+                            className="inline-flex h-8 items-center justify-center rounded-md border border-(--color-warning-soft) px-3 text-sm font-medium text-(--color-warning) hover:bg-(--color-warning-soft)"
                             onClick={() => setBreakGlassOpen(true)}
                           >
                             Reset 2FA
@@ -650,15 +650,15 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
       </Tabs>
 
       {canResetPrimaryOwner2FA && primaryOwner && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50/50 p-4 dark:border-amber-700 dark:bg-amber-950/20">
-          <h3 className="font-medium text-amber-900 dark:text-amber-200">Break-glass</h3>
-          <p className="mt-1 text-sm text-amber-800 dark:text-amber-300">
+        <div className="rounded-lg border border-(--color-warning-soft) bg-(--color-warning-soft) p-4">
+          <h3 className="font-medium text-(--color-warning)">Break-glass</h3>
+          <p className="mt-1 text-sm text-(--color-warning)">
             Reset 2FA for the Primary Owner ({primaryOwner.email ?? primaryOwner.userId}) so they
             can re-enroll on next login.
           </p>
           <button
             type="button"
-            className="mt-2 inline-flex h-8 items-center justify-center rounded-md border border-amber-400 px-3 text-sm font-medium text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30"
+            className="mt-2 inline-flex h-8 items-center justify-center rounded-md border border-(--color-warning-soft) px-3 text-sm font-medium text-(--color-warning) hover:bg-(--color-warning-soft)"
             onClick={() => setBreakGlassOpen(true)}
           >
             Reset Primary Owner 2FA

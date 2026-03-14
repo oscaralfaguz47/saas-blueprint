@@ -74,7 +74,7 @@ export function TabsTrigger({ value, children, className = "" }: TabsTriggerProp
         "flex min-h-[44px] shrink-0 cursor-pointer items-center justify-center rounded-t-lg px-4 py-3 text-sm font-medium transition-all " +
         (isActive
           ? "rounded-b-none border border-b-0 border-(--border-subtle) bg-(--bg-surface) font-semibold text-(--text-primary) shadow-sm"
-          : "rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) text-(--text-secondary) shadow-sm hover:bg-(--bg-surface-elev)/90 hover:text-(--text-primary)") +
+          : "rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) text-(--text-secondary) shadow-sm hover:bg-(--bg-surface-hover) hover:text-(--text-primary)") +
         " " +
         className
       }

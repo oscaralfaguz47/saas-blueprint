@@ -39,9 +39,9 @@ function isRequestsActive(pathname: string) {
   return pathname === "/app/requests" || pathname.startsWith("/app/requests/");
 }
 
-const hoverBg = "hover:bg-[color-mix(in_srgb,var(--color-text-primary)_6%,transparent)]";
-const activeBg = "bg-[color-mix(in_srgb,var(--color-text-primary)_10%,transparent)]";
-const brandBoxBg = "bg-[color-mix(in_srgb,var(--color-bg-surface-elev)_85%,transparent)]";
+const hoverBg = "hover:bg-(--nav-hover)";
+const activeBg = "bg-(--nav-active)";
+const brandBoxBg = "bg-(--bg-surface-elev)";
 
 export default function AppSidebar({
   open,

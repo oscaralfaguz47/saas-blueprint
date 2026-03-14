@@ -11,7 +11,7 @@ export default async function PrivacyPage() {
   const isLoggedIn = !!session?.user;
 
   return (
-    <main className="min-h-screen bg-(--bg-main)">
+    <main className="min-h-screen bg-(--marketing-legal-bg)">
       {/* Header */}
       <header className="border-b border-(--border-subtle) bg-(--bg-main)">
         <Container>
@@ -45,10 +45,10 @@ export default async function PrivacyPage() {
       </header>
 
       {/* Content */}
-      <section>
+      <section className="py-16 md:py-24">
         <Container>
-          <div className="py-16 max-w-3xl">
-            <h1 className="text-3xl font-semibold text-(--text-primary)">
+          <div className="mx-auto max-w-3xl rounded-2xl border border-(--border-subtle) bg-(--bg-surface) p-8 shadow-sm md:p-12">
+            <h1 className="text-3xl font-semibold text-(--text-primary) md:text-4xl">
               Privacy Policy
             </h1>
 
@@ -56,14 +56,14 @@ export default async function PrivacyPage() {
               Last updated: {LAST_UPDATED}
             </p>
 
-            <div className="mt-8 space-y-6 text-sm leading-relaxed text-(--text-secondary)">
+            <div className="mt-10 space-y-8 text-base leading-relaxed text-(--text-secondary)">
               <p>
                 This Privacy Policy explains how ATL (&quot;we&quot;,
                 &quot;us&quot;) collects, uses, and protects information when you
                 use our B2B SaaS platform (the &quot;Service&quot;).
               </p>
 
-              <h2 className="text-base font-semibold text-(--text-primary)">
+              <h2 className="text-lg font-semibold text-(--text-primary)">
                 1. Who we are (roles)
               </h2>
               <p>
@@ -73,7 +73,7 @@ export default async function PrivacyPage() {
                 Customer Content only to provide and secure the Service.
               </p>
 
-              <h2 className="text-base font-semibold text-(--text-primary)">
+              <h2 className="text-lg font-semibold text-(--text-primary)">
                 2. Information we collect
               </h2>
               <p>
@@ -107,7 +107,7 @@ export default async function PrivacyPage() {
                 </li>
               </ul>
 
-              <h2 className="text-base font-semibold text-(--text-primary)">
+              <h2 className="text-lg font-semibold text-(--text-primary)">
                 3. How we use information
               </h2>
               <p>
@@ -130,7 +130,7 @@ export default async function PrivacyPage() {
                 </li>
               </ul>
 
-              <h2 className="text-base font-semibold text-(--text-primary)">
+              <h2 className="text-lg font-semibold text-(--text-primary)">
                 4. External approvers
               </h2>
               <p>
@@ -140,7 +140,7 @@ export default async function PrivacyPage() {
                 the minimum necessary information.
               </p>
 
-              <h2 className="text-base font-semibold text-(--text-primary)">
+              <h2 className="text-lg font-semibold text-(--text-primary)">
                 5. Billing and payments (Merchant of Record)
               </h2>
               <p>
@@ -150,7 +150,7 @@ export default async function PrivacyPage() {
                 information under their own privacy policies.
               </p>
 
-              <h2 className="text-base font-semibold text-(--text-primary)">
+              <h2 className="text-lg font-semibold text-(--text-primary)">
                 6. Data retention
               </h2>
               <p>
@@ -162,7 +162,7 @@ export default async function PrivacyPage() {
                 anonymize it in accordance with our retention practices.
               </p>
 
-              <h2 className="text-base font-semibold text-(--text-primary)">
+              <h2 className="text-lg font-semibold text-(--text-primary)">
                 7. Security
               </h2>
               <p>
@@ -173,7 +173,7 @@ export default async function PrivacyPage() {
                 confidentiality of your credentials.
               </p>
 
-              <h2 className="text-base font-semibold text-(--text-primary)">
+              <h2 className="text-lg font-semibold text-(--text-primary)">
                 8. International transfers
               </h2>
               <p>
@@ -182,7 +182,7 @@ export default async function PrivacyPage() {
                 reasonable safeguards for cross-border processing.
               </p>
 
-              <h2 className="text-base font-semibold text-(--text-primary)">
+              <h2 className="text-lg font-semibold text-(--text-primary)">
                 9. Your rights
               </h2>
               <p>
@@ -192,7 +192,7 @@ export default async function PrivacyPage() {
                 workspace.
               </p>
 
-              <h2 className="text-base font-semibold text-(--text-primary)">
+              <h2 className="text-lg font-semibold text-(--text-primary)">
                 10. Contact
               </h2>
               <p>
