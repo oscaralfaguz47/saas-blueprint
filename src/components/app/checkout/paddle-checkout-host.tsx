@@ -18,6 +18,12 @@ declare global {
         eventCallback?: (data: PaddleEventData) => void;
         checkout?: { settings?: Record<string, unknown> };
       }) => void;
+      Checkout?: {
+        open: (opts: {
+          transactionId: string;
+          settings?: Record<string, string | boolean>;
+        }) => void;
+      };
     };
   }
 }

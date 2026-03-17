@@ -93,19 +93,6 @@ type Props = {
   onClose: () => void;
 };
 
-declare global {
-  interface Window {
-    Paddle?: {
-      Checkout?: {
-        open: (opts: {
-          transactionId: string;
-          settings?: Record<string, string | boolean>;
-        }) => void;
-      };
-    };
-  }
-}
-
 /**
  * Modal that shows Paddle checkout in inline mode with our own Order Summary.
  * Left column = Order summary (full when orderSummary provided, compact fallback otherwise).
@@ -150,7 +137,7 @@ export function PaddleCheckoutInlineModal({
       if (!container) return;
       if (openedRef.current) return;
       openedRef.current = true;
-      Paddle.Checkout.open({
+      Paddle.Checkout?.open({
         transactionId,
         settings: {
           displayMode: "inline",

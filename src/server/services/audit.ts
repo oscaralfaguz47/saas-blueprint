@@ -37,7 +37,7 @@ export async function writeAuditLog(params: {
     userAgent,
   } = params;
 
-  const mergedMetadata: Prisma.InputJsonValue =
+  const mergedMetadata: Prisma.InputJsonValue | undefined =
     requestId != null
       ? {
           ...(typeof metadata === "object" && metadata !== null && !Array.isArray(metadata)
