@@ -142,7 +142,8 @@ export function withErrorHandler<T extends unknown[]>(
         if (error.message === "UNAUTHENTICATED") {
           return ApiErrors.UNAUTHENTICATED();
         }
-        return apiError("INTERNAL_ERROR", 500, error.message);
+        // Do not leak internal messages (api-contract: no raw stack/DB errors)
+        return ApiErrors.INTERNAL_ERROR();
       }
 
       return ApiErrors.INTERNAL_ERROR();

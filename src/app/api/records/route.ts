@@ -7,7 +7,7 @@ import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { writeAuditLog } from "@/server/services/audit";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { parseBody, createRecordSchema } from "@/lib/validations";
-import { tryConsumeMeter } from "@/server/billing/try-consume-meter";
+import { checkMeterLimit, tryConsumeMeter } from "@/server/billing/try-consume-meter";
 
 export const GET = withErrorHandler(async () => {
   const session = await getServerSession(authOptions);
@@ -63,16 +63,11 @@ export const POST = withErrorHandler(async (req: Request) => {
   });
   if (!canCreate) return ApiErrors.FORBIDDEN();
 
-  // Fix 3: Enforce plan limits before creating a record
-  // tryConsumeMeter throws UpgradeRequiredError if the hard cap is reached
-  const idempotencyKey = crypto.randomUUID();
-  await tryConsumeMeter({
+  // Enforce plan limit (read-only check); increment only after successful create.
+  await checkMeterLimit({
     tenantId: membership.tenant.id,
     meter: "REQUESTS",
     delta: 1,
-    idempotencyKey,
-    sourceType: "record.created",
-    actorUserId: session.user.id,
   });
 
   const body = await parseBody(req, createRecordSchema);
@@ -93,6 +88,17 @@ export const POST = withErrorHandler(async (req: Request) => {
       status: "DRAFT",
     },
     select: { id: true },
+  });
+
+  // Increment usage only after successful create (per plans-usage-billing rule).
+  await tryConsumeMeter({
+    tenantId: membership.tenant.id,
+    meter: "REQUESTS",
+    delta: 1,
+    idempotencyKey: `record.created.${created.id}`,
+    sourceType: "record.created",
+    sourceId: created.id,
+    actorUserId: session.user.id,
   });
 
   await writeAuditLog({

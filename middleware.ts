@@ -23,6 +23,9 @@ function isPublicPath(pathname: string) {
   // NextAuth endpoints must be public
   if (pathname.startsWith("/api/auth")) return true;
 
+  // Health check for load balancers and monitoring (no auth)
+  if (pathname === "/api/health") return true;
+
   // Paddle webhook: no session; verified by Paddle-Signature in the route handler
   if (pathname === "/api/billing/paddle/webhook") return true;
 

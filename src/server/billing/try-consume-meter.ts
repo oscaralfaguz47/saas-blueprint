@@ -40,6 +40,64 @@ export type UsageSummary = {
   overageEstimateCents: number;
 };
 
+/**
+ * Read-only check: throws UpgradeRequiredError if consuming delta would exceed plan limit.
+ * Use before performing the action; then call tryConsumeMeter after success (increment only after success).
+ */
+export async function checkMeterLimit(params: {
+  tenantId: string;
+  meter: MeterKey;
+  delta: number;
+  periodStart?: Date;
+}): Promise<void> {
+  const { tenantId, meter, delta, periodStart: maybePeriodStart } = params;
+
+  if (delta <= 0) return;
+
+  const effective = await resolveEffectiveSubscription(tenantId);
+  if (effective?.isBlocked) {
+    throw new UpgradeRequiredError(
+      "Subscription is suspended or canceled. Upgrade or renew to continue."
+    );
+  }
+
+  const resolved = await resolveTenantPlan(tenantId);
+  const periodStart = maybePeriodStart
+    ? getPeriodStartForDate(maybePeriodStart)
+    : resolved.currentPeriodStart
+      ? getPeriodStartForDate(resolved.currentPeriodStart)
+      : getPeriodStartForDate(new Date());
+
+  await getOrCreateBillingState(tenantId, periodStart);
+
+  const billingState = await prisma.tenantBillingState.findUnique({
+    where: { tenantId_periodStart: { tenantId, periodStart } },
+  });
+  if (!billingState) return;
+
+  const limits = resolved.requestsLimits;
+  const included = limits.included;
+  const rolloverAvailable = billingState.rolloverRequests;
+  const totalAllowance = included + rolloverAvailable;
+  const hardCap = limits.hardCap;
+
+  const counter = await prisma.tenantUsageCounter.findUnique({
+    where: {
+      tenantId_periodStart_meter: { tenantId, periodStart, meter },
+    },
+  });
+  const usedBefore = counter?.usedCount ?? 0;
+  const usedAfter = usedBefore + delta;
+
+  if (meter === "REQUESTS") {
+    if (usedAfter > totalAllowance && hardCap) {
+      throw new UpgradeRequiredError(
+        "Request limit reached for this period. Upgrade to add more."
+      );
+    }
+  }
+}
+
 export async function tryConsumeMeter(
   params: ConsumeMeterParams
 ): Promise<UsageSummary> {

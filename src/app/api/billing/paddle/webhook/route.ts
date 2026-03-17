@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/api-response";
 import { verifyPaddleWebhookSignature } from "@/server/billing/providers/paddle/verify-webhook-signature";
 import { handleWebhookEvent } from "@/server/billing/providers/paddle/handle-webhook-event";
 import { paddleWebhookEnvelopeSchema } from "@/server/billing/providers/paddle/paddle-types";
@@ -16,25 +17,16 @@ function isJsonContentType(header: string | null): boolean {
 }
 
 export async function GET() {
-  return NextResponse.json(
-    { error: "METHOD_NOT_ALLOWED", message: "POST only" },
-    { status: 405 }
-  );
+  return apiError("METHOD_NOT_ALLOWED", 405, "POST only");
 }
 
 export async function POST(req: Request) {
   if (req.method !== "POST") {
-    return NextResponse.json(
-      { error: "METHOD_NOT_ALLOWED", message: "POST only" },
-      { status: 405 }
-    );
+    return apiError("METHOD_NOT_ALLOWED", 405, "POST only");
   }
 
   if (!isJsonContentType(req.headers.get("content-type"))) {
-    return NextResponse.json(
-      { error: "UNSUPPORTED_MEDIA_TYPE", message: "Content-Type must be application/json" },
-      { status: 415 }
-    );
+    return apiError("UNSUPPORTED_MEDIA_TYPE", 415, "Content-Type must be application/json");
   }
 
   let rawBody: string;
@@ -43,24 +35,15 @@ export async function POST(req: Request) {
     if (contentLength) {
       const len = parseInt(contentLength, 10);
       if (!Number.isFinite(len) || len > MAX_BODY_BYTES) {
-        return NextResponse.json(
-          { error: "PAYLOAD_TOO_LARGE", message: "Request body too large" },
-          { status: 413 }
-        );
+        return apiError("PAYLOAD_TOO_LARGE", 413, "Request body too large");
       }
     }
     rawBody = await req.text();
     if (Buffer.byteLength(rawBody, "utf8") > MAX_BODY_BYTES) {
-      return NextResponse.json(
-        { error: "PAYLOAD_TOO_LARGE", message: "Request body too large" },
-        { status: 413 }
-      );
+      return apiError("PAYLOAD_TOO_LARGE", 413, "Request body too large");
     }
   } catch {
-    return NextResponse.json(
-      { error: "BAD_REQUEST", message: "Invalid request body" },
-      { status: 400 }
-    );
+    return apiError("BAD_REQUEST", 400, "Invalid request body");
   }
 
   const signatureHeader = req.headers.get("paddle-signature");
@@ -72,28 +55,19 @@ export async function POST(req: Request) {
       providerEventId: "unknown",
       result: "signature_invalid",
     });
-    return NextResponse.json(
-      { error: "BAD_REQUEST", message: "Webhook signature verification failed" },
-      { status: 400 }
-    );
+    return apiError("BAD_REQUEST", 400, "Webhook signature verification failed");
   }
 
   let envelope: unknown;
   try {
     envelope = JSON.parse(rawBody);
   } catch {
-    return NextResponse.json(
-      { error: "VALIDATION_ERROR", message: "Invalid JSON" },
-      { status: 400 }
-    );
+    return apiError("VALIDATION_ERROR", 400, "Invalid JSON");
   }
 
   const envelopeResult = paddleWebhookEnvelopeSchema.safeParse(envelope);
   if (!envelopeResult.success) {
-    return NextResponse.json(
-      { error: "VALIDATION_ERROR", message: "Invalid webhook payload schema" },
-      { status: 400 }
-    );
+    return apiError("VALIDATION_ERROR", 400, "Invalid webhook payload schema");
   }
 
   const validatedEnvelope = envelopeResult.data;
@@ -137,10 +111,7 @@ export async function POST(req: Request) {
         providerEventId: event_id,
         result: "validation_error",
       });
-      return NextResponse.json(
-        { error: "VALIDATION_ERROR", message: "Invalid webhook payload schema" },
-        { status: 400 }
-      );
+      return apiError("VALIDATION_ERROR", 400, "Invalid webhook payload schema");
     }
     logWebhookReceived({
       eventType: event_type,

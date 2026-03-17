@@ -17,6 +17,9 @@ export async function writeAuditLog(params: {
   // Use Prisma JSON input type
   metadata?: Prisma.InputJsonValue;
 
+  /** Include when available for request correlation (observability rule). */
+  requestId?: string | null;
+
   ipAddress?: string | null;
   userAgent?: string | null;
 }) {
@@ -29,9 +32,20 @@ export async function writeAuditLog(params: {
     targetId,
     targetUserId,
     metadata,
+    requestId,
     ipAddress,
     userAgent,
   } = params;
+
+  const mergedMetadata: Prisma.InputJsonValue =
+    requestId != null
+      ? {
+          ...(typeof metadata === "object" && metadata !== null && !Array.isArray(metadata)
+            ? (metadata as Record<string, unknown>)
+            : {}),
+          requestId,
+        }
+      : metadata;
 
   await prisma.auditLog.create({
     data: {
@@ -43,8 +57,7 @@ export async function writeAuditLog(params: {
       targetId: targetId ?? null,
       targetUserId: targetUserId ?? null,
 
-      // IMPORTANT: only set when defined (no null)
-      ...(metadata !== undefined ? { metadata } : {}),
+      ...(mergedMetadata !== undefined ? { metadata: mergedMetadata } : {}),
 
       ipAddress: ipAddress ?? null,
       userAgent: userAgent ?? null,
