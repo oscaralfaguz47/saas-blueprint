@@ -1,0 +1,110 @@
+---
+description: Application-level security rules for rendering, redirects, outbound calls, and hostile input handling.
+globs:
+  - src/app/**/*.tsx
+  - src/components/**/*.tsx
+  - src/app/api/**/route.ts
+  - src/server/**/*.ts
+alwaysApply: false
+---
+
+# Application Security
+
+## Scope
+
+Applies to:
+- UI components
+- API endpoints
+- server-side rendering
+- data processing
+
+## 1. XSS Prevention
+
+Never trust or directly render user-provided HTML.
+
+Rules:
+- escape user-generated content
+- never use `dangerouslySetInnerHTML` unless strictly necessary
+- if HTML rendering is required, sanitize using a trusted sanitizer already approved by the project
+
+## 2. CSRF Protection
+
+Mutating endpoints must enforce CSRF protection when cookie-based authentication is involved.
+
+Acceptable strategies include:
+- same-site cookies
+- CSRF tokens
+- double-submit cookie pattern
+
+If cookies are used for auth, CSRF protection is mandatory.
+
+## 3. SSRF Prevention
+
+Server code must never allow arbitrary outbound requests based on untrusted input.
+
+Rules:
+- do not allow arbitrary URLs from user input
+- validate allowed domains explicitly
+- block private, loopback, and link-local network ranges
+
+Disallowed destinations include:
+- localhost
+- 127.0.0.1
+- 169.254.x.x
+- 10.x.x.x
+- 192.168.x.x
+- 172.16.x.x through 172.31.x.x
+
+## 4. Open Redirect Prevention
+
+Never redirect users to URLs provided directly by untrusted input.
+
+Redirects must be validated against:
+- internal routes
+- explicit trusted allowlists
+
+## 5. Input Normalization
+
+All user inputs must be normalized before use when relevant.
+
+Examples:
+- trim whitespace
+- normalize casing
+- enforce expected formats
+- normalize emails where appropriate
+
+## 6. HTML and Markdown Rendering
+
+If rich content is supported:
+- sanitize HTML
+- restrict allowed tags
+- strip script tags
+- disable inline event handlers
+- never render unsanitized Markdown or HTML into the UI
+
+## 7. Unsafe URL and Redirect Construction
+
+Do not build redirect or navigation targets directly from untrusted input.
+
+Rules:
+- validate destination against internal routes or explicit allowlists
+- reject protocol-relative or unexpected absolute URLs
+
+## 8. Outbound Request Allowlisting
+
+Any server-side outbound request based on dynamic input must use an explicit allowlist.
+
+Rules:
+- validate protocol
+- validate hostname
+- block private and link-local ranges
+- do not proxy arbitrary user-provided URLs
+
+## 9. Safe Rendering Defaults
+
+Treat all untrusted input as hostile by default.
+
+Rules:
+- never trust client-supplied role flags, HTML, URLs, or formatting
+- keep security-critical decisions on the server
+- fail closed when validation or sanitization cannot be guaranteed

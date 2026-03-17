@@ -1,0 +1,122 @@
+---
+description: Global constitution for all Relitrue code changes. Non-negotiable architecture, security, tenant isolation, API discipline, and implementation behavior.
+alwaysApply: true
+---
+
+# Relitrue Core Constitution
+
+This is the global constitution for the Relitrue codebase.
+
+All project instructions live under `.cursor/rules/**`.
+
+When multiple rules apply:
+- the more specific rule wins for its domain
+- the stricter rule wins when there is tension
+
+## Project Identity
+
+Relitrue is a production-grade multi-tenant SaaS focused on finance-centered request and approval workflows.
+
+Core concerns:
+- strict tenant isolation
+- strong server-side security
+- predictable API contracts
+- auditable sensitive actions
+- plan and billing enforcement
+- maintainable architecture
+
+## Official Technology Stack
+
+Use only the approved stack already present in the project:
+
+Frontend and UI:
+- Next.js App Router
+- React Server Components
+- Tailwind CSS
+- shadcn/ui
+
+Backend and API:
+- Next.js Route Handlers under `src/app/api/**/route.ts`
+- NextAuth with JWT strategy
+
+Data layer:
+- Prisma ORM
+- PostgreSQL
+
+Validation:
+- Zod
+
+Language:
+- TypeScript
+
+Do not introduce alternative frameworks, routing systems, mutation patterns, ORMs, or validation libraries without explicit approval.
+
+## Non-Negotiable Architecture Rules
+
+- Use Next.js App Router only.
+- Do not use `pages/` or `pages/api`.
+- Default to Server Components.
+- Use Client Components only when strictly necessary.
+- Keep Client Components small leaf components.
+- Do not use Server Actions.
+- All mutations must go through Route Handlers.
+- Keep business logic on the server.
+- The UI is never the source of truth.
+- Reuse existing helpers, schemas, utilities, and patterns before creating new abstractions.
+- Modify the minimum number of files necessary.
+- Avoid speculative abstractions and unnecessary complexity.
+
+## Multi-Tenancy and Security Rules
+
+- Never trust the client for tenant context, role, permissions, billing state, or plan state.
+- Resolve tenant context server-side from the authenticated user and membership records.
+- Enforce tenant isolation in every tenant-scoped query and mutation.
+- Enforce authentication and authorization server-side.
+- Cross-tenant exposure is a critical security bug.
+- Do not leak secrets, raw tokens, internal-only details, or unnecessary PII in logs, API responses, or UI output.
+
+## API and Validation Rules
+
+- Validate request body, query parameters, and route parameters with Zod.
+- Parse and validate inputs before business logic runs.
+- Use predictable and consistent HTTP status codes.
+- Use the standard API error shape defined by the API contract rule.
+- Do not swallow errors silently.
+- Do not partially succeed on sensitive mutations.
+
+## Plans, Billing, and Usage Rules
+
+- Each tenant/workspace must have exactly one subscription.
+- Enforce plan limits server-side before executing gated actions.
+- Usage counters must be atomic.
+- Usage counters must increment only after successful actions.
+- Upgrades apply immediately.
+- Downgrades do not delete data, but may restrict future actions.
+
+## Auditability and Observability Rules
+
+- Sensitive actions must generate audit logs when applicable.
+- Security-relevant failures must be traceable.
+- Secrets and raw tokens must never be logged.
+
+## AI Implementation Behavior
+
+For non-trivial changes:
+1. Start with a short implementation plan.
+2. Identify the minimum files that need to change.
+3. Follow existing project patterns.
+4. Keep the implementation small, explicit, and production-grade.
+5. Do not introduce new architectural patterns without clear justification.
+
+## Done Criteria
+
+A change is not complete unless it:
+- compiles successfully
+- respects TypeScript types
+- preserves tenant isolation
+- enforces server-side authentication and authorization where applicable
+- includes Zod validation where applicable
+- respects the relevant rules under `.cursor/rules/**`
+- includes loading, empty, and error states for user-facing screens when applicable
+- adds audit logging for sensitive actions when applicable
+- does not introduce security regressions

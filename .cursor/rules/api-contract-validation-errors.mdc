@@ -1,0 +1,185 @@
+---
+description: API validation, error contract, and status-code rules for route handlers and server endpoints.
+globs:
+  - src/app/api/**/route.ts
+  - src/server/**/*.ts
+  - src/lib/**/*.ts
+alwaysApply: false
+---
+
+# API Contract: Validation and Error Handling
+
+## Scope
+
+Applies to all Route Handlers and server-side endpoints.
+
+## Validation Rules
+
+- Validate request body, query parameters, and route parameters with Zod.
+- Parse and validate input before executing business logic.
+- Normalize inputs where relevant before use.
+- Never rely on client-side validation as the source of truth.
+- Reject invalid input with HTTP 400.
+
+## Standard Error Shape
+
+All API errors must use this shape:
+
+```json
+{
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human readable message",
+    "details": {}
+  }
+}
+
+## Status Code Rules
+- 400: validation error or malformed request
+- 401: unauthenticated
+- 403: forbidden
+- 404: not found, or intentionally concealed inaccessible resource
+- 409: conflict
+- 413: payload too large
+- 415: unsupported content type
+- 429: rate limited
+- 500: internal server error
+
+## Error Handling Rules
+
+- Do not return raw stack traces.
+- Do not return raw database errors.
+- Do not leak secrets, tokens, or internal-only diagnostics.
+- Use details only for safe machine-readable metadata.
+- Do not swallow errors silently.
+- Log internal failures safely and return a sanitized response.
+
+## Conflict Mapping Rules
+
+Map known conflict scenarios to HTTP 409 when semantically correct.
+
+Examples:
+- unique constraint conflict
+- duplicate membership
+- duplicate invite
+- duplicate active subscription record
+
+
+---
+
+# 2) `api-security.mdc`
+
+```mdc
+---
+description: API abuse protection, idempotency, anti-enumeration, and endpoint hardening rules.
+globs:
+  - src/app/api/**/route.ts
+  - src/server/**/*.ts
+alwaysApply: false
+---
+
+# API Security
+
+## Scope
+
+Applies to all Route Handlers and server-side endpoints.
+
+## 1. Rate Limiting
+
+Critical endpoints must enforce rate limits.
+
+Examples:
+- login endpoints
+- external approval endpoints
+- export generation
+- reminder sending
+- password reset flows
+- public submission or invite flows
+
+Recommended rate limit tiers:
+- public endpoints: strict
+- authenticated endpoints: moderate
+- internal endpoints: relaxed
+
+## 2. Idempotency
+
+Sensitive mutations must support idempotency when retries or duplicate delivery are possible.
+
+Examples:
+- payment status updates
+- webhook processing
+- approval submissions
+- reminder triggers
+- subscription state changes
+
+Use:
+- idempotency keys
+- event IDs
+- unique processing records
+- database uniqueness guarantees where appropriate
+
+## 3. Request Size Limits
+
+APIs must enforce request size limits.
+
+Examples:
+- JSON payload size limits
+- multipart form-data size limits
+- file upload size limits
+
+Reject oversized requests early.
+
+## 4. Content-Type Enforcement
+
+APIs must validate expected content types.
+
+Examples:
+- `application/json`
+- `multipart/form-data`
+
+Unexpected content types must be rejected.
+
+## 5. Anti-Enumeration
+
+APIs must avoid revealing whether a resource exists when that knowledge is sensitive.
+
+Prefer response behavior that conceals unauthorized resources.
+
+Examples:
+- return `404` instead of confirming whether a request exists
+- avoid different error wording for “missing” versus “forbidden” when concealment is safer
+
+## 6. Webhook Signature Verification
+
+Signed webhooks must verify signatures using the raw request body when required by the provider.
+
+Rules:
+- verify signature before mutating state
+- use timing-safe comparison where applicable
+- reject invalid signatures
+- enforce replay-window protection when supported
+
+## 7. Replay and Duplicate Protection
+
+Endpoints exposed to retries or external delivery must be safe against replay.
+
+Examples:
+- webhook processing
+- payment callbacks
+- approval links
+- reminder triggers
+
+Use:
+- idempotency keys
+- event IDs
+- unique processing records
+
+## 8. Safe Failure Behavior
+
+Sensitive mutations must fail safely.
+
+Rules:
+- do not partially succeed
+- do not apply side effects twice
+- do not expose internal details in error responses
+

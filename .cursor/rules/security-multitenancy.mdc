@@ -1,0 +1,115 @@
+---
+description: Mandatory security and tenant isolation rules for all Relitrue code paths.
+alwaysApply: true
+---
+
+# Security and Multi-Tenancy
+
+## Scope
+
+Applies to all backend logic, API endpoints, database access, and UI exposure involving tenant-scoped data or privileged operations.
+
+## 1. Never Trust the Client
+
+All security enforcement must happen on the server.
+
+Client-side checks exist only for UX.
+
+Forbidden patterns include:
+- trusting `tenantId` from the client
+- trusting `workspaceId` from the client
+- trusting role flags sent from the UI
+- trusting plan state or billing state from the client
+
+## 2. Authentication Is Mandatory
+
+Protected routes require authentication.
+
+Protected areas:
+- `/app/**`
+- `/api/**`
+
+Explicit exceptions may include:
+- `/api/auth/**`
+- intentionally public endpoints that are designed and hardened as public
+
+Authentication must always be validated inside the endpoint or server path that enforces access.
+
+## 3. Tenant Isolation Is Mandatory
+
+All tenant-scoped data must be filtered by:
+- `tenantId`
+- `workspaceId`
+
+Queries and mutations must never return or mutate cross-tenant data unless the code path is explicitly platform-level and authorized.
+
+## 4. Tenant Resolution
+
+Tenant context must always be resolved server-side.
+
+Preferred resolution flow:
+1. read authenticated user identity
+2. resolve membership records
+3. determine active tenant using server-controlled logic
+
+Never trust tenant identifiers coming directly from the client as authority.
+
+## 5. Platform Blocked Users
+
+If a user is marked as platform-blocked, the system must deny tenant mutations.
+
+Expected behavior:
+- deny write or mutation actions
+- return HTTP 403 or equivalent forbidden behavior
+
+## 6. Cross-Tenant Operations
+
+Cross-tenant queries are forbidden unless explicitly authorized by isolated platform-level endpoints.
+
+Such endpoints must:
+- be isolated
+- require elevated permissions
+- be intentionally designed
+- avoid accidental reuse in tenant-scoped flows
+
+## 7. Resource Concealment
+
+When access is missing for tenant-scoped resources:
+- prefer not to reveal whether the resource exists
+- use `404` when concealment is the safer behavior
+
+## 8. Query Boundary Enforcement
+
+Tenant isolation must be enforced at the query boundary.
+
+Rules:
+- do not fetch cross-tenant candidate sets and filter them later
+- do not trust route params or request payloads as tenant authority
+- do not rely on UI filtering for isolation
+
+## 9. Membership-Driven Resolution
+
+Tenant context must be derived from:
+- authenticated user identity
+- membership records
+- active tenant selection logic controlled by the server
+
+URL structure or client state alone must not establish tenant authority.
+
+## 10. Platform-Level Exceptions
+
+Cross-tenant or platform-level operations must be:
+- explicit
+- isolated
+- authorization-hardened
+- limited to dedicated administrative code paths
+
+## Enforcement Expectation
+
+Every tenant-aware server path must:
+1. validate authentication
+2. resolve tenant context server-side
+3. enforce tenant isolation in queries and mutations
+4. enforce permissions before side effects
+
+Failure to apply tenant isolation is a critical security bug.

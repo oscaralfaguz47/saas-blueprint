@@ -1,0 +1,148 @@
+---
+description: Tenant RBAC, request access rules, permission checks, and resource-concealment rules.
+globs:
+  - src/app/api/**/route.ts
+  - src/server/**/*.ts
+  - src/lib/**/*.ts
+alwaysApply: false
+---
+
+# Authorization: RBAC and Request Access Rules
+
+## Scope
+
+Applies to all tenant-scoped authorization and request-level access decisions.
+
+## Authorization Model
+
+The system uses two authorization layers:
+1. tenant RBAC permissions
+2. request-level access rules
+
+Both layers must always be enforced server-side.
+
+## Tenant RBAC Roles
+
+Default tenant roles:
+- OWNER
+- ADMIN
+- FINANCE
+- MEMBER
+
+Do not assume platform-level administrative roles are part of tenant RBAC.
+
+## Role Responsibilities
+
+### OWNER
+Full tenant control.
+
+### ADMIN
+Broad tenant management permissions except billing-sensitive operations unless explicitly granted.
+
+### FINANCE
+Can manage:
+- requests
+- approvals
+- payments
+- operational finance workflows
+
+Cannot manage:
+- tenant role architecture
+- billing ownership unless explicitly granted
+
+### MEMBER
+Limited access focused on request creation and request participation according to granted access.
+
+## Permission Catalog
+
+### Tenant admin
+- `tenant.audit.read`
+- `tenant.billing.manage`
+- `tenant.settings.manage`
+- `tenant.roles.read`
+- `tenant.roles.manage`
+- `tenant.users.read`
+- `tenant.users.invite`
+- `tenant.users.manage`
+- `tenant.users.disable`
+
+### Requests
+- `tenant.requests.create`
+- `tenant.requests.read_all`
+- `tenant.requests.close`
+- `tenant.requests.share`
+- `tenant.requests.link`
+- `tenant.requests.export`
+- `tenant.requests.comment`
+
+### Evidence
+- `tenant.evidence.add`
+
+### Approvals
+- `tenant.approvals.assign_internal`
+- `tenant.approvals.assign_external`
+- `tenant.approvals.remind`
+
+### Payments
+- `tenant.payments.manage`
+
+## Platform-Level vs Tenant-Level Authority
+
+Platform-level administrative authority is separate from tenant RBAC.
+
+Rules:
+- platform roles must not be confused with tenant roles
+- tenant permissions must still be evaluated explicitly for tenant-scoped operations
+- elevated platform endpoints must remain isolated and intentional
+
+## Request Access Rules
+
+A user may access a request if any condition is true:
+- the user created the request
+- the user is an assigned internal participant
+- the user has shared access
+- the user has `tenant.requests.read_all`
+
+## Required Helper
+
+Use a shared helper for request access checks.
+
+Example:
+`canAccessRequest({ tenantId, userId, requestId })`
+
+All request endpoints must rely on shared authorization helpers rather than duplicating access logic.
+
+## Creator-Only Approval Management
+
+Members can assign approvers only for requests they created unless broader permission is granted.
+
+Rules:
+- creator may manage approvals for their own request
+- users with `tenant.approvals.assign_internal` may manage internal approval assignment according to policy
+- approval execution itself is governed by actual assignment and workflow state
+
+## External Approver Access
+
+External approver access must be narrowly scoped.
+
+Rules:
+- external approver access grants access only to the approval artifact or workflow step intended
+- external approval access must not imply tenant membership
+- external actors must never gain broad tenant visibility
+
+## Consistency Rules
+
+Unauthorized users must not learn whether a protected request exists.
+
+Prefer returning:
+- `404`
+
+when concealment is the safer behavior.
+
+## Authorization Helper Discipline
+
+Use shared authorization helpers for:
+- tenant permission checks
+- request access checks
+- creator-only actions
+- concealed resource responses

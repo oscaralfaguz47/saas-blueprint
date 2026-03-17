@@ -1,0 +1,86 @@
+---
+description: Prisma query discipline, indexing, pagination, transaction, and migration rules.
+globs:
+  - prisma/**/*.prisma
+  - src/app/api/**/route.ts
+  - src/server/**/*.ts
+alwaysApply: false
+---
+
+# Prisma and Performance
+
+## Scope
+
+Applies to Prisma usage, query design, transactions, and schema/migration discipline.
+
+## 1. Query Discipline
+
+Prefer:
+- `select`
+
+over broad:
+- `include`
+
+Load only the fields required by the current code path.
+
+## 2. Avoid N+1 Queries
+
+Avoid N+1 patterns.
+
+Use:
+- batched queries
+- targeted relation loading
+- careful includes only when needed
+- query composition that reduces repeated round trips
+
+## 3. Transactions
+
+Transactions must:
+- remain short
+- avoid heavy loops
+- avoid unnecessary external calls inside transactions
+- keep lock duration small
+
+## 4. Indexed Queries
+
+Queries should leverage indexed columns where relevant.
+
+Common examples:
+- `tenantId`
+- `createdAt`
+- `status`
+- foreign keys
+- unique external IDs
+- event IDs used for idempotency
+
+## 5. Tenant-Scoped Query Discipline
+
+Tenant isolation must be enforced in the query itself.
+
+Rules:
+- include tenant filters at query time
+- do not fetch broadly and filter in memory afterward
+- do not query cross-tenant candidate sets unless explicitly authorized
+
+## 6. Pagination Rules
+
+List endpoints must use pagination or otherwise bounded queries.
+
+Rules:
+- avoid unbounded list fetches
+- prefer stable sort keys
+- avoid loading entire datasets unnecessarily
+
+## 7. Aggregation Discipline
+
+Use counts, aggregates, and targeted queries instead of loading large collections into memory when totals or summaries are needed.
+
+## 8. Migration Rules
+
+Local development:
+- `prisma migrate dev`
+
+Production:
+- `prisma migrate deploy`
+
+Never use `db push` in production.

@@ -1,0 +1,84 @@
+---
+description: Audit log requirements for sensitive business actions and security-relevant state changes.
+globs:
+  - src/app/api/**/route.ts
+  - src/server/**/*.ts
+alwaysApply: false
+---
+
+# Audit Log
+
+## Scope
+
+Applies to sensitive business actions and security-relevant state changes that require accountability and traceability.
+
+## Core Rules
+
+Audit logs must be:
+- append-only
+- immutable
+- queryable by authorized roles
+- retained according to the project’s retention policy
+
+Audit log records must not be silently skipped for critical actions.
+
+## Required Field Rules
+
+Each audit entry must include:
+- `actorUserId`
+- `tenantId`
+- `action`
+- `entityType`
+- `entityId`
+- `metadata`
+- `createdAt`
+
+Include `requestId` when available.
+
+## Metadata Rules
+
+Metadata must be:
+- minimal
+- relevant
+- safe to retain
+
+Metadata must never contain:
+- raw tokens
+- secrets
+- passwords
+- full sensitive payloads
+- unnecessary PII
+
+## Write Semantics
+
+For actions that require auditability:
+- audit logging must not be skipped
+- the log should be written in the same logical operation when feasible
+- best-effort audit logging is not sufficient for critical actions
+
+## Event Naming
+
+Use stable lowercase dot-separated event names.
+
+Examples:
+- `tenant.created`
+- `tenant.plan.changed`
+- `tenant.user.invited`
+- `tenant.invite.accepted`
+- `tenant.user.disabled`
+- `request.created`
+- `request.closed`
+- `request.approval.approved`
+- `request.approval.rejected`
+- `request.export.pdf_generated`
+
+## Security Constraints
+
+Audit logs must never store:
+- raw tokens
+- secrets
+- passwords
+- unnecessary personal data
+- large raw request bodies
+
+External tokens must be hashed when stored for correlation or replay protection.

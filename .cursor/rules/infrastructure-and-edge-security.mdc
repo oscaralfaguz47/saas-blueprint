@@ -1,0 +1,91 @@
+---
+description: CSP, secure headers, HTTPS enforcement, WAF, and edge protection rules.
+globs:
+  - middleware.ts
+  - next.config.*
+  - vercel.json
+  - src/app/**/layout.tsx
+alwaysApply: false
+---
+
+# Infrastructure and Edge Security
+
+## Scope
+
+Applies to:
+- CDN
+- hosting infrastructure
+- edge network
+- deployment platform
+- security headers
+- HTTPS enforcement
+
+## 1. DDoS Protection
+
+The platform must rely on upstream DDoS protection where available.
+
+Examples:
+- CDN-level mitigation
+- provider-level DDoS filtering
+
+## 2. Web Application Firewall (WAF)
+
+A WAF should inspect incoming traffic and block malicious requests where supported.
+
+Common protections include:
+- injection detection
+- request flooding mitigation
+- bot filtering
+- abusive request patterns
+
+## 3. Bot Protection
+
+Detect and mitigate automated abuse patterns.
+
+Mitigation strategies may include:
+- rate limiting
+- IP reputation scoring
+- bot detection
+- challenge-based protection for public endpoints
+
+## 4. Security Headers
+
+Applications must enforce secure HTTP headers.
+
+Examples:
+- `Content-Security-Policy`
+- `X-Frame-Options`
+- `X-Content-Type-Options`
+- `Strict-Transport-Security`
+- `Referrer-Policy`
+- `Permissions-Policy`
+
+## 5. HTTPS Enforcement
+
+All traffic must be encrypted.
+
+Rules:
+- HTTPS only
+- secure cookies in non-local environments
+- HSTS enabled where supported
+
+## 6. Content Security Policy Discipline
+
+CSP must be explicit and restrictive.
+
+Rules:
+- prefer explicit source allowlists
+- avoid broad wildcards unless operationally necessary
+- keep third-party origins narrowly scoped
+- review CSP changes carefully when adding vendors
+
+## 7. Secure Header Consistency
+
+Security headers must remain consistent across environments where applicable.
+
+At minimum consider:
+- `Content-Security-Policy`
+- `Strict-Transport-Security`
+- `X-Content-Type-Options`
+- `Referrer-Policy`
+- `Permissions-Policy`

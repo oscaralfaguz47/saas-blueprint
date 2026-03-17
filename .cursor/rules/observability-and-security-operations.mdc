@@ -1,0 +1,76 @@
+---
+description: Logging, request correlation, alerting, and incident investigation rules.
+globs:
+  - src/app/api/**/route.ts
+  - src/server/**/*.ts
+  - middleware.ts
+alwaysApply: false
+---
+
+# Observability and Security Operations
+
+## Scope
+
+Applies to:
+- request logging
+- operational logging
+- anomaly detection
+- alerting
+- incident investigation
+
+## 1. Security Logging
+
+Security-relevant events must be logged.
+
+Examples:
+- failed login attempts
+- permission denials
+- suspicious activity
+- repeated webhook verification failures
+- repeated rate-limit violations
+
+## 2. Alerting
+
+Critical anomalies should trigger alerts where supported.
+
+Examples:
+- repeated login failures
+- abnormal API usage
+- suspicious access patterns
+- billing webhook failures
+- unusually high denial rates
+
+## 3. Incident Response Support
+
+The system must support investigation through:
+- audit logs
+- request logs
+- activity logs
+- traceable operational events
+
+## 4. Correlation and Request Tracing
+
+Operational logs should include request correlation when possible.
+
+Examples:
+- `requestId`
+- `traceId`
+- `eventId`
+
+## 5. Redaction Discipline
+
+Operational logs must not expose:
+- secrets
+- raw tokens
+- passwords
+- unnecessary PII
+- raw sensitive payloads
+
+## 6. Audit Logs vs Operational Logs
+
+Do not confuse audit logs with operational logs.
+
+Rules:
+- audit logs track sensitive business actions
+- operational logs support debugging, monitoring, and incident investigation
+- both must follow redaction rules

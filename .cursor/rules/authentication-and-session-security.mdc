@@ -1,0 +1,120 @@
+---
+description: Authentication hardening, session lifecycle, secure cookies, and password-reset rules.
+globs:
+  - src/app/api/auth/**/route.ts
+  - src/server/auth/**/*.ts
+  - src/lib/auth/**/*.ts
+  - middleware.ts
+alwaysApply: false
+---
+
+# Authentication and Session Security
+
+## Scope
+
+Applies to:
+- login flows
+- session management
+- password reset
+- authentication tokens
+- MFA
+- account recovery
+
+## 1. Session Expiration
+
+Sessions must expire automatically.
+
+Recommended policy:
+- idle timeout: 12 hours
+- absolute expiration: 7 days
+
+Sessions must be revocable.
+
+## 2. Secure Session Storage
+
+Sessions must:
+- be stored securely
+- never expose tokens to the client unnecessarily
+
+JWT tokens must:
+- be signed
+- include expiration
+- avoid unnecessary sensitive claims
+
+## 3. Brute Force Protection
+
+Login endpoints must implement protection against brute force attacks.
+
+Mechanisms may include:
+- rate limiting
+- temporary lockout
+- step-up verification
+- captcha after repeated failures
+
+## 4. Password Reset Security
+
+Password reset tokens must:
+- be single-use
+- expire quickly
+- be cryptographically random
+
+Recommended expiration:
+- 15 to 30 minutes
+
+Tokens must be stored hashed when persisted.
+
+## 5. MFA / Two-Factor Authentication
+
+Where supported, MFA should use stronger methods such as:
+- TOTP
+- hardware keys
+- trusted authenticator apps
+
+SMS-based MFA should be avoided when stronger options are available.
+
+## 6. Suspicious Login Detection
+
+Detect unusual login behavior when feasible.
+
+Examples:
+- new location
+- new device
+- abnormal login frequency
+
+Possible mitigations:
+- email confirmation
+- step-up verification
+- session challenge
+
+## 7. Secure Cookie Rules
+
+Authentication cookies must be:
+- `httpOnly`
+- `secure` in non-local environments
+- `sameSite=lax` or stricter
+- scoped as narrowly as practical
+
+## 8. Session Invalidation Rules
+
+Sensitive account events must invalidate existing sessions when applicable.
+
+Examples:
+- password reset
+- password change
+- MFA enrollment reset
+- account compromise recovery
+
+## 9. Password Storage Rules
+
+If password-based auth exists:
+- passwords must be hashed with a modern password hashing algorithm
+- plaintext passwords must never be stored
+- password material must never be logged
+
+## 10. Session Fixation Resistance
+
+Authentication flows must protect against session fixation.
+
+Rules:
+- regenerate or rotate session state when privilege or authentication status changes
+- do not continue privileged sessions using untrusted pre-auth session state

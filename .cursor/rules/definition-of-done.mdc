@@ -1,0 +1,64 @@
+---
+description: Completion criteria for any Relitrue change.
+alwaysApply: true
+---
+
+# Definition of Done
+
+## Core Completion Requirements
+
+A change is not complete unless it:
+- compiles successfully
+- respects TypeScript types
+- preserves tenant isolation
+- includes server-side authentication and authorization where applicable
+- includes Zod validation where applicable
+- maintains architectural consistency
+- avoids leaking secrets, tokens, or unnecessary PII
+- remains production-grade and minimal
+
+## Implementation Guidelines
+
+For non-trivial changes:
+1. propose a short implementation plan
+2. modify only the necessary files
+3. avoid speculative abstractions
+4. keep the implementation explicit and maintainable
+5. follow existing project patterns before introducing anything new
+
+## Security Requirements
+
+Sensitive actions must:
+- enforce RBAC
+- respect tenant isolation
+- create audit log entries when applicable
+- avoid partial success
+- remain idempotent when retries are possible
+
+## UI Completion Requirements
+
+For user-facing screens and major data sections, include when applicable:
+- loading state
+- empty state
+- error state
+- pending or disabled state during mutations
+- clear success or failure feedback where appropriate
+
+## Additional Completion Requirements
+
+When applicable, a change must also:
+- preserve existing route-group conventions
+- preserve existing shared helper usage
+- keep the server as the source of truth
+- keep API contracts consistent
+- avoid adding new dependencies unless justified
+
+## Verification Mindset
+
+Before considering a task done, verify:
+- tenant isolation still holds
+- authorization still holds
+- server-side validation still holds
+- billing or plan gating still holds where relevant
+- auditability still holds where relevant
+- the change is the minimum necessary to solve the task

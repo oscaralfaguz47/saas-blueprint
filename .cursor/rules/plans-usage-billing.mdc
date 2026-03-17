@@ -1,0 +1,101 @@
+---
+description: Subscription model, plan gating, usage counters, billing state, and upgrade-required rules.
+globs:
+  - src/app/api/**/route.ts
+  - src/server/**/*.ts
+  - prisma/**/*.prisma
+alwaysApply: false
+---
+
+# Plans, Usage Limits, and Billing
+
+## Scope
+
+Applies to subscription resolution, plan enforcement, usage counters, billing state changes, and billing-integrated feature gating.
+
+## Subscription Model
+
+One workspace or tenant must have exactly one effective subscription record.
+
+Use database constraints and server-side checks to prevent duplicate active subscriptions for the same tenant.
+
+## Usage Counters
+
+Usage should be tracked in a monthly usage model such as `TenantUsageMonthly`.
+
+Representative fields may include:
+- `tenantId`
+- `yearMonth`
+- `requestsCreated`
+- `exportsGenerated`
+
+Counters must be updated atomically.
+
+## Plan Gating
+
+Before performing plan-gated actions, the system must:
+1. resolve the effective tenant plan
+2. verify the subscription state permits the action
+3. verify the relevant usage limit has not been exceeded
+
+Examples of gated actions:
+- request creation
+- export generation
+- premium workflow access
+- higher-tier billing features
+
+## Limit Exceeded Response Rules
+
+When a plan limit blocks an action:
+- prefer HTTP 403 with a stable application error code such as `UPGRADE_REQUIRED`
+- use HTTP 402 only when the specific condition is truly payment-state related
+
+Mutations must not partially succeed.
+
+## Subscription State Rules
+
+Plan gating must evaluate the effective subscription state server-side.
+
+Examples:
+- `active`
+- `trialing`
+- `past_due`
+- `canceled`
+- `inactive`
+
+## Usage Counter Rules
+
+Usage counters must:
+- increment only after successful actions
+- remain atomic
+- avoid double counting under retries
+- not advance when the primary action fails
+
+## Plan Changes
+
+Upgrade behavior:
+- applies immediately unless a specific billing flow says otherwise
+
+Downgrade behavior:
+- does not delete data
+- may restrict future actions
+- must not silently corrupt or discard historical records
+
+## Pricing Overrides
+
+Subscription records may include override fields such as:
+- `priceOverrideMonthly`
+- `discountNote`
+- `discountEndsAt`
+
+Overrides affect price only unless explicitly modeled otherwise.
+
+## Billing Webhook Rules
+
+Billing-related webhook processing must be idempotent.
+
+Rules:
+- deduplicate events
+- avoid double application of plan changes
+- avoid double counting usage or billing side effects
+- verify webhook authenticity before mutation

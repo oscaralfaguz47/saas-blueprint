@@ -1,0 +1,97 @@
+---
+description: Secure file-upload validation, storage, scanning, and access rules.
+globs:
+  - src/app/api/**/route.ts
+  - src/server/**/*.ts
+  - src/components/**/*.tsx
+alwaysApply: false
+---
+
+# File Upload Security
+
+## Scope
+
+Applies to file upload, file storage, file retrieval, and file rendering flows.
+
+## 1. MIME Type Validation
+
+Uploaded files must validate:
+- extension
+- declared MIME type
+- actual content type when feasible
+
+Do not rely on file extension alone.
+
+## 2. File Size Limits
+
+Uploads must enforce strict size limits.
+
+Rules:
+- reject oversized files early
+- use endpoint-specific limits where appropriate
+- do not load unbounded files into memory unnecessarily
+
+## 3. Malware Scanning
+
+Files should be scanned using malware detection tools where available.
+
+Rules:
+- scan before final activation when feasible
+- quarantine suspicious files
+- do not expose unscanned files as trusted content
+
+## 4. Private Storage
+
+Sensitive or tenant-scoped files must be stored privately.
+
+Access must occur through:
+- signed URLs with short expiration
+- authenticated download endpoints
+
+Do not expose permanent public URLs for sensitive files.
+
+## 5. Server-Side File Naming
+
+Do not trust client filenames for storage keys.
+
+Rules:
+- generate storage keys server-side
+- avoid exposing predictable storage paths
+- sanitize displayed filenames when shown back to users
+
+## 6. Dangerous File Type Handling
+
+Reject dangerous or unexpected file types unless explicitly supported.
+
+Examples:
+- html
+- svg
+- executables
+- script-like content
+
+Validate actual content when feasible.
+
+## 7. Tenant-Scoped Storage Isolation
+
+Uploaded files must be stored and retrieved in a tenant-safe way.
+
+Rules:
+- isolate storage paths logically by tenant or entity boundary
+- do not allow cross-tenant file access
+- enforce authorization on retrieval
+
+## 8. Access Delivery Rules
+
+Private files must be delivered through:
+- short-lived signed URLs
+- authenticated endpoints
+- authorization-aware access checks
+
+## 9. Upload Processing Discipline
+
+Do not trust client-provided metadata as authoritative.
+
+Rules:
+- validate size and content server-side
+- validate tenant/entity association server-side
+- keep file activation separate from raw upload acceptance when risk is material

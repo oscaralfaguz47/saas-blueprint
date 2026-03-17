@@ -1,0 +1,116 @@
+---
+description: Data minimization, PII handling, redaction, encryption, retention, and deletion rules.
+globs:
+  - src/app/api/**/route.ts
+  - src/server/**/*.ts
+  - prisma/**/*.prisma
+alwaysApply: false
+---
+
+# Data Protection and Privacy
+
+## Scope
+
+Applies to:
+- user data
+- tenant data
+- personally identifiable information (PII)
+- logs and telemetry
+- database storage
+- backups
+
+## 1. Data Minimization
+
+Collect and store only data that is strictly necessary for functionality and compliance.
+
+Avoid collecting:
+- unnecessary personal details
+- sensitive identifiers without a clear purpose
+- irrelevant metadata
+
+## 2. PII Protection
+
+Personally identifiable information must be handled carefully.
+
+Examples of PII:
+- names
+- emails
+- phone numbers
+- billing addresses
+
+Rules:
+- store only when necessary
+- avoid logging PII unless strictly necessary and approved
+- restrict access via RBAC
+- prefer narrow selects for sensitive fields
+
+## 3. Data Isolation
+
+Tenant data must remain isolated.
+
+All tenant-scoped queries and mutations must enforce:
+- `tenantId`
+- `workspaceId`
+
+Cross-tenant data exposure is strictly forbidden.
+
+## 4. Encryption
+
+Sensitive data must be encrypted where appropriate.
+
+Examples:
+- encrypted transport via HTTPS
+- encryption at rest where supported
+- encrypted storage for backups and file storage where applicable
+
+## 5. Data Retention
+
+Data must not be stored indefinitely without purpose.
+
+Retention expectations:
+- audit logs retained according to policy
+- expired tokens removed promptly
+- inactive or obsolete sensitive records reviewed for archival or deletion
+
+## 6. Data Deletion
+
+Users must be able to request deletion of their data when legally or contractually required.
+
+Deletion flows should account for:
+- user profile data
+- personal data
+- associated tokens
+- non-required derived records
+
+Audit logs may remain if legally required.
+
+## 7. Backup Security
+
+Backups must be protected.
+
+Rules:
+- encrypt backup storage
+- restrict access
+- keep backup locations secure
+- do not expose backup data through normal application paths
+
+## 8. Redaction Rules
+
+Logs, telemetry, and error reports must redact sensitive values.
+
+Examples:
+- tokens
+- secrets
+- billing identifiers
+- private addresses
+- sensitive personal data
+
+## 9. Least-Privilege Access to PII
+
+Access to PII must be limited to roles and code paths that require it.
+
+Rules:
+- do not fetch PII unless needed
+- do not return PII unless needed
+- prefer narrow selects for sensitive data
+- do not expose sensitive fields in general-purpose list endpoints

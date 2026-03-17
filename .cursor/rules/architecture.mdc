@@ -1,0 +1,88 @@
+---
+description: Domain boundaries, route-group discipline, helper reuse, and architectural consistency rules.
+globs:
+  - src/app/**/*.tsx
+  - src/components/**/*.tsx
+  - src/server/**/*.ts
+  - src/lib/**/*.ts
+alwaysApply: false
+---
+
+# Architecture
+
+## Scope
+
+Applies to the entire codebase where architectural decisions, module boundaries, or implementation patterns are involved.
+
+## 1. Route Groups Must Be Respected
+
+Existing route groups must remain consistent.
+
+Examples:
+- `(public)`
+- `(auth)`
+- `(product)`
+
+Do not introduce new route groups unless the change is consistent with the current routing model.
+
+## 2. Shared Helper Functions
+
+Critical logic must be centralized using shared helpers.
+
+Examples:
+- tenant resolution
+- RBAC permission checks
+- request access rules
+- plan limit checks
+- audit logging helpers
+- billing resolution helpers
+
+Avoid duplicating business logic across handlers, components, or utilities.
+
+## 3. Single Source of Truth
+
+Critical domain logic must exist in one authoritative location.
+
+Avoid patterns where the same business rule is implemented independently in:
+- UI
+- API handlers
+- helper utilities
+
+Important rules must be enforced server-side.
+
+## 4. Domain Separation
+
+Code organization must respect clear domain boundaries.
+
+Expected organization patterns:
+- UI primitives in `src/components/ui`
+- domain-specific components in feature folders
+- server logic in `src/server`
+- shared non-UI utilities in `src/lib`
+
+Do not collapse unrelated domain concerns into generic helper files.
+
+## 5. No Business Logic in UI Components
+
+React components must not become the source of truth for domain rules.
+
+Rules:
+- keep business decisions on the server
+- keep permission checks authoritative on the server
+- use UI only for presentation and interaction
+- do not make billing, permission, or tenant decisions exclusively in the client
+
+## 6. Preserve Existing Naming and Module Boundaries
+
+When extending a feature:
+- follow existing naming conventions
+- extend the current module before creating a parallel abstraction
+- do not introduce alternate helper stacks for the same responsibility
+
+## 7. Minimal Architectural Drift
+
+When implementing a change:
+- prefer current project patterns over new abstractions
+- keep the design small and explicit
+- avoid speculative generalization
+- do not introduce new architectural patterns without strong justification

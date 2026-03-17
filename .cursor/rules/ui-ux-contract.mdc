@@ -1,0 +1,50 @@
+---
+description: UI structure, screen states, upgrade-required UX, and sensitive-data exposure rules.
+globs:
+  - src/app/**/*.tsx
+  - src/components/**/*.tsx
+alwaysApply: false
+---
+
+# UI/UX Contract
+
+## Component Boundaries
+
+- UI primitives must live in `src/components/ui/**`.
+- Domain components must live in feature-specific folders.
+- Do not duplicate shared primitives without strong justification.
+
+## Required States
+
+All user-facing screens and major data sections must support:
+- loading state
+- empty state
+- error state
+
+Mutations should also expose:
+- pending or disabled state
+- success or failure feedback when appropriate
+
+## Upgrade-Required UX
+
+When an action is blocked by plan limits:
+- clearly explain the reason
+- show the relevant limit and current usage when possible
+- provide a single clear CTA to upgrade or manage billing/settings
+
+## Sensitive Data Rules
+
+The UI must never expose:
+- cross-tenant data
+- raw secrets
+- raw tokens
+- internal-only metadata
+- internal IDs unless operationally necessary
+
+## UX Consistency Rules
+
+- Keep destructive actions explicit.
+- Do not rely on client-only permission logic as the source of truth.
+- Prefer server-derived gating and visibility decisions.
+- Reuse shared UI patterns before creating new ones.
+

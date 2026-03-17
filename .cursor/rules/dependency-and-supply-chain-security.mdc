@@ -1,0 +1,98 @@
+---
+description: Dependency selection, lockfile discipline, package-risk review, and CI/CD security rules.
+globs:
+  - package.json
+  - pnpm-lock.yaml
+  - package-lock.json
+  - yarn.lock
+  - .github/workflows/**
+  - vercel.json
+alwaysApply: false
+---
+
+# Dependency and Supply Chain Security
+
+## Scope
+
+Applies to:
+- npm dependencies
+- third-party libraries
+- CI/CD pipelines
+- build systems
+- package registries
+
+## 1. Dependency Minimization
+
+Only install dependencies that are strictly necessary.
+
+Before adding a dependency:
+- verify maintenance status
+- review security advisories
+- confirm license compatibility
+
+Avoid large libraries when smaller or existing alternatives are sufficient.
+
+## 2. Lockfile Discipline
+
+The project must always commit a lockfile.
+
+Examples:
+- `pnpm-lock.yaml`
+- `package-lock.json`
+- `yarn.lock`
+
+Never regenerate lockfiles unnecessarily.
+
+## 3. Automated Vulnerability Scanning
+
+Dependencies must be scanned for known vulnerabilities.
+
+Examples:
+- npm audit
+- Snyk
+- Dependabot
+- GitHub Security Advisories
+
+Critical vulnerabilities must be addressed quickly.
+
+## 4. Dependency Update Policy
+
+Dependencies must be updated responsibly.
+
+Recommended policy:
+- security patches: as soon as practical
+- minor updates: periodically
+- major updates: reviewed carefully
+
+Breaking updates must be tested before rollout.
+
+## 5. Malicious Package Detection
+
+Before installing a new dependency:
+- verify repository authenticity
+- check maintainers
+- review download history or project trust signals
+- inspect source code where risk is material
+
+Avoid newly published or weakly trusted packages without a clear reason.
+
+## 6. CI/CD Security
+
+Build pipelines must follow least privilege.
+
+Rules:
+- CI tokens must have minimal permissions
+- secrets must never appear in build logs
+- build artifacts must not contain secrets
+- deployment credentials must be scoped narrowly
+
+## 7. Dependency Integrity
+
+Where supported, rely on dependency integrity protections provided by the package manager and lockfile.
+
+## 8. Prefer Existing Dependencies
+
+Before adding a new dependency:
+- check whether the project already includes an equivalent solution
+- prefer existing project dependencies and utilities
+- do not add a package for trivial helper logic
