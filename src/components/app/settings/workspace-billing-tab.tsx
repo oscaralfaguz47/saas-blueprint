@@ -27,6 +27,20 @@ import { Input } from "@/components/ui/input";
 
 const PADDLE_SCRIPT_URL = "https://cdn.paddle.com/paddle/v2/paddle.js";
 const CHECKOUT_SUCCESS_REDIRECT = "/app/settings/workspace?tab=billing&billing=updated";
+/** Matches the overlay (Background 2) so the outer app background (Background 1) matches when checkout is open. */
+const PADDLE_CHECKOUT_OVERLAY_BG = "#1D212B";
+
+function applyPaddleCheckoutOverlayStyles() {
+  document.documentElement.style.colorScheme = "light";
+  document.documentElement.style.backgroundColor = PADDLE_CHECKOUT_OVERLAY_BG;
+  document.body.style.backgroundColor = PADDLE_CHECKOUT_OVERLAY_BG;
+}
+
+function clearPaddleCheckoutOverlayStyles() {
+  document.documentElement.style.colorScheme = "";
+  document.documentElement.style.backgroundColor = "";
+  document.body.style.backgroundColor = "";
+}
 
 type BillingSummary = {
   planCode: string;
@@ -787,7 +801,9 @@ export function WorkspaceBillingTab() {
           if (data.name === "checkout.completed") {
             window.location.href = CHECKOUT_SUCCESS_REDIRECT;
           }
-          // checkout.closed: user closed overlay (e.g. X) ? do nothing, no redirect
+          if (data.name === "checkout.closed" || data.name === "checkout.completed") {
+            clearPaddleCheckoutOverlayStyles();
+          }
         },
         checkout: {
           settings: {
@@ -803,6 +819,10 @@ export function WorkspaceBillingTab() {
       setPaddleReady(true);
     }
   }, [clientToken]);
+
+  useEffect(() => {
+    return () => clearPaddleCheckoutOverlayStyles();
+  }, []);
 
   useEffect(() => {
     if (billingParam === "updated") {
@@ -1031,6 +1051,7 @@ export function WorkspaceBillingTab() {
             ).Paddle
           : undefined;
       if (Paddle?.Checkout?.open) {
+        applyPaddleCheckoutOverlayStyles();
         Paddle.Checkout.open({
           transactionId,
           settings: { displayMode: "overlay" },
@@ -1061,6 +1082,7 @@ export function WorkspaceBillingTab() {
             ).Paddle
           : undefined;
       if (Paddle?.Checkout?.open) {
+        applyPaddleCheckoutOverlayStyles();
         Paddle.Checkout.open({
           transactionId: providerTransactionId,
           settings: { displayMode: "overlay" },
@@ -1167,6 +1189,7 @@ export function WorkspaceBillingTab() {
               ).Paddle
             : undefined;
         if (Paddle?.Checkout?.open) {
+          applyPaddleCheckoutOverlayStyles();
           Paddle.Checkout.open({
             transactionId: data.transactionId,
             settings: { displayMode: "overlay" },
@@ -1369,15 +1392,16 @@ export function WorkspaceBillingTab() {
   const nextInvoiceTotalCents = nextInvoicePlanCents + nextInvoiceOverageCents;
 
   return (
-    <div className="space-y-6">
-      {clientToken && (
-        <Script
-          src={PADDLE_SCRIPT_URL}
-          strategy="afterInteractive"
-          onLoad={handlePaddleScriptLoad}
-        />
-      )}
-      <div>
+    <>
+      <div className="space-y-6">
+        {clientToken && (
+          <Script
+            src={PADDLE_SCRIPT_URL}
+            strategy="afterInteractive"
+            onLoad={handlePaddleScriptLoad}
+          />
+        )}
+        <div>
         <h2 className="text-lg font-semibold text-(--text-primary)">Billing overview</h2>
         <p className="mt-1 text-sm text-(--text-secondary)">
           Manage your plan, invoices, and payment methods.
@@ -2525,6 +2549,7 @@ export function WorkspaceBillingTab() {
           </div>
         </div>
       </Dialog>
-    </div>
+      </div>
+    </>
   );
 }
