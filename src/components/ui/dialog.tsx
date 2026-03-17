@@ -73,13 +73,13 @@ export function Dialog({
       aria-modal="true"
       aria-labelledby={titleId}
       aria-describedby={descId}
-      className="fixed inset-0 z-50 flex min-h-dvh min-h-screen items-center justify-center p-3 sm:p-4"
+      className="fixed inset-0 z-50 flex min-h-screen items-center justify-center p-3 sm:p-4"
       onPointerDown={handleOverlayPointerDown}
       onPointerUp={handleOverlayPointerUp}
       onPointerLeave={() => setPointerDownOnOverlay(false)}
     >
       <div
-        className="absolute inset-0 min-h-dvh min-h-screen bg-black/50 backdrop-blur-sm"
+        className="absolute inset-0 min-h-screen bg-black/50 backdrop-blur-sm"
         aria-hidden="true"
       />
       <div
