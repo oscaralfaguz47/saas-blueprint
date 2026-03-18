@@ -5,6 +5,9 @@ import { prisma } from "@/server/db";
 /** Throttle lastActivityAt updates to at most once per 2 minutes. */
 const UPDATE_THRESHOLD_MS = 2 * 60 * 1000;
 
+/** Rolling DB session.expires for FULL sessions (aligned with JWT max age). */
+const SESSION_ROLLING_MAX_AGE_MS = 15 * 24 * 60 * 60 * 1000; // 15 days
+
 export type InactivityResult =
   | { status: "ok" }
   | { status: "expired" }
@@ -14,8 +17,8 @@ export type InactivityResult =
  * Check session: revocation, forceLogoutAt, idle timeout. Optionally update lastActivityAt (throttled).
  * - If session is revoked → expired.
  * - If forceLogoutAt set and (mfaVerifiedAt ?? createdAt) < forceLogoutAt → revoke, expired.
- * - If autoLogoutEnabled and now - lastActivityAt > autoLogoutMinutes → revoke with idle_timeout, expired.
- * - Else if lastActivityAt older than 2 min → update to now.
+ * - If autoLogoutEnabled and idle exceeds minutes (fallback 21600 if minutes missing/invalid) → idle_timeout.
+ * - Else if lastActivityAt older than 2 min → update lastActivityAt; FULL sessions also roll expires (+15d).
  */
 export async function checkAndUpdateSessionActivity(
   sessionToken: string
@@ -29,6 +32,7 @@ export async function checkAndUpdateSessionActivity(
       revokedAt: true,
       mfaVerifiedAt: true,
       createdAt: true,
+      authLevel: true,
     },
   });
 
@@ -58,10 +62,9 @@ export async function checkAndUpdateSessionActivity(
   const lastAt = session.lastActivityAt.getTime();
   const elapsed = now.getTime() - lastAt;
 
-  const thresholdMs =
-    userSecurity?.autoLogoutEnabled && userSecurity.autoLogoutMinutes != null
-      ? userSecurity.autoLogoutMinutes * 60 * 1000
-      : 0;
+  const rawMinutes = userSecurity?.autoLogoutMinutes ?? 0;
+  const safeMinutes = rawMinutes > 0 ? rawMinutes : 21600; // fallback to 15 days
+  const thresholdMs = userSecurity?.autoLogoutEnabled ? safeMinutes * 60 * 1000 : 0;
 
   if (thresholdMs > 0 && elapsed >= thresholdMs) {
     await prisma.session.update({
@@ -72,9 +75,13 @@ export async function checkAndUpdateSessionActivity(
   }
 
   if (elapsed >= UPDATE_THRESHOLD_MS) {
+    const newExpires = new Date(now.getTime() + SESSION_ROLLING_MAX_AGE_MS);
     await prisma.session.update({
       where: { sessionToken },
-      data: { lastActivityAt: now },
+      data:
+        session.authLevel === "FULL"
+          ? { lastActivityAt: now, expires: newExpires }
+          : { lastActivityAt: now },
     });
   }
 

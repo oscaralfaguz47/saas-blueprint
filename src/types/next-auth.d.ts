@@ -22,6 +22,9 @@ declare module "next-auth" {
       mfaEnforced?: boolean;
       /** Security 2FA/sessions: FULL or PENDING_MFA. */
       authLevel?: "FULL" | "PENDING_MFA";
+      /** Inactivity auto-logout (client activity tracker). */
+      autoLogoutEnabled?: boolean;
+      autoLogoutMinutes?: number;
     };
   }
 

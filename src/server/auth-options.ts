@@ -21,8 +21,11 @@ import {
 } from "@/server/services/r2-profile-photo";
 
 // ---- Tunables (performance + security) ----
-// JWT max age (seconds). 8 hours.
-const JWT_MAX_AGE_SECONDS = 8 * 60 * 60;
+// JWT / cookie max age (seconds). 15 days when auto-logout is off; idle timeout when on.
+const JWT_MAX_AGE_SECONDS = 15 * 24 * 60 * 60;
+
+/** PENDING_MFA Session row expires — intentionally short (MFA challenge window). */
+const MFA_PENDING_SESSION_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
 
 // Rolling refresh window (refresh role at most every x minutes)
 const ROLE_REFRESH_WINDOW_SECONDS = 15 * 60;
@@ -813,7 +816,7 @@ export const authOptions: NextAuthOptions = {
 
       if (needsMfaChallenge) {
         const challengeExpires = new Date(now.getTime() + 10 * 60 * 1000);
-        const expires = new Date(now.getTime() + 60 * 60 * 1000);
+        const expires = new Date(now.getTime() + MFA_PENDING_SESSION_MAX_AGE_MS);
         await prisma.session.create({
           data: {
             sessionToken,
@@ -904,7 +907,11 @@ export const authOptions: NextAuthOptions = {
                 }),
             prisma.userSecurity.findUnique({
               where: { userId: token.sub },
-              select: { totpEnabled: true },
+              select: {
+                totpEnabled: true,
+                autoLogoutEnabled: true,
+                autoLogoutMinutes: true,
+              },
             }),
             isMfaEnforcedForUser(token.sub),
             prisma.user.findUnique({
@@ -936,6 +943,8 @@ export const authOptions: NextAuthOptions = {
               : sessionRow != null);
           session.user.totpEnabled = security?.totpEnabled ?? false;
           session.user.mfaEnforced = mfaEnforced ?? false;
+          session.user.autoLogoutEnabled = security?.autoLogoutEnabled ?? false;
+          session.user.autoLogoutMinutes = security?.autoLogoutMinutes ?? 21600;
           session.user.email = userRecord?.email ?? session.user.email ?? null;
           session.user.name = userRecord?.name ?? session.user.name ?? null;
         }

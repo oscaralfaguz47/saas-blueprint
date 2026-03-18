@@ -4,6 +4,7 @@ import { CreateWorkspaceModalProvider } from "@/components/app/workspace/create-
 import { TenantPermissionsProvider } from "@/components/app/tenant-permissions-context";
 import { WorkspaceReadyNotifier } from "@/components/app/workspace-ready-notifier";
 import AppLayoutClient from "@/components/app/app-layout-client";
+import { ActivityTrackerProvider } from "@/components/app/activity-tracker-provider";
 import { ThemeProvider } from "@/components/theme/theme-provider";
 import ThemeBootstrap from "@/components/theme/theme-bootstrap";
 
@@ -46,6 +47,7 @@ export function AppLayoutHydrationGate({
       <ThemeBootstrap />
       <WorkspaceReadyNotifier tenantId={tenantId} />
       <ThemeProvider initialTheme={initialTheme}>
+        <ActivityTrackerProvider />
         <TenantPermissionsProvider>
           <CreateWorkspaceModalProvider>
             <AppLayoutClient

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { signIn } from "next-auth/react";
+import { signIn, useSession } from "next-auth/react";
 import { useOAuthPopup, getOAuthAuthorizationUrl } from "@/hooks/use-oauth-popup";
 import QRCode from "qrcode";
 import { Input } from "@/components/ui/input";
@@ -91,6 +91,7 @@ export function SecurityTab({
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { update: updateSession } = useSession();
   const { openPopup } = useOAuthPopup();
   const apiFetch = useApiFetch();
   const [totpSetupStep, setTotpSetupStep] = useState<"idle" | "qr" | "verify">("idle");
@@ -381,6 +382,7 @@ export function SecurityTab({
         }
         setAutoLogoutEnabled(false);
         setAutoLogoutMinutes(null);
+        void updateSession();
         router.refresh();
       })
       .catch(() => setAutoLogoutError("Something went wrong."))
@@ -410,6 +412,7 @@ export function SecurityTab({
         }
         setAutoLogoutEnabled(true);
         setAutoLogoutMinutes(minutes);
+        void updateSession();
         router.refresh();
       })
       .catch(() => setAutoLogoutError("Something went wrong."))
