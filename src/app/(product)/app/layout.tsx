@@ -63,8 +63,19 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
     // If no workspaces, redirect to appropriate destination
     if (activeMembershipCount === 0) {
-      if (canAccessPlatformAdmin) redirect("/admin/workspaces");
-      
+      if (canAccessPlatformAdmin) {
+        const platformAdminSecurity = await prisma.userSecurity.findUnique({
+          where: { userId },
+          select: { totpEnabled: true },
+        });
+        if (platformAdminSecurity?.totpEnabled) {
+          redirect("/admin/workspaces");
+        }
+        // PlatformAdmin without 2FA: let the app shell render normally so they
+        // can navigate to Account Settings and enable 2FA before accessing /admin.
+        // Fall through to the normal app layout rendering below.
+      }
+
       if (pendingInvitationsCount > 0) {
         await writeAuditLog({
           actorUserId: userId,
