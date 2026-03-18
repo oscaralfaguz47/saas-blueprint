@@ -14,6 +14,11 @@ import { getNextAuthCookieHeader } from "@/server/nextauth-cookie-header";
 import { ensureBootstrapPlatformOwner } from "@/server/services/platform-bootstrap";
 import { isMfaEnforcedForUser } from "@/server/security/member-security-governance";
 import { sendMagicLink } from "@/server/services/send-magic-link";
+import {
+  buildProfilePhotoObjectKey,
+  getPresignedPutUrlProfilePhoto,
+  isR2Configured,
+} from "@/server/services/r2-profile-photo";
 
 // ---- Tunables (performance + security) ----
 // JWT max age (seconds). 8 hours.
@@ -301,6 +306,41 @@ function normalizeMicrosoftEmail(profile: AzureADProfile & { preferred_username?
   return nonTenantHost[0] ?? smtp[0] ?? null;
 }
 
+async function fetchAndUploadMicrosoftPhotoToR2(
+  accessToken: string,
+  userId: string
+): Promise<string | null> {
+  try {
+    if (!isR2Configured()) return null;
+
+    const res = await fetch("https://graph.microsoft.com/v1.0/me/photo/$value", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return null;
+
+    const contentType = res.headers.get("content-type") ?? "image/jpeg";
+    const ext = contentType.includes("png") ? "png" : "jpeg";
+    const buffer = Buffer.from(await res.arrayBuffer());
+    if (buffer.length === 0) return null;
+
+    const objectKey = buildProfilePhotoObjectKey(userId, ext);
+
+    const presigned = await getPresignedPutUrlProfilePhoto({ objectKey, contentType });
+    if (!presigned) return null;
+
+    const uploadRes = await fetch(presigned.uploadUrl, {
+      method: "PUT",
+      body: buffer,
+      headers: { "Content-Type": contentType },
+    });
+    if (!uploadRes.ok) return null;
+
+    return objectKey;
+  } catch {
+    return null;
+  }
+}
+
 // Tenant segment for Entra issuer URL (e.g. "organizations"). Hardcoded safe default.
 function getEntraTenantId(): string {
   const issuer = process.env.MICROSOFT_ENTRA_ID_ISSUER?.trim();
@@ -376,7 +416,7 @@ export const authOptions: NextAuthOptions = {
       // through the verified magic-link linking flow before the adapter links anything.
       allowDangerousEmailAccountLinking: true,
       authorization: {
-        params: { scope: "openid profile email" },
+        params: { scope: "openid profile email User.Read" },
       },
       profile(profile) {
         const normalizedEmail = normalizeMicrosoftEmail(profile);
@@ -399,7 +439,7 @@ export const authOptions: NextAuthOptions = {
           id: profile.sub,
           name: profile.name ?? profileEmail ?? "Microsoft user",
           email: profileEmail,
-          image: null,
+          image: profile.picture ?? null,
         } as import("next-auth").User;
       },
     }),
@@ -936,10 +976,36 @@ export const authOptions: NextAuthOptions = {
       });
     },
 
-    // events.signIn: no runUserBootstraps here — already in callbacks.signIn (avoids double execution).
-    async signIn({ user }) {
+    // events.signIn: runs after adapter persistence; used for Microsoft profile photo (non-blocking).
+    async signIn({ user, account }) {
       if (!user?.id) return;
-      // Reserved for future non-bootstrap sign-in events (e.g. audit logging).
+
+      if (account?.provider === "azure-ad" && account.access_token) {
+        const capturedUserId = user.id;
+        const capturedToken = account.access_token as string;
+        setImmediate(() => {
+          prisma.user
+            .findUnique({
+              where: { id: capturedUserId },
+              select: { profilePhotoObjectKey: true },
+            })
+            .then((existingUser) => {
+              if (existingUser?.profilePhotoObjectKey) return;
+              return fetchAndUploadMicrosoftPhotoToR2(capturedToken, capturedUserId).then(
+                (objectKey) => {
+                  if (!objectKey) return;
+                  return prisma.user.update({
+                    where: { id: capturedUserId },
+                    data: { profilePhotoObjectKey: objectKey },
+                  });
+                }
+              );
+            })
+            .catch((err) => {
+              console.error("[events.signIn] Microsoft photo upload failed:", err);
+            });
+        });
+      }
     },
   },
 };
