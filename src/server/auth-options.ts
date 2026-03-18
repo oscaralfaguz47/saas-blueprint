@@ -1,7 +1,6 @@
 import "server-only";
 
 import { randomBytes, createHash } from "node:crypto";
-import { cookies } from "next/headers";
 import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import EmailProvider from "next-auth/providers/email";
@@ -10,6 +9,7 @@ import type { AzureADProfile } from "next-auth/providers/azure-ad";
 
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { prisma } from "@/server/db";
+import { getNextAuthCookieHeader } from "@/server/nextauth-cookie-header";
 
 import { ensureBootstrapPlatformOwner } from "@/server/services/platform-bootstrap";
 import { isMfaEnforcedForUser } from "@/server/security/member-security-governance";
@@ -26,100 +26,223 @@ function linkIntentCookieName(provider: "azure-ad" | "google"): string {
   return `__link_intent_${provider.replace(/-/g, "_")}`;
 }
 
+function readCookieFromHeader(header: string, name: string): string | undefined {
+  if (!header.trim()) return undefined;
+  for (const seg of header.split(";")) {
+    const idx = seg.indexOf("=");
+    if (idx === -1) continue;
+    const k = seg.slice(0, idx).trim();
+    if (k !== name) continue;
+    let v = seg.slice(idx + 1).trim();
+    try {
+      v = decodeURIComponent(v);
+    } catch {
+      /* keep raw */
+    }
+    return v || undefined;
+  }
+  return undefined;
+}
+
 /**
- * Settings → Link Google / Link Microsoft: cookie carries raw token; DB row
- * stores hash. Validates OAuth email matches the account that initiated the link.
+ * Settings → Link Google / Link Microsoft.
+ * Primary: cookie token → AccountLinkIntent (works when callback is GET with cookies).
+ * DB fallback (azure-ad + google): when cookie is missing (e.g. Entra POST callback),
+ * allow if there is a pending intent for this user+provider and the OAuth email matches
+ * User.email in DB (same check as initiate — avoids UPN vs mail mismatch on intent row).
  */
 async function validateSettingsAccountLinkIntent(params: {
   provider: "azure-ad" | "google";
   normalizedIncomingEmail: string;
   resolvedUserId: string;
-}): Promise<"allow_skip_conflict" | "deny" | "no_intent"> {
+}): Promise<"allow" | "deny" | "no_intent"> {
+  const now = new Date();
+  const emailOk =
+    params.normalizedIncomingEmail &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(params.normalizedIncomingEmail);
+
   try {
-    const rawCookie = (await cookies()).get(linkIntentCookieName(params.provider))?.value;
-    if (!rawCookie?.trim()) return "no_intent";
-    let token = rawCookie.trim();
-    try {
-      token = decodeURIComponent(token);
-    } catch {
-      /* use trimmed raw */
+    const rawCookie = readCookieFromHeader(
+      getNextAuthCookieHeader(),
+      linkIntentCookieName(params.provider)
+    );
+    if (rawCookie?.trim()) {
+      let token = rawCookie.trim();
+      try {
+        token = decodeURIComponent(token);
+      } catch {
+        /* use trimmed raw */
+      }
+      const tokenHash = createHash("sha256").update(token).digest("hex");
+      const intent = await prisma.accountLinkIntent.findUnique({
+        where: { tokenHash },
+        select: {
+          id: true,
+          userId: true,
+          expectedEmail: true,
+          targetProvider: true,
+          consumedAt: true,
+          expiresAt: true,
+        },
+      });
+      if (
+        intent &&
+        !intent.consumedAt &&
+        intent.expiresAt > now &&
+        intent.targetProvider === params.provider
+      ) {
+        if (params.resolvedUserId !== intent.userId) {
+          // Fallback: PrismaAdapter may pass profile.sub (external provider ID) as user.id
+          // when the user exists by email but has no Account rows yet. In that case,
+          // resolvedUserId will not match intent.userId even though it's the same person.
+          // Verify by looking up the user by the intent's expectedEmail.
+          const userByEmail = await prisma.user.findUnique({
+            where: { email: intent.expectedEmail },
+            select: { id: true },
+          });
+          const isSameUserByEmail = userByEmail?.id === intent.userId;
+
+          if (!isSameUserByEmail) {
+            // Genuinely different user — deny and audit log.
+            await prisma.accountLinkIntent.update({
+              where: { id: intent.id },
+              data: { consumedAt: now, errorCode: "email_mismatch" },
+            });
+            await prisma.auditLog.create({
+              data: {
+                actorUserId: intent.userId,
+                actorContext: "TENANT",
+                tenantId: null,
+                action: "auth.link.failed",
+                targetType: "AccountLinkIntent",
+                targetId: intent.id,
+                metadata: {
+                  reason: "user_mismatch",
+                  targetProvider: params.provider,
+                  expectedEmail: intent.expectedEmail,
+                  resolvedUserId: params.resolvedUserId,
+                },
+              },
+            });
+            return "deny";
+          }
+
+          // Same user confirmed by email — adapter passed profile.sub instead of DB id.
+          // Additional security check: ensure the incoming email matches the expected email
+          // so we don't allow linking a Microsoft account with a completely different email.
+          if (
+            params.normalizedIncomingEmail &&
+            intent.expectedEmail &&
+            params.normalizedIncomingEmail !== intent.expectedEmail
+          ) {
+            await prisma.accountLinkIntent.update({
+              where: { id: intent.id },
+              data: { consumedAt: now, errorCode: "email_mismatch" },
+            });
+            await prisma.auditLog.create({
+              data: {
+                actorUserId: intent.userId,
+                actorContext: "TENANT",
+                tenantId: null,
+                action: "auth.link.failed",
+                targetType: "AccountLinkIntent",
+                targetId: intent.id,
+                metadata: {
+                  reason: "email_mismatch",
+                  targetProvider: params.provider,
+                  expectedEmail: intent.expectedEmail,
+                  incomingEmail: params.normalizedIncomingEmail,
+                },
+              },
+            });
+            return "deny";
+          }
+          // Email matches — fall through to the normal allow flow below.
+        }
+        const owner = await prisma.user.findUnique({
+          where: { id: intent.userId },
+          select: { email: true },
+        });
+        const ownerDb = owner?.email?.trim().toLowerCase() ?? "";
+        if (!ownerDb || intent.expectedEmail !== ownerDb) {
+          await prisma.accountLinkIntent.update({
+            where: { id: intent.id },
+            data: { consumedAt: now },
+          });
+          return "deny";
+        }
+        // Same user row Entra merged into (allowDangerousEmailAccountLinking). Token
+        // ties the browser to this intent — do not require OAuth claim string ===
+        // intent.expectedEmail (UPN vs SMTP mismatch would falsely deny).
+        if (params.provider === "azure-ad") {
+          await prisma.accountLinkIntent.update({
+            where: { id: intent.id },
+            data: { consumedAt: now },
+          });
+          return "allow";
+        }
+        if (params.normalizedIncomingEmail !== intent.expectedEmail) {
+          await prisma.accountLinkIntent.update({
+            where: { id: intent.id },
+            data: { consumedAt: now, errorCode: "email_mismatch" },
+          });
+          await prisma.auditLog.create({
+            data: {
+              actorUserId: intent.userId,
+              actorContext: "TENANT",
+              tenantId: null,
+              action: "auth.link.failed",
+              targetType: "AccountLinkIntent",
+              targetId: intent.id,
+              metadata: {
+                reason: "email_mismatch",
+                targetProvider: params.provider,
+                expectedEmail: intent.expectedEmail,
+                incomingEmail: params.normalizedIncomingEmail,
+              },
+            },
+          });
+          return "deny";
+        }
+        await prisma.accountLinkIntent.update({
+          where: { id: intent.id },
+          data: { consumedAt: now },
+        });
+        return "allow";
+      }
     }
-    const tokenHash = createHash("sha256").update(token).digest("hex");
-    const intent = await prisma.accountLinkIntent.findUnique({
-      where: { tokenHash },
-      select: {
-        id: true,
-        userId: true,
-        expectedEmail: true,
-        targetProvider: true,
-        consumedAt: true,
-        expiresAt: true,
-      },
-    });
-    const now = new Date();
+
     if (
-      !intent ||
-      intent.consumedAt ||
-      intent.expiresAt <= now ||
-      intent.targetProvider !== params.provider
+      (params.provider === "azure-ad" || params.provider === "google") &&
+      emailOk
     ) {
-      return "no_intent";
-    }
-    if (params.normalizedIncomingEmail !== intent.expectedEmail) {
-      await prisma.accountLinkIntent.update({
-        where: { id: intent.id },
-        data: { consumedAt: now, errorCode: "email_mismatch" },
+      const accountUser = await prisma.user.findUnique({
+        where: { id: params.resolvedUserId },
+        select: { email: true },
       });
-      await prisma.auditLog.create({
-        data: {
-          actorUserId: intent.userId,
-          actorContext: "TENANT",
-          tenantId: null,
-          action: "auth.link.failed",
-          targetType: "AccountLinkIntent",
-          targetId: intent.id,
-          metadata: {
-            reason: "email_mismatch",
+      const dbEmail = accountUser?.email?.trim().toLowerCase() ?? "";
+      if (dbEmail && params.normalizedIncomingEmail === dbEmail) {
+        const fb = await prisma.accountLinkIntent.findFirst({
+          where: {
+            userId: params.resolvedUserId,
             targetProvider: params.provider,
-            expectedEmail: intent.expectedEmail,
-            incomingEmail: params.normalizedIncomingEmail,
+            consumedAt: null,
+            expiresAt: { gt: now },
           },
-        },
-      });
-      return "deny";
+          orderBy: { createdAt: "desc" },
+          select: { id: true },
+        });
+        if (fb) {
+          await prisma.accountLinkIntent.update({
+            where: { id: fb.id },
+            data: { consumedAt: now },
+          });
+          return "allow";
+        }
+      }
     }
-    // Both Google and Azure AD use allowDangerousEmailAccountLinking so the
-    // adapter resolves user.id to the existing account before signIn. Without
-    // that, a different OAuth email can yield a different User row and this
-    // check would falsely deny (or the intent would never align with user.id).
-    if (params.resolvedUserId !== intent.userId) {
-      await prisma.accountLinkIntent.update({
-        where: { id: intent.id },
-        data: { consumedAt: now },
-      });
-      await prisma.auditLog.create({
-        data: {
-          actorUserId: intent.userId,
-          actorContext: "TENANT",
-          tenantId: null,
-          action: "auth.link.failed",
-          targetType: "AccountLinkIntent",
-          targetId: intent.id,
-          metadata: {
-            reason: "user_mismatch",
-            targetProvider: params.provider,
-            expectedEmail: intent.expectedEmail,
-            resolvedUserId: params.resolvedUserId,
-          },
-        },
-      });
-      return "deny";
-    }
-    await prisma.accountLinkIntent.update({
-      where: { id: intent.id },
-      data: { consumedAt: now },
-    });
-    return "allow_skip_conflict";
+
+    return "no_intent";
   } catch {
     return "no_intent";
   }
@@ -128,21 +251,54 @@ async function validateSettingsAccountLinkIntent(params: {
 // ---------------------------------------------------------------------------
 // Microsoft Entra (Azure AD) email normalization
 // ---------------------------------------------------------------------------
-// Tries profile.email first, then profile.preferred_username as fallback.
-// Normalizes to trimmed lowercase. Returns null if neither yields a valid
-// addressable email. Used as login/contact only — profile.sub is the durable identity.
-function normalizeMicrosoftEmail(profile: AzureADProfile & { preferred_username?: string | null }): string | null {
-  const candidates = [
-    typeof profile.email === "string" ? profile.email : null,
-    typeof (profile as { preferred_username?: string }).preferred_username === "string"
-      ? (profile as { preferred_username: string }).preferred_username
-      : null,
-  ]
-    .map((v) => v?.trim().toLowerCase() ?? null)
-    .filter(Boolean) as string[];
+// Entra often sends preferred_username as a guest UPN like
+// alias_domain.com#EXT#@tenant.onmicrosoft.com — it matches a naive @ regex but
+// is NOT the SMTP address on the User row (e.g. oscar.alfaro@oceanscode.com).
+// The adapter uses profile.email for getUserByEmail; wrong string → new User →
+// Settings link fails with a misleading "email mismatch" (actually user id drift).
 
-  const valid = candidates.find((value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value));
-  return valid ?? null;
+function isMicrosoftSmtpLikeAddress(value: string): boolean {
+  const v = value.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return false;
+  if (v.includes("#")) return false;
+  return true;
+}
+
+/** Pull SMTP-like claims from Azure id_token (signIn path). */
+function extractEmailsFromAzureIdToken(idToken: string): string[] {
+  try {
+    const parts = idToken.split(".");
+    if (parts.length < 2) return [];
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as Record<
+      string,
+      unknown
+    >;
+    const out: string[] = [];
+    for (const k of ["email", "mail", "upn", "preferred_username"]) {
+      const v = payload[k];
+      if (typeof v === "string" && isMicrosoftSmtpLikeAddress(v)) {
+        out.push(v.trim().toLowerCase());
+      }
+    }
+    return [...new Set(out)];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeMicrosoftEmail(profile: AzureADProfile & { preferred_username?: string | null }): string | null {
+  const p = profile as Record<string, unknown>;
+  const order = ["email", "mail", "upn", "preferred_username", "unique_name"] as const;
+  const smtp: string[] = [];
+  for (const k of order) {
+    const v = p[k];
+    if (typeof v === "string" && isMicrosoftSmtpLikeAddress(v)) {
+      smtp.push(v.trim().toLowerCase());
+    }
+  }
+  if (smtp.length === 0) return null;
+  const nonTenantHost = smtp.filter((e) => !e.endsWith(".onmicrosoft.com"));
+  return nonTenantHost[0] ?? smtp[0] ?? null;
 }
 
 // Tenant segment for Entra issuer URL (e.g. "organizations"). Hardcoded safe default.
@@ -224,10 +380,25 @@ export const authOptions: NextAuthOptions = {
       },
       profile(profile) {
         const normalizedEmail = normalizeMicrosoftEmail(profile);
+        // Fallback: when normalizeMicrosoftEmail returns null (e.g. Entra did not include
+        // email/mail claims in the profile), try raw profile fields so the PrismaAdapter
+        // can still resolve the existing user via getUserByEmail instead of creating a new one.
+        // The signIn callback always re-normalizes the email from id_token claims, so passing
+        // a raw value here is safe — it is only used for the adapter's DB lookup.
+        const p = profile as Record<string, unknown>;
+        const profileEmail =
+          normalizedEmail ??
+          (typeof p.email === "string" && p.email.trim()
+            ? p.email.trim().toLowerCase()
+            : null) ??
+          (typeof p.preferred_username === "string" && p.preferred_username.trim()
+            ? p.preferred_username.trim().toLowerCase()
+            : null);
+
         return {
           id: profile.sub,
-          name: profile.name ?? normalizedEmail ?? "Microsoft user",
-          email: normalizedEmail,
+          name: profile.name ?? profileEmail ?? "Microsoft user",
+          email: profileEmail,
           image: null,
         } as import("next-auth").User;
       },
@@ -273,23 +444,70 @@ export const authOptions: NextAuthOptions = {
       // but does NOT yet have azure-ad linked. We intercept this and route through
       // the verified magic-link flow instead of allowing silent auto-linking.
       if (account?.provider === "azure-ad") {
-
-        // 2a. Require a valid normalized email.
-        const emailCandidate = user.email;
-        const isValidEmail =
-          typeof emailCandidate === "string" &&
-          /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailCandidate);
-        if (!isValidEmail) return false;
-
-        const normalizedEmail = (emailCandidate as string).trim().toLowerCase();
+        // 2a. Resolve email: Entra may put UPN in profile vs mail on User row — prefer claim that matches DB.
+        const dbRow = await prisma.user.findUnique({
+          where: { id: user.id },
+          select: { email: true },
+        });
+        const dbEmail = dbRow?.email?.trim().toLowerCase() ?? "";
+        const candidates: string[] = [];
+        if (typeof user.email === "string" && user.email.trim()) {
+          candidates.push(user.email.trim().toLowerCase());
+        }
+        if (account.id_token) {
+          candidates.push(...extractEmailsFromAzureIdToken(account.id_token));
+        }
+        let normalizedEmail = "";
+        if (dbEmail) {
+          const hit = candidates.find(
+            (c) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c) && c === dbEmail
+          );
+          if (hit) normalizedEmail = hit;
+        }
+        if (!normalizedEmail) {
+          const firstValid = candidates.find((c) =>
+            /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c)
+          );
+          if (firstValid) normalizedEmail = firstValid;
+        }
+        if (!normalizedEmail && dbEmail) {
+          const pendingAzure = await prisma.accountLinkIntent.findFirst({
+            where: {
+              userId: user.id,
+              targetProvider: "azure-ad",
+              consumedAt: null,
+              expiresAt: { gt: new Date() },
+            },
+            select: { id: true },
+          });
+          if (pendingAzure) normalizedEmail = dbEmail;
+        }
+        if (!normalizedEmail) return false;
 
         const settingsLink = await validateSettingsAccountLinkIntent({
           provider: "azure-ad",
           normalizedIncomingEmail: normalizedEmail,
           resolvedUserId: user.id,
         });
-        if (settingsLink === "deny") return false;
-        const skipMicrosoftConflict = settingsLink === "allow_skip_conflict";
+        if (settingsLink === "deny") {
+          // The Prisma adapter may have created the Account row before this callback.
+          // Returning false stops the session but does not roll back adapter writes.
+          try {
+            if (account?.providerAccountId) {
+              await prisma.account.deleteMany({
+                where: {
+                  provider: "azure-ad",
+                  providerAccountId: account.providerAccountId,
+                  userId: user.id,
+                },
+              });
+            }
+          } catch {
+            /* best-effort cleanup */
+          }
+          return false;
+        }
+        const skipMicrosoftConflict = settingsLink === "allow";
 
         // 2b. Conflict detection (skip when Settings link intent validated — same email).
         if (!skipMicrosoftConflict) {
@@ -394,16 +612,24 @@ export const authOptions: NextAuthOptions = {
           resolvedUserId: user.id,
         });
 
-        if (googleLink === "deny") return false;
-
-        const skipGoogleConflict = googleLink === "allow_skip_conflict";
-
-        if (!skipGoogleConflict) {
-          // No Settings intent: fresh Google sign-in. With
-          // allowDangerousEmailAccountLinking, the adapter already merged by
-          // email — no OAuthAccountNotLinked. Unlike Azure AD, we do not use
-          // AuthLinkChallenge for Google; normal sign-in proceeds.
+        if (googleLink === "deny") {
+          try {
+            if (account?.providerAccountId) {
+              await prisma.account.deleteMany({
+                where: {
+                  provider: "google",
+                  providerAccountId: account.providerAccountId,
+                  userId: user.id,
+                },
+              });
+            }
+          } catch {
+            /* best-effort cleanup */
+          }
+          return false;
         }
+
+        // no_intent: fresh Google sign-in (no link-intent cookie on callback).
       }
 
       // ── 3. Email provider: finalize account linking if a valid pending

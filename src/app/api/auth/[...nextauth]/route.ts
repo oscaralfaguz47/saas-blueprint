@@ -1,8 +1,20 @@
 import NextAuth from "next-auth";
 import { authOptions } from "@/server/auth-options";
+import { runWithNextAuthCookieHeaderAsync } from "@/server/nextauth-cookie-header";
 
-// Standard NextAuth v4 handler.
-// Link challenge cookie is handled by /api/link/pending, which is triggered
-// by the sign-in page when it detects ?error=AccessDenied.
 const handler = NextAuth(authOptions);
-export { handler as GET, handler as POST };
+
+/** NextAuth picks App Router vs Pages API by `context.params`; omitting it breaks sign-in (req.query undefined). */
+type NextAuthContext = { params: Promise<{ nextauth: string[] }> };
+
+export function GET(req: Request, context: NextAuthContext) {
+  return runWithNextAuthCookieHeaderAsync(req.headers.get("cookie") ?? "", () =>
+    handler(req, context)
+  );
+}
+
+export function POST(req: Request, context: NextAuthContext) {
+  return runWithNextAuthCookieHeaderAsync(req.headers.get("cookie") ?? "", () =>
+    handler(req, context)
+  );
+}
