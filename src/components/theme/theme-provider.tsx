@@ -16,12 +16,13 @@ function isTheme(value: unknown): value is Theme {
   return value === "dark" || value === "light" || value === "system";
 }
 
-function readThemeFromStorage(): Theme {
+/** Valid theme in localStorage, or null if unset / invalid. */
+function readThemeFromStorage(): Theme | null {
   try {
     const saved = window.localStorage.getItem(APP_THEME_STORAGE_KEY);
-    return isTheme(saved) ? saved : "dark";
+    return isTheme(saved) ? saved : null;
   } catch {
-    return "dark";
+    return null;
   }
 }
 
@@ -36,15 +37,25 @@ type ThemeProviderProps = {
 };
 
 export function ThemeProvider({ children, initialTheme }: ThemeProviderProps) {
-  const [theme, setThemeState] = useState<Theme>(isTheme(initialTheme) ? initialTheme : "dark");
+  const [theme, setThemeState] = useState<Theme>(() => {
+    if (typeof window !== "undefined") {
+      const fromStorage = readThemeFromStorage();
+      if (fromStorage) return fromStorage;
+    }
+    return isTheme(initialTheme) ? initialTheme : "dark";
+  });
 
   useEffect(() => {
+    const fromStorage = readThemeFromStorage();
     const fromServer = isTheme(initialTheme) ? initialTheme : null;
-    setThemeState(fromServer ?? readThemeFromStorage());
+    setThemeState(fromStorage ?? fromServer ?? "dark");
   }, [initialTheme]);
 
   useEffect(() => {
-    applyThemeToDocument(theme);
+    const current = document.documentElement.getAttribute("data-theme");
+    if (current !== theme) {
+      applyThemeToDocument(theme);
+    }
   }, [theme]);
 
   function setTheme(t: Theme) {
