@@ -164,8 +164,30 @@ model User {
   recordsCreated Record[] @relation("RecordsCreatedByUser")
   tenantsCreated Tenant[] @relation("TenantCreatedByUser")
   workspaceMemberSecurity WorkspaceMemberSecurity[] @relation("WorkspaceMemberSecurity")
+  authLinkChallenges AuthLinkChallenge[]
+  accountLinkIntents AccountLinkIntent[]
 
   @@index([identityProvider, identityId])
+}
+
+/// Short-lived token for Settings → Link Google / Link Microsoft (email must match account).
+model AccountLinkIntent {
+  id             String    @id @default(cuid())
+  userId         String
+  targetProvider String    @db.VarChar(50)
+  expectedEmail  String    @db.VarChar(191)
+  tokenHash      String    @unique @db.VarChar(64)
+  expiresAt      DateTime
+  consumedAt     DateTime?
+  // Set on email mismatch during Settings linking — redirect callback sends user back to Security.
+  errorCode      String?   @db.VarChar(50)
+  createdAt      DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([consumedAt])
 }
 
 model UserSecurity {
@@ -856,6 +878,45 @@ model ApprovalAction {
 //
 // NextAuth Models (unchanged)
 //
+model AuthLinkChallenge {
+  id                      String    @id @default(cuid())
+  userId                  String
+  email                   String    @db.VarChar(191)
+  targetProvider          String    @db.VarChar(50)
+  targetProviderAccountId String    @db.VarChar(191)
+  targetProviderTenantId  String?   @db.VarChar(191)
+  callbackUrl             String?   @db.VarChar(500)
+
+  // SHA-256 hash of the raw token. Raw token never persisted beyond pendingRawToken.
+  tokenHash               String    @unique @db.VarChar(64)
+
+  // Raw token stored ONLY until the browser cookie is issued (seconds).
+  // Cleared by /api/link/pending immediately after setting the cookie.
+  // Never logged, never returned in API responses.
+  pendingRawToken         String?   @db.VarChar(191)
+
+  // Set when /api/link/pending issues the cookie.
+  // Used as a gate in finalization — challenges that never reached the
+  // browser are rejected.
+  cookieIssuedAt          DateTime?
+
+  expiresAt               DateTime
+  consumedAt              DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  // Rate limiting for magic link sends (used by /api/link/send-email).
+  lastSentAt              DateTime?
+  sendCount               Int       @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([tokenHash])
+  @@index([pendingRawToken])
+}
+
 model Account {
   id                String  @id @default(cuid())
   userId            String
@@ -869,6 +930,10 @@ model Account {
   scope             String?
   id_token          String?
   session_state     String?
+  // Microsoft Entra ID (azure-ad) returns ext_expires_in in the token response.
+  // The adapter passes all token fields to account.create(), so this field must
+  // exist in the schema or Prisma rejects the entire sign-in with a validation error.
+  ext_expires_in    Int?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

@@ -278,7 +278,7 @@ export default function SetupWorkspaceClient({
             <p className="text-center text-sm text-(--text-muted)">
               <button
                 type="button"
-                onClick={() => signOut({ callbackUrl: "/auth/sign-in" })}
+                onClick={() => signOut({ callbackUrl: "/api/link/clear-cookie?redirect=/auth/sign-in" })}
                 className="font-medium text-(--text-secondary) underline hover:text-(--text-primary)"
               >
                 Sign out and do it later

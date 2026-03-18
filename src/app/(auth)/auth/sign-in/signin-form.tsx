@@ -8,6 +8,7 @@ type Status =
   | { type: "idle" }
   | { type: "sending_email" }
   | { type: "sending_google" }
+  | { type: "sending_microsoft" }
   | { type: "email_sent"; email: string }
   | { type: "error"; message: string };
 
@@ -34,20 +35,21 @@ function getFriendlyError(messageOrCode?: string) {
   const raw = (messageOrCode ?? "").toLowerCase();
 
   if (raw.includes("oauthaccountnotlinked")) {
-    return "This email was previously used with a different sign-in method. Please use the same method you used before (Google or Magic link).";
+    return "This email was previously used with a different sign-in method. Please use the same method you used before (Google, Microsoft, or Magic Link).";
   }
-
+  if (raw.includes("microsoftemailrequired")) {
+    return "Your Microsoft account did not provide a usable email address. Please use a Microsoft work account with an addressable email, or sign in with Magic Link.";
+  }
   if (raw.includes("verification")) {
     return "This sign-in link is no longer valid. Please request a new one and try again.";
   }
 
-  // NextAuth Email provider error codes
   if (raw.includes("emailsignin")) {
     return "We couldn’t send the magic link. Please confirm the email address and try again.";
   }
 
   if (raw.includes("accessdenied")) {
-    return "Access denied. You do not have permission to sign in.";
+    return "Sign-in could not be completed. If you were trying to link your Microsoft account, please try again.";
   }
 
   return "We couldn’t sign you in. Please try again.";
@@ -88,6 +90,22 @@ function GoogleIcon() {
   );
 }
 
+function MicrosoftIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 21 21"
+      className="h-5 w-5"
+      focusable="false"
+    >
+      <rect x="1" y="1" width="9" height="9" fill="#F25022" />
+      <rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
+      <rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
+      <rect x="11" y="11" width="9" height="9" fill="#FFB900" />
+    </svg>
+  );
+}
+
 export default function SignInForm() {
   const searchParams = useSearchParams();
   const callbackUrl = useMemo(
@@ -100,7 +118,9 @@ export default function SignInForm() {
 
   const emailNormalized = normalizeEmail(email);
   const isBusy =
-    status.type === "sending_email" || status.type === "sending_google";
+    status.type === "sending_email" ||
+    status.type === "sending_google" ||
+    status.type === "sending_microsoft";
 
   async function handleGoogle() {
     if (isBusy) return;
@@ -113,9 +133,24 @@ export default function SignInForm() {
     } catch (e: unknown) {
       setStatus({ type: "error", message: getFriendlyError(toErrorMessage(e)) });
     } finally {
-      // If redirect happened, this won't matter; if it didn't, we recover UI.
       setTimeout(() => {
         setStatus((s) => (s.type === "sending_google" ? { type: "idle" } : s));
+      }, 800);
+    }
+  }
+
+  async function handleMicrosoft() {
+    if (isBusy) return;
+    setStatus({ type: "sending_microsoft" });
+    try {
+      await signIn("azure-ad", { callbackUrl });
+    } catch (e: unknown) {
+      setStatus({ type: "error", message: getFriendlyError(toErrorMessage(e)) });
+    } finally {
+      setTimeout(() => {
+        setStatus((s) =>
+          s.type === "sending_microsoft" ? { type: "idle" } : s
+        );
       }, 800);
     }
   }
@@ -169,6 +204,7 @@ export default function SignInForm() {
         type="button"
         onClick={handleGoogle}
         disabled={isBusy}
+        aria-label="Continue with Google"
         className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
       >
         <GoogleIcon />
@@ -177,6 +213,21 @@ export default function SignInForm() {
           : "Continue with Google"}
       </button>
 
+      {/* Microsoft */}
+      <button
+        type="button"
+        onClick={handleMicrosoft}
+        disabled={isBusy}
+        aria-label="Continue with Microsoft"
+        className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <MicrosoftIcon />
+        {status.type === "sending_microsoft"
+          ? "Signing in with Microsoft..."
+          : "Continue with Microsoft"}
+      </button>
+
+      {/* Divider */}
       <div className="flex items-center gap-3">
         <div className="h-px flex-1 bg-(--border-subtle)" />
         <div className="text-xs font-medium text-(--text-muted)">or</div>
@@ -257,10 +308,11 @@ export default function SignInForm() {
         </div>
       )}
 
-      {/* Optional micro-hint under form when email sent */}
-      {showInlineHint ? null : (
+      {/* Bottom tip */}
+      {!showInlineHint && (
         <p className="text-center text-xs text-(--text-muted)">
-          Tip: Use Google for faster sign-in, or request a magic link.
+          Tip: Use Google or Microsoft for faster sign-in, or request a magic
+          link.
         </p>
       )}
     </div>

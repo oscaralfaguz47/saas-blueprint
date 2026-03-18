@@ -153,7 +153,8 @@ export default function InviteClient({ hasActiveWorkspace = false }: InviteClien
   async function signOutAndContinue() {
     if (!token) return;
     const callbackUrl = `/invite?token=${encodeURIComponent(token)}`;
-    await signOut({ callbackUrl: `/auth/sign-in?callbackUrl=${encodeURIComponent(callbackUrl)}` });
+    const signInUrl = `/auth/sign-in?callbackUrl=${encodeURIComponent(callbackUrl)}`;
+    await signOut({ callbackUrl: `/api/link/clear-cookie?redirect=${encodeURIComponent(signInUrl)}` });
   }
 
   async function rejectInvitation() {

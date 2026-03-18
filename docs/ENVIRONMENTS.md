@@ -142,6 +142,19 @@ For each environment, create separate OAuth apps:
    - Authorized redirect URIs: `https://app.yourdomain.com/api/auth/callback/google`
    - Use production credentials in production environment
 
+### Microsoft Entra ID (optional)
+
+For Microsoft work-account sign-in (organizations only):
+
+- **Environment variables** (add to `.env.local` for local dev, Vercel for deployed envs):
+  - `MICROSOFT_ENTRA_ID_CLIENT_ID` — Application (client) ID from Entra app registration
+  - `MICROSOFT_ENTRA_ID_CLIENT_SECRET` — Client secret value (Certificates & secrets)
+  - `MICROSOFT_ENTRA_ID_ISSUER` — Optional; default is `https://login.microsoftonline.com/organizations/v2.0`
+- **Redirect URIs** in Entra app registration:
+  - Local: `http://localhost:3000/api/auth/callback/azure-ad`
+  - Production: `https://YOUR_DOMAIN/api/auth/callback/azure-ad`
+- See `docs/epics/security/microsoft-entra-id-sign-in.md` for full setup steps.
+
 ### GitHub OAuth (if used)
 
 Same process - create separate OAuth apps for demo and production.

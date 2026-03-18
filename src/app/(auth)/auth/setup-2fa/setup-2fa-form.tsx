@@ -93,7 +93,7 @@ export function Setup2faForm() {
 
   const handleSignOut = async () => {
     setSignOutLoading(true);
-    await signOut({ callbackUrl: "/auth/sign-in" });
+    await signOut({ callbackUrl: "/api/link/clear-cookie?redirect=/auth/sign-in" });
   };
 
   return (

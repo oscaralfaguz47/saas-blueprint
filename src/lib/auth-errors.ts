@@ -55,13 +55,20 @@ export function getAuthErrorCopy(error?: string | null): AuthErrorCopy {
           "Please try again in a moment. If the issue persists, verify your email address or check your email provider settings.",
       };
 
-    // User tried Google after already using Magic link (or vice versa) without linking accounts
     case "OAuthAccountNotLinked":
       return {
         code,
         title: "This email is already registered",
         description:
-          "This email was previously used with a different sign-in method. Please sign in using the same method as before (Google or Magic link).",
+          "This email was previously used with a different sign-in method. Please sign in using the same method as before (Google, Microsoft, or Magic Link).",
+      };
+
+    case "MicrosoftEmailRequired":
+      return {
+        code,
+        title: "Microsoft account email required",
+        description:
+          "Your Microsoft account did not provide a usable email address for sign-in. Please use a Microsoft work account with an addressable email, or sign in with Magic Link.",
       };
 
     case "AccessDenied":
@@ -81,15 +88,16 @@ export function getAuthErrorCopy(error?: string | null): AuthErrorCopy {
           "There is a configuration issue with the authentication setup. Please contact support (or check server logs in development).",
       };
 
-    // OAuth flow issues
+    // OAuth flow issues (Callback often from ngrok/interstitial or transient callback failure)
     case "OAuthSignin":
     case "OAuthCallback":
     case "OAuthCreateAccount":
+    case "Callback":
       return {
         code,
-        title: "Google sign-in failed",
+        title: "Single sign-on failed",
         description:
-          "We couldn’t complete Google sign-in. Please try again. If it keeps happening, contact support.",
+          "We couldn’t complete sign-in with your account. Please try again. If it keeps happening, contact support.",
       };
 
     case "CredentialsSignin":

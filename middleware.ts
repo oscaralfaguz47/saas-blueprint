@@ -23,6 +23,11 @@ function isPublicPath(pathname: string) {
   // NextAuth endpoints must be public
   if (pathname.startsWith("/api/auth")) return true;
 
+  // Link challenge endpoints must be public — they are called during the
+  // unauthenticated link flow and must never be redirected to sign-in,
+  // which would corrupt the OAuth callbackUrl and break the state cookie.
+  if (pathname.startsWith("/api/link/")) return true;
+
   // Health check for load balancers and monitoring (no auth)
   if (pathname === "/api/health") return true;
 

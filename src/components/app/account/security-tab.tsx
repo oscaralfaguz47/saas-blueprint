@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { signIn } from "next-auth/react";
 import QRCode from "qrcode";
 import { Input } from "@/components/ui/input";
 import { useApiFetch } from "@/hooks/use-api-fetch";
@@ -51,10 +52,44 @@ function formatBackupCodesDate(isoDate: string | null | undefined): string | nul
   }
 }
 
-type Props = { security: AccountSecurity };
+type Props = {
+  security: AccountSecurity;
+  linkedProviders: string[];
+  authLevel: string;
+  currentUserEmail: string | null;
+};
 
-export function SecurityTab({ security: initialSecurity }: Props) {
+function MicrosoftIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 21 21" className="h-5 w-5" focusable="false">
+      <rect x="1" y="1" width="9" height="9" fill="#F25022" />
+      <rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
+      <rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
+      <rect x="11" y="11" width="9" height="9" fill="#FFB900" />
+    </svg>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 48 48" className="h-5 w-5" focusable="false">
+      <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.3l6.7-6.7C35.6 2.3 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.3l7.8 6.1C12.3 13.3 17.7 9.5 24 9.5z" />
+      <path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-2.8-.4-4.1H24v7.8h12.6c-.3 2-1.7 5-4.8 7.1l7.4 5.8c4.3-4 6.9-9.9 6.9-16.6z" />
+      <path fill="#FBBC05" d="M10.4 28.6c-.5-1.4-.8-2.8-.8-4.6s.3-3.2.8-4.6l-7.8-6.1C1 16.6 0 20.2 0 24s1 7.4 2.6 10.7l7.8-6.1z" />
+      <path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.4-5.8c-2 1.4-4.7 2.4-7.8 2.4-6.3 0-11.7-3.8-13.6-9.1l-7.8 6.1C6.5 42.6 14.6 48 24 48z" />
+      <path fill="none" d="M0 0h48v48H0z" />
+    </svg>
+  );
+}
+
+export function SecurityTab({
+  security: initialSecurity,
+  linkedProviders,
+  authLevel,
+  currentUserEmail,
+}: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const apiFetch = useApiFetch();
   const [totpSetupStep, setTotpSetupStep] = useState<"idle" | "qr" | "verify">("idle");
   const [setupData, setSetupData] = useState<{ otpauthUri: string; manualKey: string } | null>(
@@ -77,7 +112,58 @@ export function SecurityTab({ security: initialSecurity }: Props) {
   const [autoLogoutLoading, setAutoLogoutLoading] = useState(false);
   const [autoLogoutError, setAutoLogoutError] = useState<string | null>(null);
 
+  const urlError = searchParams.get("error");
+  const urlProvider = searchParams.get("provider");
+  const [linkError, setLinkError] = useState<string | null>(() => {
+    if (urlError === "link_email_mismatch") {
+      const emailHint = currentUserEmail ? ` (${currentUserEmail})` : "";
+      if (urlProvider === "azure-ad") {
+        return `The Microsoft account you selected uses a different email address than your account${emailHint}. Please select the Microsoft account that uses this same email address.`;
+      }
+      if (urlProvider === "google") {
+        return `The Google account you selected uses a different email address than your account${emailHint}. Please select the Google account that uses this same email address.`;
+      }
+      return `The account you selected uses a different email address than your account${emailHint}. Please select an account with the same email address.`;
+    }
+    return null;
+  });
+  const [linkingProvider, setLinkingProvider] = useState<string | null>(null);
+
   const totpEnabled = initialSecurity.totpEnabled;
+
+  useEffect(() => {
+    if (urlError === "link_email_mismatch") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("error");
+      url.searchParams.delete("provider");
+      window.history.replaceState({}, "", url.toString());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- strip params once after OAuth redirect
+  }, []);
+
+  async function handleLinkProvider(provider: "azure-ad" | "google") {
+    setLinkError(null);
+    setLinkingProvider(provider);
+    try {
+      const res = await fetch("/api/account/link-provider/initiate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider }),
+      });
+      const data = (await res.json()) as { token?: string; error?: string };
+      if (!res.ok || !data.token) {
+        setLinkError(data.error ?? "Failed to initiate linking. Please try again.");
+        setLinkingProvider(null);
+        return;
+      }
+      const cookieName = `__link_intent_${provider.replace(/-/g, "_")}`;
+      document.cookie = `${cookieName}=${encodeURIComponent(data.token)}; Path=/; Max-Age=300; SameSite=Lax`;
+      await signIn(provider, { callbackUrl: "/app/account?tab=security" });
+    } catch {
+      setLinkError("Something went wrong. Please try again.");
+      setLinkingProvider(null);
+    }
+  }
 
   // QR is only shown after user clicks "Enable 2FA" in this session; we do not restore pending setup on mount
   // so returning to the tab shows only the button and avoids confusion that 2FA is already enabled.
@@ -287,8 +373,104 @@ export function SecurityTab({ security: initialSecurity }: Props) {
       .finally(() => setAutoLogoutLoading(false));
   };
 
+  const hasGoogle = linkedProviders.includes("google");
+  const hasMicrosoft = linkedProviders.includes("azure-ad");
+  const canLink = authLevel === "FULL";
+  const canLinkGoogle = canLink && !hasGoogle;
+  const canLinkMicrosoft = canLink && !hasMicrosoft;
+  const hasUnlinkedProviders = canLinkGoogle || canLinkMicrosoft;
+
   return (
     <div className="space-y-6 sm:space-y-8">
+      {/* Sign-in methods */}
+      <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
+        <h2 className="text-base font-semibold text-(--text-primary)">Sign-in methods</h2>
+        <p className="mt-1 text-sm text-(--text-secondary)">
+          Linked sign-in methods you can use to access your account.
+        </p>
+
+        {linkError && (
+          <div className="mt-4 rounded-xl border border-(--color-danger) bg-(--bg-surface) px-4 py-3 text-sm">
+            <div className="font-semibold text-(--text-primary)">Account not linked</div>
+            <div className="mt-1 text-(--text-secondary)">{linkError}</div>
+            <button
+              type="button"
+              onClick={() => setLinkError(null)}
+              className="mt-3 inline-flex text-xs font-medium text-(--text-secondary) hover:text-(--text-primary)"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {/* Linked providers list */}
+        <ul className="mt-4 space-y-2 text-sm text-(--text-secondary)">
+          {linkedProviders.includes("google") && (
+            <li className="flex items-center gap-2">
+              <GoogleIcon />
+              <span className="font-medium text-(--text-primary)">Google</span>
+              <span className="rounded-md border border-(--border-subtle) px-1.5 py-0.5 text-xs">
+                Linked
+              </span>
+            </li>
+          )}
+          {linkedProviders.includes("azure-ad") && (
+            <li className="flex items-center gap-2">
+              <MicrosoftIcon />
+              <span className="font-medium text-(--text-primary)">Microsoft</span>
+              <span className="rounded-md border border-(--border-subtle) px-1.5 py-0.5 text-xs">
+                Linked
+              </span>
+            </li>
+          )}
+          {linkedProviders.includes("email") && (
+            <li className="flex items-center gap-2">
+              <span className="font-medium text-(--text-primary)">Magic link / Email</span>
+              <span className="rounded-md border border-(--border-subtle) px-1.5 py-0.5 text-xs">
+                Linked
+              </span>
+            </li>
+          )}
+        </ul>
+
+        {/* Link buttons — only for providers not yet linked */}
+        {authLevel === "FULL" && hasUnlinkedProviders && (
+          <div className="mt-4 flex flex-col gap-2">
+            <div className="flex flex-wrap gap-2">
+              {canLinkGoogle && (
+                <button
+                  type="button"
+                  disabled={!!linkingProvider}
+                  onClick={() => handleLinkProvider("google")}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <GoogleIcon />
+                  {linkingProvider === "google" ? "Redirecting…" : "Link Google"}
+                </button>
+              )}
+              {canLinkMicrosoft && (
+                <button
+                  type="button"
+                  disabled={!!linkingProvider}
+                  onClick={() => handleLinkProvider("azure-ad")}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <MicrosoftIcon />
+                  {linkingProvider === "azure-ad" ? "Redirecting…" : "Link Microsoft"}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Hint when MFA is pending — show when user could link OAuth after completing sign-in */}
+        {authLevel !== "FULL" && (!hasGoogle || !hasMicrosoft) && (
+          <p className="mt-2 text-xs text-(--text-muted)">
+            Complete sign-in (including 2FA if required) to link additional sign-in methods.
+          </p>
+        )}
+      </section>
+
       {/* Two-Factor Authentication */}
       <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
         <h2 className="text-base font-semibold text-(--text-primary)">Two-Factor Authentication</h2>

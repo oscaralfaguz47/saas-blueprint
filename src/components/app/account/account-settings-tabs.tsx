@@ -36,10 +36,20 @@ const ALL_TABS: { id: AccountTab; label: string }[] = [
 type Props = {
   profile: AccountProfile;
   loginMethod: string;
+  linkedProviders: string[];
+  authLevel: string;
   security: AccountSecurity;
+  currentUserEmail: string | null;
 };
 
-export function AccountSettingsTabs({ profile, loginMethod, security }: Props) {
+export function AccountSettingsTabs({
+  profile,
+  loginMethod,
+  linkedProviders,
+  authLevel,
+  security,
+  currentUserEmail,
+}: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const tabFromUrl = (searchParams.get("tab") as AccountTab) || "profile";
@@ -80,7 +90,12 @@ export function AccountSettingsTabs({ profile, loginMethod, security }: Props) {
           <AppearanceTab initialMode={profile.appearance} />
         </TabsContent>
         <TabsContent value="security">
-          <SecurityTab security={security} />
+          <SecurityTab
+            security={security}
+            linkedProviders={linkedProviders}
+            authLevel={authLevel}
+            currentUserEmail={currentUserEmail}
+          />
         </TabsContent>
       </Tabs>
     </div>

@@ -1,5 +1,5 @@
 -- Deduplicate Subscription: keep one row per (tenantId, provider).
--- Keep the row with highest entitlement plan (enterprise > pro > starter > free), then latest currentPeriodEnd, then latest id.
+-- Keep the row with latest currentPeriodEnd, then latest id. (currentEntitlementPlanCode is added in a later migration.)
 -- Reassign BillingEvents from removed rows to the kept row, then delete duplicates.
 -- Finally add unique constraint so one subscription per tenant per provider.
 -- Only processes rows where provider is not null (e.g. 'paddle').
@@ -12,10 +12,6 @@ WITH ranked AS (
     ROW_NUMBER() OVER (
       PARTITION BY "tenantId", "provider"
       ORDER BY
-        CASE WHEN LOWER(COALESCE("currentEntitlementPlanCode", 'free')) = 'enterprise' THEN 3
-             WHEN LOWER(COALESCE("currentEntitlementPlanCode", 'free')) = 'pro' THEN 2
-             WHEN LOWER(COALESCE("currentEntitlementPlanCode", 'free')) = 'starter' THEN 1
-             ELSE 0 END DESC,
         "currentPeriodEnd" DESC NULLS LAST,
         id DESC
     ) AS rn
@@ -39,10 +35,6 @@ WITH ranked AS (
     ROW_NUMBER() OVER (
       PARTITION BY "tenantId", "provider"
       ORDER BY
-        CASE WHEN LOWER(COALESCE("currentEntitlementPlanCode", 'free')) = 'enterprise' THEN 3
-             WHEN LOWER(COALESCE("currentEntitlementPlanCode", 'free')) = 'pro' THEN 2
-             WHEN LOWER(COALESCE("currentEntitlementPlanCode", 'free')) = 'starter' THEN 1
-             ELSE 0 END DESC,
         "currentPeriodEnd" DESC NULLS LAST,
         id DESC
     ) AS rn

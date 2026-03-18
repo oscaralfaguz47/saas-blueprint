@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
-import { signOut } from "next-auth/react";
 import { IconLogout, IconSettings } from "@/components/ui/icons";
 
 type UserMenuProps = {
@@ -119,7 +118,24 @@ export default function UserMenu({ user }: UserMenuProps) {
 
   async function handleSignOut() {
     setOpen(false);
-    await signOut({ callbackUrl: "/auth/sign-in" });
+    // Use fetch + manual redirect instead of signOut() from next-auth/react.
+    // signOut() follows NextAuth's server-side redirect which uses the Host
+    // header (localhost:3000 behind ngrok) instead of window.location.origin.
+    // By calling the endpoint directly and redirecting ourselves, we always
+    // land on the correct domain.
+    try {
+      const csrfRes = await fetch("/api/auth/csrf");
+      const { csrfToken } = await csrfRes.json() as { csrfToken: string };
+      await fetch("/api/auth/signout", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ csrfToken, callbackUrl: "/auth/sign-in" }),
+        redirect: "manual",
+      });
+    } catch {
+      // Best-effort: even if fetch fails, redirect to sign-in.
+    }
+    window.location.href = "/auth/sign-in";
   }
 
   return (

@@ -24,8 +24,8 @@ export default async function AccountPage() {
   });
   if (!user) redirect("/auth/sign-in");
 
-  const [account, security] = await Promise.all([
-    prisma.account.findFirst({
+  const [accounts, security] = await Promise.all([
+    prisma.account.findMany({
       where: { userId: user.id },
       select: { provider: true },
     }),
@@ -47,10 +47,15 @@ export default async function AccountPage() {
   }
   if (!avatarUrl && user.image) avatarUrl = user.image;
 
-  const loginMethod =
-    account?.provider === "google"
-      ? "Signed in with Google"
-      : "Signed in with Magic link / Email";
+  const linkedProviders = accounts.map((a) => a.provider);
+  const loginMethodLabel =
+    linkedProviders.length > 1
+      ? `Signed in with ${linkedProviders.join(", ")}`
+      : linkedProviders.includes("google")
+        ? "Signed in with Google"
+        : linkedProviders.includes("azure-ad")
+          ? "Signed in with Microsoft"
+          : "Signed in with Magic link / Email";
 
   const profile = {
     id: user.id,
@@ -70,11 +75,16 @@ export default async function AccountPage() {
     backupCodesGeneratedAt: security?.backupCodesGeneratedAt?.toISOString() ?? null,
   };
 
+  const authLevel = session.user.authLevel ?? "FULL";
+
   return (
     <AccountSettingsTabs
       profile={profile}
-      loginMethod={loginMethod}
+      loginMethod={loginMethodLabel}
+      linkedProviders={linkedProviders}
+      authLevel={authLevel}
       security={securityFlags}
+      currentUserEmail={user.email ?? null}
     />
   );
 }
