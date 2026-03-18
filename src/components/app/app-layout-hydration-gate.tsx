@@ -6,7 +6,6 @@ import { WorkspaceReadyNotifier } from "@/components/app/workspace-ready-notifie
 import AppLayoutClient from "@/components/app/app-layout-client";
 import { ActivityTrackerProvider } from "@/components/app/activity-tracker-provider";
 import { ThemeProvider } from "@/components/theme/theme-provider";
-import ThemeBootstrap from "@/components/theme/theme-bootstrap";
 
 type Workspace = {
   id: string;
@@ -44,7 +43,6 @@ export function AppLayoutHydrationGate({
 }: AppLayoutHydrationGateProps) {
   return (
     <>
-      <ThemeBootstrap />
       <WorkspaceReadyNotifier tenantId={tenantId} />
       <ThemeProvider initialTheme={initialTheme}>
         <ActivityTrackerProvider />

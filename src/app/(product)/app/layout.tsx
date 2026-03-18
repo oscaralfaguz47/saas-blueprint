@@ -117,7 +117,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       },
     });
     const appearanceMode = userRecord?.appearance ?? "SYSTEM";
-    const initialTheme = appearanceMode === "LIGHT" ? "light" : "dark";
+    const initialTheme: "light" | "dark" | "system" =
+      appearanceMode === "LIGHT" ? "light" : appearanceMode === "DARK" ? "dark" : "system";
 
     let avatarUrl: string | null = null;
     if (userRecord?.profilePhotoObjectKey && isR2Configured()) {

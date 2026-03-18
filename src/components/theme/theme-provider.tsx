@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { APP_THEME_STORAGE_KEY } from "@/components/theme/theme-bootstrap";
 
 export type Theme = "dark" | "light" | "system";
 
@@ -11,15 +12,13 @@ type ThemeContextValue = {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-const STORAGE_KEY = "atl.theme";
-
 function isTheme(value: unknown): value is Theme {
   return value === "dark" || value === "light" || value === "system";
 }
 
 function readThemeFromStorage(): Theme {
   try {
-    const saved = window.localStorage.getItem(STORAGE_KEY);
+    const saved = window.localStorage.getItem(APP_THEME_STORAGE_KEY);
     return isTheme(saved) ? saved : "dark";
   } catch {
     return "dark";
@@ -27,8 +26,6 @@ function readThemeFromStorage(): Theme {
 }
 
 function applyThemeToDocument(theme: Theme) {
-  // If you prefer relying on :root default for dark, you can remove attribute for "dark".
-  // But being explicit is simpler/consistent.
   document.documentElement.setAttribute("data-theme", theme);
 }
 
@@ -39,7 +36,6 @@ type ThemeProviderProps = {
 };
 
 export function ThemeProvider({ children, initialTheme }: ThemeProviderProps) {
-  // Prefer initialTheme from server (L1), then localStorage, then "dark" for hydration.
   const [theme, setThemeState] = useState<Theme>(isTheme(initialTheme) ? initialTheme : "dark");
 
   useEffect(() => {
@@ -55,12 +51,11 @@ export function ThemeProvider({ children, initialTheme }: ThemeProviderProps) {
     setThemeState(t);
 
     try {
-      window.localStorage.setItem(STORAGE_KEY, t);
+      window.localStorage.setItem(APP_THEME_STORAGE_KEY, t);
     } catch {
       // ignore
     }
 
-    // DOM will sync in the effect; we can also optimistically apply immediately for snappier UX.
     applyThemeToDocument(t);
   }
 

@@ -3,7 +3,6 @@ import { Suspense } from "react";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Providers from "./providers";
-import ThemeBootstrap from "@/components/theme/theme-bootstrap";
 import { OAuthPopupDetector } from "@/components/auth/oauth-popup-detector";
 
 const inter = Inter({
@@ -21,6 +20,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={inter.className} suppressHydrationWarning>
       <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var p=location.pathname,a=p.startsWith('/app')||p.startsWith('/admin'),s=a&&localStorage.getItem('atl.theme.app'),t=s==='light'||s==='dark'||s==='system'?s:'dark';document.documentElement.setAttribute('data-theme',t)}catch(e){document.documentElement.setAttribute('data-theme','dark')}`,
+          }}
+        />
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -70,7 +74,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body suppressHydrationWarning>
-        <ThemeBootstrap />
         <div id="__app-root" suppressHydrationWarning>
           <Suspense fallback={null}>
             <OAuthPopupDetector />

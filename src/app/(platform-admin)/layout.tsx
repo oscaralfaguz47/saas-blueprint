@@ -60,7 +60,8 @@ export default async function PlatformAdminLayout({ children }: { children: Reac
   if (!canAccess) redirect("/unauthorized");
 
   const appearanceMode = user.appearance ?? "SYSTEM";
-  const initialTheme = appearanceMode === "LIGHT" ? "light" : "dark";
+  const initialTheme: "light" | "dark" | "system" =
+    appearanceMode === "LIGHT" ? "light" : appearanceMode === "DARK" ? "dark" : "system";
 
   let avatarUrl: string | null = null;
   if (user.profilePhotoObjectKey && isR2Configured()) {

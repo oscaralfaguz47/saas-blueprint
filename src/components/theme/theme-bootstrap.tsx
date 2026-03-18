@@ -1,23 +1,28 @@
 "use client";
 
-const STORAGE_KEY = "atl.theme";
+// App shell only: persisted user preference. Public routes ignore this and stay dark.
+export const APP_THEME_STORAGE_KEY = "atl.theme.app";
 
-// Run synchronously before React hydrates to prevent layout shift / FOUC
 export default function ThemeBootstrap() {
+  const key = APP_THEME_STORAGE_KEY;
   const code = `
     try {
-      var saved = window.localStorage.getItem("${STORAGE_KEY}");
-      if (saved === "light" || saved === "dark" || saved === "system") {
-        document.documentElement.setAttribute("data-theme", saved);
-      } else {
-        // Product default (can be dark). We set explicitly for consistency.
+      var path = window.location.pathname || "";
+      var isAppShell = path.indexOf("/app") === 0 || path.indexOf("/admin") === 0;
+      if (!isAppShell) {
         document.documentElement.setAttribute("data-theme", "dark");
+      } else {
+        var saved = window.localStorage.getItem("${key}");
+        if (saved === "light" || saved === "dark" || saved === "system") {
+          document.documentElement.setAttribute("data-theme", saved);
+        } else {
+          document.documentElement.setAttribute("data-theme", "dark");
+        }
       }
     } catch (e) {
       document.documentElement.setAttribute("data-theme", "dark");
     }
   `;
-
   return (
     <script
       id="theme-bootstrap"
