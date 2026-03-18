@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
+import { useOAuthPopup, getOAuthAuthorizationUrl } from "@/hooks/use-oauth-popup";
 import QRCode from "qrcode";
 import { Input } from "@/components/ui/input";
 import { useApiFetch } from "@/hooks/use-api-fetch";
@@ -90,6 +91,7 @@ export function SecurityTab({
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { openPopup } = useOAuthPopup();
   const apiFetch = useApiFetch();
   const [totpSetupStep, setTotpSetupStep] = useState<"idle" | "qr" | "verify">("idle");
   const [setupData, setSetupData] = useState<{ otpauthUri: string; manualKey: string } | null>(
@@ -158,7 +160,48 @@ export function SecurityTab({
       }
       const cookieName = `__link_intent_${provider.replace(/-/g, "_")}`;
       document.cookie = `${cookieName}=${encodeURIComponent(data.token)}; Path=/; Max-Age=300; SameSite=Lax`;
-      await signIn(provider, { callbackUrl: "/app/account?tab=security" });
+
+      const popupCallbackUrl = `${window.location.origin}/auth/popup-callback`;
+      const authUrl = await getOAuthAuthorizationUrl(provider, popupCallbackUrl);
+
+      if (!authUrl) {
+        await signIn(provider, { callbackUrl: "/app/account?tab=security" });
+        setLinkingProvider(null);
+        return;
+      }
+
+      const result = await openPopup(authUrl);
+
+      if (result.success) {
+        setLinkingProvider(null);
+        window.location.href = "/app/account?tab=security";
+        return;
+      }
+      if (result.error === "popup_blocked") {
+        await signIn(provider, { callbackUrl: "/app/account?tab=security" });
+        return;
+      }
+      if (result.error === "cancelled") {
+        setLinkingProvider(null);
+        return;
+      }
+      if (!result.success && result.error === "error") {
+        if (result.errorCode === "link_email_mismatch") {
+          const emailHint = currentUserEmail ? ` (${currentUserEmail})` : "";
+          const providerName = provider === "azure-ad" ? "Microsoft" : "Google";
+          setLinkError(
+            `The ${providerName} account you selected uses a different email address than your account${emailHint}. Please select the ${providerName} account that uses this same email address.`,
+          );
+        } else if (result.errorCode === "AccessDenied") {
+          setLinkError("Access was denied. Please try again.");
+        } else {
+          setLinkError("Something went wrong. Please try again.");
+        }
+        setLinkingProvider(null);
+        return;
+      }
+      setLinkError("Something went wrong. Please try again.");
+      setLinkingProvider(null);
     } catch {
       setLinkError("Something went wrong. Please try again.");
       setLinkingProvider(null);

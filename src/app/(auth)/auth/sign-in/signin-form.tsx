@@ -3,6 +3,7 @@
 import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
+import { useOAuthPopup, getOAuthAuthorizationUrl } from "@/hooks/use-oauth-popup";
 
 type Status =
   | { type: "idle" }
@@ -108,6 +109,7 @@ function MicrosoftIcon() {
 
 export default function SignInForm() {
   const searchParams = useSearchParams();
+  const { openPopup } = useOAuthPopup();
   const callbackUrl = useMemo(
     () => getSafeCallbackUrl(searchParams.get("callbackUrl")),
     [searchParams]
@@ -127,15 +129,32 @@ export default function SignInForm() {
 
     setStatus({ type: "sending_google" });
 
-    // NextAuth will redirect. If it doesn't (edge cases), we still reset state.
     try {
-      await signIn("google", { callbackUrl });
+      const popupCallbackUrl = `${window.location.origin}/auth/popup-callback`;
+      const authUrl = await getOAuthAuthorizationUrl("google", popupCallbackUrl);
+
+      if (!authUrl) {
+        await signIn("google", { callbackUrl });
+        return;
+      }
+
+      const result = await openPopup(authUrl);
+
+      if (result.success) {
+        window.location.href = callbackUrl;
+        return;
+      }
+      if (result.error === "popup_blocked") {
+        await signIn("google", { callbackUrl });
+        return;
+      }
+      if (result.error === "cancelled") {
+        setStatus({ type: "idle" });
+        return;
+      }
+      setStatus({ type: "error", message: getFriendlyError(undefined) });
     } catch (e: unknown) {
       setStatus({ type: "error", message: getFriendlyError(toErrorMessage(e)) });
-    } finally {
-      setTimeout(() => {
-        setStatus((s) => (s.type === "sending_google" ? { type: "idle" } : s));
-      }, 800);
     }
   }
 
@@ -143,15 +162,31 @@ export default function SignInForm() {
     if (isBusy) return;
     setStatus({ type: "sending_microsoft" });
     try {
-      await signIn("azure-ad", { callbackUrl });
+      const popupCallbackUrl = `${window.location.origin}/auth/popup-callback`;
+      const authUrl = await getOAuthAuthorizationUrl("azure-ad", popupCallbackUrl);
+
+      if (!authUrl) {
+        await signIn("azure-ad", { callbackUrl });
+        return;
+      }
+
+      const result = await openPopup(authUrl);
+
+      if (result.success) {
+        window.location.href = callbackUrl;
+        return;
+      }
+      if (result.error === "popup_blocked") {
+        await signIn("azure-ad", { callbackUrl });
+        return;
+      }
+      if (result.error === "cancelled") {
+        setStatus({ type: "idle" });
+        return;
+      }
+      setStatus({ type: "error", message: getFriendlyError(undefined) });
     } catch (e: unknown) {
       setStatus({ type: "error", message: getFriendlyError(toErrorMessage(e)) });
-    } finally {
-      setTimeout(() => {
-        setStatus((s) =>
-          s.type === "sending_microsoft" ? { type: "idle" } : s
-        );
-      }, 800);
     }
   }
 
