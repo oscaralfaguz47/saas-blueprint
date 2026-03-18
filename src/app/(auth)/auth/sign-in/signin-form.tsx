@@ -240,7 +240,7 @@ export default function SignInForm() {
         onClick={handleGoogle}
         disabled={isBusy}
         aria-label="Continue with Google"
-        className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
       >
         <GoogleIcon />
         {status.type === "sending_google"
@@ -254,7 +254,7 @@ export default function SignInForm() {
         onClick={handleMicrosoft}
         disabled={isBusy}
         aria-label="Continue with Microsoft"
-        className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
       >
         <MicrosoftIcon />
         {status.type === "sending_microsoft"
@@ -302,7 +302,7 @@ export default function SignInForm() {
         <button
           type="submit"
           disabled={isBusy || !emailNormalized}
-          className="inline-flex h-11 w-full items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-11 w-full cursor-pointer items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
         >
           {status.type === "sending_email"
             ? "Sending magic link..."

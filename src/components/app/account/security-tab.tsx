@@ -488,7 +488,7 @@ export function SecurityTab({
                   type="button"
                   disabled={!!linkingProvider}
                   onClick={() => handleLinkProvider("google")}
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <GoogleIcon />
                   {linkingProvider === "google" ? "Redirecting…" : "Link Google"}
@@ -499,7 +499,7 @@ export function SecurityTab({
                   type="button"
                   disabled={!!linkingProvider}
                   onClick={() => handleLinkProvider("azure-ad")}
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <MicrosoftIcon />
                   {linkingProvider === "azure-ad" ? "Redirecting…" : "Link Microsoft"}
