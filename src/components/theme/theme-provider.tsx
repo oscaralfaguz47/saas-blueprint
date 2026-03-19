@@ -38,17 +38,21 @@ type ThemeProviderProps = {
 
 export function ThemeProvider({ children, initialTheme }: ThemeProviderProps) {
   const [theme, setThemeState] = useState<Theme>(() => {
-    if (typeof window !== "undefined") {
-      const fromStorage = readThemeFromStorage();
-      if (fromStorage) return fromStorage;
-    }
     return isTheme(initialTheme) ? initialTheme : "dark";
   });
 
   useEffect(() => {
-    const fromStorage = readThemeFromStorage();
     const fromServer = isTheme(initialTheme) ? initialTheme : null;
-    setThemeState(fromStorage ?? fromServer ?? "dark");
+    if (fromServer) {
+      setThemeState(fromServer);
+      try {
+        window.localStorage.setItem(APP_THEME_STORAGE_KEY, fromServer);
+      } catch {
+        // ignore
+      }
+    } else {
+      setThemeState(readThemeFromStorage() ?? "dark");
+    }
   }, [initialTheme]);
 
   useEffect(() => {

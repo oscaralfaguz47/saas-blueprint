@@ -17,6 +17,12 @@ type SignOutFormProps = {
 // localhost:3000 when running behind ngrok — ignoring NEXTAUTH_URL.
 async function performSignOut(csrfToken: string, redirectTo: string) {
   try {
+    localStorage.removeItem("atl.theme.app");
+    document.documentElement.setAttribute("data-theme", "dark");
+  } catch {
+    // ignore
+  }
+  try {
     await fetch("/api/auth/signout", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
