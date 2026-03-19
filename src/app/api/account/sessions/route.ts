@@ -6,23 +6,41 @@ import { prisma } from "@/server/db";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { parseUserAgent } from "@/server/lib/device-parser";
 
-/**
- * GET /api/account/sessions
- * Returns all active (non-revoked, non-expired) sessions for the current user.
- * Marks the current session with isCurrent: true.
- */
-export const GET = withErrorHandler(async () => {
+export const GET = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
   const mfaError = await requireFullSession(session);
   if (mfaError) return mfaError;
   if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 
+  const url = new URL(req.url);
+  const cursor = url.searchParams.get("cursor") ?? undefined;
+  const limit = 5; // sessions per page
   const now = new Date();
+
+  // Step 1: Clean up expired and old revoked sessions BEFORE querying
+  // Await this so the findMany sees a clean state
+  await prisma.session.deleteMany({
+    where: {
+      userId: session.user.id,
+      // Do NOT delete the current session
+      sessionToken: { not: session.user.sessionToken ?? "" },
+      OR: [
+        // Expired sessions
+        { expires: { lt: now } },
+        {
+          revokedAt: { not: null },
+        },
+      ],
+    },
+  });
+
+  // Step 2: Query clean active sessions
   const sessions = await prisma.session.findMany({
     where: {
       userId: session.user.id,
       revokedAt: null,
       expires: { gt: now },
+      authLevel: "FULL",
     },
     select: {
       id: true,
@@ -36,15 +54,20 @@ export const GET = withErrorHandler(async () => {
       location: true,
     },
     orderBy: { lastActivityAt: "desc" },
+    take: limit + 1,
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
   });
 
-  const currentToken = session.user.sessionToken ?? null;
+  const hasMore = sessions.length > limit;
+  const items = hasMore ? sessions.slice(0, limit) : sessions;
+  const nextCursor = hasMore ? (items[items.length - 1]?.id ?? null) : null;
+  const currentToken = session.user.sessionToken;
 
-  const items = sessions.map((s) => {
+  const mapped = items.map((s) => {
     const device = parseUserAgent(s.userAgent);
     return {
       id: s.id,
-      isCurrent: currentToken ? s.sessionToken === currentToken : false,
+      isCurrent: s.sessionToken === currentToken,
       device: device.displayName,
       deviceType: device.deviceType,
       browser: device.browser,
@@ -58,6 +81,6 @@ export const GET = withErrorHandler(async () => {
     };
   });
 
-  return apiSuccess({ sessions: items });
+  return apiSuccess({ sessions: mapped, nextCursor, hasMore });
 });
 

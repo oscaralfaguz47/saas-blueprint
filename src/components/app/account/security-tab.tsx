@@ -194,11 +194,32 @@ export function SecurityTab({
     authLevel: string;
   };
 
+  type LoginHistoryItem = {
+    id: string;
+    action: string;
+    label: string;
+    method: string | null;
+    provider: string | null;
+    device: string;
+    deviceType: string;
+    ipAddress: string | null;
+    location: string | null;
+    createdAt: string;
+  };
+
   const [deviceSessions, setDeviceSessions] = useState<DeviceSession[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(true);
+  const [devicesLoadingMore, setDevicesLoadingMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
   const [revokingSessionId, setRevokingSessionId] = useState<string | null>(null);
   const [revokingOthers, setRevokingOthers] = useState(false);
   const [devicesError, setDevicesError] = useState<string | null>(null);
+  const [loginHistory, setLoginHistory] = useState<LoginHistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyLoadingMore, setHistoryLoadingMore] = useState(false);
+  const [historyNextCursor, setHistoryNextCursor] = useState<string | null>(null);
+  const [historyHasMore, setHistoryHasMore] = useState(false);
 
   const urlError = searchParams.get("error");
   const urlProvider = searchParams.get("provider");
@@ -244,22 +265,77 @@ export function SecurityTab({
     void fetchPasskeys();
   }, []);
 
-  async function fetchDeviceSessions() {
-    setDevicesLoading(true);
+  async function fetchDeviceSessions(cursor?: string) {
+    const isInitial = !cursor;
+    if (isInitial) setDevicesLoading(true);
+    else setDevicesLoadingMore(true);
+
     try {
-      const res = await fetch("/api/account/sessions", { method: "GET" });
+      const url = cursor
+        ? `/api/account/sessions?cursor=${cursor}`
+        : "/api/account/sessions";
+      const res = await fetch(url);
       if (!res.ok) return;
-      const data = (await res.json()) as { data: { sessions: DeviceSession[] } };
-      setDeviceSessions(data.data.sessions);
+      const data = (await res.json()) as {
+        data: {
+          sessions: DeviceSession[];
+          nextCursor: string | null;
+          hasMore: boolean;
+        };
+      };
+      if (isInitial) {
+        setDeviceSessions(data.data.sessions);
+      } else {
+        setDeviceSessions((prev) => [...prev, ...data.data.sessions]);
+      }
+      setNextCursor(data.data.nextCursor);
+      setHasMore(data.data.hasMore);
     } catch {
       // ignore
     } finally {
-      setDevicesLoading(false);
+      if (isInitial) setDevicesLoading(false);
+      else setDevicesLoadingMore(false);
     }
   }
 
   useEffect(() => {
     void fetchDeviceSessions();
+  }, []);
+
+  async function fetchLoginHistory(cursor?: string) {
+    const isInitial = !cursor;
+    if (isInitial) setHistoryLoading(true);
+    else setHistoryLoadingMore(true);
+    try {
+      const url = cursor
+        ? `/api/account/login-history?cursor=${cursor}`
+        : "/api/account/login-history";
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        data: {
+          items: LoginHistoryItem[];
+          nextCursor: string | null;
+          hasMore: boolean;
+        };
+      };
+      if (isInitial) {
+        setLoginHistory(data.data.items);
+      } else {
+        setLoginHistory((prev) => [...prev, ...data.data.items]);
+      }
+      setHistoryNextCursor(data.data.nextCursor);
+      setHistoryHasMore(data.data.hasMore);
+    } catch {
+      // ignore
+    } finally {
+      if (isInitial) setHistoryLoading(false);
+      else setHistoryLoadingMore(false);
+    }
+  }
+
+  useEffect(() => {
+    void fetchLoginHistory();
   }, []);
 
   async function handleRevokeSession(sessionId: string) {
@@ -275,7 +351,7 @@ export function SecurityTab({
       if (!res.ok) {
         setDevicesError(data.error?.message ?? "Failed to sign out device.");
       } else {
-        await fetchDeviceSessions();
+        await fetchDeviceSessions(); // reset to first page
       }
     } catch {
       setDevicesError("Something went wrong.");
@@ -297,13 +373,60 @@ export function SecurityTab({
       if (!res.ok) {
         setDevicesError(data.error?.message ?? "Failed to sign out other devices.");
       } else {
-        await fetchDeviceSessions();
+        await fetchDeviceSessions(); // reset to first page
       }
     } catch {
       setDevicesError("Something went wrong.");
     } finally {
       setRevokingOthers(false);
     }
+  }
+
+  function ActionIcon({ action }: { action: string }) {
+    const isSent = action === "auth.otp.sent";
+    const isSignout = action === "auth.signout";
+    const isFailed = action.includes("failed");
+    if (isSent) {
+      return (
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-(--bg-surface-elev)">
+          <svg className="h-4 w-4 text-(--text-muted)" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+            <polyline points="22,6 12,13 2,6"/>
+          </svg>
+        </div>
+      );
+    }
+    if (isSignout) {
+      return (
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-(--bg-surface-elev)">
+          <svg className="h-4 w-4 text-(--text-muted)" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+        </div>
+      );
+    }
+    if (isFailed) {
+      return (
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-(--color-danger)/10">
+          <svg className="h-4 w-4 text-(--color-danger)" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="15" y1="9" x2="9" y2="15"/>
+            <line x1="9" y1="9" x2="15" y2="15"/>
+          </svg>
+        </div>
+      );
+    }
+    return (
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-(--color-success)/10">
+        <svg className="h-4 w-4 text-(--color-success)" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+          <polyline points="10 17 15 12 10 7"/>
+          <line x1="15" y1="12" x2="3" y2="12"/>
+        </svg>
+      </div>
+    );
   }
 
   async function handleLinkProvider(provider: "azure-ad" | "google") {
@@ -804,7 +927,7 @@ export function SecurityTab({
 
         {devicesLoading ? (
           <div className="mt-4 space-y-2">
-            {[1, 2].map((i) => (
+            {[1, 2, 3].map((i) => (
               <div
                 key={i}
                 className="h-14 animate-pulse rounded-lg bg-(--bg-surface-elev)"
@@ -813,7 +936,7 @@ export function SecurityTab({
           </div>
         ) : (
           <div className="relative mt-4">
-            <ul className="space-y-2 max-h-72 overflow-y-auto pr-1 scrollbar-thin">
+            <ul className="space-y-2 max-h-72 overflow-y-auto pr-1">
               {deviceSessions.map((s) => (
                 <li
                   key={s.id}
@@ -822,7 +945,7 @@ export function SecurityTab({
                   <DeviceIcon deviceType={s.deviceType} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="truncate text-sm font-medium text-(--text-primary)">
+                      <span className="text-sm font-medium text-(--text-primary) truncate">
                         {s.device}
                       </span>
                       {s.isCurrent && (
@@ -866,8 +989,133 @@ export function SecurityTab({
                 </li>
               )}
             </ul>
-            {deviceSessions.length > 4 && (
-              <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 rounded-b-lg bg-linear-to-t from-(--bg-surface) to-transparent" />
+
+            {/* Fade gradient when more items exist */}
+            {hasMore && !devicesLoadingMore && (
+              <div className="pointer-events-none absolute bottom-8 left-0 right-0 h-8 rounded-b-lg bg-gradient-to-t from-(--bg-surface) to-transparent" />
+            )}
+
+            {/* Load more button */}
+            {hasMore && (
+              <button
+                type="button"
+                onClick={() => void fetchDeviceSessions(nextCursor ?? undefined)}
+                disabled={devicesLoadingMore}
+                className="mt-2 w-full rounded-lg border border-(--border-subtle) py-2 text-xs font-medium text-(--text-muted) hover:text-(--text-primary) hover:bg-(--bg-surface-elev) transition-colors disabled:opacity-60"
+              >
+                {devicesLoadingMore ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                    </svg>
+                    Loading...
+                  </span>
+                ) : (
+                  "Show more devices"
+                )}
+              </button>
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* Login History */}
+      <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
+        <h2 className="text-base font-semibold text-(--text-primary)">
+          Login history
+        </h2>
+        <p className="mt-1 text-sm text-(--text-secondary)">
+          Recent sign-in and sign-out activity on your account.
+        </p>
+
+        {historyLoading ? (
+          <div className="mt-4 space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex items-center gap-3">
+                <div className="h-8 w-8 animate-pulse rounded-full bg-(--bg-surface-elev)" />
+                <div className="flex-1 space-y-1">
+                  <div className="h-3 w-32 animate-pulse rounded bg-(--bg-surface-elev)" />
+                  <div className="h-3 w-48 animate-pulse rounded bg-(--bg-surface-elev)" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-4">
+            {loginHistory.length === 0 ? (
+              <p className="py-4 text-center text-sm text-(--text-muted)">
+                No login history found.
+              </p>
+            ) : (
+              <ul className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                {loginHistory.map((item) => (
+                  <li key={item.id} className="flex items-start gap-3">
+                    <ActionIcon action={item.action} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-medium text-(--text-primary)">
+                          {item.label}
+                        </p>
+                        {item.method && item.action !== "auth.signout" && (
+                          <span className="rounded-md border border-(--border-subtle) px-1.5 py-0.5 text-xs text-(--text-muted) capitalize">
+                            {item.method === "magic_link" ? "Magic link" :
+                             item.method === "email_otp" ? "Email code" :
+                             item.method === "passkey" ? "Passkey" :
+                             item.method === "google" ? "Google" :
+                             item.method === "microsoft" ? "Microsoft" :
+                             item.method}
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-(--text-muted)">
+                        {item.device !== "Unknown · Unknown" && item.device !== "Unknown Device" && (
+                          <>
+                            <span>{item.device}</span>
+                            <span>·</span>
+                          </>
+                        )}
+                        {(item.location ?? item.ipAddress) && (
+                          <>
+                            <span>{item.location ?? item.ipAddress}</span>
+                            <span>·</span>
+                          </>
+                        )}
+                        <span>
+                          {new Date(item.createdAt).toLocaleDateString(undefined, {
+                            year: "numeric",
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {historyHasMore && (
+              <button
+                type="button"
+                onClick={() => void fetchLoginHistory(historyNextCursor ?? undefined)}
+                disabled={historyLoadingMore}
+                className="mt-3 w-full rounded-lg border border-(--border-subtle) py-2 text-xs font-medium text-(--text-muted) hover:text-(--text-primary) hover:bg-(--bg-surface-elev) transition-colors disabled:opacity-60"
+              >
+                {historyLoadingMore ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                    </svg>
+                    Loading...
+                  </span>
+                ) : (
+                  "Show more"
+                )}
+              </button>
             )}
           </div>
         )}

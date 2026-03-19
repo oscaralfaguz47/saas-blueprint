@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/server/db";
 import { generateEmailOtp } from "@/server/services/email-otp";
 import { sendMagicLink } from "@/server/services/send-magic-link";
+import { writeAuditLog } from "@/server/services/audit";
 import { ApiErrors, apiError, apiSuccess, withErrorHandler } from "@/lib/api-response";
 
 const bodySchema = z.object({
@@ -79,6 +80,27 @@ export const POST = withErrorHandler(async (req: Request) => {
     otpCode: otpResult.code,
     appName: process.env.APP_NAME ?? undefined,
   });
+
+  // Look up user for audit log (best effort)
+  const existingUser = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true },
+  });
+
+  if (existingUser) {
+    writeAuditLog({
+      actorUserId: existingUser.id,
+      actorContext: "TENANT",
+      tenantId: null,
+      action: "auth.otp.sent",
+      targetType: "User",
+      targetId: existingUser.id,
+      targetUserId: existingUser.id,
+      metadata: { email },
+      ipAddress: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+      userAgent: req.headers.get("user-agent") ?? null,
+    }).catch(() => {});
+  }
 
   return apiSuccess({ sent: true, email });
 });

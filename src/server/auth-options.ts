@@ -15,6 +15,7 @@ import { getNextAuthCookieHeader } from "@/server/nextauth-cookie-header";
 import { ensureBootstrapPlatformOwner } from "@/server/services/platform-bootstrap";
 import { isMfaEnforcedForUser } from "@/server/security/member-security-governance";
 import { sendMagicLink } from "@/server/services/send-magic-link";
+import { writeAuditLog } from "@/server/services/audit";
 import {
   buildProfilePhotoObjectKey,
   getPresignedPutUrlProfilePhoto,
@@ -1133,6 +1134,7 @@ export const authOptions: NextAuthOptions = {
     async signIn({ user, account }) {
       if (!user?.id) return;
 
+      // Existing Microsoft photo upload (keep as is — do not touch)
       if (account?.provider === "azure-ad" && account.access_token) {
         const capturedUserId = user.id;
         const capturedToken = account.access_token as string;
@@ -1158,6 +1160,85 @@ export const authOptions: NextAuthOptions = {
               console.error("[events.signIn] Microsoft photo upload failed:", err);
             });
         });
+      }
+
+      // Write auth sign-in audit log (non-blocking)
+      setImmediate(() => {
+        const provider = account?.provider ?? "unknown";
+
+        // Skip: email-otp and passkey write their own audit logs
+        if (
+          provider === "email-otp-credential" ||
+          provider === "passkey-credential"
+        ) return;
+
+        const meta = consumePendingRequestMeta();
+        writeAuditLog({
+          actorUserId: user.id,
+          actorContext: "TENANT",
+          tenantId: null,
+          action: "auth.signin.success",
+          targetType: "User",
+          targetId: user.id,
+          targetUserId: user.id,
+          metadata: {
+            provider,
+            method:
+              provider === "email"
+                ? "magic_link"
+                : provider === "email-otp-credential"
+                  ? "email_otp"
+                  : provider === "passkey-credential"
+                    ? "passkey"
+                    : provider === "google"
+                      ? "google"
+                      : provider === "azure-ad"
+                        ? "microsoft"
+                        : provider,
+          },
+          ipAddress: meta?.ip ?? null,
+          userAgent: meta?.userAgent ?? null,
+        }).catch(() => {
+          /* non-critical */
+        });
+      });
+    },
+    async signOut(message) {
+      // NextAuth passes either { session } (DB strategy) or { token } (JWT strategy).
+      // We use JWT strategy, so we get { token }.
+      try {
+        const token = "token" in message ? message.token : null;
+        const sessionToken = token?.sessionToken as string | undefined;
+        const userId = token?.sub as string | undefined;
+        if (!sessionToken || !userId) return;
+
+        // Revoke the session row
+        await prisma.session.updateMany({
+          where: {
+            sessionToken,
+            revokedAt: null,
+          },
+          data: {
+            revokedAt: new Date(),
+            logoutReason: "user_signed_out",
+          },
+        });
+
+        // Write audit log (non-blocking)
+        writeAuditLog({
+          actorUserId: userId,
+          actorContext: "TENANT",
+          tenantId: null,
+          action: "auth.signout",
+          targetType: "User",
+          targetId: userId,
+          targetUserId: userId,
+          metadata: { reason: "user_signed_out" },
+        }).catch(() => {
+          /* non-critical */
+        });
+      } catch {
+        // Non-critical
       }
     },
   },
