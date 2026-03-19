@@ -969,6 +969,8 @@ model Session {
   // Lightweight device telemetry
   ipFirstSeen String? @db.VarChar(64)
   lastIp      String? @db.VarChar(64)
+  // Location (from Vercel geolocation headers or IP lookup)
+  location    String?  @db.VarChar(150)
   userAgent   String? @db.VarChar(300)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

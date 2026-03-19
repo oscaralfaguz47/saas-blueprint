@@ -48,6 +48,31 @@ export function consumePasskeyOneTimeToken(token: string): string | null {
   return entry.userId;
 }
 
+// Request context store for capturing IP/UA/location in NextAuth callbacks.
+// This is intentionally module-level + single-value: it works for single-instance deployments.
+// In multi-instance / high-concurrency deployments, you should prefer a keyed approach.
+let _pendingRequestMeta:
+  | {
+      ip: string;
+      userAgent: string;
+      location: string | null;
+    }
+  | null = null;
+
+export function setPendingRequestMeta(
+  ip: string,
+  userAgent: string,
+  location: string | null
+) {
+  _pendingRequestMeta = { ip, userAgent, location };
+}
+
+export function consumePendingRequestMeta() {
+  const meta = _pendingRequestMeta;
+  _pendingRequestMeta = null;
+  return meta;
+}
+
 /** PENDING_MFA Session row expires — intentionally short (MFA challenge window). */
 const MFA_PENDING_SESSION_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
 
@@ -867,6 +892,7 @@ export const authOptions: NextAuthOptions = {
         isMfaEnforcedForUser(user.id),
       ]);
 
+      const requestMeta = consumePendingRequestMeta();
       const now = new Date();
       const sessionToken = randomBytes(32).toString("base64url");
       const needsMfaChallenge =
@@ -882,6 +908,10 @@ export const authOptions: NextAuthOptions = {
             expires,
             authLevel: "PENDING_MFA",
             mfaChallengeExpiresAt: challengeExpires,
+            ipFirstSeen: requestMeta?.ip ?? null,
+            lastIp: requestMeta?.ip ?? null,
+            userAgent: requestMeta?.userAgent ?? null,
+            location: requestMeta?.location ?? null,
           },
         });
       } else {
@@ -893,6 +923,10 @@ export const authOptions: NextAuthOptions = {
             expires,
             authLevel: "FULL",
             mfaVerifiedAt: now,
+            ipFirstSeen: requestMeta?.ip ?? null,
+            lastIp: requestMeta?.ip ?? null,
+            userAgent: requestMeta?.userAgent ?? null,
+            location: requestMeta?.location ?? null,
           },
         });
       }

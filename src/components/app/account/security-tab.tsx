@@ -84,6 +84,54 @@ function GoogleIcon() {
   );
 }
 
+function DeviceIcon({ deviceType }: { deviceType: string }) {
+  if (deviceType === "mobile") {
+    return (
+      <svg
+        className="h-5 w-5 shrink-0 text-(--text-muted)"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+      >
+        <rect x="7" y="2" width="10" height="20" rx="2" ry="2" />
+        <line x1="12" y1="18" x2="12.01" y2="18" />
+      </svg>
+    );
+  }
+  if (deviceType === "tablet") {
+    return (
+      <svg
+        className="h-5 w-5 shrink-0 text-(--text-muted)"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+      >
+        <rect x="4" y="2" width="16" height="20" rx="2" ry="2" />
+        <line x1="12" y1="18" x2="12.01" y2="18" />
+      </svg>
+    );
+  }
+  // desktop / unknown
+  return (
+    <svg
+      className="h-5 w-5 shrink-0 text-(--text-muted)"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+      <line x1="8" y1="21" x2="16" y2="21" />
+      <line x1="12" y1="17" x2="12" y2="21" />
+    </svg>
+  );
+}
+
 export function SecurityTab({
   security: initialSecurity,
   linkedProviders,
@@ -131,6 +179,27 @@ export function SecurityTab({
   const [registeringPasskey, setRegisteringPasskey] = useState(false);
   const [removingPasskeyId, setRemovingPasskeyId] = useState<string | null>(null);
 
+  type DeviceSession = {
+    id: string;
+    isCurrent: boolean;
+    device: string;
+    deviceType: "desktop" | "mobile" | "tablet" | "unknown";
+    browser: string;
+    os: string;
+    ipFirstSeen: string | null;
+    lastIp: string | null;
+    location: string | null;
+    createdAt: string;
+    lastActivityAt: string;
+    authLevel: string;
+  };
+
+  const [deviceSessions, setDeviceSessions] = useState<DeviceSession[]>([]);
+  const [devicesLoading, setDevicesLoading] = useState(true);
+  const [revokingSessionId, setRevokingSessionId] = useState<string | null>(null);
+  const [revokingOthers, setRevokingOthers] = useState(false);
+  const [devicesError, setDevicesError] = useState<string | null>(null);
+
   const urlError = searchParams.get("error");
   const urlProvider = searchParams.get("provider");
   const [linkError, setLinkError] = useState<string | null>(() => {
@@ -174,6 +243,68 @@ export function SecurityTab({
   useEffect(() => {
     void fetchPasskeys();
   }, []);
+
+  async function fetchDeviceSessions() {
+    setDevicesLoading(true);
+    try {
+      const res = await fetch("/api/account/sessions", { method: "GET" });
+      if (!res.ok) return;
+      const data = (await res.json()) as { data: { sessions: DeviceSession[] } };
+      setDeviceSessions(data.data.sessions);
+    } catch {
+      // ignore
+    } finally {
+      setDevicesLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void fetchDeviceSessions();
+  }, []);
+
+  async function handleRevokeSession(sessionId: string) {
+    setRevokingSessionId(sessionId);
+    setDevicesError(null);
+    try {
+      const res = await fetch(`/api/account/sessions/${sessionId}`, {
+        method: "DELETE",
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: { message?: string };
+      };
+      if (!res.ok) {
+        setDevicesError(data.error?.message ?? "Failed to sign out device.");
+      } else {
+        await fetchDeviceSessions();
+      }
+    } catch {
+      setDevicesError("Something went wrong.");
+    } finally {
+      setRevokingSessionId(null);
+    }
+  }
+
+  async function handleRevokeOthers() {
+    setRevokingOthers(true);
+    setDevicesError(null);
+    try {
+      const res = await fetch("/api/account/sessions/revoke-others", {
+        method: "POST",
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: { message?: string };
+      };
+      if (!res.ok) {
+        setDevicesError(data.error?.message ?? "Failed to sign out other devices.");
+      } else {
+        await fetchDeviceSessions();
+      }
+    } catch {
+      setDevicesError("Something went wrong.");
+    } finally {
+      setRevokingOthers(false);
+    }
+  }
 
   async function handleLinkProvider(provider: "azure-ad" | "google") {
     setLinkError(null);
@@ -643,6 +774,97 @@ export function SecurityTab({
               {registeringPasskey ? "Registering..." : "Add Passkey"}
             </button>
           </div>
+        )}
+      </section>
+
+      {/* Devices */}
+      <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-(--text-primary)">Devices</h2>
+            <p className="mt-1 text-sm text-(--text-secondary)">
+              Active sessions on your account. Sign out any device you don&apos;t recognize.
+            </p>
+          </div>
+          {deviceSessions.filter((s) => !s.isCurrent).length > 0 && (
+            <button
+              type="button"
+              onClick={handleRevokeOthers}
+              disabled={revokingOthers}
+              className="shrink-0 text-sm font-medium text-(--color-danger) hover:underline disabled:opacity-60"
+            >
+              {revokingOthers ? "Signing out..." : "Sign out all other devices"}
+            </button>
+          )}
+        </div>
+
+        {devicesError && (
+          <p className="mt-2 text-sm text-(--color-danger)">{devicesError}</p>
+        )}
+
+        {devicesLoading ? (
+          <div className="mt-4 space-y-2">
+            {[1, 2].map((i) => (
+              <div
+                key={i}
+                className="h-14 animate-pulse rounded-lg bg-(--bg-surface-elev)"
+              />
+            ))}
+          </div>
+        ) : (
+          <ul className="mt-4 space-y-2">
+            {deviceSessions.map((s) => (
+              <li
+                key={s.id}
+                className="flex items-center gap-3 rounded-lg border border-(--border-subtle) px-3 py-3"
+              >
+                <DeviceIcon deviceType={s.deviceType} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate text-sm font-medium text-(--text-primary)">
+                      {s.device}
+                    </span>
+                    {s.isCurrent && (
+                      <span className="shrink-0 rounded-md border border-(--color-success) px-1.5 py-0.5 text-xs text-(--color-success)">
+                        This device
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-0.5 flex items-center gap-2 text-xs text-(--text-muted)">
+                    {s.location && <span>{s.location}</span>}
+                    {s.location && s.lastIp && <span>·</span>}
+                    {!s.location && s.lastIp && <span>{s.lastIp}</span>}
+                    {(s.location || s.lastIp) && <span>·</span>}
+                    <span>
+                      Last active{" "}
+                      {new Date(s.lastActivityAt).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </div>
+                </div>
+                {!s.isCurrent && (
+                  <button
+                    type="button"
+                    onClick={() => handleRevokeSession(s.id)}
+                    disabled={!!revokingSessionId}
+                    className="shrink-0 text-xs font-medium text-(--color-danger) hover:underline disabled:opacity-60"
+                  >
+                    {revokingSessionId === s.id ? "Signing out..." : "Sign out"}
+                  </button>
+                )}
+              </li>
+            ))}
+
+            {deviceSessions.length === 0 && (
+              <li className="py-4 text-center text-sm text-(--text-muted)">
+                No active sessions found.
+              </li>
+            )}
+          </ul>
         )}
       </section>
 
