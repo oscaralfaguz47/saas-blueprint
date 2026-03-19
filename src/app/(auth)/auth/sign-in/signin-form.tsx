@@ -4,14 +4,16 @@ import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useOAuthPopup, getOAuthAuthorizationUrl } from "@/hooks/use-oauth-popup";
+import { authenticateWithPasskey } from "@/hooks/use-passkey";
 
 type Status =
   | { type: "idle" }
   | { type: "sending_email" }
   | { type: "sending_google" }
   | { type: "sending_microsoft" }
+  | { type: "sending_passkey" }
   | { type: "email_sent"; email: string }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string; provider?: "passkey" };
 
 function normalizeEmail(input: string) {
   return input.trim().toLowerCase();
@@ -107,6 +109,26 @@ function MicrosoftIcon() {
   );
 }
 
+function PasskeyIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-5 w-5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="8" cy="7" r="4" />
+      <path d="M16 15v-1a4 4 0 0 0-4-4H4a4 4 0 0 0-4 4v2" />
+      <line x1="19" y1="8" x2="19" y2="14" />
+      <line x1="22" y1="11" x2="16" y2="11" />
+    </svg>
+  );
+}
+
 export default function SignInForm() {
   const searchParams = useSearchParams();
   const { openPopup } = useOAuthPopup();
@@ -190,6 +212,51 @@ export default function SignInForm() {
     }
   }
 
+  async function handlePasskey() {
+    if (isBusy) return;
+    setStatus({ type: "sending_passkey" });
+    setTimeout(() => {
+      setStatus((prev) =>
+        prev.type === "sending_passkey" ? { type: "idle" } : prev
+      );
+    }, 3000);
+    try {
+      const result = await authenticateWithPasskey();
+      if (!result.success) {
+        if (result.error === "cancelled") {
+          setStatus({ type: "idle" });
+          return;
+        }
+        if (result.error === "not_supported") {
+          setStatus({
+            type: "error",
+            provider: "passkey",
+            message: "Passkeys are not supported on this device or browser.",
+          });
+          return;
+        }
+        setStatus({ type: "error", provider: "passkey", message: result.message });
+        return;
+      }
+      const res = await signIn("passkey-credential", {
+        passkeyToken: result.passkeyToken,
+        callbackUrl,
+        redirect: false,
+      });
+      if (res?.error) {
+        setStatus({
+          type: "error",
+          provider: "passkey",
+          message: "Sign-in failed. Please try again.",
+        });
+        return;
+      }
+      window.location.href = res?.url ?? callbackUrl;
+    } catch {
+      setStatus({ type: "idle" });
+    }
+  }
+
   async function handleMagicLink(e: React.FormEvent) {
     e.preventDefault();
     if (isBusy) return;
@@ -230,7 +297,8 @@ export default function SignInForm() {
   }
 
   const showInlineHint = status.type === "email_sent";
-  const showInlineError = status.type === "error";
+  // Only apply email field error styling when error is from email/magic link flow, not passkey
+  const showInlineError = status.type === "error" && status.provider !== "passkey";
 
   return (
     <div className="space-y-4">
@@ -260,6 +328,19 @@ export default function SignInForm() {
         {status.type === "sending_microsoft"
           ? "Signing in with Microsoft..."
           : "Continue with Microsoft"}
+      </button>
+
+      {/* Passkey */}
+      <button
+        type="button"
+        onClick={handlePasskey}
+        aria-label="Continue with Passkey"
+        className="inline-flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <PasskeyIcon />
+        {status.type === "sending_passkey"
+          ? "Signing in with Passkey..."
+          : "Continue with Passkey"}
       </button>
 
       {/* Divider */}

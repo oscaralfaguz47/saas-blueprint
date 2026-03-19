@@ -150,6 +150,7 @@ model User {
   accounts Account[]
   sessions Session[]
   rememberedDevices RememberedDevice[]
+  webAuthnCredentials WebAuthnCredential[]
 
   security UserSecurity?
 
@@ -219,6 +220,10 @@ model UserSecurity {
   lockedUntil DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
+  // WebAuthn registration challenge (one-time, short-lived)
+  webAuthnChallenge          String?   @db.VarChar(512)
+  webAuthnChallengeExpiresAt DateTime?
 
   @@index([totpEnabled])
   @@index([autoLogoutEnabled])
@@ -994,6 +999,32 @@ model RememberedDevice {
 
   @@index([userId, expiresAt])
   @@index([userId, revokedAt])
+}
+
+/// WebAuthn/Passkey credentials for passwordless authentication.
+model WebAuthnCredential {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // WebAuthn credential fields
+  credentialId   String   @unique @db.VarChar(512)
+  publicKey      Bytes
+  counter        BigInt   @default(0)
+  deviceType     String   @db.VarChar(32)   // "singleDevice" | "multiDevice"
+  backedUp       Boolean  @default(false)
+  transports     String[] @default([])       // "usb" | "ble" | "nfc" | "internal" | "hybrid"
+
+  // Display
+  name           String?  @db.VarChar(100)  // user-friendly name e.g. "MacBook Touch ID"
+  aaguid         String?  @db.VarChar(36)   // authenticator AAGUID for device identification
+
+  // Timestamps
+  createdAt      DateTime @default(now())
+  lastUsedAt     DateTime?
+
+  @@index([userId])
+  @@index([credentialId])
 }
 
 model VerificationToken {

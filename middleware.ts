@@ -23,6 +23,9 @@ function isPublicPath(pathname: string) {
   // NextAuth endpoints must be public
   if (pathname.startsWith("/api/auth")) return true;
 
+  // Passkey authenticate (user not logged in when signing in with passkey)
+  if (pathname.startsWith("/api/auth/passkey/authenticate/")) return true;
+
   // Link challenge endpoints must be public — they are called during the
   // unauthenticated link flow and must never be redirected to sign-in,
   // which would corrupt the OAuth callbackUrl and break the state cookie.

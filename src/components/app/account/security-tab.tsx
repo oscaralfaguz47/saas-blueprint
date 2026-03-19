@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn, useSession } from "next-auth/react";
 import { useOAuthPopup, getOAuthAuthorizationUrl } from "@/hooks/use-oauth-popup";
+import { registerPasskey } from "@/hooks/use-passkey";
 import QRCode from "qrcode";
 import { Input } from "@/components/ui/input";
 import { useApiFetch } from "@/hooks/use-api-fetch";
@@ -115,6 +116,21 @@ export function SecurityTab({
   const [autoLogoutLoading, setAutoLogoutLoading] = useState(false);
   const [autoLogoutError, setAutoLogoutError] = useState<string | null>(null);
 
+  const [passkeys, setPasskeys] = useState<
+    Array<{
+      id: string;
+      name: string | null;
+      deviceType: string;
+      backedUp: boolean;
+      createdAt: string;
+      lastUsedAt: string | null;
+    }>
+  >([]);
+  const [passkeyLoading, setPasskeyLoading] = useState(false);
+  const [passkeyError, setPasskeyError] = useState<string | null>(null);
+  const [registeringPasskey, setRegisteringPasskey] = useState(false);
+  const [removingPasskeyId, setRemovingPasskeyId] = useState<string | null>(null);
+
   const urlError = searchParams.get("error");
   const urlProvider = searchParams.get("provider");
   const [linkError, setLinkError] = useState<string | null>(() => {
@@ -142,6 +158,21 @@ export function SecurityTab({
       window.history.replaceState({}, "", url.toString());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- strip params once after OAuth redirect
+  }, []);
+
+  async function fetchPasskeys() {
+    try {
+      const res = await fetch("/api/auth/passkey/credentials");
+      if (!res.ok) return;
+      const data = (await res.json()) as { data: { credentials: typeof passkeys } };
+      setPasskeys(data.data.credentials);
+    } catch {
+      // ignore
+    }
+  }
+
+  useEffect(() => {
+    void fetchPasskeys();
   }, []);
 
   async function handleLinkProvider(provider: "azure-ad" | "google") {
@@ -419,6 +450,49 @@ export function SecurityTab({
       .finally(() => setAutoLogoutLoading(false));
   };
 
+  async function handleRegisterPasskey() {
+    setPasskeyError(null);
+    setRegisteringPasskey(true);
+    setTimeout(() => {
+      setRegisteringPasskey(false);
+    }, 3000);
+    try {
+      const name = `${navigator.platform ?? "Device"} - ${new Date().toLocaleDateString()}`;
+      const result = await registerPasskey(name);
+      if (!result.success) {
+        if (result.error !== "cancelled") {
+          setPasskeyError(result.message);
+        }
+        return;
+      }
+      await fetchPasskeys();
+    } catch {
+      setPasskeyError("Something went wrong. Please try again.");
+    } finally {
+      setRegisteringPasskey(false);
+    }
+  }
+
+  async function handleRemovePasskey(credentialId: string) {
+    setRemovingPasskeyId(credentialId);
+    try {
+      const res = await fetch("/api/auth/passkey/credentials", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credentialId }),
+      });
+      const data = (await res.json()) as { error?: { message?: string } };
+      if (!res.ok) {
+        setPasskeyError(data.error?.message ?? "Failed to remove passkey.");
+      } else {
+        await fetchPasskeys();
+      }
+    } catch {
+      setPasskeyError("Something went wrong.");
+    }
+    setRemovingPasskeyId(null);
+  }
+
   const hasGoogle = linkedProviders.includes("google");
   const hasMicrosoft = linkedProviders.includes("azure-ad");
   const canLink = authLevel === "FULL";
@@ -514,6 +588,61 @@ export function SecurityTab({
           <p className="mt-2 text-xs text-(--text-muted)">
             Complete sign-in (including 2FA if required) to link additional sign-in methods.
           </p>
+        )}
+      </section>
+
+      {/* Passkeys */}
+      <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
+        <h2 className="text-base font-semibold text-(--text-primary)">Passkeys</h2>
+        <p className="mt-1 text-sm text-(--text-secondary)">
+          Sign in with Face ID, Touch ID, or Windows Hello — no password required.
+        </p>
+
+        {passkeys.length > 0 && (
+          <ul className="mt-4 space-y-2">
+            {passkeys.map((pk) => (
+              <li
+                key={pk.id}
+                className="flex items-center justify-between rounded-lg border border-(--border-subtle) px-3 py-2"
+              >
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="font-medium text-(--text-primary)">
+                    {pk.name ?? "Passkey"}
+                  </span>
+                  <span className="text-xs text-(--text-muted)">
+                    {pk.backedUp ? "Synced" : "Device-only"}
+                  </span>
+                  <span className="text-xs text-(--text-muted)">
+                    Added {new Date(pk.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleRemovePasskey(pk.id)}
+                  disabled={!!removingPasskeyId}
+                  className="text-xs text-(--color-danger) hover:underline disabled:opacity-60"
+                >
+                  {removingPasskeyId === pk.id ? "Removing..." : "Remove"}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {passkeyError && (
+          <p className="mt-2 text-sm text-(--color-danger)">{passkeyError}</p>
+        )}
+
+        {authLevel === "FULL" && (
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={handleRegisterPasskey}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {registeringPasskey ? "Registering..." : "Add Passkey"}
+            </button>
+          </div>
         )}
       </section>
 

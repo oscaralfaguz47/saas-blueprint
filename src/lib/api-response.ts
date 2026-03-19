@@ -105,6 +105,16 @@ export const ApiErrors = {
     apiError("VALIDATION_ERROR", 400, message ?? "Tax identifier could not be validated for this country. You can continue without it.", {
       code: "TAX_IDENTIFIER_VALIDATION_FAILED",
     }),
+  /** WebAuthn challenge expired or not found; 400 */
+  PASSKEY_CHALLENGE_EXPIRED: (message?: string) =>
+    apiError("VALIDATION_ERROR", 400, message ?? "Passkey challenge expired. Please try again.", {
+      code: "PASSKEY_CHALLENGE_EXPIRED",
+    }),
+  /** WebAuthn credential verification failed; 401 */
+  PASSKEY_VERIFICATION_FAILED: (message?: string) =>
+    apiError("UNAUTHORIZED", 401, message ?? "Passkey verification failed. Please try again.", {
+      code: "PASSKEY_VERIFICATION_FAILED",
+    }),
 } as const;
 
 /**

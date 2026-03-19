@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 
-export default function PopupCallbackPage() {
+function PopupCallbackContent() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
@@ -16,7 +16,6 @@ export default function PopupCallbackPage() {
         window.location.origin
       );
     }
-    // Close the popup after sending the message
     window.close();
   }, [searchParams]);
 
@@ -24,5 +23,19 @@ export default function PopupCallbackPage() {
     <div className="flex h-screen items-center justify-center">
       <p className="text-sm text-gray-500">Completing sign-in...</p>
     </div>
+  );
+}
+
+export default function PopupCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-screen items-center justify-center">
+          <p className="text-sm text-gray-500">Completing sign-in...</p>
+        </div>
+      }
+    >
+      <PopupCallbackContent />
+    </Suspense>
   );
 }

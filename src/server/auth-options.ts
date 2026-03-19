@@ -5,6 +5,7 @@ import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import EmailProvider from "next-auth/providers/email";
 import AzureADProvider from "next-auth/providers/azure-ad";
+import CredentialsProvider from "next-auth/providers/credentials";
 import type { AzureADProfile } from "next-auth/providers/azure-ad";
 
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
@@ -23,6 +24,29 @@ import {
 // ---- Tunables (performance + security) ----
 // JWT / cookie max age (seconds). 15 days when auto-logout is off; idle timeout when on.
 const JWT_MAX_AGE_SECONDS = 15 * 24 * 60 * 60;
+
+// One-time tokens for Passkey → NextAuth handoff
+// Token is created after WebAuthn verification, consumed by CredentialsProvider
+const passkeyOneTimeTokens = new Map<string, { userId: string; expiresAt: number }>();
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of passkeyOneTimeTokens.entries()) {
+    if (v.expiresAt < now) passkeyOneTimeTokens.delete(k);
+  }
+}, 60_000);
+
+export function createPasskeyOneTimeToken(userId: string): string {
+  const token = randomBytes(32).toString("base64url");
+  passkeyOneTimeTokens.set(token, { userId, expiresAt: Date.now() + 60_000 }); // 1 minute
+  return token;
+}
+
+export function consumePasskeyOneTimeToken(token: string): string | null {
+  const entry = passkeyOneTimeTokens.get(token);
+  if (!entry || entry.expiresAt < Date.now()) return null;
+  passkeyOneTimeTokens.delete(token);
+  return entry.userId;
+}
 
 /** PENDING_MFA Session row expires — intentionally short (MFA challenge window). */
 const MFA_PENDING_SESSION_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
@@ -455,6 +479,40 @@ export const authOptions: NextAuthOptions = {
           url,
           from: provider.from as string,
         });
+      },
+    }),
+
+    CredentialsProvider({
+      id: "passkey-credential",
+      name: "Passkey",
+      credentials: {
+        passkeyToken: { label: "Passkey Token", type: "text" },
+      },
+      async authorize(credentials) {
+        if (!credentials?.passkeyToken) return null;
+        const userId = consumePasskeyOneTimeToken(credentials.passkeyToken as string);
+        if (!userId) return null;
+
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            image: true,
+            isPlatformBlocked: true,
+            role: true,
+          },
+        });
+
+        if (!user || user.isPlatformBlocked) return null;
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          image: user.image,
+          role: user.role,
+        };
       },
     }),
   ],
