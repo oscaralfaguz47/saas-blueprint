@@ -2,17 +2,18 @@
 
 import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useOAuthPopup, getOAuthAuthorizationUrl } from "@/hooks/use-oauth-popup";
 import { authenticateWithPasskey } from "@/hooks/use-passkey";
 
 type Status =
   | { type: "idle" }
   | { type: "sending_email" }
+  | { type: "code_sent"; email: string }
+  | { type: "verifying_code" }
   | { type: "sending_google" }
   | { type: "sending_microsoft" }
   | { type: "sending_passkey" }
-  | { type: "email_sent"; email: string }
   | { type: "error"; message: string; provider?: "passkey" };
 
 function normalizeEmail(input: string) {
@@ -129,6 +130,90 @@ function PasskeyIcon() {
   );
 }
 
+function ResendCodeButton({
+  email,
+  callbackUrl,
+  disabled: disabledProp,
+  initialCooldown = 0,
+  onResent,
+}: {
+  email: string;
+  callbackUrl: string;
+  disabled?: boolean;
+  initialCooldown?: number;
+  onResent: () => void;
+}) {
+  const [cooldown, setCooldown] = useState(initialCooldown);
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setInterval(() => setCooldown((c) => Math.max(0, c - 1)), 1000);
+    return () => clearInterval(t);
+  }, [cooldown]);
+
+  async function handleResend() {
+    if (disabledProp || sending || cooldown > 0) return;
+    setSending(true);
+    try {
+      const res = await fetch("/api/auth/email-otp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await res.json().catch(() => ({} as unknown)) as {
+        data?: { sent: boolean };
+        error?: { message?: string; details?: { retryAfterSec?: number } };
+      };
+
+      if (!res.ok) {
+        const retryAfter = data.error?.details?.retryAfterSec;
+        if (retryAfter && retryAfter > 0) {
+          // Server told us exact cooldown — use it
+          setCooldown(retryAfter);
+        } else {
+          // Generic error — show 60s cooldown as safety net
+          setCooldown(60);
+        }
+        return;
+      }
+
+      // Success — apply 60s cooldown and notify parent
+      setCooldown(60);
+      if (data.data?.sent === true) onResent();
+    } catch {
+      // Network error — brief cooldown then allow retry
+      setCooldown(10);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <p className="text-center text-xs text-(--text-muted)">
+      {cooldown > 0 ? (
+        <>
+          Didn&apos;t receive it?{" "}
+          <span className="text-(--text-primary)">Resend in {cooldown}s</span>
+        </>
+      ) : (
+        <>
+          Didn&apos;t receive it?{" "}
+          <button
+            type="button"
+            onClick={handleResend}
+            disabled={sending}
+            className="font-medium text-(--text-primary) hover:underline disabled:opacity-60"
+          >
+            {sending ? "Sending..." : "Resend code"}
+          </button>
+        </>
+      )}
+    </p>
+  );
+}
+
 export default function SignInForm() {
   const searchParams = useSearchParams();
   const { openPopup } = useOAuthPopup();
@@ -139,12 +224,15 @@ export default function SignInForm() {
 
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<Status>({ type: "idle" });
+  const [otpCode, setOtpCode] = useState("");
+  const [otpError, setOtpError] = useState<string | null>(null);
 
   const emailNormalized = normalizeEmail(email);
   const isBusy =
     status.type === "sending_email" ||
     status.type === "sending_google" ||
-    status.type === "sending_microsoft";
+    status.type === "sending_microsoft" ||
+    status.type === "verifying_code";
 
   async function handleGoogle() {
     if (isBusy) return;
@@ -257,7 +345,7 @@ export default function SignInForm() {
     }
   }
 
-  async function handleMagicLink(e: React.FormEvent) {
+  async function handleEmailContinue(e: React.FormEvent) {
     e.preventDefault();
     if (isBusy) return;
 
@@ -273,20 +361,25 @@ export default function SignInForm() {
     }
 
     setStatus({ type: "sending_email" });
+    setOtpError(null);
 
     try {
-      const res = await signIn("email", {
-        email: emailNormalized,
-        callbackUrl,
-        redirect: false, // IMPORTANT: lets us show an “Email sent” state
+      const res = await fetch("/api/auth/email-otp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: emailNormalized, callbackUrl }),
       });
 
-      if (res?.error) {
-        setStatus({ type: "error", message: getFriendlyError(res.error) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setStatus({
+          type: "error",
+          message: data?.error?.message ?? "Failed to send code. Please try again.",
+        });
         return;
       }
 
-      setStatus({ type: "email_sent", email: emailNormalized });
+      setStatus({ type: "code_sent", email: emailNormalized });
     } catch (e: unknown) {
       setStatus({ type: "error", message: getFriendlyError(toErrorMessage(e)) });
     }
@@ -294,11 +387,67 @@ export default function SignInForm() {
 
   function reset() {
     setStatus({ type: "idle" });
+    setOtpCode("");
+    setOtpError(null);
   }
 
-  const showInlineHint = status.type === "email_sent";
   // Only apply email field error styling when error is from email/magic link flow, not passkey
   const showInlineError = status.type === "error" && status.provider !== "passkey";
+
+  async function handleVerifyCode(e: React.FormEvent) {
+    e.preventDefault();
+    if (status.type !== "code_sent") return;
+
+    const code = otpCode.trim();
+    if (!/^\d{6}$/.test(code)) {
+      setOtpError("Please enter the 6-digit code.");
+      return;
+    }
+
+    setStatus({ type: "verifying_code" });
+    setOtpError(null);
+
+    try {
+      const res = await fetch("/api/auth/email-otp/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: status.email, code }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message =
+          data?.error?.message ?? "Invalid code. Please check and try again.";
+        setOtpError(message);
+        setStatus({ type: "code_sent", email: status.email });
+        return;
+      }
+
+      const sessionToken = data?.data?.sessionToken as string | undefined;
+      if (!sessionToken) {
+        setStatus({ type: "error", message: "Verification failed. Please try again." });
+        return;
+      }
+
+      const signInRes = await signIn("email-otp-credential", {
+        otpToken: sessionToken,
+        callbackUrl,
+        redirect: false,
+      });
+
+      if (signInRes?.error) {
+        setStatus({
+          type: "error",
+          message: "Sign-in failed. Please try again.",
+        });
+        return;
+      }
+
+      window.location.href = signInRes?.url ?? callbackUrl;
+    } catch (e: unknown) {
+      setStatus({ type: "error", message: getFriendlyError(toErrorMessage(e)) });
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -350,64 +499,124 @@ export default function SignInForm() {
         <div className="h-px flex-1 bg-(--border-subtle)" />
       </div>
 
-      {/* Magic link */}
-      <form onSubmit={handleMagicLink} className="space-y-3">
-        <label className="block">
-          <span className="mb-1 block text-xs font-medium text-(--text-secondary)">
-            Email
-          </span>
+      {/* Step 1: Email */}
+      {(status.type === "idle" || status.type === "sending_email" || status.type === "error") && (
+        <form onSubmit={handleEmailContinue} className="space-y-3">
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-(--text-secondary)">
+              Email
+            </span>
 
-          <input
-            required
-            value={email}
-            onChange={(e) => {
-              setEmail(e.target.value);
-              if (status.type === "error" || status.type === "email_sent") {
-                setStatus({ type: "idle" });
-              }
-            }}
-            placeholder="you@company.com"
-            type="email"
-            autoComplete="email"
-            disabled={isBusy}
-            className={[
-              "h-11 w-full rounded-lg border bg-(--bg-main) px-3 text-sm text-(--text-primary) outline-none transition-colors",
-              "placeholder:text-(--text-muted)",
-              "focus:border-(--color-primary) focus:ring-2 focus:ring-(--color-primary)",
-              "disabled:cursor-not-allowed disabled:opacity-60",
-              showInlineError ? "border-(--color-danger)" : "border-(--border-subtle)",
-            ].join(" ")}
-          />
-        </label>
+            <input
+              required
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (status.type === "error") setStatus({ type: "idle" });
+              }}
+              placeholder="you@company.com"
+              type="email"
+              autoComplete="email"
+              disabled={isBusy}
+              className={[
+                "h-11 w-full rounded-lg border bg-(--bg-main) px-3 text-sm text-(--text-primary) outline-none transition-colors",
+                "placeholder:text-(--text-muted)",
+                "focus:border-primary focus:ring-2 focus:ring-primary",
+                "disabled:cursor-not-allowed disabled:opacity-60",
+                showInlineError ? "border-(--color-danger)" : "border-(--border-subtle)",
+              ].join(" ")}
+            />
+          </label>
 
-        <button
-          type="submit"
-          disabled={isBusy || !emailNormalized}
-          className="inline-flex h-11 w-full cursor-pointer items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {status.type === "sending_email"
-            ? "Sending magic link..."
-            : "Send magic link"}
-        </button>
-      </form>
-
-      {/* Status box */}
-      {status.type === "email_sent" && (
-        <div className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) px-4 py-3 text-sm">
-          <div className="font-semibold text-(--text-primary)">Check your email</div>
-          <div className="mt-1 text-(--text-secondary)">
-            We sent a sign-in link to{" "}
-            <span className="font-mono text-(--text-primary)">{status.email}</span>. If you don’t see
-            it, check Spam/Promotions.
-          </div>
           <button
-            type="button"
-            onClick={reset}
-            className="mt-3 inline-flex text-xs font-medium text-(--text-secondary) hover:text-(--text-primary)"
+            type="submit"
+            disabled={isBusy || !emailNormalized}
+            className="inline-flex h-11 w-full cursor-pointer items-center justify-center rounded-lg bg-primary px-4 text-sm font-semibold text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Use a different email
+            {status.type === "sending_email" ? "Sending code..." : "Continue"}
           </button>
-        </div>
+        </form>
+      )}
+
+      {/* Step 2: OTP code */}
+      {(status.type === "code_sent" || status.type === "verifying_code") && (
+        <form onSubmit={handleVerifyCode} className="space-y-3">
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-medium text-(--text-secondary)">
+                Verification code
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setStatus({ type: "idle" });
+                  setOtpCode("");
+                  setOtpError(null);
+                  setEmail("");
+                }}
+                className="text-xs text-(--text-muted) hover:text-(--text-primary)"
+              >
+                ← Change email
+              </button>
+            </div>
+
+            <p className="mb-2 text-xs text-(--text-muted)">
+              We sent a verification code and a sign-in link to{" "}
+              <span className="font-medium text-(--text-primary)">{email}</span>.
+              Enter the code below or click the link in your email.
+            </p>
+
+            <input
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              autoFocus
+              maxLength={6}
+              value={otpCode}
+              disabled={status.type === "verifying_code"}
+              onChange={(e) => {
+                const val = e.target.value.replace(/\D/g, "").slice(0, 6);
+                setOtpCode(val);
+                if (otpError) setOtpError(null);
+                if (val.length === 6) {
+                  setTimeout(() => {
+                    const form = e.target.closest("form");
+                    if (form) form.requestSubmit();
+                  }, 300);
+                }
+              }}
+              placeholder="— — — — — —"
+              className={[
+                "h-12 w-full rounded-lg border bg-(--bg-main) px-4 text-center text-2xl font-mono font-semibold text-(--text-primary) outline-none transition-colors tracking-[0.5em]",
+                "placeholder:text-(--text-muted) placeholder:tracking-[0.4em] placeholder:text-xl",
+                "focus:border-primary focus:ring-2 focus:ring-primary",
+                "disabled:cursor-not-allowed disabled:opacity-60",
+                otpError ? "border-(--color-danger)" : "border-(--border-subtle)",
+              ].join(" ")}
+            />
+
+            {otpError && <p className="mt-1 text-xs text-(--color-danger)">{otpError}</p>}
+          </div>
+
+          <button
+            type="submit"
+            disabled={status.type === "verifying_code" || otpCode.length !== 6}
+            className="inline-flex h-11 w-full cursor-pointer items-center justify-center rounded-lg bg-primary px-4 text-sm font-semibold text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {status.type === "verifying_code" ? "Verifying..." : "Verify code"}
+          </button>
+
+          <ResendCodeButton
+            email={status.type === "code_sent" ? status.email : emailNormalized}
+            callbackUrl={callbackUrl}
+            disabled={status.type === "verifying_code"}
+            initialCooldown={60}
+            onResent={() => {
+              setOtpCode("");
+              setOtpError(null);
+            }}
+          />
+        </form>
       )}
 
       {status.type === "error" && (
@@ -425,10 +634,9 @@ export default function SignInForm() {
       )}
 
       {/* Bottom tip */}
-      {!showInlineHint && (
+      {status.type !== "code_sent" && status.type !== "verifying_code" && (
         <p className="text-center text-xs text-(--text-muted)">
-          Tip: Use Google or Microsoft for faster sign-in, or request a magic
-          link.
+          No password required. Use Google, Microsoft, Passkey, or your email.
         </p>
       )}
     </div>

@@ -151,6 +151,7 @@ model User {
   sessions Session[]
   rememberedDevices RememberedDevice[]
   webAuthnCredentials WebAuthnCredential[]
+  otpSessionTokens   OtpSessionToken[]
 
   security UserSecurity?
 
@@ -1036,4 +1037,35 @@ model VerificationToken {
 
   @@unique([identifier, token])
   @@index([expires])
+}
+
+/// Short-lived OTP code for email sign-in (6 digits, 10 minute TTL).
+/// Separate from NextAuth VerificationToken — this is for the UI code input.
+model EmailVerificationCode {
+  id         String   @id @default(cuid())
+  email      String   @db.VarChar(191)
+  codeHash   String   @db.VarChar(64)   // SHA-256 of the 6-digit code
+  expiresAt  DateTime
+  usedAt     DateTime?
+  attempts   Int      @default(0)       // rate-limit brute force
+  createdAt  DateTime @default(now())
+
+  @@index([email])
+  @@index([expiresAt])
+}
+
+/// Short-lived one-time token for OTP/Passkey → NextAuth session handoff.
+/// Replaces the in-memory token store which doesn't work across serverless instances.
+model OtpSessionToken {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique @db.VarChar(64)
+  userId     String
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }

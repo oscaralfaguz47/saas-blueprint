@@ -19,7 +19,7 @@ export const POST = withErrorHandler(async (req: Request) => {
       parse.data.challengeKey,
       parse.data.response
     );
-    const passkeyToken = createPasskeyOneTimeToken(user.id);
+    const passkeyToken = await createPasskeyOneTimeToken(user.id);
     return apiSuccess({ passkeyToken });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "";

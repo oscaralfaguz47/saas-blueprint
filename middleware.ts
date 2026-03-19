@@ -20,6 +20,9 @@ function isPublicPath(pathname: string) {
   // Unauthorized page
   if (pathname.startsWith("/unauthorized")) return true;
 
+  // Email OTP (public, no authenticated session required)
+  if (pathname.startsWith("/api/auth/email-otp/")) return true;
+
   // NextAuth endpoints must be public
   if (pathname.startsWith("/api/auth")) return true;
 

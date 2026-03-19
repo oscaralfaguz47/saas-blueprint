@@ -812,59 +812,64 @@ export function SecurityTab({
             ))}
           </div>
         ) : (
-          <ul className="mt-4 space-y-2">
-            {deviceSessions.map((s) => (
-              <li
-                key={s.id}
-                className="flex items-center gap-3 rounded-lg border border-(--border-subtle) px-3 py-3"
-              >
-                <DeviceIcon deviceType={s.deviceType} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-sm font-medium text-(--text-primary)">
-                      {s.device}
-                    </span>
-                    {s.isCurrent && (
-                      <span className="shrink-0 rounded-md border border-(--color-success) px-1.5 py-0.5 text-xs text-(--color-success)">
-                        This device
+          <div className="relative mt-4">
+            <ul className="space-y-2 max-h-72 overflow-y-auto pr-1 scrollbar-thin">
+              {deviceSessions.map((s) => (
+                <li
+                  key={s.id}
+                  className="flex items-center gap-3 rounded-lg border border-(--border-subtle) px-3 py-3"
+                >
+                  <DeviceIcon deviceType={s.deviceType} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-sm font-medium text-(--text-primary)">
+                        {s.device}
                       </span>
-                    )}
+                      {s.isCurrent && (
+                        <span className="shrink-0 rounded-md border border-(--color-success) px-1.5 py-0.5 text-xs text-(--color-success)">
+                          This device
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-2 text-xs text-(--text-muted)">
+                      {s.location && <span>{s.location}</span>}
+                      {s.location && s.lastIp && <span>·</span>}
+                      {!s.location && s.lastIp && <span>{s.lastIp}</span>}
+                      {(s.location || s.lastIp) && <span>·</span>}
+                      <span>
+                        Last active{" "}
+                        {new Date(s.lastActivityAt).toLocaleDateString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    </div>
                   </div>
-                  <div className="mt-0.5 flex items-center gap-2 text-xs text-(--text-muted)">
-                    {s.location && <span>{s.location}</span>}
-                    {s.location && s.lastIp && <span>·</span>}
-                    {!s.location && s.lastIp && <span>{s.lastIp}</span>}
-                    {(s.location || s.lastIp) && <span>·</span>}
-                    <span>
-                      Last active{" "}
-                      {new Date(s.lastActivityAt).toLocaleDateString(undefined, {
-                        month: "short",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                  </div>
-                </div>
-                {!s.isCurrent && (
-                  <button
-                    type="button"
-                    onClick={() => handleRevokeSession(s.id)}
-                    disabled={!!revokingSessionId}
-                    className="shrink-0 text-xs font-medium text-(--color-danger) hover:underline disabled:opacity-60"
-                  >
-                    {revokingSessionId === s.id ? "Signing out..." : "Sign out"}
-                  </button>
-                )}
-              </li>
-            ))}
+                  {!s.isCurrent && (
+                    <button
+                      type="button"
+                      onClick={() => handleRevokeSession(s.id)}
+                      disabled={!!revokingSessionId}
+                      className="shrink-0 text-xs font-medium text-(--color-danger) hover:underline disabled:opacity-60"
+                    >
+                      {revokingSessionId === s.id ? "Signing out..." : "Sign out"}
+                    </button>
+                  )}
+                </li>
+              ))}
 
-            {deviceSessions.length === 0 && (
-              <li className="py-4 text-center text-sm text-(--text-muted)">
-                No active sessions found.
-              </li>
+              {deviceSessions.length === 0 && (
+                <li className="py-4 text-center text-sm text-(--text-muted)">
+                  No active sessions found.
+                </li>
+              )}
+            </ul>
+            {deviceSessions.length > 4 && (
+              <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 rounded-b-lg bg-linear-to-t from-(--bg-surface) to-transparent" />
             )}
-          </ul>
+          </div>
         )}
       </section>
 

@@ -25,27 +25,39 @@ import {
 // JWT / cookie max age (seconds). 15 days when auto-logout is off; idle timeout when on.
 const JWT_MAX_AGE_SECONDS = 15 * 24 * 60 * 60;
 
-// One-time tokens for Passkey → NextAuth handoff
-// Token is created after WebAuthn verification, consumed by CredentialsProvider
-const passkeyOneTimeTokens = new Map<string, { userId: string; expiresAt: number }>();
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, v] of passkeyOneTimeTokens.entries()) {
-    if (v.expiresAt < now) passkeyOneTimeTokens.delete(k);
-  }
-}, 60_000);
-
-export function createPasskeyOneTimeToken(userId: string): string {
+// One-time tokens for OTP/Passkey → NextAuth handoff (DB-backed; works across serverless instances)
+export async function createPasskeyOneTimeToken(userId: string): Promise<string> {
   const token = randomBytes(32).toString("base64url");
-  passkeyOneTimeTokens.set(token, { userId, expiresAt: Date.now() + 60_000 }); // 1 minute
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+
+  await prisma.otpSessionToken.create({
+    data: { tokenHash, userId, expiresAt },
+  });
+
   return token;
 }
 
-export function consumePasskeyOneTimeToken(token: string): string | null {
-  const entry = passkeyOneTimeTokens.get(token);
-  if (!entry || entry.expiresAt < Date.now()) return null;
-  passkeyOneTimeTokens.delete(token);
-  return entry.userId;
+export async function consumePasskeyOneTimeToken(token: string): Promise<string | null> {
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const now = new Date();
+
+  const record = await prisma.otpSessionToken.findUnique({
+    where: { tokenHash },
+    select: { userId: true, expiresAt: true, usedAt: true },
+  });
+
+  if (!record) return null;
+  if (record.usedAt) return null;
+  if (record.expiresAt < now) return null;
+
+  // Mark as used immediately (one-time use)
+  await prisma.otpSessionToken.update({
+    where: { tokenHash },
+    data: { usedAt: now },
+  });
+
+  return record.userId;
 }
 
 // Request context store for capturing IP/UA/location in NextAuth callbacks.
@@ -515,8 +527,48 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         if (!credentials?.passkeyToken) return null;
-        const userId = consumePasskeyOneTimeToken(credentials.passkeyToken as string);
+        const userId = await consumePasskeyOneTimeToken(credentials.passkeyToken as string);
         if (!userId) return null;
+
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            image: true,
+            isPlatformBlocked: true,
+            role: true,
+          },
+        });
+
+        if (!user || user.isPlatformBlocked) return null;
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          image: user.image,
+          role: user.role,
+        };
+      },
+    }),
+
+    CredentialsProvider({
+      id: "email-otp-credential",
+      name: "Email OTP",
+      credentials: {
+        otpToken: { label: "OTP Token", type: "text" },
+      },
+      async authorize(credentials) {
+        if (!credentials?.otpToken) {
+          return null;
+        }
+
+        const userId = await consumePasskeyOneTimeToken(credentials.otpToken as string);
+
+        if (!userId) {
+          return null;
+        }
 
         const user = await prisma.user.findUnique({
           where: { id: userId },
