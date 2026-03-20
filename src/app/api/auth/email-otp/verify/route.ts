@@ -87,6 +87,12 @@ export const POST = withErrorHandler(async (req: Request) => {
 
   if (user.isPlatformBlocked) return ApiErrors.FORBIDDEN();
 
+  // Security: invalidate any pending NextAuth magic links for this email
+  // so the magic link cannot be used after a successful OTP sign-in
+  await prisma.verificationToken.deleteMany({
+    where: { identifier: email },
+  });
+
   // One-time token for the credentials provider handoff.
   const sessionToken = await createPasskeyOneTimeToken(user.id);
 

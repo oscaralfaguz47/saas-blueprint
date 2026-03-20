@@ -44,8 +44,6 @@ export const POST = withErrorHandler(async (req: Request) => {
     );
   }
 
-  console.log("[DEBUG email-otp send]", { email, otpCode: otpResult.code, sent: true });
-
   const magicFrom = process.env.EMAIL_FROM;
   if (!magicFrom) {
     return ApiErrors.INTERNAL_ERROR("Email not configured");

@@ -814,6 +814,19 @@ export const authOptions: NextAuthOptions = {
       // ── 3. Email provider: finalize account linking if a valid pending
       //       challenge exists for this user ─────────────────────────────────────
       if (account?.provider === "email") {
+        // Security: invalidate any pending OTP codes for this email
+        // so the OTP cannot be used after a successful magic link sign-in
+        if (user.email) {
+          prisma.emailVerificationCode.updateMany({
+            where: {
+              email: user.email.toLowerCase(),
+              usedAt: null,
+              expiresAt: { gt: new Date() },
+            },
+            data: { expiresAt: new Date() },
+          }).catch(() => {/* best-effort */});
+        }
+
         const now = new Date();
         const pending = await prisma.authLinkChallenge.findFirst({
           where: {
