@@ -115,7 +115,7 @@ function PasskeyIcon() {
     <svg
       aria-hidden="true"
       viewBox="0 0 24 24"
-      className="h-5 w-5"
+      className="h-3.5 w-3.5"
       fill="none"
       stroke="currentColor"
       strokeWidth="2"
@@ -451,13 +451,22 @@ export default function SignInForm() {
 
   return (
     <div className="space-y-4">
+      <div>
+        <p className="mt-2 text-sm text-(--text-secondary)">
+          No password required —{" "}
+          <span className="text-(--text-muted)">
+            new accounts are created automatically.
+          </span>
+        </p>
+      </div>
+
       {/* Google */}
       <button
         type="button"
         onClick={handleGoogle}
         disabled={isBusy}
         aria-label="Continue with Google"
-        className="inline-flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
       >
         <GoogleIcon />
         {status.type === "sending_google"
@@ -471,7 +480,7 @@ export default function SignInForm() {
         onClick={handleMicrosoft}
         disabled={isBusy}
         aria-label="Continue with Microsoft"
-        className="inline-flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
       >
         <MicrosoftIcon />
         {status.type === "sending_microsoft"
@@ -479,32 +488,22 @@ export default function SignInForm() {
           : "Continue with Microsoft"}
       </button>
 
-      {/* Passkey */}
-      <button
-        type="button"
-        onClick={handlePasskey}
-        aria-label="Continue with Passkey"
-        className="inline-flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        <PasskeyIcon />
-        {status.type === "sending_passkey"
-          ? "Signing in with Passkey..."
-          : "Continue with Passkey"}
-      </button>
-
       {/* Divider */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 text-xs text-(--text-muted)">
         <div className="h-px flex-1 bg-(--border-subtle)" />
-        <div className="text-xs font-medium text-(--text-muted)">or</div>
+        <span className="font-medium">or continue with email</span>
         <div className="h-px flex-1 bg-(--border-subtle)" />
       </div>
 
       {/* Step 1: Email */}
-      {(status.type === "idle" || status.type === "sending_email" || status.type === "error") && (
-        <form onSubmit={handleEmailContinue} className="space-y-3">
+      {(status.type === "idle" ||
+        status.type === "sending_email" ||
+        status.type === "sending_passkey" ||
+        status.type === "error") && (
+        <form onSubmit={handleEmailContinue} className="space-y-4">
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-(--text-secondary)">
-              Email
+              Work or personal email
             </span>
 
             <input
@@ -535,12 +534,26 @@ export default function SignInForm() {
           >
             {status.type === "sending_email" ? "Sending code..." : "Continue"}
           </button>
+
+          <div className="pt-1 flex items-center justify-center">
+            <button
+              type="button"
+              onClick={handlePasskey}
+              disabled={isBusy}
+              className="flex items-center gap-1.5 text-xs text-(--text-muted) hover:text-(--text-primary) transition-colors disabled:opacity-40"
+            >
+              <PasskeyIcon />
+              {status.type === "sending_passkey"
+                ? "Signing in with passkey..."
+                : "Sign in with a passkey instead"}
+            </button>
+          </div>
         </form>
       )}
 
       {/* Step 2: OTP code */}
       {(status.type === "code_sent" || status.type === "verifying_code") && (
-        <form onSubmit={handleVerifyCode} className="space-y-3">
+        <form onSubmit={handleVerifyCode} className="space-y-4">
           <div>
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs font-medium text-(--text-secondary)">
@@ -633,12 +646,6 @@ export default function SignInForm() {
         </div>
       )}
 
-      {/* Bottom tip */}
-      {status.type !== "code_sent" && status.type !== "verifying_code" && (
-        <p className="text-center text-xs text-(--text-muted)">
-          No password required. Use Google, Microsoft, Passkey, or your email.
-        </p>
-      )}
     </div>
   );
 }

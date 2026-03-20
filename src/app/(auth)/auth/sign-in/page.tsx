@@ -85,7 +85,6 @@ export default async function SignInPage({ searchParams }: Props) {
   return (
     <AuthCard
       title="Sign in"
-      subtitle="No password required. Use Google, Microsoft, Passkey, or your email."
       message={
         errorCopy
           ? {
