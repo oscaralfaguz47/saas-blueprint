@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { Dialog } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
-import { CLAIM_SLUG_MIN, CLAIM_SLUG_MAX } from "@/lib/validations";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { getApiErrorMessage } from "@/lib/api-client";
 
@@ -17,58 +16,33 @@ type Tenant = {
 type Props = {
   open: boolean;
   onClose: () => void;
-  /** Called when user creates a workspace; redirects to workspace settings. */
   onCloseAfterCreate?: () => void;
 };
 
 export function CreateWorkspaceModal({ open, onClose, onCloseAfterCreate }: Props) {
   const apiFetch = useApiFetch();
-  const [slug, setSlug] = useState("");
-  const [checking, setChecking] = useState(false);
-  const [available, setAvailable] = useState<boolean | null>(null);
+  const [name, setName] = useState("");
   const [createStatus, setCreateStatus] = useState<"idle" | "submitting" | "error">("idle");
   const [createError, setCreateError] = useState<string | null>(null);
 
-  // Reset form whenever the modal is opened so it’s always empty
   useEffect(() => {
     if (open) {
-      setSlug("");
-      setAvailable(null);
+      setName("");
       setCreateError(null);
       setCreateStatus("idle");
     }
   }, [open]);
 
-  async function checkAvailability() {
-    const raw = slug.trim().toLowerCase();
-    if (raw.length < CLAIM_SLUG_MIN) {
-      setCreateError(`Enter at least ${CLAIM_SLUG_MIN} characters`);
-      setAvailable(null);
-      return;
-    }
-    setCreateError(null);
-    setChecking(true);
-    setAvailable(null);
-    try {
-      const res = await apiFetch(`/api/workspaces/check-slug?slug=${encodeURIComponent(raw)}`, {
-        showToastOnError: false,
-      });
-      const json = await res.json();
-      const data = json?.data ?? json;
-      setAvailable(typeof data?.available === "boolean" ? data.available : null);
-    } catch {
-      setAvailable(null);
-    } finally {
-      setChecking(false);
-    }
-  }
-
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreateError(null);
-    const raw = slug.trim().toLowerCase();
-    if (!raw || raw.length < CLAIM_SLUG_MIN) {
-      setCreateError(`Workspace URL must be at least ${CLAIM_SLUG_MIN} characters.`);
+    const trimmed = name.trim();
+    if (!trimmed || trimmed.length < 2) {
+      setCreateError("Workspace name must be at least 2 characters.");
+      return;
+    }
+    if (trimmed.length > 80) {
+      setCreateError("Workspace name must be 80 characters or less.");
       return;
     }
     setCreateStatus("submitting");
@@ -76,16 +50,17 @@ export function CreateWorkspaceModal({ open, onClose, onCloseAfterCreate }: Prop
       const res = await apiFetch("/api/tenant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug: raw }),
+        body: JSON.stringify({ name: trimmed }),
+        showToastOnError: false,
       });
       const data = (await res.json()) as {
         data?: { tenant?: Tenant };
-        error?: { code?: string; message?: string; details?: { code?: string; slug?: string } };
+        error?: { code?: string; message?: string; details?: { code?: string } };
       };
       if (!res.ok) {
         const msg =
-          data.error?.details?.code === "SLUG_TAKEN" || data.error?.code === "CONFLICT"
-            ? "This workspace URL is already taken. Choose another."
+          data.error?.code === "CONFLICT"
+            ? "You already have a workspace with that name. Choose another."
             : getApiErrorMessage(res, data);
         setCreateError(msg);
         setCreateStatus("error");
@@ -97,15 +72,12 @@ export function CreateWorkspaceModal({ open, onClose, onCloseAfterCreate }: Prop
         setCreateStatus("error");
         return;
       }
-      // Switch to the new workspace (set as default)
-      const hasDefault = await apiFetch("/api/tenant", { showToastOnError: false }).then(
-        async (r) => {
-          const j = await r.json();
-          const tenants =
-            (j.data as { tenants?: { id: string; isDefaultTenant: boolean }[] })?.tenants ?? [];
-          return tenants.some((t) => t.isDefaultTenant && t.id === created.id);
-        },
-      );
+      // Switch to the new workspace (set as default) if needed
+      const listRes = await apiFetch("/api/tenant", { showToastOnError: false });
+      const listJson = await listRes.json();
+      const tenants =
+        (listJson.data as { tenants?: { id: string; isDefaultTenant: boolean }[] })?.tenants ?? [];
+      const hasDefault = tenants.some((t) => t.isDefaultTenant && t.id === created.id);
       if (!hasDefault) {
         await apiFetch("/api/tenant", {
           method: "PATCH",
@@ -113,7 +85,6 @@ export function CreateWorkspaceModal({ open, onClose, onCloseAfterCreate }: Prop
           body: JSON.stringify({ tenantId: created.id }),
         });
       }
-      // Close modal first (no setState before this) so it disappears immediately; then redirect.
       onClose();
       queueMicrotask(() => onCloseAfterCreate?.());
     } catch {
@@ -123,97 +94,63 @@ export function CreateWorkspaceModal({ open, onClose, onCloseAfterCreate }: Prop
   };
 
   const handleClose = () => {
-    setSlug("");
-    setAvailable(null);
+    setName("");
     setCreateError(null);
     setCreateStatus("idle");
     onClose();
   };
 
   const isSubmitting = createStatus === "submitting";
-  const slugTrimmed = slug.trim().toLowerCase();
-  const canSubmit = slugTrimmed.length >= CLAIM_SLUG_MIN && slugTrimmed.length <= CLAIM_SLUG_MAX;
+  const canSubmit = name.trim().length >= 2;
 
   return (
     <Dialog
       open={open}
       onClose={() => handleClose()}
       title="Create workspace"
-      description="Choose a URL for your workspace. You can use letters, numbers, and hyphens (3–80 characters)."
+      description="Give your workspace a name. You can always change it later in Workspace settings."
       closeDisabled={isSubmitting}
     >
       <form onSubmit={handleCreateSubmit} className="space-y-4">
         <div>
           <label
-            htmlFor="workspace-slug"
+            htmlFor="workspace-name"
             className="mb-1 block text-xs font-medium text-(--text-secondary)"
           >
-            Workspace URL
+            Workspace name
           </label>
-          <div className="flex gap-2">
-            <input
-              id="workspace-slug"
-              type="text"
-              value={slug}
-              onChange={(e) => {
-                setSlug(
-                  e.target.value
-                    .replace(/[^a-zA-Z0-9-]/g, "")
-                    .toLowerCase()
-                    .slice(0, CLAIM_SLUG_MAX),
-                );
-                setAvailable(null);
-                setCreateError(null);
-              }}
-              placeholder="my-workspace"
-              minLength={CLAIM_SLUG_MIN}
-              maxLength={CLAIM_SLUG_MAX}
-              disabled={isSubmitting}
-              autoFocus
-              className="h-11 flex-1 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2.5 text-sm text-(--text-primary) placeholder:text-(--text-muted) focus:ring-2 focus:ring-(--color-primary) focus:outline-none disabled:opacity-60"
-              aria-describedby={
-                createError
-                  ? "workspace-slug-error"
-                  : available !== null
-                    ? "workspace-slug-availability"
-                    : undefined
-              }
-              aria-invalid={!!createError}
-            />
-            <button
-              type="button"
-              onClick={checkAvailability}
-              disabled={checking || isSubmitting || slugTrimmed.length < CLAIM_SLUG_MIN}
-              className="rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {checking ? <Spinner size="sm" /> : "Check"}
-            </button>
-          </div>
-          {available === true && (
-            <p id="workspace-slug-availability" className="mt-1 text-sm text-(--color-success)">
-              Available
-            </p>
-          )}
-          {available === false && (
-            <p id="workspace-slug-availability" className="mt-1 text-sm text-(--color-danger)">
-              Already taken
-            </p>
-          )}
-          {createError ? (
+          <input
+            id="workspace-name"
+            type="text"
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value.slice(0, 80));
+              setCreateError(null);
+            }}
+            placeholder="e.g. Acme Inc"
+            maxLength={80}
+            disabled={isSubmitting}
+            autoFocus
+            autoComplete="organization"
+            className="h-11 w-full rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2.5 text-sm text-(--text-primary) placeholder:text-(--text-muted) focus:ring-2 focus:ring-(--color-primary) focus:outline-none disabled:opacity-60"
+            aria-describedby={createError ? "workspace-name-error" : undefined}
+            aria-invalid={!!createError}
+          />
+          {createError && (
             <p
-              id="workspace-slug-error"
+              id="workspace-name-error"
               className="mt-1 text-sm text-(--color-danger)"
               role="alert"
             >
               {createError}
             </p>
-          ) : null}
+          )}
         </div>
         <div className="flex justify-end gap-2">
           <button
             type="button"
             onClick={() => handleClose()}
-            disabled={createStatus === "submitting"}
+            disabled={isSubmitting}
             className="rounded-lg border border-(--border-subtle) px-4 py-2 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:pointer-events-none disabled:opacity-60"
           >
             Cancel
@@ -223,7 +160,7 @@ export function CreateWorkspaceModal({ open, onClose, onCloseAfterCreate }: Prop
             disabled={isSubmitting || !canSubmit}
             className="inline-flex h-10 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-60"
           >
-            {createStatus === "submitting" ? (
+            {isSubmitting ? (
               <>
                 <Spinner size="sm" className="mr-2" />
                 Creating…

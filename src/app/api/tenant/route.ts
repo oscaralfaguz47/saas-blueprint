@@ -61,11 +61,17 @@ export const POST = withErrorHandler(async (req: Request) => {
   if (user.isPlatformBlocked) return ApiErrors.FORBIDDEN();
 
   const body = await parseBody(req, createTenantSchema);
+  // Derive slug from name (e.g. "Acme Inc" → "acme-inc")
+  const slug = body.name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "workspace";
 
   try {
     const result = await createTenantForUser({
       userId: session.user.id,
-      slug: body.slug,
+      slug,
       ipAddress: getIp(req),
       userAgent: getUserAgent(req),
     });

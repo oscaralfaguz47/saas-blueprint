@@ -418,8 +418,8 @@ async function runUserBootstraps(params: { userId: string; email?: string | null
   // Defensive guards (avoid unexpected nulls)
   if (!params.userId) return;
 
-  // A5: No workspace creation on sign-in/createUser. First-time setup and DRAFT creation
-  // happen when user hits /app (layout) or /setup/workspace (ensureDraftWorkspaceForUser).
+  // A5: No workspace creation on sign-in/createUser. Workspace is auto-created
+  // when user first hits /app (layout) via ensureDraftWorkspaceForUser.
 
   // Ensure platform owner/admin bootstrap (idempotent)
   await ensureBootstrapPlatformOwner({

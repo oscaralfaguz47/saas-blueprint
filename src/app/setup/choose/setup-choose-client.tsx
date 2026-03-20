@@ -43,7 +43,7 @@ export default function SetupChooseClient({ invitations }: SetupChooseClientProp
       });
       if (res.ok) {
         setList((prev) => prev.filter((inv) => inv.id !== id));
-        if (list.length <= 1) router.replace("/setup/workspace");
+        if (list.length <= 1) router.replace("/app/requests");
       }
     } finally {
       setDecliningId(null);
@@ -98,17 +98,6 @@ export default function SetupChooseClient({ invitations }: SetupChooseClientProp
             ))}
           </div>
 
-          <div className="mt-6 border-t border-(--border-subtle) pt-6">
-            <p className="text-sm font-medium text-(--text-secondary)">
-              Or create your own workspace
-            </p>
-            <Link
-              href="/setup/workspace"
-              className="mt-2 inline-flex h-11 w-full items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev)"
-            >
-              Create Workspace
-            </Link>
-          </div>
         </AuthCard>
       </div>
     </main>

@@ -6,6 +6,7 @@ import { WorkspaceReadyNotifier } from "@/components/app/workspace-ready-notifie
 import AppLayoutClient from "@/components/app/app-layout-client";
 import { ActivityTrackerProvider } from "@/components/app/activity-tracker-provider";
 import { ThemeProvider } from "@/components/theme/theme-provider";
+import { WelcomeBanner } from "@/components/app/welcome-banner";
 
 type Workspace = {
   id: string;
@@ -29,6 +30,8 @@ type AppLayoutHydrationGateProps = {
   initialTheme?: Theme | null;
   /** Platform Admin: show sidebar entry when true */
   canAccessPlatformAdmin?: boolean;
+  showWelcomeBanner?: boolean;
+  workspaceName?: string | null;
   children: React.ReactNode;
 };
 
@@ -39,6 +42,8 @@ export function AppLayoutHydrationGate({
   pendingInvitationsCount = 0,
   initialTheme = null,
   canAccessPlatformAdmin = false,
+  showWelcomeBanner = false,
+  workspaceName = null,
   children,
 }: AppLayoutHydrationGateProps) {
   return (
@@ -46,6 +51,7 @@ export function AppLayoutHydrationGate({
       <WorkspaceReadyNotifier tenantId={tenantId} />
       <ThemeProvider initialTheme={initialTheme}>
         <ActivityTrackerProvider />
+        {showWelcomeBanner && workspaceName && <WelcomeBanner workspaceName={workspaceName} />}
         <TenantPermissionsProvider>
           <CreateWorkspaceModalProvider>
             <AppLayoutClient

@@ -4,28 +4,6 @@ import { cuidSchema } from "./common";
 /** Max length for tenant slug (DB VarChar(80)) */
 export const TENANT_SLUG_MAX = 80;
 
-/** A5 claim: min 3, max 80 chars (matches DB VarChar(80)) */
-export const CLAIM_SLUG_MIN = 3;
-export const CLAIM_SLUG_MAX = 80;
-
-/** Reserved slugs (A5) — cannot be used as workspace URL */
-export const RESERVED_SLUGS = new Set([
-  "admin",
-  "api",
-  "app",
-  "billing",
-  "settings",
-  "support",
-  "www",
-  "setup",
-  "invite",
-  "invitations",
-  "workspace",
-  "requests",
-]);
-
-const slugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-
 /**
  * Normalize input to a URL-safe slug: lowercase, hyphen-separated, alphanumeric only.
  * Used for validation and by create-tenant flow.
@@ -52,36 +30,18 @@ export function nameFromSlug(slug: string): string {
     .join(" ");
 }
 
-/** Slug-only workspace creation (modal flow). Same rules as claim: min 3, max 80, no reserved. */
+/** Name-based workspace creation. Slug is auto-derived from name on the server. */
 export const createTenantSchema = z.object({
-  slug: z
+  name: z
     .string()
-    .min(CLAIM_SLUG_MIN, `Workspace URL must be at least ${CLAIM_SLUG_MIN} characters`)
-    .max(CLAIM_SLUG_MAX, `Workspace URL must be ${CLAIM_SLUG_MAX} characters or less`)
-    .transform((s) => s.toLowerCase().trim())
-    .refine((s) => s.length >= CLAIM_SLUG_MIN, "Workspace URL is too short")
-    .refine((s) => slugRegex.test(s), "Use only lowercase letters, numbers, and hyphens (no leading/trailing/consecutive hyphens)")
-    .refine((s) => !RESERVED_SLUGS.has(s), "This workspace URL is reserved"),
+    .min(2, "Workspace name must be at least 2 characters")
+    .max(80, "Workspace name must be 80 characters or less")
+    .transform((s) => s.trim()),
 });
 
 /** Set default workspace (tenant) for the current user */
 export const setDefaultTenantSchema = z.object({
   tenantId: cuidSchema,
-});
-
-/** A5 claim workspace: slug rules (min 3, max 80, no reserved) */
-export const claimSlugSchema = z
-  .string()
-  .min(CLAIM_SLUG_MIN, `Workspace URL must be at least ${CLAIM_SLUG_MIN} characters`)
-  .max(CLAIM_SLUG_MAX, `Workspace URL must be ${CLAIM_SLUG_MAX} characters or less`)
-  .transform((s) => s.toLowerCase().trim())
-  .refine((s) => s.length >= CLAIM_SLUG_MIN, "Workspace URL is too short")
-  .refine((s) => slugRegex.test(s), "Use only lowercase letters, numbers, and hyphens (no leading/trailing/consecutive hyphens)")
-  .refine((s) => !RESERVED_SLUGS.has(s), "This workspace URL is reserved");
-
-/** A5 claim workspace request body */
-export const claimWorkspaceSchema = z.object({
-  slug: claimSlugSchema,
 });
 
 /** Workspace settings (editable in modal after create) */

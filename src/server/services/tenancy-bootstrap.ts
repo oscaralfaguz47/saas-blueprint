@@ -274,9 +274,10 @@ export async function ensureDraftWorkspaceForUser(params: {
 
     const tenant = await tx.tenant.create({
       data: {
-        name: `${baseName}'s Workspace`,
+        name: nameFromSlug(slug),
         slug,
-        status: "DRAFT",
+        status: "ACTIVE",
+        claimedAt: new Date(),
         createdByUserId: userId,
       },
       select: { id: true, name: true, slug: true, status: true },
@@ -352,12 +353,13 @@ export async function ensureDraftWorkspaceForUser(params: {
     actorUserId: userId,
     actorContext: "TENANT",
     tenantId: result.tenant.id,
-    action: "workspace.auto_created",
+    action: "workspace.created",
     targetType: "Tenant",
     targetId: result.tenant.id,
     metadata: {
       tenantName: result.tenant.name,
       tenantSlug: result.tenant.slug,
+      method: "auto",
     },
     ipAddress,
     userAgent,
@@ -398,94 +400,6 @@ export async function deleteUserDraftTenants(params: {
   }
 
   return { deletedCount: drafts.length };
-}
-
-/**
- * A5: Check if a slug is available (case-insensitive). Call with lowercased slug.
- */
-export async function isSlugAvailable(slugLower: string): Promise<boolean> {
-  const rows = await prisma.$queryRaw<Array<{ id: string }>>`
-    SELECT id FROM "Tenant" WHERE LOWER("slug") = ${slugLower} LIMIT 1
-  `;
-  return rows.length === 0;
-}
-
-/**
- * A5: Claim user's DRAFT workspace with a chosen slug. Caller must validate slug (claimSlugSchema + availability).
- */
-export async function claimWorkspaceBySlug(params: {
-  userId: string;
-  slug: string;
-  ipAddress?: string | null;
-  userAgent?: string | null;
-}): Promise<{ tenant: { id: string; name: string; slug: string; status: string } }> {
-  const { userId, slug, ipAddress, userAgent } = params;
-
-  const slugLower = slug.toLowerCase();
-  const available = await isSlugAvailable(slugLower);
-  if (!available) throw new SlugTakenError(slug);
-
-  const membership = await prisma.tenantMembership.findFirst({
-    where: {
-      userId,
-      isDefaultTenant: true,
-      status: "ACTIVE",
-      tenant: { status: "DRAFT" },
-      roles: {
-        some: {
-          role: { name: { in: ["Primary Owner", "Owner"] } },
-        },
-      },
-    },
-    select: {
-      id: true,
-      tenantId: true,
-      tenant: { select: { id: true, name: true, slug: true, status: true } },
-    },
-  });
-
-  if (!membership?.tenant) {
-    const err = new Error("No DRAFT workspace found for user");
-    (err as Error & { code?: string }).code = "NO_DRAFT_WORKSPACE";
-    throw err;
-  }
-
-  const name = nameFromSlug(slugLower);
-  const previousSlug = membership.tenant.slug;
-
-  const tenant = await prisma.$transaction(async (tx) => {
-    const updated = await tx.tenant.update({
-      where: { id: membership.tenantId },
-      data: {
-        slug: slugLower,
-        name,
-        status: "ACTIVE",
-        claimedAt: new Date(),
-      },
-      select: { id: true, name: true, slug: true, status: true },
-    });
-
-    return updated;
-  });
-
-  await writeAuditLog({
-    actorUserId: userId,
-    actorContext: "TENANT",
-    tenantId: tenant.id,
-    action: "workspace.claimed",
-    targetType: "Tenant",
-    targetId: tenant.id,
-    metadata: {
-      previousSlug,
-      newSlug: slugLower,
-      statusFrom: "DRAFT",
-      statusTo: "ACTIVE",
-    },
-    ipAddress,
-    userAgent,
-  });
-
-  return { tenant };
 }
 
 /**

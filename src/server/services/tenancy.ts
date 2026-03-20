@@ -5,12 +5,22 @@ import { prisma } from "@/server/db";
 const membershipSelect = {
   id: true,
   tenantId: true,
-  tenant: { select: { id: true, name: true, slug: true, status: true, logoObjectKey: true } },
+  welcomeBannerDismissedAt: true,
+  tenant: {
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      status: true,
+      logoObjectKey: true,
+      claimedAt: true,
+    },
+  },
 } as const;
 
 /**
  * Returns the user's default workspace membership (including DRAFT) for layout/redirect logic.
- * A5: DRAFT tenants require redirect to /setup/workspace.
+ * A5: Workspace is auto-created and ACTIVE on first login.
  *
  * - When the current default is DISABLED (e.g. user was disabled from that workspace), we
  *   prefer any ACTIVE membership in an ACTIVE tenant and switch default to it.

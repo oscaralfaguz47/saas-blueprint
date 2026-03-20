@@ -25,10 +25,10 @@ export default async function SetupChoosePage() {
   const { activeMembershipCount, pendingInvitationsCount } =
     await getOnboardingCounts(session.user.id);
   if (activeMembershipCount > 0) redirect("/app/requests");
-  if (pendingInvitationsCount === 0) redirect("/setup/workspace");
+  if (pendingInvitationsCount === 0) redirect("/app/requests");
 
   const emailNormalized = (session.user.email ?? "").trim().toLowerCase();
-  if (!emailNormalized) redirect("/setup/workspace");
+  if (!emailNormalized) redirect("/app/requests");
 
   const now = new Date();
   const invitations = await prisma.tenantInvitation.findMany({

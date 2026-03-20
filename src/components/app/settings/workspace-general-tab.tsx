@@ -137,6 +137,7 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
           dateFormat: dateFormat || undefined,
           description: description.trim() || undefined,
         }),
+        showToastOnError: false,
       });
       const data = (await res.json()) as {
         data?: { tenant?: Tenant };
@@ -295,6 +296,11 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
           disabled={saveStatus === "submitting"}
           className="mt-1.5"
         />
+        {saveError && (
+          <p className="mt-1 text-sm text-(--color-danger)" role="alert">
+            {saveError}
+          </p>
+        )}
       </div>
       <div>
         <label htmlFor="ws-timezone" className="block text-sm font-medium text-(--text-primary)">
@@ -352,14 +358,6 @@ export function WorkspaceGeneralTab({ tenant: initialTenant }: Props) {
           className="mt-1.5"
         />
       </div>
-      {saveError ? (
-        <div
-          role="alert"
-          className="rounded-lg border border-(--color-danger) bg-(--bg-surface) p-3 text-sm text-(--text-primary)"
-        >
-          {saveError}
-        </div>
-      ) : null}
       <div className="flex justify-end gap-2">
         <button
           type="submit"

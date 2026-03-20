@@ -264,10 +264,10 @@ export default function InviteClient({ hasActiveWorkspace = false }: InviteClien
       >
         <div className="flex flex-col gap-3">
           <Link
-            href="/setup/workspace"
+            href="/app/requests"
             className="inline-flex h-11 w-full items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover)"
           >
-            Continue setup
+            Continue to app
           </Link>
           <Link
             href="/"

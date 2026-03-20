@@ -4,7 +4,7 @@ import { prisma } from "@/server/db";
 
 /**
  * A5: Counts used for global onboarding routing (decision matrix).
- * - activeMembershipCount: ACTIVE memberships where tenant is ACTIVE or DRAFT
+ * - activeMembershipCount: ACTIVE memberships where tenant is ACTIVE
  * - pendingInvitationsCount: Invitations for user's email that are PENDING and not expired
  */
 export async function getOnboardingCounts(userId: string): Promise<{
@@ -21,7 +21,7 @@ export async function getOnboardingCounts(userId: string): Promise<{
       where: {
         userId,
         status: "ACTIVE",
-        tenant: { status: { in: ["ACTIVE", "DRAFT"] } },
+        tenant: { status: "ACTIVE" },
       },
     });
     return { activeMembershipCount: activeCount, pendingInvitationsCount: 0 };
@@ -33,7 +33,7 @@ export async function getOnboardingCounts(userId: string): Promise<{
       where: {
         userId,
         status: "ACTIVE",
-        tenant: { status: { in: ["ACTIVE", "DRAFT"] } },
+        tenant: { status: "ACTIVE" },
       },
     }),
     prisma.tenantInvitation.count({

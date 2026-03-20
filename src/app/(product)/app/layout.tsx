@@ -12,6 +12,7 @@ import { hasVendorPermission } from "@/server/security/vendor-authorization";
 import { cookies } from "next/headers";
 import { trySkipMfaWithRememberedDevice } from "@/server/services/mfa-skip";
 import { AppLayoutHydrationGate } from "@/components/app/app-layout-hydration-gate";
+import { ensureDraftWorkspaceForUser } from "@/server/services/tenancy-bootstrap";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +62,26 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
     const { activeMembershipCount, pendingInvitationsCount } = await getOnboardingCounts(userId);
 
+    // Auto-create workspace for new users who don't have one yet
+    if (activeMembershipCount === 0 && pendingInvitationsCount === 0 && !canAccessPlatformAdmin) {
+      try {
+        await ensureDraftWorkspaceForUser({
+          userId,
+          userEmail: session.user.email,
+        });
+      } catch (err) {
+        const code = err && typeof err === "object" && "code" in err
+          ? (err as { code?: string }).code
+          : undefined;
+        if (code === "USER_NOT_FOUND") {
+          redirect("/auth/sign-out?callbackUrl=/auth/sign-in&reason=session_expired");
+        }
+        throw err;
+      }
+      // After creating workspace, redirect to self to pick up new membership
+      redirect("/app/requests");
+    }
+
     // If no workspaces, redirect to appropriate destination
     if (activeMembershipCount === 0) {
       if (canAccessPlatformAdmin) {
@@ -85,19 +106,21 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         });
         redirect("/setup/choose");
       }
-      redirect("/setup/workspace");
+      // No workspace, no invitations, no platform admin — should not reach here
+      // after auto-creation above, but handle gracefully
+      redirect("/auth/sign-out?callbackUrl=/auth/sign-in&reason=session_expired");
     }
 
     const membership = await getDefaultTenantForUser(userId);
     if (!membership) {
       // Fallback if counts said > 0 but no default found (rare edge case)
       if (canAccessPlatformAdmin) redirect("/admin/workspaces");
-      redirect("/setup/workspace");
+      // No workspace found — this should not happen after auto-creation
+      // Redirect to sign-out to recover gracefully
+      redirect("/auth/sign-out?callbackUrl=/auth/sign-in&reason=session_expired");
     }
-
-    if (membership.tenant.status === "DRAFT") {
-      redirect("/setup/workspace");
-    }
+    const showWelcomeBanner =
+      !!membership.tenant.claimedAt && !membership.welcomeBannerDismissedAt;
 
     const tenantId = membership.tenant.id;
     const workspace = {
@@ -138,6 +161,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         tenantId={tenantId}
         pendingInvitationsCount={pendingInvitationsCount}
         canAccessPlatformAdmin={canAccessPlatformAdmin}
+        showWelcomeBanner={showWelcomeBanner}
+        workspaceName={membership.tenant.name}
       >
         {children}
       </AppLayoutHydrationGate>

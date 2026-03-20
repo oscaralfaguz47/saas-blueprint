@@ -446,6 +446,8 @@ model TenantMembership {
   status     MembershipStatus @default(ACTIVE)
   joinedAt   DateTime?
   lastSeenAt DateTime?
+  /// Set when the user dismisses the auto-workspace welcome banner.
+  welcomeBannerDismissedAt DateTime?
 
   isDefaultTenant Boolean @default(false)
 

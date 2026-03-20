@@ -104,7 +104,7 @@ export const POST = withErrorHandler(async (req: Request) => {
   const { activeMembershipCount, pendingInvitationsCount } = await getOnboardingCounts(session.user.id);
   let redirectTo = "/app/requests";
   if (activeMembershipCount === 0) {
-    redirectTo = pendingInvitationsCount > 0 ? "/setup/choose" : "/setup/workspace";
+    redirectTo = pendingInvitationsCount > 0 ? "/setup/choose" : "/app/requests";
   }
 
   const res = apiSuccess({ ok: true, redirect: redirectTo });
