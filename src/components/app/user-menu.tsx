@@ -227,37 +227,12 @@ export default function UserMenu({ user }: UserMenuProps) {
 
           <div className="py-1">
             <div
-              className="flex items-center justify-between px-4 py-2.5"
+              className="flex items-center gap-3 px-4 py-2.5"
               onPointerDown={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center gap-2.5">
-                <span className="flex items-center gap-1.5 text-sm text-(--text-secondary)">
-                  {isDark ? "Dark" : "Light"}
-                  {themeSaving && (
-                    <svg
-                      className="h-3 w-3 animate-spin text-(--text-muted)"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      aria-hidden="true"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                      />
-                    </svg>
-                  )}
-                </span>
-              </div>
+              <span className="text-sm text-(--text-secondary)">
+                {isDark ? "Dark" : "Light"}
+              </span>
 
               <button
                 type="button"
@@ -284,7 +259,6 @@ export default function UserMenu({ user }: UserMenuProps) {
                     boxShadow: "0 1px 4px rgba(0,0,0,0.3)",
                   }}
                 />
-
                 <span className="relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full">
                   <svg
                     width="13"
@@ -300,7 +274,6 @@ export default function UserMenu({ user }: UserMenuProps) {
                     <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
                   </svg>
                 </span>
-
                 <span className="relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full">
                   <svg
                     width="13"
@@ -325,6 +298,30 @@ export default function UserMenu({ user }: UserMenuProps) {
                   </svg>
                 </span>
               </button>
+
+              {themeSaving && (
+                <svg
+                  className="h-3 w-3 animate-spin text-(--text-muted)"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+              )}
             </div>
 
             <div className="my-1 border-t border-(--border-subtle)" />
