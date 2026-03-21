@@ -88,7 +88,7 @@ export async function checkAndUpdateSessionActivity(
   // Best-effort cleanup of expired/revoked sessions (non-blocking)
   // Runs probabilistically (1 in 20 requests) to avoid overhead on every request
   if (Math.random() < 0.05) {
-    const revokedCleanupThreshold = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const revokedCleanupThreshold = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     prisma.session
       .deleteMany({
         where: {

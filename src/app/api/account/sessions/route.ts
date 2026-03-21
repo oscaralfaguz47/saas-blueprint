@@ -17,18 +17,18 @@ export const GET = withErrorHandler(async (req: Request) => {
   const limit = 5; // sessions per page
   const now = new Date();
 
-  // Step 1: Clean up expired and old revoked sessions BEFORE querying
+  // Step 1: Clean up stale sessions BEFORE querying (30d retention for Login History enrichment).
   // Await this so the findMany sees a clean state
+  const retentionCutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   await prisma.session.deleteMany({
     where: {
       userId: session.user.id,
       // Do NOT delete the current session
       sessionToken: { not: session.user.sessionToken ?? "" },
       OR: [
-        // Expired sessions
-        { expires: { lt: now } },
+        { expires: { lt: retentionCutoff } },
         {
-          revokedAt: { not: null },
+          revokedAt: { not: null, lt: retentionCutoff },
         },
       ],
     },

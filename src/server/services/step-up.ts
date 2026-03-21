@@ -2,14 +2,14 @@ import "server-only";
 
 import { prisma } from "@/server/db";
 
-const STEP_UP_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+const STEP_UP_WINDOW_MS = 60 * 60 * 1000; // 60 minutes
 
 /**
  * Step-up eligibility for sensitive account actions (disable 2FA, regenerate backup codes,
  * change auto-logout, issue remembered device).
- * - If user does NOT have 2FA: FULL session is enough (no MFA to re-verify).
- * - If user has 2FA: session must be FULL with mfaVerifiedAt within the last 10 minutes.
- * When sessionToken is missing (e.g. JWT not yet updated after sign-in), resolves by userId.
+ * - If user has no 2FA: full Session (when present) is enough.
+ * - If user has 2FA: recent Session.mfaVerifiedAt or UserSecurity.stepUpVerifiedAt within window.
+ * When Session row is missing, falls back to UserSecurity.stepUpVerifiedAt (JWT-only / cleaned sessions).
  */
 export async function isStepUpEligible(
   sessionToken: string | null | undefined,
@@ -28,18 +28,32 @@ export async function isStepUpEligible(
         }),
     prisma.userSecurity.findUnique({
       where: { userId },
-      select: { totpEnabled: true },
+      select: {
+        totpEnabled: true,
+        stepUpVerifiedAt: true,
+      },
     }),
   ]);
 
-  if (!session || session.revokedAt) return false;
-  if (session.authLevel !== "FULL") return false;
+  // Check session-based step-up first
+  if (session && !session.revokedAt && session.authLevel === "FULL") {
+    // User without 2FA: full session is sufficient
+    if (!security?.totpEnabled) return true;
+    // User with 2FA: require recent MFA verification
+    if (session.mfaVerifiedAt) {
+      const elapsed = Date.now() - session.mfaVerifiedAt.getTime();
+      if (elapsed <= STEP_UP_WINDOW_MS) return true;
+    }
+  }
 
-  // User without 2FA: full session is sufficient (no step-up challenge possible).
-  if (!security?.totpEnabled) return true;
+  // Fallback: check UserSecurity.stepUpVerifiedAt
+  // Used when Session row is unavailable (JWT-only sessions)
+  if (security?.stepUpVerifiedAt) {
+    const elapsed = Date.now() - security.stepUpVerifiedAt.getTime();
+    if (elapsed <= STEP_UP_WINDOW_MS) {
+      return true;
+    }
+  }
 
-  // User with 2FA: require recent MFA verification (within 10 minutes).
-  if (!session.mfaVerifiedAt) return false;
-  const elapsed = Date.now() - session.mfaVerifiedAt.getTime();
-  return elapsed <= STEP_UP_WINDOW_MS;
+  return false;
 }

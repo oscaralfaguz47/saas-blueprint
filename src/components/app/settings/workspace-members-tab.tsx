@@ -37,8 +37,10 @@ const ROLE_HELP = (
     </p>
   </div>
 );
+import { useSession } from "next-auth/react";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { useToast } from "@/components/ui/toast";
+import { StepUpModal } from "@/components/app/step-up-modal";
 import { InviteMemberModal } from "./invite-member-modal";
 import { TransferOwnershipModal } from "./transfer-ownership-modal";
 
@@ -113,6 +115,33 @@ function canShowSecurityActionsFor(currentUserRole: string, targetRole: string):
 type SortBy = "user" | "role" | "status" | "joined";
 type SortDir = "asc" | "desc";
 
+type SecurityMenuAction =
+  | "force-2fa"
+  | "reset-2fa"
+  | "disable-2fa"
+  | "revoke-sessions"
+  | "revoke-remembered-devices";
+
+function getSecurityActionPath(userId: string, action: SecurityMenuAction): string {
+  const base = "/api/settings/workspace/members";
+  switch (action) {
+    case "force-2fa":
+      return `${base}/${userId}/security/force-2fa`;
+    case "reset-2fa":
+      return `${base}/${userId}/security/reset-2fa`;
+    case "disable-2fa":
+      return `${base}/${userId}/security/disable-2fa`;
+    case "revoke-sessions":
+      return `${base}/${userId}/security/revoke-sessions`;
+    case "revoke-remembered-devices":
+      return `${base}/${userId}/security/revoke-remembered-devices`;
+    default: {
+      const _exhaustive: never = action;
+      return `${base}/${userId}/security/${String(_exhaustive)}`;
+    }
+  }
+}
+
 export function WorkspaceMembersTab({
   tenant,
   permissions,
@@ -127,6 +156,8 @@ export function WorkspaceMembersTab({
   const canManage = permSet.has("tenant.users.manage");
   const canChangeStatus = canManage || canDisable;
   const canEnable = canManage || canDisable;
+  const { data: sessionData } = useSession();
+  const hasTwoFactor = sessionData?.user?.totpEnabled ?? false;
   const apiFetch = useApiFetch();
   const toast = useToast();
   const [items, setItems] = useState<MemberItem[]>([]);
@@ -146,6 +177,11 @@ export function WorkspaceMembersTab({
   const [copiedUserId, setCopiedUserId] = useState<string | null>(null);
   const [securityMenuUserId, setSecurityMenuUserId] = useState<string | null>(null);
   const [securityLoadingId, setSecurityLoadingId] = useState<string | null>(null);
+  const [stepUpOpen, setStepUpOpen] = useState(false);
+  const [stepUpAction, setStepUpAction] = useState<{
+    userId: string;
+    action: SecurityMenuAction;
+  } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const loadingMoreRef = useRef(false);
 
@@ -273,69 +309,92 @@ export function WorkspaceMembersTab({
     }
   };
 
-  const baseSecurityUrl = "/api/settings/workspace/members";
-  const runSecurityAction = async (
-    userId: string,
-    action:
-      | "force-2fa"
-      | "reset-2fa"
-      | "disable-2fa"
-      | "revoke-sessions"
-      | "revoke-remembered-devices",
-  ) => {
+  async function handleSecurityActionSuccess(res: Response, action: SecurityMenuAction) {
+    setSecurityMenuUserId(null);
+    let message: string;
+    try {
+      const data = (await res.clone().json()) as {
+        data?: { alreadyEnforced?: boolean; skipped?: boolean; alreadyDisabled?: boolean };
+      };
+      if (action === "force-2fa" && data.data?.alreadyEnforced) {
+        message = "Member is already required to use 2FA.";
+      } else if (action === "force-2fa") {
+        message =
+          "2FA enforcement has been applied. The member must set up 2FA at next sign-in.";
+      } else if (action === "reset-2fa" && data.data?.skipped) {
+        message = "No 2FA to reset for this member.";
+      } else if (action === "reset-2fa") {
+        message =
+          "2FA has been reset for this member. They will need to set it up again at next sign-in.";
+      } else if (action === "disable-2fa" && data.data?.alreadyDisabled) {
+        message = "2FA was already disabled for this member.";
+      } else if (action === "disable-2fa") {
+        message = "2FA has been disabled for this member.";
+      } else if (action === "revoke-sessions") {
+        message = "All sessions have been revoked for this member.";
+      } else {
+        message = "All remembered devices have been revoked for this member.";
+      }
+    } catch {
+      message =
+        action === "force-2fa"
+          ? "2FA enforcement has been applied."
+          : action === "reset-2fa"
+            ? "2FA has been reset for this member."
+            : action === "disable-2fa"
+              ? "2FA has been disabled for this member."
+              : action === "revoke-sessions"
+                ? "All sessions have been revoked."
+                : "All remembered devices have been revoked.";
+    }
+    toast.addToast("success", message);
+    loadInitial();
+  }
+
+  async function handleStepUpSuccess() {
+    setStepUpOpen(false);
+    if (!stepUpAction) return;
+    const { userId, action } = stepUpAction;
+    setStepUpAction(null);
     setSecurityLoadingId(userId);
     try {
-      const path =
-        action === "force-2fa"
-          ? `${baseSecurityUrl}/${userId}/security/force-2fa`
-          : action === "reset-2fa"
-            ? `${baseSecurityUrl}/${userId}/security/reset-2fa`
-            : action === "disable-2fa"
-              ? `${baseSecurityUrl}/${userId}/security/disable-2fa`
-              : action === "revoke-sessions"
-                ? `${baseSecurityUrl}/${userId}/security/revoke-sessions`
-                : `${baseSecurityUrl}/${userId}/security/revoke-remembered-devices`;
-      const res = await apiFetch(path, { method: "PATCH" });
+      const path = getSecurityActionPath(userId, action);
+      const res = await apiFetch(path, { method: "PATCH", showToastOnError: false });
       if (res.ok) {
-        setSecurityMenuUserId(null);
-        let message: string;
-        try {
-          const data = (await res.clone().json()) as {
-            data?: { alreadyEnforced?: boolean; skipped?: boolean; alreadyDisabled?: boolean };
-          };
-          if (action === "force-2fa" && data.data?.alreadyEnforced) {
-            message = "Member is already required to use 2FA.";
-          } else if (action === "force-2fa") {
-            message =
-              "2FA enforcement has been applied. The member must set up 2FA at next sign-in.";
-          } else if (action === "reset-2fa" && data.data?.skipped) {
-            message = "No 2FA to reset for this member.";
-          } else if (action === "reset-2fa") {
-            message =
-              "2FA has been reset for this member. They will need to set it up again at next sign-in.";
-          } else if (action === "disable-2fa" && data.data?.alreadyDisabled) {
-            message = "2FA was already disabled for this member.";
-          } else if (action === "disable-2fa") {
-            message = "2FA has been disabled for this member.";
-          } else if (action === "revoke-sessions") {
-            message = "All sessions have been revoked for this member.";
-          } else {
-            message = "All remembered devices have been revoked for this member.";
-          }
-        } catch {
-          message =
-            action === "force-2fa"
-              ? "2FA enforcement has been applied."
-              : action === "reset-2fa"
-                ? "2FA has been reset for this member."
-                : action === "disable-2fa"
-                  ? "2FA has been disabled for this member."
-                  : action === "revoke-sessions"
-                    ? "All sessions have been revoked."
-                    : "All remembered devices have been revoked.";
+        await handleSecurityActionSuccess(res, action);
+      } else {
+        const errData = (await res.json().catch(() => ({}))) as {
+          error?: { message?: string };
+        };
+        toast.addToast("error", errData.error?.message ?? "Something went wrong.");
+      }
+    } finally {
+      setSecurityLoadingId(null);
+    }
+  }
+
+  const runSecurityAction = async (userId: string, action: SecurityMenuAction) => {
+    setSecurityLoadingId(userId);
+    try {
+      const path = getSecurityActionPath(userId, action);
+      const res = await apiFetch(path, { method: "PATCH", showToastOnError: false });
+      if (res.ok) {
+        await handleSecurityActionSuccess(res, action);
+      } else {
+        const errData = (await res.json().catch(() => ({}))) as {
+          error?: { details?: { code?: string }; message?: string };
+        };
+        const isStepUp = errData.error?.details?.code === "STEP_UP_REQUIRED";
+        if (isStepUp) {
+          setStepUpAction({ userId, action });
+          setStepUpOpen(true);
+        } else if (res.status === 403) {
+          toast.addToast("error", "You don't have permission to perform this action.");
+        } else if (res.status === 429) {
+          toast.addToast("error", errData.error?.message ?? "Too many actions. Please wait.");
+        } else {
+          toast.addToast("error", errData.error?.message ?? "Something went wrong.");
         }
-        toast.addToast("success", message);
-        loadInitial();
       }
     } finally {
       setSecurityLoadingId(null);
@@ -774,6 +833,17 @@ export function WorkspaceMembersTab({
           )}
         </div>
       )}
+
+      <StepUpModal
+        open={stepUpOpen}
+        onClose={() => {
+          setStepUpOpen(false);
+          setStepUpAction(null);
+        }}
+        onSuccess={() => void handleStepUpSuccess()}
+        hasTwoFactor={hasTwoFactor}
+        email={sessionData?.user?.email ?? null}
+      />
     </div>
   );
 }

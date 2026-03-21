@@ -218,6 +218,9 @@ model UserSecurity {
   mfaEnforcedByUserId String?  // E6: admin who forced 2FA
   mfaResetAt  DateTime?
 
+  /// Set when user completes step-up verification. Used when Session row is unavailable.
+  stepUpVerifiedAt DateTime?
+
   lockedUntil DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

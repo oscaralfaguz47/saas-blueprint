@@ -7,6 +7,7 @@ import { useOAuthPopup, getOAuthAuthorizationUrl } from "@/hooks/use-oauth-popup
 import { registerPasskey } from "@/hooks/use-passkey";
 import QRCode from "qrcode";
 import { Input } from "@/components/ui/input";
+import { StepUpModal } from "@/components/app/step-up-modal";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { getApiErrorMessage } from "@/lib/api-client";
 import type { AccountSecurity } from "./account-settings-tabs";
@@ -60,6 +61,12 @@ type Props = {
   authLevel: string;
   currentUserEmail: string | null;
 };
+
+type StepUpSecurityPending =
+  | { kind: "disable2fa" }
+  | { kind: "regenerateBackup" }
+  | { kind: "autoLogoutOff" }
+  | { kind: "autoLogoutOn"; minutes: number };
 
 function MicrosoftIcon() {
   return (
@@ -140,7 +147,7 @@ export function SecurityTab({
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { update: updateSession } = useSession();
+  const { update: updateSession, data: sessionData } = useSession();
   const { openPopup } = useOAuthPopup();
   const apiFetch = useApiFetch();
   const [totpSetupStep, setTotpSetupStep] = useState<"idle" | "qr" | "verify">("idle");
@@ -163,6 +170,9 @@ export function SecurityTab({
   );
   const [autoLogoutLoading, setAutoLogoutLoading] = useState(false);
   const [autoLogoutError, setAutoLogoutError] = useState<string | null>(null);
+  const [stepUpOpen, setStepUpOpen] = useState(false);
+  const [stepUpPending, setStepUpPending] = useState<StepUpSecurityPending | null>(null);
+  const hasTwoFactor = initialSecurity.totpEnabled ?? false;
 
   const [passkeys, setPasskeys] = useState<
     Array<{
@@ -579,15 +589,20 @@ export function SecurityTab({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: disableCode.trim() }),
+        showToastOnError: false,
       });
       const data = (await res.json()) as {
         error?: { code?: string; message?: string; details?: { code?: string } };
       };
       if (!res.ok) {
-        setError(getApiErrorMessage(res, data));
         if (data.error?.details?.code === "STEP_UP_REQUIRED") {
-          setError("Sign in again to disable 2FA.");
+          setError(null);
+          setStepUpPending({ kind: "disable2fa" });
+          setStepUpOpen(true);
+          setLoadingDisable(false);
+          return;
         }
+        setError(getApiErrorMessage(res, data));
         setLoadingDisable(false);
         return;
       }
@@ -610,16 +625,21 @@ export function SecurityTab({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: regenerateCode.trim() }),
+        showToastOnError: false,
       });
       const data = (await res.json()) as {
         data?: { backupCodes?: string[] };
         error?: { code?: string; message?: string; details?: { code?: string } };
       };
       if (!res.ok) {
-        setError(getApiErrorMessage(res, data));
         if (data.error?.details?.code === "STEP_UP_REQUIRED") {
-          setError("Sign in again to regenerate backup codes.");
+          setError(null);
+          setStepUpPending({ kind: "regenerateBackup" });
+          setStepUpOpen(true);
+          setLoadingRegenerate(false);
+          return;
         }
+        setError(getApiErrorMessage(res, data));
         setLoadingRegenerate(false);
         return;
       }
@@ -652,17 +672,20 @@ export function SecurityTab({
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enabled: false }),
+      showToastOnError: false,
     })
       .then(async (res) => {
         const data = (await res.json()) as {
           error?: { code?: string; message?: string; details?: { code?: string } };
         };
         if (!res.ok) {
-          setAutoLogoutError(
-            data.error?.details?.code === "STEP_UP_REQUIRED"
-              ? "Sign in again to change this setting."
-              : getApiErrorMessage(res, data),
-          );
+          if (data.error?.details?.code === "STEP_UP_REQUIRED") {
+            setAutoLogoutError(null);
+            setStepUpPending({ kind: "autoLogoutOff" });
+            setStepUpOpen(true);
+            return;
+          }
+          setAutoLogoutError(getApiErrorMessage(res, data));
           return;
         }
         setAutoLogoutEnabled(false);
@@ -682,17 +705,20 @@ export function SecurityTab({
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enabled: true, minutes }),
+      showToastOnError: false,
     })
       .then(async (res) => {
         const data = (await res.json()) as {
           error?: { code?: string; message?: string; details?: { code?: string } };
         };
         if (!res.ok) {
-          setAutoLogoutError(
-            data.error?.details?.code === "STEP_UP_REQUIRED"
-              ? "Sign in again to change this setting."
-              : getApiErrorMessage(res, data),
-          );
+          if (data.error?.details?.code === "STEP_UP_REQUIRED") {
+            setAutoLogoutError(null);
+            setStepUpPending({ kind: "autoLogoutOn", minutes });
+            setStepUpOpen(true);
+            return;
+          }
+          setAutoLogoutError(getApiErrorMessage(res, data));
           return;
         }
         setAutoLogoutEnabled(true);
@@ -1344,6 +1370,81 @@ export function SecurityTab({
         </div>
         {autoLogoutError && <p className="mt-2 text-sm text-(--color-danger)">{autoLogoutError}</p>}
       </section>
+
+      <StepUpModal
+        open={stepUpOpen}
+        onClose={() => {
+          setStepUpOpen(false);
+          setStepUpPending(null);
+        }}
+        onSuccess={() => {
+          void (async () => {
+            setStepUpOpen(false);
+            const pending = stepUpPending;
+            setStepUpPending(null);
+            if (!pending) return;
+            if (pending.kind === "disable2fa") {
+              await handleDisable({ preventDefault: () => {} } as React.FormEvent);
+            } else if (pending.kind === "regenerateBackup") {
+              await handleRegenerateBackupCodes({ preventDefault: () => {} } as React.FormEvent);
+            } else if (pending.kind === "autoLogoutOff") {
+              setAutoLogoutLoading(true);
+              setAutoLogoutError(null);
+              try {
+                const res = await apiFetch("/api/account/auto-logout", {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ enabled: false }),
+                  showToastOnError: false,
+                });
+                const data = (await res.json()) as {
+                  error?: { code?: string; message?: string; details?: { code?: string } };
+                };
+                if (!res.ok) {
+                  setAutoLogoutError(getApiErrorMessage(res, data));
+                  return;
+                }
+                setAutoLogoutEnabled(false);
+                setAutoLogoutMinutes(null);
+                void updateSession();
+                router.refresh();
+              } catch {
+                setAutoLogoutError("Something went wrong.");
+              } finally {
+                setAutoLogoutLoading(false);
+              }
+            } else if (pending.kind === "autoLogoutOn") {
+              setAutoLogoutLoading(true);
+              setAutoLogoutError(null);
+              try {
+                const res = await apiFetch("/api/account/auto-logout", {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ enabled: true, minutes: pending.minutes }),
+                  showToastOnError: false,
+                });
+                const data = (await res.json()) as {
+                  error?: { code?: string; message?: string; details?: { code?: string } };
+                };
+                if (!res.ok) {
+                  setAutoLogoutError(getApiErrorMessage(res, data));
+                  return;
+                }
+                setAutoLogoutEnabled(true);
+                setAutoLogoutMinutes(pending.minutes);
+                void updateSession();
+                router.refresh();
+              } catch {
+                setAutoLogoutError("Something went wrong.");
+              } finally {
+                setAutoLogoutLoading(false);
+              }
+            }
+          })();
+        }}
+        hasTwoFactor={hasTwoFactor}
+        email={sessionData?.user?.email ?? null}
+      />
     </div>
   );
 }
