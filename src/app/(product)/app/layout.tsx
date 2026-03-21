@@ -60,7 +60,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       permission: "admin.tenants.read",
     });
 
-    const { activeMembershipCount, pendingInvitationsCount } = await getOnboardingCounts(userId);
+    let { activeMembershipCount, pendingInvitationsCount } = await getOnboardingCounts(userId);
 
     // Auto-create workspace for new users who don't have one yet
     if (activeMembershipCount === 0 && pendingInvitationsCount === 0 && !canAccessPlatformAdmin) {
@@ -74,12 +74,26 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
           ? (err as { code?: string }).code
           : undefined;
         if (code === "USER_NOT_FOUND") {
-          redirect("/auth/sign-out?callbackUrl=/auth/sign-in&reason=session_expired");
+          // Race condition: adapter may not have persisted user yet
+          // Wait and retry once before giving up
+          await new Promise((r) => setTimeout(r, 500));
+          try {
+            await ensureDraftWorkspaceForUser({
+              userId,
+              userEmail: session.user.email,
+            });
+          } catch {
+            redirect("/auth/sign-out?callbackUrl=/auth/sign-in&reason=session_expired");
+          }
+        } else {
+          throw err;
         }
-        throw err;
       }
-      // After creating workspace, redirect to self to pick up new membership
-      redirect("/app/requests");
+      // Don't redirect — let layout continue; refresh counts so we don't hit the
+      // "no workspace" branch below with stale activeMembershipCount === 0.
+      const refreshed = await getOnboardingCounts(userId);
+      activeMembershipCount = refreshed.activeMembershipCount;
+      pendingInvitationsCount = refreshed.pendingInvitationsCount;
     }
 
     // If no workspaces, redirect to appropriate destination
@@ -92,12 +106,11 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         if (platformAdminSecurity?.totpEnabled) {
           redirect("/admin/workspaces");
         }
-        // PlatformAdmin without 2FA: let the app shell render normally so they
-        // can navigate to Account Settings and enable 2FA before accessing /admin.
-        // Fall through to the normal app layout rendering below.
-      }
-
-      if (pendingInvitationsCount > 0) {
+        // PlatformAdmin without 2FA: fall through to render app shell normally.
+        // They can navigate to Account Settings to enable 2FA.
+        // Do NOT redirect — that causes infinite loops since /app/*
+        // routes all go through this layout.
+      } else if (pendingInvitationsCount > 0) {
         await writeAuditLog({
           actorUserId: userId,
           actorContext: "TENANT",
@@ -105,29 +118,58 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
           metadata: { pendingInvitationsCount },
         });
         redirect("/setup/choose");
+      } else {
+        redirect("/auth/sign-out?callbackUrl=/auth/sign-in&reason=session_expired");
       }
-      // No workspace, no invitations, no platform admin — should not reach here
-      // after auto-creation above, but handle gracefully
-      redirect("/auth/sign-out?callbackUrl=/auth/sign-in&reason=session_expired");
     }
 
     const membership = await getDefaultTenantForUser(userId);
     if (!membership) {
-      // Fallback if counts said > 0 but no default found (rare edge case)
-      if (canAccessPlatformAdmin) redirect("/admin/workspaces");
-      // No workspace found — this should not happen after auto-creation
-      // Redirect to sign-out to recover gracefully
-      redirect("/auth/sign-out?callbackUrl=/auth/sign-in&reason=session_expired");
+      if (canAccessPlatformAdmin) {
+        // PlatformAdmin with no workspace — render app shell without tenant context
+        // They'll see Account Settings to set up 2FA
+        // Pass null membership through to the shell
+      } else {
+        redirect("/auth/sign-out?callbackUrl=/auth/sign-in&reason=session_expired");
+      }
     }
-    const showWelcomeBanner =
-      !!membership.tenant.claimedAt && !membership.welcomeBannerDismissedAt;
 
-    const tenantId = membership.tenant.id;
-    const workspace = {
-      id: membership.tenant.id,
-      name: membership.tenant.name,
-      logoObjectKey: membership.tenant.logoObjectKey ?? null,
-    };
+    // Welcome banner: user's own auto-created workspace only (not the active switch target)
+    const ownWorkspaceMembership = await prisma.tenantMembership.findFirst({
+      where: {
+        userId,
+        status: "ACTIVE",
+        welcomeBannerDismissedAt: null,
+        tenant: {
+          status: "ACTIVE",
+          createdByUserId: userId,
+          claimedAt: { not: null },
+        },
+      },
+      select: {
+        tenantId: true,
+        welcomeBannerDismissedAt: true,
+        tenant: {
+          select: {
+            name: true,
+            claimedAt: true,
+          },
+        },
+      },
+    });
+
+    const showWelcomeBanner = !!ownWorkspaceMembership;
+    const bannerWorkspaceName = ownWorkspaceMembership?.tenant.name ?? null;
+    const bannerTenantId = ownWorkspaceMembership?.tenantId ?? null;
+
+    const tenantId = membership?.tenant.id ?? null;
+    const workspace = membership
+      ? {
+          id: membership.tenant.id,
+          name: membership.tenant.name,
+          logoObjectKey: membership.tenant.logoObjectKey ?? null,
+        }
+      : null;
 
     const userRecord = await prisma.user.findUnique({
       where: { id: userId },
@@ -162,7 +204,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         pendingInvitationsCount={pendingInvitationsCount}
         canAccessPlatformAdmin={canAccessPlatformAdmin}
         showWelcomeBanner={showWelcomeBanner}
-        workspaceName={membership.tenant.name}
+        workspaceName={bannerWorkspaceName}
+        bannerTenantId={bannerTenantId}
       >
         {children}
       </AppLayoutHydrationGate>

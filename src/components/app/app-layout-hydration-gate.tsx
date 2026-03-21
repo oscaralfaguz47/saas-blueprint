@@ -32,6 +32,8 @@ type AppLayoutHydrationGateProps = {
   canAccessPlatformAdmin?: boolean;
   showWelcomeBanner?: boolean;
   workspaceName?: string | null;
+  /** Own-workspace tenant id for welcome banner "go to settings" link */
+  bannerTenantId?: string | null;
   children: React.ReactNode;
 };
 
@@ -44,6 +46,7 @@ export function AppLayoutHydrationGate({
   canAccessPlatformAdmin = false,
   showWelcomeBanner = false,
   workspaceName = null,
+  bannerTenantId = null,
   children,
 }: AppLayoutHydrationGateProps) {
   return (
@@ -51,7 +54,12 @@ export function AppLayoutHydrationGate({
       <WorkspaceReadyNotifier tenantId={tenantId} />
       <ThemeProvider initialTheme={initialTheme}>
         <ActivityTrackerProvider />
-        {showWelcomeBanner && workspaceName && <WelcomeBanner workspaceName={workspaceName} />}
+        {showWelcomeBanner && workspaceName && (
+          <WelcomeBanner
+            workspaceName={workspaceName}
+            tenantId={bannerTenantId ?? null}
+          />
+        )}
         <TenantPermissionsProvider>
           <CreateWorkspaceModalProvider>
             <AppLayoutClient

@@ -86,6 +86,19 @@ export function consumePendingRequestMeta() {
   return meta;
 }
 
+// Set synchronously before NextAuth handler; used when consumePendingRequestMeta()
+// is empty (e.g. OAuth GET /api/auth/callback/*) and for events.signIn debug.
+// Safe because NextAuth processes one sign-in at a time per request
+let _eventsRequestMeta: { ip: string; userAgent: string } | null = null;
+
+export function setEventsRequestMeta(ip: string, userAgent: string) {
+  _eventsRequestMeta = { ip, userAgent };
+}
+
+function getEventsRequestMeta() {
+  return _eventsRequestMeta;
+}
+
 /** PENDING_MFA Session row expires — intentionally short (MFA challenge window). */
 const MFA_PENDING_SESSION_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
 
@@ -934,13 +947,29 @@ export const authOptions: NextAuthOptions = {
       // ── 4. Wait for adapter to persist user (first OAuth sign-in race) ────────
       // Do not remove — handles a known NextAuth v4 race on first OAuth sign-in.
       let userExists: { id: string } | null = null;
-      for (let i = 0; i < 3; i++) {
+      // Retry up to 5 times with increasing delay for new user creation race
+      for (let i = 0; i < 5; i++) {
+        // First try by user.id
         userExists = await prisma.user.findUnique({
           where: { id: user.id },
           select: { id: true },
         });
         if (userExists) break;
-        if (i < 2) await new Promise((r) => setTimeout(r, 100));
+
+        // Also try by email for OAuth providers where user.id = profile.sub
+        if (!userExists && user.email) {
+          const byEmail = await prisma.user.findUnique({
+            where: { email: user.email.trim().toLowerCase() },
+            select: { id: true },
+          });
+          if (byEmail) {
+            user.id = byEmail.id;
+            userExists = byEmail;
+            break;
+          }
+        }
+
+        if (i < 4) await new Promise((r) => setTimeout(r, 150 * (i + 1)));
       }
       if (!userExists) {
         return true;
@@ -958,7 +987,8 @@ export const authOptions: NextAuthOptions = {
         isMfaEnforcedForUser(user.id),
       ]);
 
-      const requestMeta = consumePendingRequestMeta();
+      const consumedMeta = consumePendingRequestMeta();
+      const requestMeta = consumedMeta ?? getEventsRequestMeta();
       const now = new Date();
       const sessionToken = randomBytes(32).toString("base64url");
       const needsMfaChallenge =
@@ -977,7 +1007,7 @@ export const authOptions: NextAuthOptions = {
             ipFirstSeen: requestMeta?.ip ?? null,
             lastIp: requestMeta?.ip ?? null,
             userAgent: requestMeta?.userAgent ?? null,
-            location: requestMeta?.location ?? null,
+            location: consumedMeta?.location ?? null,
           },
         });
       } else {
@@ -992,7 +1022,7 @@ export const authOptions: NextAuthOptions = {
             ipFirstSeen: requestMeta?.ip ?? null,
             lastIp: requestMeta?.ip ?? null,
             userAgent: requestMeta?.userAgent ?? null,
-            location: requestMeta?.location ?? null,
+            location: consumedMeta?.location ?? null,
           },
         });
       }
@@ -1147,6 +1177,8 @@ export const authOptions: NextAuthOptions = {
     async signIn({ user, account }) {
       if (!user?.id) return;
 
+      const eventsMeta = getEventsRequestMeta();
+
       // Existing Microsoft photo upload (keep as is — do not touch)
       if (account?.provider === "azure-ad" && account.access_token) {
         const capturedUserId = user.id;
@@ -1185,7 +1217,6 @@ export const authOptions: NextAuthOptions = {
           provider === "passkey-credential"
         ) return;
 
-        const meta = consumePendingRequestMeta();
         writeAuditLog({
           actorUserId: user.id,
           actorContext: "TENANT",
@@ -1209,8 +1240,8 @@ export const authOptions: NextAuthOptions = {
                         ? "microsoft"
                         : provider,
           },
-          ipAddress: meta?.ip ?? null,
-          userAgent: meta?.userAgent ?? null,
+          ipAddress: eventsMeta?.ip ?? null,
+          userAgent: eventsMeta?.userAgent ?? null,
         }).catch(() => {
           /* non-critical */
         });

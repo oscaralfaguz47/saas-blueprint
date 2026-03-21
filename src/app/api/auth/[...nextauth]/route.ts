@@ -1,6 +1,9 @@
 import NextAuth from "next-auth";
-import { authOptions } from "@/server/auth-options";
-import { setPendingRequestMeta } from "@/server/auth-options";
+import {
+  authOptions,
+  setPendingRequestMeta,
+  setEventsRequestMeta,
+} from "@/server/auth-options";
 import { runWithNextAuthCookieHeaderAsync } from "@/server/nextauth-cookie-header";
 
 const handler = NextAuth(authOptions);
@@ -44,6 +47,7 @@ export function GET(
     const userAgent = req.headers.get("user-agent") ?? "unknown";
     const location = buildLocation(req);
     setPendingRequestMeta(ip, userAgent, location);
+    setEventsRequestMeta(ip, userAgent);
     return handler(req, context);
   });
 }
@@ -60,6 +64,7 @@ export function POST(
     const userAgent = req.headers.get("user-agent") ?? "unknown";
     const location = buildLocation(req);
     setPendingRequestMeta(ip, userAgent, location);
+    setEventsRequestMeta(ip, userAgent);
     return handler(req, context);
   });
 }

@@ -3,10 +3,32 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export function WelcomeBanner({ workspaceName }: { workspaceName: string }) {
+export function WelcomeBanner({
+  workspaceName,
+  tenantId,
+}: {
+  workspaceName: string;
+  tenantId: string | null;
+}) {
   const router = useRouter();
   const [dismissed, setDismissed] = useState(false);
   const [hiding, setHiding] = useState(false);
+
+  async function handleGoToSettings() {
+    if (tenantId) {
+      try {
+        await fetch("/api/tenant", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tenantId }),
+        });
+      } catch {
+        // ignore — still navigate
+      }
+    }
+    router.push("/app/settings/workspace?tab=general");
+    router.refresh();
+  }
 
   async function handleDismiss() {
     setHiding(true);
@@ -37,7 +59,7 @@ export function WelcomeBanner({ workspaceName }: { workspaceName: string }) {
               created automatically.{" "}
               <button
                 type="button"
-                onClick={() => router.push("/app/settings/workspace?tab=general")}
+                onClick={() => void handleGoToSettings()}
                 className="font-medium text-primary hover:underline"
               >
                 Rename it in Workspace settings →

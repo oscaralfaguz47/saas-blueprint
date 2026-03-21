@@ -34,6 +34,28 @@ export function TenantPermissionsProvider({ children }: { children: React.ReactN
     return () => controller.abort();
   }, [apiFetch]);
 
+  useEffect(() => {
+    function handleWorkspaceReady() {
+      setLoading(true);
+      apiFetch("/api/tenant/permissions", { showToastOnError: false })
+        .then((r) => r.json())
+        .then((data: { data?: { permissions?: string[] } } | null) => {
+          setPermissions(data?.data?.permissions ?? []);
+        })
+        .catch(() => {
+          setPermissions([]);
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    }
+
+    window.addEventListener("workspace-ready", handleWorkspaceReady);
+    return () => {
+      window.removeEventListener("workspace-ready", handleWorkspaceReady);
+    };
+  }, [apiFetch]);
+
   const has = useCallback((code: string) => permissions.includes(code), [permissions]);
   const hasAny = useCallback(
     (codes: string[]) => codes.some((c) => permissions.includes(c)),
