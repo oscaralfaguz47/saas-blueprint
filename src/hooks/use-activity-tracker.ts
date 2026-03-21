@@ -1,8 +1,8 @@
 "use client";
-
 import { useEffect, useRef, useCallback } from "react";
 
-const PING_INTERVAL_MS = 2 * 60 * 1000; // ping at most every 2 minutes
+const PING_INTERVAL_MS = 2 * 60 * 1000; // activity ping: every 2 min
+const VALIDITY_CHECK_MS = 30 * 1000; // session validity: every 30s
 const ACTIVITY_EVENTS = ["mousemove", "mousedown", "keydown", "scroll", "touchstart", "click"];
 
 type UseActivityTrackerOptions = {
@@ -13,12 +13,11 @@ type UseActivityTrackerOptions = {
 export function useActivityTracker({ enabled, autoLogoutMinutes }: UseActivityTrackerOptions) {
   const lastPingRef = useRef<number>(Date.now());
   const hasActivityRef = useRef<boolean>(false);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const validityIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const ping = useCallback(async () => {
-    if (!hasActivityRef.current) return;
-    hasActivityRef.current = false;
-
+  // Session validity check — always runs, checks for force-logout/revocation
+  const checkValidity = useCallback(async () => {
     try {
       const res = await fetch("/api/account/activity-ping", { method: "POST" });
       if (!res.ok) return;
@@ -27,9 +26,16 @@ export function useActivityTracker({ enabled, autoLogoutMinutes }: UseActivityTr
         window.location.href = "/auth/sign-out?callbackUrl=/auth/sign-in&reason=session_expired";
       }
     } catch {
-      // Network error — ignore, don't logout on connectivity issues
+      // Network error — ignore
     }
   }, []);
+
+  // Activity ping — only runs when auto-logout is enabled
+  const ping = useCallback(async () => {
+    if (!hasActivityRef.current) return;
+    hasActivityRef.current = false;
+    await checkValidity();
+  }, [checkValidity]);
 
   const handleActivity = useCallback(() => {
     hasActivityRef.current = true;
@@ -40,6 +46,18 @@ export function useActivityTracker({ enabled, autoLogoutMinutes }: UseActivityTr
     }
   }, [ping]);
 
+  // Always-on: session validity check every 30 seconds
+  useEffect(() => {
+    validityIntervalRef.current = setInterval(() => {
+      void checkValidity();
+    }, VALIDITY_CHECK_MS);
+
+    return () => {
+      if (validityIntervalRef.current) clearInterval(validityIntervalRef.current);
+    };
+  }, [checkValidity]);
+
+  // Auto-logout activity tracking — only when enabled
   useEffect(() => {
     if (!enabled || !autoLogoutMinutes) return;
 
@@ -47,7 +65,7 @@ export function useActivityTracker({ enabled, autoLogoutMinutes }: UseActivityTr
       window.addEventListener(event, handleActivity, { passive: true });
     });
 
-    intervalRef.current = setInterval(() => {
+    pingIntervalRef.current = setInterval(() => {
       void ping();
     }, 60 * 1000);
 
@@ -55,7 +73,7 @@ export function useActivityTracker({ enabled, autoLogoutMinutes }: UseActivityTr
       ACTIVITY_EVENTS.forEach((event) => {
         window.removeEventListener(event, handleActivity);
       });
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
     };
   }, [enabled, autoLogoutMinutes, handleActivity, ping]);
 }

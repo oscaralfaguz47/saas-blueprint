@@ -405,17 +405,18 @@ export async function deleteUserDraftTenants(params: {
 /**
  * Create a new workspace (tenant) for an authenticated user.
  * A1: single transaction (Tenant + TenantMembership + TenantUserRole + AuditLog).
- * Request provides slug only; name is derived from slug (e.g. acme-inc → Acme Inc).
+ * Name defaults from slug (e.g. acme-inc → Acme Inc) unless `name` is provided.
  */
 export async function createTenantForUser(params: {
   userId: string;
   slug: string;
+  name?: string;
   ipAddress?: string | null;
   userAgent?: string | null;
 }): Promise<{ tenant: { id: string; name: string; slug: string; status: string } }> {
   const { userId, slug, ipAddress, userAgent } = params;
 
-  const name = nameFromSlug(slug);
+  const name = params.name ?? nameFromSlug(slug);
   const existingBySlug = await prisma.tenant.findUnique({
     where: { slug },
     select: { id: true },

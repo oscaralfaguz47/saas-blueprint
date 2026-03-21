@@ -58,10 +58,13 @@ export function CreateWorkspaceModal({ open, onClose, onCloseAfterCreate }: Prop
         error?: { code?: string; message?: string; details?: { code?: string } };
       };
       if (!res.ok) {
+        const details = data.error?.details as { code?: string } | undefined;
         const msg =
-          data.error?.code === "CONFLICT"
-            ? "You already have a workspace with that name. Choose another."
-            : getApiErrorMessage(res, data);
+          details?.code === "NAME_TAKEN"
+            ? "You already have a workspace with that name. Please choose a different name."
+            : data.error?.code === "CONFLICT"
+              ? "Something went wrong creating the workspace. Please try again."
+              : getApiErrorMessage(res, data);
         setCreateError(msg);
         setCreateStatus("error");
         return;

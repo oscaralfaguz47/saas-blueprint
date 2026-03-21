@@ -61,28 +61,76 @@ export const POST = withErrorHandler(async (req: Request) => {
   if (user.isPlatformBlocked) return ApiErrors.FORBIDDEN();
 
   const body = await parseBody(req, createTenantSchema);
-  // Derive slug from name (e.g. "Acme Inc" → "acme-inc")
-  const slug = body.name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80) || "workspace";
+  const workspaceName = body.name.trim();
 
-  try {
-    const result = await createTenantForUser({
+  // Step 1: Validate name uniqueness for this user BEFORE slug generation
+  // This prevents creating "Acme Inc" if user already has "Acme Inc"
+  // regardless of what slug gets generated
+  const existingByName = await prisma.tenantMembership.findFirst({
+    where: {
       userId: session.user.id,
-      slug,
-      ipAddress: getIp(req),
-      userAgent: getUserAgent(req),
-    });
-    return apiSuccess({ tenant: result.tenant }, 201);
-  } catch (err) {
-    if (err instanceof SlugTakenError)
-      return ApiErrors.CONFLICT(err.message, { slug: err.slug });
-    if (err instanceof WorkspaceNameTakenError)
-      return ApiErrors.CONFLICT(err.message, { name: err.workspaceName });
-    throw err;
+      status: "ACTIVE",
+      tenant: {
+        status: "ACTIVE",
+        name: { equals: workspaceName, mode: "insensitive" },
+      },
+    },
+    select: { id: true },
+  });
+
+  if (existingByName) {
+    return ApiErrors.CONFLICT(
+      "You already have a workspace with that name. Please choose a different name.",
+      { code: "NAME_TAKEN", name: workspaceName }
+    );
   }
+
+  // Step 2: Derive base slug from name
+  const baseSlug =
+    workspaceName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) || "workspace";
+
+  // Step 3: Try base slug, then with random suffix if globally taken
+  let result: Awaited<ReturnType<typeof createTenantForUser>> | null = null;
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const slug =
+      attempt === 0
+        ? baseSlug
+        : `${baseSlug}-${Math.floor(Math.random() * 9000) + 1000}`;
+
+    try {
+      result = await createTenantForUser({
+        userId: session.user.id,
+        slug,
+        name: workspaceName,
+        ipAddress: getIp(req),
+        userAgent: getUserAgent(req),
+      });
+      break;
+    } catch (err) {
+      if (err instanceof SlugTakenError) continue;
+      if (err instanceof WorkspaceNameTakenError) {
+        return ApiErrors.CONFLICT(
+          "You already have a workspace with that name. Please choose a different name.",
+          { code: "NAME_TAKEN", name: workspaceName }
+        );
+      }
+      throw err;
+    }
+  }
+
+  if (!result) {
+    return ApiErrors.CONFLICT(
+      "Could not generate a unique workspace URL. Please try a different name.",
+      { code: "SLUG_TAKEN" }
+    );
+  }
+
+  return apiSuccess({ tenant: result.tenant }, 201);
 });
 
 /** PATCH /api/tenant — set default workspace (tenant) for the current user */
