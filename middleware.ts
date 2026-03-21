@@ -83,8 +83,50 @@ function normalizePlatformAllowlist() {
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Extra hardening: always allow Next internal paths
-  if (pathname.startsWith("/_next")) return NextResponse.next();
+  // Extra hardening: always allow Next internal paths and static assets (never intercept auth)
+  if (
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/favicon") ||
+    pathname.endsWith(".png") ||
+    pathname.endsWith(".jpg") ||
+    pathname.endsWith(".jpeg") ||
+    pathname.endsWith(".svg") ||
+    pathname.endsWith(".ico") ||
+    pathname.endsWith(".webp") ||
+    pathname.endsWith(".css") ||
+    pathname.endsWith(".js") ||
+    pathname.endsWith(".map") ||
+    pathname.endsWith(".woff") ||
+    pathname.endsWith(".woff2")
+  ) {
+    return NextResponse.next();
+  }
+
+  // Handle CORS preflight requests for API routes
+  if (req.method === "OPTIONS" && pathname.startsWith("/api/")) {
+    const origin = req.headers.get("origin") ?? "";
+    const allowedOrigins = [
+      process.env.NEXTAUTH_URL ?? "",
+      process.env.NEXTAUTH_URL_INTERNAL ?? "",
+      "https://saas-blueprint-three.vercel.app",
+    ].filter(Boolean);
+
+    const isAllowedOrigin =
+      origin.includes("localhost") ||
+      origin.includes("ngrok-free.app") ||
+      origin.includes("ngrok-free.dev") ||
+      allowedOrigins.some((allowed) => origin === allowed);
+
+    const res = new NextResponse(null, { status: 204 });
+    if (isAllowedOrigin) {
+      res.headers.set("Access-Control-Allow-Origin", origin);
+    }
+    res.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS");
+    res.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+    res.headers.set("Access-Control-Max-Age", "86400");
+    res.headers.set("Vary", "Origin");
+    return res;
+  }
 
   // Cron endpoints are invoked by Vercel Cron (or tools like Postman) with Authorization: Bearer CRON_SECRET.
   // They must bypass session auth here so the route handler can return JSON (401/200); auth is enforced inside the route.
@@ -167,7 +209,10 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  return NextResponse.next();
+  const response = NextResponse.next();
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set("X-Permitted-Cross-Domain-Policies", "none");
+  return response;
 }
 
 export const config = {

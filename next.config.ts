@@ -10,8 +10,13 @@ import type { NextConfig } from "next";
 // Google profile images (lh3.googleusercontent.com) are always allowed because
 // the app renders OAuth profile photos from Google accounts.
 //
+// GitHub avatars (avatars.githubusercontent.com) are allowed for OAuth profile images.
+//
 // Paddle.js (cdn.paddle.com / sandbox-cdn.paddle.com) is required for billing.
 // Paddle checkout overlays use iframes on *.paddle.com subdomains.
+//
+// connect-src includes OAuth issuer origins, Vercel preview URLs, ngrok (HTTP + WSS for HMR),
+// and wasm-friendly script allowances via script-src (WebAuthn / passkeys).
 // ---------------------------------------------------------------------------
 const r2Origin = (() => {
   const explicit = process.env.NEXT_PUBLIC_R2_BUCKET_URL?.replace(/\/+$/, "");
@@ -26,6 +31,14 @@ const r2Origin = (() => {
 const connectSrc = [
   "'self'",
   "https://*.paddle.com",
+  "https://*.vercel.app",
+  "https://*.ngrok-free.app",
+  "https://*.ngrok-free.dev",
+  "wss://*.ngrok-free.app",
+  "wss://*.ngrok-free.dev",
+  "https://accounts.google.com",
+  "https://login.microsoftonline.com",
+  "https://github.com",
   ...(r2Origin ? [r2Origin] : []),
 ].join(" ");
 
@@ -34,6 +47,7 @@ const imgSrc = [
   "data:",
   "blob:",
   "https://lh3.googleusercontent.com",
+  "https://avatars.githubusercontent.com",
   ...(r2Origin ? [r2Origin] : []),
 ].join(" ");
 
@@ -47,7 +61,7 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.paddle.com",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://*.paddle.com",
       "style-src 'self' 'unsafe-inline' https://*.paddle.com",
       `img-src ${imgSrc}`,
       "font-src 'self'",
@@ -58,14 +72,38 @@ const securityHeaders = [
       "form-action 'self'",
     ].join("; "),
   },
+  { key: "X-DNS-Prefetch-Control", value: "on" },
+  { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
+  { key: "Cross-Origin-Resource-Policy", value: "cross-origin" },
 ];
 
 const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        source: "/_next/static/:path*",
+        headers: [
+          { key: "Cross-Origin-Resource-Policy", value: "cross-origin" },
+          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
+        ],
+      },
+      {
+        source: "/static/:path*",
+        headers: [
+          { key: "Cross-Origin-Resource-Policy", value: "cross-origin" },
+          { key: "Cache-Control", value: "public, max-age=86400" },
+        ],
+      },
+      {
         source: "/:path*",
         headers: securityHeaders,
+      },
+      {
+        source: "/api/:path*",
+        headers: [
+          { key: "Cache-Control", value: "no-store, max-age=0" },
+          { key: "Vary", value: "Origin, Accept-Encoding" },
+        ],
       },
     ];
   },
