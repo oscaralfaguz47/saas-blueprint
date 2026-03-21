@@ -1,0 +1,157 @@
+---
+description: API versioning strategy, backward compatibility rules, deprecation lifecycle, and breaking change governance for Route Handlers and external-facing endpoints.
+globs:
+  - src/app/api/**/route.ts
+  - src/server/**/*.ts
+alwaysApply: false
+---
+
+# API Versioning and Deprecation
+
+## Scope
+
+Applies to:
+- internal API Route Handlers consumed by the Relitrue UI
+- external-facing endpoints (external approver flows, webhook receivers, partner integrations)
+- any endpoint where a contract change could break a consumer
+
+---
+
+## 1. Versioning Philosophy
+
+Internal APIs (consumed only by the Relitrue UI in the same codebase) do not require formal versioning — they can evolve with coordinated changes across the API and UI.
+
+External-facing APIs and webhook contracts require versioning discipline.
+
+External-facing examples:
+- external approver submission endpoints
+- public webhook receivers
+- any endpoint exposed to third-party consumers or embedded in emails/links
+
+---
+
+## 2. URL Versioning for External Endpoints
+
+External-facing endpoints must include a version segment in the URL path.
+
+Pattern:
+```
+/api/v1/external/approvals/[token]
+/api/v1/webhooks/stripe
+/api/v1/webhooks/[provider]
+```
+
+Rules:
+- use `v1`, `v2`, etc. — simple integer versioning
+- never change the contract of a versioned endpoint in place — introduce a new version
+- maintain the previous version until all consumers have migrated and the deprecation window has closed
+
+---
+
+## 3. Backward Compatibility Rules
+
+When modifying an existing endpoint:
+
+Allowed without a version bump:
+- adding an optional field to a response
+- adding an optional field to a request body
+- relaxing a validation constraint
+
+Requires a new version:
+- removing a field from a response
+- renaming a field
+- changing the type or format of a field
+- adding a required field to a request body
+- changing HTTP status codes for existing conditions
+- changing authentication or authorization requirements
+
+---
+
+## 4. Deprecation Lifecycle
+
+When an endpoint or contract must be retired:
+
+Steps:
+1. introduce the new version or replacement endpoint
+2. mark the old endpoint as deprecated with a documented sunset date
+3. communicate the deprecation to all known consumers
+4. maintain the deprecated endpoint until the sunset date
+5. add a `Deprecation` response header to deprecated endpoints
+6. log usage of deprecated endpoints to track remaining consumers
+7. remove the deprecated endpoint only after the sunset date has passed and traffic has ceased
+
+Recommended deprecation response header:
+```
+Deprecation: true
+Sunset: Sat, 01 Jan 2026 00:00:00 GMT
+```
+
+---
+
+## 5. Breaking Change Governance
+
+Breaking changes must never be deployed without a versioned migration path.
+
+Rules:
+- breaking changes to external endpoints require a new version
+- breaking changes to internal shared helpers or server utilities require coordinated updates across all callers before deployment
+- breaking schema changes must be paired with a migration that maintains backward compatibility during the rollout window
+- do not deploy a database schema change that breaks the running application before the application code is updated
+
+---
+
+## 6. External Approval Link Stability
+
+External approver links embedded in emails must remain stable for their intended lifetime.
+
+Rules:
+- the token embedded in approval links must remain valid for the defined approval window
+- changes to the external approval endpoint URL must not invalidate previously issued links
+- if the endpoint URL must change, maintain a redirect from the old URL for the duration of outstanding approval windows
+
+---
+
+## 7. Webhook Contract Stability
+
+Webhook payload contracts must be versioned and stable.
+
+Rules:
+- include a `version` field in outbound webhook payloads
+- do not change the shape of existing webhook payload versions
+- introduce a new payload version when the contract must change
+- allow consumers to opt into new webhook versions explicitly
+
+---
+
+## 8. Internal API Evolution Rules
+
+For internal Route Handlers consumed only by the Relitrue UI:
+
+Rules:
+- coordinate API and UI changes in the same deployment — do not deploy an API change that breaks the current UI
+- use feature flags when a staged rollout of an API change is necessary
+- do not leave dead or unused endpoint versions in the codebase indefinitely — remove them once replaced
+
+---
+
+## 9. API Change Documentation
+
+Every non-trivial API change must be documented.
+
+Rules:
+- document added, changed, and removed fields
+- document new error codes introduced
+- document changes to rate limiting or plan gating behavior
+- keep a changelog for external-facing API versions
+
+---
+
+## 10. Sunset Monitoring
+
+Monitor usage of deprecated endpoints actively.
+
+Rules:
+- log a warning-level event for every request to a deprecated endpoint
+- include `tenantId` and endpoint identifier in the deprecation log
+- review deprecation logs before the sunset date to confirm no active consumers remain
+- do not remove a deprecated endpoint if active traffic is still observed

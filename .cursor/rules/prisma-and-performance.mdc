@@ -1,5 +1,5 @@
 ---
-description: Prisma query discipline, indexing, pagination, transaction, and migration rules.
+description: Prisma query discipline, indexing, pagination, transaction, connection pooling, query safety, and migration rules.
 globs:
   - prisma/**/*.prisma
   - src/app/api/**/route.ts
@@ -11,7 +11,7 @@ alwaysApply: false
 
 ## Scope
 
-Applies to Prisma usage, query design, transactions, and schema/migration discipline.
+Applies to Prisma usage, query design, transactions, connection management, raw query safety, and schema/migration discipline.
 
 ## 1. Query Discipline
 
@@ -84,3 +84,96 @@ Production:
 - `prisma migrate deploy`
 
 Never use `db push` in production.
+
+## 9. Connection Pooling — Serverless Environments
+
+Prisma in serverless environments (e.g., Vercel) must use a connection pooler.
+
+Rules:
+- use Prisma Accelerate or PgBouncer in front of PostgreSQL
+- do not connect directly from serverless functions to PostgreSQL without a pooler
+- direct connections from serverless functions exhaust the database connection limit rapidly under load
+- configure `connection_limit=1` in the `DATABASE_URL` when a pooler is in use, as recommended by Prisma for serverless
+
+Recommended setup:
+- `DATABASE_URL` points to the pooler (e.g., Prisma Accelerate endpoint or PgBouncer)
+- `DIRECT_URL` points to the direct database connection for migrations only
+
+```prisma
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+```
+
+Never run `prisma migrate deploy` against the pooler URL — always use the direct connection for migrations.
+
+## 10. Prisma Client Instantiation
+
+Prisma Client must be instantiated as a singleton.
+
+Rules:
+- use a shared singleton module (e.g., `src/lib/db.ts`) that exports a single `PrismaClient` instance
+- do not instantiate `new PrismaClient()` inline in Route Handlers or server functions
+- in development, use the global singleton pattern to prevent hot-reload exhausting connections
+
+Example pattern:
+```ts
+import { PrismaClient } from '@prisma/client'
+
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClient }
+
+export const db =
+  globalForPrisma.prisma ?? new PrismaClient()
+
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db
+```
+
+## 11. Raw Query Safety
+
+Raw SQL queries must be treated with extreme caution.
+
+Rules:
+- avoid `$queryRaw` and `$executeRaw` unless there is a clear and justified reason
+- never construct raw queries using string interpolation or template literals with untrusted input
+- always use parameterized queries when raw SQL is necessary — use Prisma's `$queryRaw` tagged template syntax which parameterizes safely:
+
+```ts
+// CORRECT — parameterized, safe
+const result = await db.$queryRaw`
+  SELECT * FROM "Request" WHERE "tenantId" = ${tenantId}
+`
+
+// FORBIDDEN — string interpolation, SQL injection risk
+const result = await db.$queryRaw(
+  Prisma.raw(`SELECT * FROM "Request" WHERE "tenantId" = '${tenantId}'`)
+)
+```
+
+- treat any dynamic value in a raw query as untrusted input — always parameterize
+- prefer Prisma's typed query API over raw SQL wherever possible
+- raw queries must be reviewed for correctness and security before merging
+
+## 12. Query Timeout Rules
+
+Long-running queries must not block Route Handlers indefinitely.
+
+Rules:
+- set a statement timeout at the database session level for web-serving connections
+- heavy queries (reports, exports, aggregations) must be executed in background jobs — not inline in Route Handlers
+- if a query is expected to take more than 2 seconds, it does not belong in a Route Handler
+- use `$executeRaw` to set session-level timeouts when needed:
+
+```ts
+await db.$executeRaw`SET statement_timeout = '5000'`
+```
+
+## 13. Schema Design Rules
+
+Rules:
+- every tenant-scoped table must have a `tenantId` column with a non-nullable foreign key constraint
+- indexes must be defined explicitly in the Prisma schema — do not rely on implicit indexing alone
+- composite indexes should be added for common multi-column filter patterns (e.g., `tenantId` + `status`, `tenantId` + `createdAt`)
+- use `@unique` and `@@unique` constraints in the schema to enforce business uniqueness rules at the database level, not only in application code
+- use `@@index` for all columns that appear in `WHERE` clauses on high-volume tables

@@ -48,14 +48,6 @@ export default async function AccountPage() {
   if (!avatarUrl && user.image) avatarUrl = user.image;
 
   const linkedProviders = accounts.map((a) => a.provider);
-  const loginMethodLabel =
-    linkedProviders.length > 1
-      ? `Signed in with ${linkedProviders.join(", ")}`
-      : linkedProviders.includes("google")
-        ? "Signed in with Google"
-        : linkedProviders.includes("azure-ad")
-          ? "Signed in with Microsoft"
-          : "Signed in with Magic link / Email";
 
   const profile = {
     id: user.id,
@@ -80,7 +72,6 @@ export default async function AccountPage() {
   return (
     <AccountSettingsTabs
       profile={profile}
-      loginMethod={loginMethodLabel}
       linkedProviders={linkedProviders}
       authLevel={authLevel}
       security={securityFlags}

@@ -33,7 +33,6 @@ const ALL_TABS: { id: AccountTab; label: string }[] = [
 
 type Props = {
   profile: AccountProfile;
-  loginMethod: string;
   linkedProviders: string[];
   authLevel: string;
   security: AccountSecurity;
@@ -42,7 +41,6 @@ type Props = {
 
 export function AccountSettingsTabs({
   profile,
-  loginMethod,
   linkedProviders,
   authLevel,
   security,
@@ -82,7 +80,7 @@ export function AccountSettingsTabs({
           ))}
         </TabsList>
         <TabsContent value="profile">
-          <ProfileTab profile={profile} loginMethod={loginMethod} />
+          <ProfileTab profile={profile} />
         </TabsContent>
         <TabsContent value="security">
           <SecurityTab

@@ -1,0 +1,205 @@
+---
+description: Error handling discipline, external dependency resilience, timeout rules, graceful degradation, and circuit breaker patterns for Route Handlers and server-side code.
+globs:
+  - src/app/api/**/route.ts
+  - src/server/**/*.ts
+  - src/lib/**/*.ts
+alwaysApply: false
+---
+
+# Error Handling and Resilience
+
+## Scope
+
+Applies to:
+- Route Handlers
+- server-side business logic
+- external service integrations (email providers, payment processors, file storage, webhooks)
+- background job execution
+- database interactions
+
+---
+
+## 1. Core Error Handling Principles
+
+Rules:
+- never swallow errors silently — every caught error must be logged or re-thrown
+- never return raw internal errors, stack traces, or database error messages to the client
+- always return a sanitized, predictable error response to the client
+- distinguish between operational errors (expected, recoverable) and programmer errors (unexpected, unrecoverable)
+
+---
+
+## 2. Route Handler Error Boundary
+
+Every Route Handler must have a top-level error boundary.
+
+Rules:
+- wrap the handler body in a try/catch
+- catch unexpected errors and return HTTP 500 with the standard error shape
+- log the internal error safely before returning the sanitized response
+- never expose internal error details, query strings, or stack traces in the response body
+
+Example pattern:
+```ts
+try {
+  // handler logic
+} catch (error) {
+  logger.error('Unexpected error in handler', { error, requestId })
+  return NextResponse.json(
+    { error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred.' } },
+    { status: 500 }
+  )
+}
+```
+
+---
+
+## 3. External Service Timeout Rules
+
+All outbound calls to external services must enforce explicit timeouts.
+
+Rules:
+- never make an outbound HTTP call without a timeout
+- never allow an external service to block the Route Handler indefinitely
+- treat timeout as a failure — handle it like any other error
+
+Recommended timeouts:
+- email provider: 10 seconds
+- payment processor: 15 seconds
+- file storage (upload): 30 seconds
+- file storage (signed URL generation): 5 seconds
+- generic external API: 10 seconds
+
+---
+
+## 4. External Service Failure Handling
+
+External service failures must be handled gracefully.
+
+Rules:
+- do not propagate raw provider error messages to the client
+- distinguish between transient failures (network timeout, 503) and permanent failures (invalid credentials, 400)
+- transient failures should be retried with backoff — either inline for short retries or via background job for longer ones
+- permanent failures must be logged and surfaced as actionable operational errors
+- the application must remain partially functional when non-critical external services are unavailable
+
+---
+
+## 5. Circuit Breaker Pattern
+
+For high-frequency calls to external services, implement circuit breaker behavior where feasible.
+
+Rules:
+- detect repeated failures to an external dependency
+- temporarily stop calling a failing dependency to avoid cascading failures
+- return a degraded response or queue the operation for later when the circuit is open
+- log circuit state transitions for observability
+
+Applicable integrations:
+- email provider
+- payment processor
+- file storage provider
+- external approval delivery
+
+---
+
+## 6. Graceful Degradation Rules
+
+Non-critical features must degrade gracefully when dependencies are unavailable.
+
+Examples:
+- if the email provider is unavailable, queue the email and return success to the user
+- if the file storage provider is unavailable for signed URL generation, return a retriable error rather than crashing
+- if usage counter increment fails transiently, retry rather than blocking the user action
+
+Critical features (authentication, authorization, billing enforcement) must not degrade — they must fail closed.
+
+---
+
+## 7. Partial Success Prevention
+
+Sensitive mutations must not partially succeed.
+
+Rules:
+- wrap multi-step mutations in a database transaction
+- if a step fails, roll back the entire transaction
+- do not return success to the client if a required side effect failed
+- do not increment usage counters if the primary mutation failed
+
+---
+
+## 8. Error Classification
+
+Classify errors before handling them.
+
+| Class | Description | Action |
+|---|---|---|
+| Validation error | Invalid input from client | Return 400, do not log as error |
+| Auth error | Unauthenticated or unauthorized | Return 401/403, log as security event |
+| Not found | Resource missing or concealed | Return 404 |
+| Conflict | Duplicate or state conflict | Return 409 |
+| Plan limit | Usage or plan gate exceeded | Return 403 with UPGRADE_REQUIRED |
+| External transient | Timeout, 503 from provider | Retry with backoff |
+| External permanent | 400/401 from provider | Log as operational error, alert |
+| Internal unexpected | Unhandled exception | Return 500, log full error safely |
+
+---
+
+## 9. Database Error Handling
+
+Prisma errors must be caught and mapped — never forwarded raw to the client.
+
+Rules:
+- catch `PrismaClientKnownRequestError` and map to appropriate HTTP status
+- map unique constraint violations (`P2002`) to HTTP 409
+- map not found errors (`P2025`) to HTTP 404
+- do not expose Prisma error codes, meta fields, or query details in API responses
+- log database errors safely with sanitized context
+
+---
+
+## 10. Structured Error Logging
+
+All logged errors must follow a consistent structure.
+
+Required fields:
+- `level` (error, warn, info)
+- `message`
+- `code` or `errorType`
+- `requestId` when available
+- `tenantId` when available
+- `userId` when available
+- `stack` for unexpected internal errors (server-side only — never in API response)
+
+Forbidden in logs:
+- raw secrets or tokens
+- passwords
+- raw request bodies with PII
+- full SQL queries with parameter values
+
+---
+
+## 11. Unhandled Promise Rejection Policy
+
+All async code must handle rejections explicitly.
+
+Rules:
+- never leave promise rejections unhandled in Route Handlers or server logic
+- do not use fire-and-forget patterns for operations that must succeed or be reported
+- use background jobs with proper error handling for deferred work
+
+---
+
+## 12. Resilience Testing Expectations
+
+The system should be tested for failure scenarios.
+
+Examples:
+- external service returns 503
+- database connection times out
+- file upload fails midway
+- email provider rejects the request
+- background job fails after max retries
+
+Resilience behavior must be explicit and verified — do not assume happy-path-only coverage is sufficient.

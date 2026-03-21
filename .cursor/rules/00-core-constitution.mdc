@@ -23,7 +23,8 @@ Core concerns:
 - predictable API contracts
 - auditable sensitive actions
 - plan and billing enforcement
-- maintainable architecture
+- resilient and observable architecture
+- maintainable and testable codebase
 
 ## Official Technology Stack
 
@@ -99,6 +100,54 @@ Do not introduce alternative frameworks, routing systems, mutation patterns, ORM
 - Security-relevant failures must be traceable.
 - Secrets and raw tokens must never be logged.
 
+## Error Handling and Resilience Rules
+
+- Every Route Handler must have a top-level error boundary.
+- Never return raw internal errors, stack traces, or database errors to the client.
+- External service calls must always have explicit timeouts.
+- Non-critical features must degrade gracefully — critical security paths must fail closed.
+- See `error-handling-and-resilience.mdc` for full rules.
+
+## Caching Rules
+
+- Never cache tenant-scoped data without `tenantId` in the cache key.
+- Cross-tenant cache contamination is a critical security bug.
+- Cached plan and billing state must have a short TTL and must not be used for enforcement decisions on mutations.
+- Cache invalidation must be triggered on plan changes, role changes, and user disable events.
+- See `caching-strategy.mdc` for full rules.
+
+## Background Job Rules
+
+- Do not perform long-running or unreliable work synchronously inside Route Handlers.
+- All background jobs must be idempotent.
+- Jobs must enforce tenant isolation and re-validate authorization at execution time.
+- Export, email, and reminder operations must go through a reliable persistent job queue.
+- See `background-jobs-and-async.mdc` for full rules.
+
+## Environment and Configuration Rules
+
+- All required environment variables must be validated at boot using a centralized Zod schema.
+- Server-only secrets must never use the `NEXT_PUBLIC_` prefix.
+- Never access `process.env` directly throughout the codebase — use the validated env module.
+- Production, staging, and local environments must use fully isolated credentials.
+- See `environment-and-configuration.mdc` for full rules.
+
+## API Versioning Rules
+
+- Internal APIs may evolve with coordinated changes.
+- External-facing endpoints must use URL versioning (`/api/v1/`).
+- Breaking changes to external endpoints require a new version — never change a versioned contract in place.
+- Deprecated endpoints must have a documented sunset date and be monitored for active traffic.
+- See `api-versioning-and-deprecation.mdc` for full rules.
+
+## Testing and Quality Rules
+
+- Security-critical paths must have explicit negative test cases.
+- Every Route Handler must be tested for unauthenticated, unauthorized, and cross-tenant scenarios.
+- Bugs must be accompanied by a regression test.
+- CI must run the full test suite on every pull request.
+- See `testing-and-quality.mdc` for full rules.
+
 ## AI Implementation Behavior
 
 For non-trivial changes:
@@ -107,6 +156,37 @@ For non-trivial changes:
 3. Follow existing project patterns.
 4. Keep the implementation small, explicit, and production-grade.
 5. Do not introduce new architectural patterns without clear justification.
+6. Consult the relevant `.cursor/rules/**` file before implementing domain-specific logic.
+
+## Rule Index
+
+| File | Domain |
+|---|---|
+| `00-core-constitution.mdc` | Global rules — this file |
+| `security-multitenancy.mdc` | Tenant isolation and multi-tenancy |
+| `authentication-and-session-security.mdc` | Auth, sessions, password reset |
+| `authorization-rbac-and-request-access.mdc` | RBAC, permissions, request access |
+| `api-contract-validation-errors.mdc` | API error shape, status codes, validation |
+| `api-security.mdc` | Rate limiting, idempotency, prototype pollution |
+| `application-security.mdc` | XSS, CSRF, SSRF, open redirects |
+| `audit-log.mdc` | Audit log requirements and event naming |
+| `observability-and-security-operations.mdc` | Logging, alerting, incident response |
+| `secrets-and-cryptography.mdc` | Secrets, tokens, webhook replay protection |
+| `data-protection-and-privacy.mdc` | PII, data minimization, retention |
+| `file-upload-security.mdc` | Upload validation, storage, access |
+| `infrastructure-and-edge-security.mdc` | CSP, security headers, HTTPS |
+| `plans-usage-billing.mdc` | Subscription model, plan gating, usage counters |
+| `prisma-and-performance.mdc` | Queries, transactions, connection pooling, raw SQL safety |
+| `caching-strategy.mdc` | Cache keys, TTLs, invalidation, tenant-safe caching |
+| `background-jobs-and-async.mdc` | Job queues, exports, emails, retries |
+| `error-handling-and-resilience.mdc` | Error boundaries, timeouts, circuit breakers |
+| `environment-and-configuration.mdc` | Env var validation, secrets injection, env separation |
+| `api-versioning-and-deprecation.mdc` | Versioning strategy, breaking changes, sunset policy |
+| `testing-and-quality.mdc` | Test coverage, security test cases, quality gates |
+| `dependency-and-supply-chain-security.mdc` | Dependencies, lockfiles, dependency confusion |
+| `architecture.mdc` | Domain boundaries, module structure, naming |
+| `ui-ux-contract.mdc` | Component structure, screen states, sensitive data |
+| `definition-of-done.mdc` | Completion criteria for all changes |
 
 ## Done Criteria
 
@@ -119,4 +199,6 @@ A change is not complete unless it:
 - respects the relevant rules under `.cursor/rules/**`
 - includes loading, empty, and error states for user-facing screens when applicable
 - adds audit logging for sensitive actions when applicable
+- includes a top-level error boundary in every Route Handler
 - does not introduce security regressions
+- has test coverage for new security-relevant behavior

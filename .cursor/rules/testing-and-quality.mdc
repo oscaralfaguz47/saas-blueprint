@@ -1,0 +1,181 @@
+---
+description: Testing requirements, coverage expectations, test isolation, security test cases, and quality gates for the Relitrue codebase.
+globs:
+  - src/**/*.test.ts
+  - src/**/*.test.tsx
+  - src/**/*.spec.ts
+  - src/**/*.spec.tsx
+  - src/app/api/**/route.ts
+  - src/server/**/*.ts
+alwaysApply: false
+---
+
+# Testing and Quality
+
+## Scope
+
+Applies to:
+- unit tests
+- integration tests
+- API endpoint tests
+- security-relevant test cases
+- quality gates and CI enforcement
+
+---
+
+## 1. Testing Philosophy
+
+Tests exist to verify behavior, not implementation details.
+
+Rules:
+- test what the system does, not how it does it
+- prefer tests that survive refactors of internals
+- test failure paths as thoroughly as happy paths
+- security-critical paths must have explicit negative test cases
+
+---
+
+## 2. Required Test Coverage Areas
+
+The following areas require explicit test coverage:
+
+### Authentication and Authorization
+- unauthenticated requests must be rejected
+- requests with insufficient permissions must be rejected
+- cross-tenant access attempts must be blocked
+- platform-blocked users must be denied mutations
+
+### Tenant Isolation
+- a user from tenant A must never retrieve or mutate data from tenant B
+- tenant context must always be resolved server-side — not from request payload
+
+### Plan and Billing Gating
+- actions blocked by plan limits must return the correct error
+- usage counters must not increment when the action fails
+- usage counters must not double-increment on retry
+
+### Input Validation
+- malformed request bodies must return 400
+- missing required fields must return 400
+- out-of-range or invalid enum values must return 400
+- oversized payloads must be rejected
+
+### Business Logic
+- approval workflows must enforce correct state transitions
+- request access rules must be enforced per the authorization model
+- audit log entries must be created for sensitive actions
+
+---
+
+## 3. API Endpoint Test Requirements
+
+Every Route Handler must have tests covering:
+
+- happy path (valid input, correct auth, correct tenant)
+- unauthenticated request (missing or invalid session)
+- unauthorized request (authenticated but missing permission)
+- cross-tenant attempt (valid auth but wrong tenant)
+- invalid input (malformed body, missing fields)
+- conflict scenario where applicable (duplicate, wrong state)
+- plan limit exceeded where applicable
+
+---
+
+## 4. Test Isolation Rules
+
+Tests must be fully isolated.
+
+Rules:
+- each test must set up its own data and tear it down after
+- tests must not share mutable state across test cases
+- do not rely on test execution order
+- mock external services — do not call real email providers, payment processors, or file storage in unit or integration tests
+- use a dedicated test database or transaction rollback strategy for integration tests
+
+---
+
+## 5. Security Test Cases
+
+Security-relevant behaviors must have explicit test cases.
+
+Required negative test cases:
+- attempt to access another tenant's request → expect 404
+- attempt to access another tenant's billing data → expect 403 or 404
+- attempt to perform a privileged action as MEMBER role → expect 403
+- attempt to submit an approval with an expired or invalid token → expect 401 or 403
+- attempt to upload an oversized file → expect 413
+- attempt to upload a disallowed MIME type → expect 400
+- attempt to create a duplicate active subscription → expect 409
+
+---
+
+## 6. Mocking and Test Double Rules
+
+Rules:
+- mock at the boundary — mock external services, not internal logic
+- do not mock the database in tests that are testing database behavior
+- use typed mocks — avoid `any` in test doubles
+- keep mocks close to the test that uses them — avoid global mocks that affect test isolation
+
+---
+
+## 7. Test Data Rules
+
+Rules:
+- use factories or builders for test data — do not hardcode magic values
+- never use production data in tests
+- never commit real secrets, tokens, or PII in test fixtures
+- use deterministic IDs in tests when testing ID-dependent behavior
+
+---
+
+## 8. Code Quality Gates
+
+The following quality gates must pass before a change is considered done:
+
+- TypeScript compilation with no errors
+- no `any` types introduced without explicit justification
+- no unused imports or dead code introduced
+- linting passes (ESLint with project rules)
+- all existing tests pass
+- new tests pass for the added behavior
+
+---
+
+## 9. Audit Log Test Coverage
+
+For every action that creates an audit log entry:
+
+- test that the audit log entry is created with the correct fields
+- test that a failed action does not create a spurious audit log entry
+- verify `tenantId`, `actorUserId`, `action`, `entityType`, and `entityId` are correct
+
+---
+
+## 10. Background Job Test Coverage
+
+Background jobs must be tested for:
+
+- correct job payload construction at enqueue time
+- idempotent execution — running the job twice must not produce duplicate side effects
+- correct behavior when the job fails and is retried
+- correct tenant isolation within the job execution
+
+---
+
+## 11. Regression Test Policy
+
+When a bug is fixed:
+- a test must be added that reproduces the bug before the fix
+- the test must pass after the fix
+- security bugs must produce a security regression test in the appropriate negative test suite
+
+---
+
+## 12. Test Environment Rules
+
+Rules:
+- test environment must use separate credentials from production
+- test environment must never connect to production databases or services
+- CI must run the full test suite on every pull request
+- test secrets must be managed the same way as production secrets — never hardcoded

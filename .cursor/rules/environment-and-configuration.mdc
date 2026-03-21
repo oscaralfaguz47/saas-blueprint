@@ -1,0 +1,166 @@
+---
+description: Environment variable validation, configuration management, runtime boot checks, and environment separation rules.
+globs:
+  - src/lib/env.ts
+  - src/env.ts
+  - src/config/**/*.ts
+  - next.config.*
+  - .env*
+alwaysApply: false
+---
+
+# Environment and Configuration
+
+## Scope
+
+Applies to:
+- environment variable management
+- runtime configuration
+- boot-time validation
+- environment separation (local, staging, production)
+- secret injection discipline
+
+---
+
+## 1. Environment Variable Validation at Boot
+
+All required environment variables must be validated at application startup.
+
+Rules:
+- use a centralized env validation module (e.g., `src/lib/env.ts`) that parses and validates all env vars using Zod
+- the application must fail fast at boot if required env vars are missing or malformed
+- do not access `process.env` directly throughout the codebase — always go through the validated env module
+- the validated env module must be server-only — never import it in client bundles
+
+Example pattern:
+```ts
+import { z } from 'zod'
+
+const envSchema = z.object({
+  DATABASE_URL: z.string().url(),
+  NEXTAUTH_SECRET: z.string().min(32),
+  STRIPE_SECRET_KEY: z.string().startsWith('sk_'),
+  STRIPE_WEBHOOK_SECRET: z.string().startsWith('whsec_'),
+  NEXT_PUBLIC_APP_URL: z.string().url(),
+})
+
+export const env = envSchema.parse(process.env)
+```
+
+---
+
+## 2. Client vs Server Environment Variable Rules
+
+Rules:
+- server-only secrets must never be prefixed with `NEXT_PUBLIC_`
+- only intentionally public, non-sensitive values may use `NEXT_PUBLIC_` prefix
+- treat all `NEXT_PUBLIC_` variables as fully visible to end users
+- never expose database URLs, secret keys, API private keys, or webhook secrets via `NEXT_PUBLIC_`
+
+Allowed examples for `NEXT_PUBLIC_`:
+- `NEXT_PUBLIC_APP_URL`
+- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
+
+Never allowed as `NEXT_PUBLIC_`:
+- `DATABASE_URL`
+- `NEXTAUTH_SECRET`
+- `STRIPE_SECRET_KEY`
+- any webhook secret
+- any signing secret
+
+---
+
+## 3. Environment Separation
+
+The application must support at least three distinct environments with isolated configuration.
+
+Environments:
+- `local` — local developer machine, relaxed constraints
+- `staging` — production-like, used for integration testing and QA
+- `production` — live tenant data, strict constraints
+
+Rules:
+- never share database credentials between environments
+- never share secrets between environments
+- staging must use a separate database from production
+- production environment variables must never appear in local or CI configuration
+- CI pipelines must use dedicated test credentials — not staging or production secrets
+
+---
+
+## 4. `.env` File Discipline
+
+Rules:
+- never commit `.env` files containing real secrets to source control
+- `.env.example` must be maintained with all required variable names and safe placeholder values
+- `.env.local` must be git-ignored
+- `.env.production` with real values must never be committed
+- use secret management tooling (e.g., Vercel environment variables, Doppler, AWS Secrets Manager) for production secret injection
+
+---
+
+## 5. Secret Injection Rules
+
+In production and staging:
+
+Rules:
+- inject secrets via the hosting platform's environment variable system (e.g., Vercel project settings)
+- never hardcode secrets in source files, config files, or `next.config.*`
+- secrets must never appear in build output, Docker images, or deployment artifacts
+- CI/CD secrets must be stored in the CI platform's secret store — not in repository files
+
+---
+
+## 6. Configuration Immutability at Runtime
+
+Rules:
+- treat environment configuration as immutable after the application starts
+- do not allow runtime mutation of environment variables
+- do not allow tenant input to override or influence environment-level configuration
+
+---
+
+## 7. Required Environment Variables
+
+The following environment variables are expected at a minimum:
+
+### Database
+- `DATABASE_URL` — primary database connection string
+
+### Authentication
+- `NEXTAUTH_SECRET` — minimum 32 characters, cryptographically random
+- `NEXTAUTH_URL` — canonical application URL
+
+### Billing
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `STRIPE_PUBLISHABLE_KEY` (public)
+
+### Application
+- `NEXT_PUBLIC_APP_URL` — public application base URL
+
+### Optional but recommended
+- `LOG_LEVEL` — controls log verbosity per environment
+- `SENTRY_DSN` or equivalent — error tracking
+- `REDIS_URL` — if using Redis for caching or job queue
+
+---
+
+## 8. Configuration Audit
+
+When onboarding a new environment or rotating secrets:
+
+- verify all required env vars are present and valid before routing traffic
+- rotate dependent secrets atomically where possible — avoid partial rotation states
+- update `.env.example` whenever a new required variable is introduced
+- document the purpose and expected format of every env var in `.env.example`
+
+---
+
+## 9. Local Development Rules
+
+Rules:
+- local development must work with a local or dedicated development database — never production
+- local `.env.local` must use non-production credentials
+- seed data for local development must not include real tenant or user PII
+- developers must not have production database access unless explicitly required and logged

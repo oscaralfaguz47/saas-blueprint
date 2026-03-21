@@ -782,371 +782,6 @@ export function SecurityTab({
 
   return (
     <div className="space-y-6 sm:space-y-8">
-      {/* Sign-in methods */}
-      <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
-        <h2 className="text-base font-semibold text-(--text-primary)">Sign-in methods</h2>
-        <p className="mt-1 text-sm text-(--text-secondary)">
-          Linked sign-in methods you can use to access your account.
-        </p>
-
-        {linkError && (
-          <div className="mt-4 rounded-xl border border-(--color-danger) bg-(--bg-surface) px-4 py-3 text-sm">
-            <div className="font-semibold text-(--text-primary)">Account not linked</div>
-            <div className="mt-1 text-(--text-secondary)">{linkError}</div>
-            <button
-              type="button"
-              onClick={() => setLinkError(null)}
-              className="mt-3 inline-flex text-xs font-medium text-(--text-secondary) hover:text-(--text-primary)"
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
-
-        {/* Linked providers list */}
-        <ul className="mt-4 space-y-2 text-sm text-(--text-secondary)">
-          {linkedProviders.includes("google") && (
-            <li className="flex items-center gap-2">
-              <GoogleIcon />
-              <span className="font-medium text-(--text-primary)">Google</span>
-              <span className="rounded-md border border-(--border-subtle) px-1.5 py-0.5 text-xs">
-                Linked
-              </span>
-            </li>
-          )}
-          {linkedProviders.includes("azure-ad") && (
-            <li className="flex items-center gap-2">
-              <MicrosoftIcon />
-              <span className="font-medium text-(--text-primary)">Microsoft</span>
-              <span className="rounded-md border border-(--border-subtle) px-1.5 py-0.5 text-xs">
-                Linked
-              </span>
-            </li>
-          )}
-          {linkedProviders.includes("email") && (
-            <li className="flex items-center gap-2">
-              <span className="font-medium text-(--text-primary)">Magic link / Email</span>
-              <span className="rounded-md border border-(--border-subtle) px-1.5 py-0.5 text-xs">
-                Linked
-              </span>
-            </li>
-          )}
-        </ul>
-
-        {/* Link buttons — only for providers not yet linked */}
-        {authLevel === "FULL" && hasUnlinkedProviders && (
-          <div className="mt-4 flex flex-col gap-2">
-            <div className="flex flex-wrap gap-2">
-              {canLinkGoogle && (
-                <button
-                  type="button"
-                  disabled={!!linkingProvider}
-                  onClick={() => handleLinkProvider("google")}
-                  className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <GoogleIcon />
-                  {linkingProvider === "google" ? "Redirecting…" : "Link Google"}
-                </button>
-              )}
-              {canLinkMicrosoft && (
-                <button
-                  type="button"
-                  disabled={!!linkingProvider}
-                  onClick={() => handleLinkProvider("azure-ad")}
-                  className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <MicrosoftIcon />
-                  {linkingProvider === "azure-ad" ? "Redirecting…" : "Link Microsoft"}
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Hint when MFA is pending — show when user could link OAuth after completing sign-in */}
-        {authLevel !== "FULL" && (!hasGoogle || !hasMicrosoft) && (
-          <p className="mt-2 text-xs text-(--text-muted)">
-            Complete sign-in (including 2FA if required) to link additional sign-in methods.
-          </p>
-        )}
-      </section>
-
-      {/* Passkeys */}
-      <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
-        <h2 className="text-base font-semibold text-(--text-primary)">Passkeys</h2>
-        <p className="mt-1 text-sm text-(--text-secondary)">
-          Sign in with Face ID, Touch ID, or Windows Hello — no password required.
-        </p>
-
-        {passkeys.length > 0 && (
-          <ul className="mt-4 space-y-2">
-            {passkeys.map((pk) => (
-              <li
-                key={pk.id}
-                className="flex items-center justify-between rounded-lg border border-(--border-subtle) px-3 py-2"
-              >
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="font-medium text-(--text-primary)">
-                    {pk.name ?? "Passkey"}
-                  </span>
-                  <span className="text-xs text-(--text-muted)">
-                    {pk.backedUp ? "Synced" : "Device-only"}
-                  </span>
-                  <span className="text-xs text-(--text-muted)">
-                    Added {new Date(pk.createdAt).toLocaleDateString()}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleRemovePasskey(pk.id)}
-                  disabled={!!removingPasskeyId}
-                  className="text-xs text-(--color-danger) hover:underline disabled:opacity-60"
-                >
-                  {removingPasskeyId === pk.id ? "Removing..." : "Remove"}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {passkeyError && (
-          <p className="mt-2 text-sm text-(--color-danger)">{passkeyError}</p>
-        )}
-
-        {authLevel === "FULL" && (
-          <div className="mt-4">
-            <button
-              type="button"
-              onClick={handleRegisterPasskey}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {registeringPasskey ? "Registering..." : "Add Passkey"}
-            </button>
-          </div>
-        )}
-      </section>
-
-      {/* Devices */}
-      <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-(--text-primary)">Devices</h2>
-            <p className="mt-1 text-sm text-(--text-secondary)">
-              Active sessions on your account. Sign out any device you don&apos;t recognize.
-            </p>
-          </div>
-          {deviceSessions.filter((s) => !s.isCurrent).length > 0 && (
-            <button
-              type="button"
-              onClick={handleRevokeOthers}
-              disabled={revokingOthers}
-              className="shrink-0 text-sm font-medium text-(--color-danger) hover:underline disabled:opacity-60"
-            >
-              {revokingOthers ? "Signing out..." : "Sign out all other devices"}
-            </button>
-          )}
-        </div>
-
-        {devicesError && (
-          <p className="mt-2 text-sm text-(--color-danger)">{devicesError}</p>
-        )}
-
-        {devicesLoading ? (
-          <div className="mt-4 space-y-2">
-            {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="h-14 animate-pulse rounded-lg bg-(--bg-surface-elev)"
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="relative mt-4">
-            <ul className="space-y-2 max-h-72 overflow-y-auto pr-1">
-              {deviceSessions.map((s) => (
-                <li
-                  key={s.id}
-                  className="flex items-center gap-3 rounded-lg border border-(--border-subtle) px-3 py-3"
-                >
-                  <DeviceIcon deviceType={s.deviceType} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-(--text-primary) truncate">
-                        {s.device}
-                      </span>
-                      {s.isCurrent && (
-                        <span className="shrink-0 rounded-md border border-(--color-success) px-1.5 py-0.5 text-xs text-(--color-success)">
-                          This device
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-0.5 flex items-center gap-2 text-xs text-(--text-muted)">
-                      {s.location && <span>{s.location}</span>}
-                      {s.location && s.lastIp && <span>·</span>}
-                      {!s.location && s.lastIp && <span>{s.lastIp}</span>}
-                      {(s.location || s.lastIp) && <span>·</span>}
-                      <span>
-                        Last active{" "}
-                        {new Date(s.lastActivityAt).toLocaleDateString(undefined, {
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                    </div>
-                  </div>
-                  {!s.isCurrent && (
-                    <button
-                      type="button"
-                      onClick={() => handleRevokeSession(s.id)}
-                      disabled={!!revokingSessionId}
-                      className="shrink-0 text-xs font-medium text-(--color-danger) hover:underline disabled:opacity-60"
-                    >
-                      {revokingSessionId === s.id ? "Signing out..." : "Sign out"}
-                    </button>
-                  )}
-                </li>
-              ))}
-
-              {deviceSessions.length === 0 && (
-                <li className="py-4 text-center text-sm text-(--text-muted)">
-                  No active sessions found.
-                </li>
-              )}
-            </ul>
-
-            {/* Fade gradient when more items exist */}
-            {hasMore && !devicesLoadingMore && (
-              <div className="pointer-events-none absolute bottom-8 left-0 right-0 h-8 rounded-b-lg bg-gradient-to-t from-(--bg-surface) to-transparent" />
-            )}
-
-            {/* Load more button */}
-            {hasMore && (
-              <button
-                type="button"
-                onClick={() => void fetchDeviceSessions(nextCursor ?? undefined)}
-                disabled={devicesLoadingMore}
-                className="mt-2 w-full rounded-lg border border-(--border-subtle) py-2 text-xs font-medium text-(--text-muted) hover:text-(--text-primary) hover:bg-(--bg-surface-elev) transition-colors disabled:opacity-60"
-              >
-                {devicesLoadingMore ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-                    </svg>
-                    Loading...
-                  </span>
-                ) : (
-                  "Show more devices"
-                )}
-              </button>
-            )}
-          </div>
-        )}
-      </section>
-
-      {/* Login History */}
-      <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
-        <h2 className="text-base font-semibold text-(--text-primary)">
-          Login history
-        </h2>
-        <p className="mt-1 text-sm text-(--text-secondary)">
-          Recent sign-in and sign-out activity on your account.
-        </p>
-
-        {historyLoading ? (
-          <div className="mt-4 space-y-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center gap-3">
-                <div className="h-8 w-8 animate-pulse rounded-full bg-(--bg-surface-elev)" />
-                <div className="flex-1 space-y-1">
-                  <div className="h-3 w-32 animate-pulse rounded bg-(--bg-surface-elev)" />
-                  <div className="h-3 w-48 animate-pulse rounded bg-(--bg-surface-elev)" />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="mt-4">
-            {loginHistory.length === 0 ? (
-              <p className="py-4 text-center text-sm text-(--text-muted)">
-                No login history found.
-              </p>
-            ) : (
-              <ul className="space-y-3 max-h-80 overflow-y-auto pr-1">
-                {loginHistory.map((item) => (
-                  <li key={item.id} className="flex items-start gap-3">
-                    <ActionIcon action={item.action} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-medium text-(--text-primary)">
-                          {item.label}
-                        </p>
-                        {item.method && item.action !== "auth.signout" && (
-                          <span className="rounded-md border border-(--border-subtle) px-1.5 py-0.5 text-xs text-(--text-muted) capitalize">
-                            {item.method === "magic_link" ? "Magic link" :
-                             item.method === "email_otp" ? "Email code" :
-                             item.method === "passkey" ? "Passkey" :
-                             item.method === "google" ? "Google" :
-                             item.method === "microsoft" ? "Microsoft" :
-                             item.method}
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-(--text-muted)">
-                        {item.device !== "Unknown · Unknown" && item.device !== "Unknown Device" && (
-                          <>
-                            <span>{item.device}</span>
-                            <span>·</span>
-                          </>
-                        )}
-                        {(item.location ?? item.ipAddress) && (
-                          <>
-                            <span>{item.location ?? item.ipAddress}</span>
-                            <span>·</span>
-                          </>
-                        )}
-                        <span>
-                          {new Date(item.createdAt).toLocaleDateString(undefined, {
-                            year: "numeric",
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </span>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            {historyHasMore && (
-              <button
-                type="button"
-                onClick={() => void fetchLoginHistory(historyNextCursor ?? undefined)}
-                disabled={historyLoadingMore}
-                className="mt-3 w-full rounded-lg border border-(--border-subtle) py-2 text-xs font-medium text-(--text-muted) hover:text-(--text-primary) hover:bg-(--bg-surface-elev) transition-colors disabled:opacity-60"
-              >
-                {historyLoadingMore ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-                    </svg>
-                    Loading...
-                  </span>
-                ) : (
-                  "Show more"
-                )}
-              </button>
-            )}
-          </div>
-        )}
-      </section>
-
       {/* Two-Factor Authentication */}
       <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
         <h2 className="text-base font-semibold text-(--text-primary)">Two-Factor Authentication</h2>
@@ -1309,7 +944,148 @@ export function SecurityTab({
         )}
         {error && <p className="mt-4 text-sm text-(--color-danger)">{error}</p>}
       </section>
+      {/* Passkeys */}
+      <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
+        <h2 className="text-base font-semibold text-(--text-primary)">Passkeys</h2>
+        <p className="mt-1 text-sm text-(--text-secondary)">
+          Sign in with Face ID, Touch ID, or Windows Hello — no password required.
+        </p>
 
+        {passkeys.length > 0 && (
+          <ul className="mt-4 space-y-2">
+            {passkeys.map((pk) => (
+              <li
+                key={pk.id}
+                className="flex items-center justify-between rounded-lg border border-(--border-subtle) px-3 py-2"
+              >
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="font-medium text-(--text-primary)">
+                    {pk.name ?? "Passkey"}
+                  </span>
+                  <span className="text-xs text-(--text-muted)">
+                    {pk.backedUp ? "Synced" : "Device-only"}
+                  </span>
+                  <span className="text-xs text-(--text-muted)">
+                    Added {new Date(pk.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleRemovePasskey(pk.id)}
+                  disabled={!!removingPasskeyId}
+                  className="text-xs text-(--color-danger) hover:underline disabled:opacity-60"
+                >
+                  {removingPasskeyId === pk.id ? "Removing..." : "Remove"}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {passkeyError && (
+          <p className="mt-2 text-sm text-(--color-danger)">{passkeyError}</p>
+        )}
+
+        {authLevel === "FULL" && (
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={handleRegisterPasskey}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {registeringPasskey ? "Registering..." : "Add Passkey"}
+            </button>
+          </div>
+        )}
+      </section>
+      {/* Sign-in methods */}
+      <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
+        <h2 className="text-base font-semibold text-(--text-primary)">Sign-in methods</h2>
+        <p className="mt-1 text-sm text-(--text-secondary)">
+          Linked sign-in methods you can use to access your account.
+        </p>
+
+        {linkError && (
+          <div className="mt-4 rounded-xl border border-(--color-danger) bg-(--bg-surface) px-4 py-3 text-sm">
+            <div className="font-semibold text-(--text-primary)">Account not linked</div>
+            <div className="mt-1 text-(--text-secondary)">{linkError}</div>
+            <button
+              type="button"
+              onClick={() => setLinkError(null)}
+              className="mt-3 inline-flex text-xs font-medium text-(--text-secondary) hover:text-(--text-primary)"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {/* Linked providers list */}
+        <ul className="mt-4 space-y-2 text-sm text-(--text-secondary)">
+          {linkedProviders.includes("google") && (
+            <li className="flex items-center gap-2">
+              <GoogleIcon />
+              <span className="font-medium text-(--text-primary)">Google</span>
+              <span className="rounded-md border border-(--border-subtle) px-1.5 py-0.5 text-xs">
+                Linked
+              </span>
+            </li>
+          )}
+          {linkedProviders.includes("azure-ad") && (
+            <li className="flex items-center gap-2">
+              <MicrosoftIcon />
+              <span className="font-medium text-(--text-primary)">Microsoft</span>
+              <span className="rounded-md border border-(--border-subtle) px-1.5 py-0.5 text-xs">
+                Linked
+              </span>
+            </li>
+          )}
+          {linkedProviders.includes("email") && (
+            <li className="flex items-center gap-2">
+              <span className="font-medium text-(--text-primary)">Magic link / Email</span>
+              <span className="rounded-md border border-(--border-subtle) px-1.5 py-0.5 text-xs">
+                Linked
+              </span>
+            </li>
+          )}
+        </ul>
+
+        {/* Link buttons — only for providers not yet linked */}
+        {authLevel === "FULL" && hasUnlinkedProviders && (
+          <div className="mt-4 flex flex-col gap-2">
+            <div className="flex flex-wrap gap-2">
+              {canLinkGoogle && (
+                <button
+                  type="button"
+                  disabled={!!linkingProvider}
+                  onClick={() => handleLinkProvider("google")}
+                  className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <GoogleIcon />
+                  {linkingProvider === "google" ? "Redirecting…" : "Link Google"}
+                </button>
+              )}
+              {canLinkMicrosoft && (
+                <button
+                  type="button"
+                  disabled={!!linkingProvider}
+                  onClick={() => handleLinkProvider("azure-ad")}
+                  className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <MicrosoftIcon />
+                  {linkingProvider === "azure-ad" ? "Redirecting…" : "Link Microsoft"}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Hint when MFA is pending — show when user could link OAuth after completing sign-in */}
+        {authLevel !== "FULL" && (!hasGoogle || !hasMicrosoft) && (
+          <p className="mt-2 text-xs text-(--text-muted)">
+            Complete sign-in (including 2FA if required) to link additional sign-in methods.
+          </p>
+        )}
+      </section>
       {/* Inactivity auto-logout */}
       <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
         <h2 className="text-base font-semibold text-(--text-primary)">Inactivity auto-logout</h2>
@@ -1370,7 +1146,225 @@ export function SecurityTab({
         </div>
         {autoLogoutError && <p className="mt-2 text-sm text-(--color-danger)">{autoLogoutError}</p>}
       </section>
+      {/* Devices */}
+      <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-(--text-primary)">Devices</h2>
+            <p className="mt-1 text-sm text-(--text-secondary)">
+              Active sessions on your account. Sign out any device you don&apos;t recognize.
+            </p>
+          </div>
+          {deviceSessions.filter((s) => !s.isCurrent).length > 0 && (
+            <button
+              type="button"
+              onClick={handleRevokeOthers}
+              disabled={revokingOthers}
+              className="shrink-0 text-sm font-medium text-(--color-danger) hover:underline disabled:opacity-60"
+            >
+              {revokingOthers ? "Signing out..." : "Sign out all other devices"}
+            </button>
+          )}
+        </div>
 
+        {devicesError && (
+          <p className="mt-2 text-sm text-(--color-danger)">{devicesError}</p>
+        )}
+
+        {devicesLoading ? (
+          <div className="mt-4 space-y-2">
+            {[1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="h-14 animate-pulse rounded-lg bg-(--bg-surface-elev)"
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="relative mt-4">
+            <ul className="space-y-2 max-h-72 overflow-y-auto pr-1">
+              {deviceSessions.map((s) => (
+                <li
+                  key={s.id}
+                  className="flex items-center gap-3 rounded-lg border border-(--border-subtle) px-3 py-3"
+                >
+                  <DeviceIcon deviceType={s.deviceType} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-(--text-primary) truncate">
+                        {s.device}
+                      </span>
+                      {s.isCurrent && (
+                        <span className="shrink-0 rounded-md border border-(--color-success) px-1.5 py-0.5 text-xs text-(--color-success)">
+                          This device
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-2 text-xs text-(--text-muted)">
+                      {s.location && <span>{s.location}</span>}
+                      {s.location && s.lastIp && <span>·</span>}
+                      {!s.location && s.lastIp && <span>{s.lastIp}</span>}
+                      {(s.location || s.lastIp) && <span>·</span>}
+                      <span>
+                        Last active{" "}
+                        {new Date(s.lastActivityAt).toLocaleDateString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    </div>
+                  </div>
+                  {!s.isCurrent && (
+                    <button
+                      type="button"
+                      onClick={() => handleRevokeSession(s.id)}
+                      disabled={!!revokingSessionId}
+                      className="shrink-0 text-xs font-medium text-(--color-danger) hover:underline disabled:opacity-60"
+                    >
+                      {revokingSessionId === s.id ? "Signing out..." : "Sign out"}
+                    </button>
+                  )}
+                </li>
+              ))}
+
+              {deviceSessions.length === 0 && (
+                <li className="py-4 text-center text-sm text-(--text-muted)">
+                  No active sessions found.
+                </li>
+              )}
+            </ul>
+
+            {/* Fade gradient when more items exist */}
+            {hasMore && !devicesLoadingMore && (
+              <div className="pointer-events-none absolute bottom-8 left-0 right-0 h-8 rounded-b-lg bg-gradient-to-t from-(--bg-surface) to-transparent" />
+            )}
+
+            {/* Load more button */}
+            {hasMore && (
+              <button
+                type="button"
+                onClick={() => void fetchDeviceSessions(nextCursor ?? undefined)}
+                disabled={devicesLoadingMore}
+                className="mt-2 w-full rounded-lg border border-(--border-subtle) py-2 text-xs font-medium text-(--text-muted) hover:text-(--text-primary) hover:bg-(--bg-surface-elev) transition-colors disabled:opacity-60"
+              >
+                {devicesLoadingMore ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                    </svg>
+                    Loading...
+                  </span>
+                ) : (
+                  "Show more devices"
+                )}
+              </button>
+            )}
+          </div>
+        )}
+      </section>
+      {/* Login History */}
+      <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
+        <h2 className="text-base font-semibold text-(--text-primary)">
+          Login history
+        </h2>
+        <p className="mt-1 text-sm text-(--text-secondary)">
+          Recent sign-in and sign-out activity on your account.
+        </p>
+
+        {historyLoading ? (
+          <div className="mt-4 space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex items-center gap-3">
+                <div className="h-8 w-8 animate-pulse rounded-full bg-(--bg-surface-elev)" />
+                <div className="flex-1 space-y-1">
+                  <div className="h-3 w-32 animate-pulse rounded bg-(--bg-surface-elev)" />
+                  <div className="h-3 w-48 animate-pulse rounded bg-(--bg-surface-elev)" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-4">
+            {loginHistory.length === 0 ? (
+              <p className="py-4 text-center text-sm text-(--text-muted)">
+                No login history found.
+              </p>
+            ) : (
+              <ul className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                {loginHistory.map((item) => (
+                  <li key={item.id} className="flex items-start gap-3">
+                    <ActionIcon action={item.action} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-medium text-(--text-primary)">
+                          {item.label}
+                        </p>
+                        {item.method && item.action !== "auth.signout" && (
+                          <span className="rounded-md border border-(--border-subtle) px-1.5 py-0.5 text-xs text-(--text-muted) capitalize">
+                            {item.method === "magic_link" ? "Magic link" :
+                             item.method === "email_otp" ? "Email code" :
+                             item.method === "passkey" ? "Passkey" :
+                             item.method === "google" ? "Google" :
+                             item.method === "microsoft" ? "Microsoft" :
+                             item.method}
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-(--text-muted)">
+                        {item.device !== "Unknown · Unknown" && item.device !== "Unknown Device" && (
+                          <>
+                            <span>{item.device}</span>
+                            <span>·</span>
+                          </>
+                        )}
+                        {(item.location ?? item.ipAddress) && (
+                          <>
+                            <span>{item.location ?? item.ipAddress}</span>
+                            <span>·</span>
+                          </>
+                        )}
+                        <span>
+                          {new Date(item.createdAt).toLocaleDateString(undefined, {
+                            year: "numeric",
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {historyHasMore && (
+              <button
+                type="button"
+                onClick={() => void fetchLoginHistory(historyNextCursor ?? undefined)}
+                disabled={historyLoadingMore}
+                className="mt-3 w-full rounded-lg border border-(--border-subtle) py-2 text-xs font-medium text-(--text-muted) hover:text-(--text-primary) hover:bg-(--bg-surface-elev) transition-colors disabled:opacity-60"
+              >
+                {historyLoadingMore ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                    </svg>
+                    Loading...
+                  </span>
+                ) : (
+                  "Show more"
+                )}
+              </button>
+            )}
+          </div>
+        )}
+      </section>
       <StepUpModal
         open={stepUpOpen}
         onClose={() => {

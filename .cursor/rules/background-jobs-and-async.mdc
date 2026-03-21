@@ -1,0 +1,195 @@
+---
+description: Background job patterns, async task processing, queue discipline, timeout rules, and retry safety for heavy operations like exports, emails, and reminders.
+globs:
+  - src/app/api/**/route.ts
+  - src/server/**/*.ts
+  - src/lib/**/*.ts
+  - src/jobs/**/*.ts
+alwaysApply: false
+---
+
+# Background Jobs and Async Processing
+
+## Scope
+
+Applies to:
+- export generation (PDF, CSV)
+- email and notification sending
+- reminder dispatching
+- webhook delivery
+- long-running or compute-heavy operations
+- any work that must not block the HTTP response cycle
+
+---
+
+## 1. Core Principle — Do Not Block Route Handlers
+
+Route Handlers must not perform long-running or unreliable work synchronously.
+
+Rules:
+- do not generate PDFs or exports inline in a Route Handler
+- do not send emails synchronously inside a Route Handler unless latency is guaranteed acceptable
+- do not perform unbounded loops or large data processing inside a Route Handler
+- offload heavy work to a background job queue
+
+Acceptable in a Route Handler:
+- input validation
+- authorization checks
+- enqueuing a background job
+- returning a job reference or status to the client
+
+---
+
+## 2. Job Queue Requirements
+
+Background jobs must be processed through a reliable queue system.
+
+Requirements:
+- jobs must be persisted before the HTTP response is returned
+- jobs must survive server restarts
+- the queue must support retries with backoff
+- the queue must support dead-letter handling for repeatedly failing jobs
+
+Acceptable queue options for this stack:
+- database-backed queue (e.g., Inngest, Trigger.dev, pg-boss)
+- managed queue service (e.g., Inngest cloud, Upstash QStash)
+
+Do not use in-memory queues or `setTimeout` for production job processing.
+
+---
+
+## 3. Job Idempotency
+
+All background jobs must be idempotent.
+
+Rules:
+- jobs must produce the same result if executed more than once
+- use a stable `jobId` or `idempotencyKey` to deduplicate
+- check for prior completion before mutating state
+- do not double-send emails, double-generate exports, or double-apply billing changes
+
+---
+
+## 4. Retry Policy Rules
+
+Jobs must define explicit retry policies.
+
+Rules:
+- set a maximum retry count — do not retry indefinitely
+- use exponential backoff between retries
+- distinguish retriable errors (transient failures) from non-retriable errors (validation failures, permanent rejections)
+- do not retry non-retriable errors
+
+Recommended defaults:
+- max retries: 3 to 5
+- initial backoff: 1 second
+- backoff multiplier: 2x
+
+---
+
+## 5. Dead Letter Queue Rules
+
+Jobs that exhaust retries must be routed to a dead letter queue or equivalent.
+
+Rules:
+- do not silently discard failed jobs
+- dead-lettered jobs must be observable and alertable
+- failed export or notification jobs must be traceable per tenant
+
+---
+
+## 6. Job Timeout Rules
+
+Jobs must define explicit execution timeouts.
+
+Rules:
+- set a maximum execution duration per job type
+- jobs that exceed timeout must fail gracefully and be retried or dead-lettered
+- do not allow jobs to run indefinitely
+
+Recommended timeouts by job type:
+- email sending: 30 seconds
+- PDF export generation: 60 to 120 seconds
+- CSV export generation: 60 seconds
+- reminder dispatch: 30 seconds
+
+---
+
+## 7. Tenant Isolation in Jobs
+
+Background jobs must enforce tenant isolation.
+
+Rules:
+- always include `tenantId` in the job payload
+- always re-validate tenant context at job execution time — do not trust stale enqueue-time context
+- never process cross-tenant data within a single job execution
+- jobs must not assume the enqueuing user still has valid access at execution time
+
+---
+
+## 8. Authorization Re-validation at Execution Time
+
+Jobs must not blindly trust the authorization context from enqueue time.
+
+Rules:
+- re-check that the tenant is still active and not suspended at execution time
+- re-check that the requesting user still has the required permission at execution time
+- abort the job gracefully if the authorization context is no longer valid
+
+---
+
+## 9. Export Job Rules
+
+PDF and CSV export jobs must follow additional rules.
+
+Rules:
+- enforce plan gating before enqueuing the job
+- increment usage counters only after the export is successfully generated
+- store exports privately — never at public URLs
+- generate a short-lived signed URL for delivery
+- set an expiration on stored export files
+
+---
+
+## 10. Email and Notification Job Rules
+
+Email sending jobs must follow additional rules.
+
+Rules:
+- treat the email provider as an external unreliable dependency — handle failures gracefully
+- never include raw secrets or tokens in email job payloads
+- tokens embedded in email links must be short-lived and single-use
+- log email send attempts and outcomes for traceability
+- do not log email body content unless strictly necessary
+
+---
+
+## 11. Reminder Job Rules
+
+Reminder jobs must be:
+- idempotent — re-triggering must not send duplicate reminders
+- tenant-scoped — never dispatch reminders across tenants
+- rate-limited at the job level — prevent reminder spam
+
+---
+
+## 12. Job Observability
+
+Background jobs must be observable.
+
+Rules:
+- log job start, completion, and failure with `tenantId` and `jobId`
+- emit metrics or structured events for job queue depth, failure rate, and latency
+- alert on sustained job failures or dead-letter queue growth
+- never log sensitive payload content — log job type, tenant, and outcome only
+
+---
+
+## 13. Job Payload Security
+
+Job payloads stored in the queue must be treated as sensitive data.
+
+Rules:
+- do not store raw secrets, tokens, or passwords in job payloads
+- minimize PII in job payloads — pass IDs and re-fetch data at execution time when feasible
+- treat the queue storage backend with the same access controls as the database

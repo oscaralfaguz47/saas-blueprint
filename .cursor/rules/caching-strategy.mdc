@@ -1,0 +1,169 @@
+---
+description: Caching strategy rules for Next.js App Router, server-side data fetching, revalidation, and tenant-safe cache isolation.
+globs:
+  - src/app/**/*.tsx
+  - src/app/api/**/route.ts
+  - src/server/**/*.ts
+  - src/lib/**/*.ts
+alwaysApply: false
+---
+
+# Caching Strategy
+
+## Scope
+
+Applies to all server-side data fetching, React cache, Next.js full-route and segment caching, external cache layers (Redis), and revalidation flows.
+
+---
+
+## 1. Default Caching Posture
+
+The default caching posture must be **conservative and explicit**.
+
+Rules:
+- do not cache tenant-scoped or user-scoped data without explicit tenant isolation in the cache key
+- do not rely on Next.js implicit caching for authenticated or tenant-aware data
+- prefer explicit `unstable_cache` or `cache()` with controlled scope over accidental route-level caching
+
+---
+
+## 2. Cache Key Discipline
+
+Every cache key must encode all dimensions that affect the result.
+
+Required dimensions for tenant-scoped data:
+- `tenantId`
+- `userId` when the result is user-specific
+- relevant filter parameters (status, pagination cursor, etc.)
+
+Examples of correct keys:
+- `tenant:${tenantId}:requests:list`
+- `tenant:${tenantId}:user:${userId}:permissions`
+- `tenant:${tenantId}:billing:plan`
+
+Never use generic keys that could be shared across tenants.
+
+Cross-tenant cache contamination is a critical security bug equivalent to cross-tenant data exposure.
+
+---
+
+## 3. What Must Never Be Cached Without Isolation
+
+The following must never be cached with a generic or shared key:
+
+- tenant plan state or billing state
+- RBAC permissions or role assignments
+- user session claims
+- request access decisions
+- audit-sensitive resource states
+
+---
+
+## 4. Next.js `unstable_cache` Rules
+
+When using `unstable_cache`:
+
+- always include `tenantId` and relevant scope in the cache key array
+- always set an explicit `revalidate` TTL — never omit it
+- always set meaningful `tags` for targeted invalidation
+- do not cache responses that include secrets, tokens, or sensitive PII
+
+Example pattern:
+```ts
+import { unstable_cache } from 'next/cache'
+
+const getTenantPlan = unstable_cache(
+  async (tenantId: string) => {
+    return db.subscription.findFirst({ where: { tenantId } })
+  },
+  ['tenant-plan'],
+  {
+    revalidate: 60,
+    tags: [`tenant:${tenantId}:billing`],
+  }
+)
+```
+
+---
+
+## 5. React `cache()` Rules
+
+Use React `cache()` for per-request deduplication within a single server render pass.
+
+Rules:
+- safe for per-request deduplication — does not persist across requests
+- suitable for resolving tenant context, permissions, or user identity once per render
+- do not confuse with persistent caching — `cache()` has no TTL and no cross-request persistence
+
+---
+
+## 6. Route Segment Cache Rules
+
+Next.js route segments must be explicitly opted out of caching when they serve authenticated or tenant-scoped content.
+
+Rules:
+- set `export const dynamic = 'force-dynamic'` on authenticated route segments that must not be statically cached
+- do not allow tenant-scoped pages to be served from a shared static cache
+
+---
+
+## 7. Cache Invalidation Rules
+
+Cache must be invalidated when underlying data changes.
+
+Rules:
+- use `revalidateTag` after mutations that affect cached data
+- use `revalidatePath` for full page invalidation when appropriate
+- do not allow stale billing, permission, or plan state to persist beyond the defined TTL
+- critical state changes (plan upgrade, role change, user disable) must trigger immediate invalidation
+
+Examples of events requiring cache invalidation:
+- subscription plan changed
+- user role changed
+- user disabled
+- request status changed
+- approval completed
+
+---
+
+## 8. Redis / External Cache Rules
+
+If Redis or an equivalent external cache is used:
+
+- always namespace keys by `tenantId`
+- set explicit TTLs on all keys — never persist indefinitely without a reason
+- encrypt or avoid storing sensitive PII in cache values
+- treat cache as untrusted on read — validate shape with Zod or equivalent before use
+- handle cache misses gracefully — always fall back to the database
+- do not use external cache as the source of truth for security decisions
+
+---
+
+## 9. Billing and Plan State Caching
+
+Plan and billing state are security-relevant.
+
+Rules:
+- cached plan state TTL must be short — recommended maximum: 60 seconds
+- plan state must be re-fetched from the database on plan-gated mutations — do not rely on cached state for enforcement
+- upgrades must invalidate the plan cache immediately
+
+---
+
+## 10. Permissions Caching
+
+Cached permission state must be treated carefully.
+
+Rules:
+- RBAC permission results may be cached per-request using React `cache()` — safe for a single render pass
+- do not persist RBAC decisions across requests in a shared cache without immediate invalidation on role changes
+- role changes and user disable events must invalidate any permission cache entries for the affected user
+
+---
+
+## 11. Cache Poisoning Prevention
+
+Rules:
+- never construct cache keys from raw untrusted user input
+- validate and normalize all inputs before incorporating them into cache keys
+- do not allow user-controlled values to expand cache key scope

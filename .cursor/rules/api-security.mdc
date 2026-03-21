@@ -1,3 +1,11 @@
+---
+description: Security rules for all API endpoints including rate limiting, idempotency, request size, content-type enforcement, prototype pollution prevention, and anti-enumeration.
+globs:
+  - src/app/api/**/route.ts
+  - src/server/**/*.ts
+alwaysApply: false
+---
+
 # API Security
 
 ## Purpose
@@ -12,23 +20,31 @@ Applies to all Route Handlers and server-side endpoints.
 
 ---
 
-# Core Security Rules
-
 ## 1. Rate Limiting
 
 Critical endpoints must enforce rate limits.
 
 Examples:
-
 - login endpoints
 - external approval endpoints
 - export generation
 - reminder sending
+- password reset requests
+- invite sending
 
 Recommended rate limit tiers:
-Public endpoints: strict
-Authenticated endpoints: moderate
-Internal endpoints: relaxed
+
+| Tier | Context | Strictness |
+|---|---|---|
+| Public | Unauthenticated endpoints | Strict |
+| Authenticated | Tenant-scoped endpoints | Moderate |
+| Internal | Platform-level endpoints | Relaxed |
+
+Rules:
+- rate limit by IP for public endpoints
+- rate limit by `userId` or `tenantId` for authenticated endpoints to prevent abuse by authenticated actors
+- return HTTP 429 with a `Retry-After` header when the limit is exceeded
+- do not reveal the exact rate limit configuration in error responses
 
 ---
 
@@ -37,10 +53,15 @@ Internal endpoints: relaxed
 Sensitive mutations must support idempotency.
 
 Examples:
-
 - payment status updates
 - approval submissions
 - webhook processing
+- export job enqueuing
+
+Rules:
+- use a provider-supplied or client-supplied idempotency key where applicable
+- store processed operation IDs to prevent re-execution
+- return the same response for a repeated idempotent request without re-applying the mutation
 
 ---
 
@@ -48,49 +69,121 @@ Examples:
 
 APIs must enforce request size limits.
 
-Examples:
-JSON payload limit
-file upload size limit
+Rules:
+- enforce a maximum JSON payload size for all API endpoints
+- enforce a separate and stricter size limit for file upload endpoints
+- reject oversized requests with HTTP 413 before parsing the body
+- do not load unbounded request bodies into memory
+
+Recommended defaults:
+- JSON API endpoints: 1 MB
+- File upload endpoints: defined per endpoint based on the allowed file types and use case
 
 ---
 
 ## 4. Content-Type Enforcement
 
-APIs must validate expected content types.
+APIs must validate the expected Content-Type for every request that includes a body.
 
-Example:
-application/json
-multipart/form-data
-
-Unexpected content types must be rejected.
+Rules:
+- reject requests with unexpected or missing Content-Type with HTTP 415
+- for JSON endpoints, require `application/json`
+- for file upload endpoints, require `multipart/form-data`
+- do not attempt to parse a body whose Content-Type does not match expectations
 
 ---
 
 ## 5. Anti-Enumeration
 
-APIs must avoid revealing whether resources exist.
+APIs must avoid revealing whether resources exist to unauthorized callers.
 
-Example:
-
-Prefer returning:
-404
-
-instead of confirming existence.
+Rules:
+- prefer returning HTTP 404 over HTTP 403 when concealment is the safer behavior
+- do not reveal whether a tenant, user, or resource exists through distinct error messages or timing differences
+- apply consistent response timing where feasible to prevent timing-based enumeration
 
 ---
 
-## Implementation Guidance
+## 6. Prototype Pollution Prevention
 
-All endpoints must include:
+Server-side code must be protected against prototype pollution attacks.
 
-- authentication validation
-- authorization checks
-- tenant isolation enforcement
-- input validation
+### What is prototype pollution
+
+Prototype pollution occurs when untrusted input is merged into a JavaScript object in a way that modifies `Object.prototype` or the prototype chain, potentially overwriting built-in properties and affecting the entire runtime.
+
+### Risk scenarios
+
+High-risk patterns:
+- using `Object.assign({}, userInput)` with untrusted nested objects
+- using spread syntax (`{ ...userInput }`) with deep untrusted objects
+- using deep merge utilities (e.g., `lodash.merge`, `deepmerge`) with untrusted input
+- constructing objects from query parameters or JSON bodies without schema validation
+
+### Mitigation rules
+
+Rules:
+- always validate and parse untrusted input through Zod before using it — Zod strips unknown keys and validates shape, which eliminates most pollution vectors
+- never use deep merge utilities directly on untrusted input without prior schema validation
+- never access `__proto__`, `constructor`, or `prototype` as dynamic keys from user input
+- if building objects dynamically from user-supplied keys, validate that keys do not include `__proto__`, `constructor`, or `prototype`
+
+```ts
+// FORBIDDEN — merging raw untrusted input
+const config = Object.assign({}, defaultConfig, req.body)
+
+// CORRECT — validate first, then use the typed result
+const parsed = mySchema.parse(req.body)
+const config = Object.assign({}, defaultConfig, parsed)
+```
+
+- use `Object.create(null)` for lookup maps built from user-controlled keys to avoid prototype chain exposure
 
 ---
 
-## Related Documents
+## 7. Structured Security Log Pattern
 
-- ../GEMINI.md
-- ./application-security.md
+Security-relevant API events must be logged using a consistent structured format.
+
+Rules:
+- log security events as structured objects — never as interpolated strings
+- include the following fields on every security log entry:
+
+Required fields:
+- `event` — stable dot-separated event name (e.g., `auth.login.failed`, `api.rate_limited`, `api.forbidden`)
+- `requestId` — correlation ID for the request
+- `tenantId` — when available and applicable
+- `userId` — when available and applicable
+- `ip` — source IP address (when available and safe to log)
+- `timestamp` — ISO 8601 timestamp
+- `details` — safe, machine-readable metadata relevant to the event
+
+Forbidden in security log entries:
+- raw secrets or tokens
+- passwords or password hashes
+- full request bodies
+- unnecessary PII
+
+Example security log events to emit:
+- `auth.login.failed` — failed login attempt
+- `auth.session.invalid` — invalid or expired session used
+- `api.rate_limited` — request rejected by rate limiter
+- `api.forbidden` — authenticated request denied by authorization
+- `api.unauthenticated` — request to protected endpoint without valid session
+- `api.tenant_isolation_violation` — cross-tenant access attempt detected
+- `webhook.signature_invalid` — webhook received with invalid signature
+- `webhook.replay_detected` — duplicate webhook event ID detected
+
+---
+
+## 8. Implementation Checklist
+
+Every Route Handler must:
+- validate authentication
+- resolve and validate tenant context server-side
+- enforce authorization (RBAC + request access rules)
+- validate and parse all inputs with Zod before business logic
+- enforce Content-Type for requests with a body
+- enforce rate limiting where applicable
+- log security-relevant failures using the structured log pattern
+- return errors using the standard API error shape

@@ -1,5 +1,5 @@
 ---
-description: Dependency selection, lockfile discipline, package-risk review, and CI/CD security rules.
+description: Dependency selection, lockfile discipline, package-risk review, dependency confusion prevention, and CI/CD security rules.
 globs:
   - package.json
   - pnpm-lock.yaml
@@ -41,7 +41,11 @@ Examples:
 - `package-lock.json`
 - `yarn.lock`
 
-Never regenerate lockfiles unnecessarily.
+Rules:
+- never regenerate lockfiles unnecessarily
+- lockfile changes must be reviewed in pull requests — unexpected lockfile changes are a supply chain risk signal
+- do not ignore or bypass lockfile integrity checks during CI installs
+- use `--frozen-lockfile` (pnpm) or `--ci` (npm) in CI pipelines to enforce lockfile integrity
 
 ## 3. Automated Vulnerability Scanning
 
@@ -53,7 +57,10 @@ Examples:
 - Dependabot
 - GitHub Security Advisories
 
-Critical vulnerabilities must be addressed quickly.
+Rules:
+- run vulnerability scanning in CI on every pull request
+- critical and high-severity vulnerabilities must be addressed as soon as practical
+- do not merge dependency updates that introduce new critical vulnerabilities
 
 ## 4. Dependency Update Policy
 
@@ -70,29 +77,77 @@ Breaking updates must be tested before rollout.
 
 Before installing a new dependency:
 - verify repository authenticity
-- check maintainers
+- check maintainers and ownership history
 - review download history or project trust signals
 - inspect source code where risk is material
 
 Avoid newly published or weakly trusted packages without a clear reason.
 
-## 6. CI/CD Security
+Watch for:
+- typosquatting — package names that are near-identical to popular packages (e.g., `expresss`, `reakt`, `lodahs`)
+- packages with very few downloads but high-privilege claimed use
+- packages whose source repository does not match the published npm content
+
+## 6. Dependency Confusion Attack Prevention
+
+Dependency confusion is a supply chain attack where a malicious public package with the same name as an internal private package is published to npm, causing the package manager to resolve the public malicious version instead of the intended private one.
+
+### Risk conditions
+
+This attack is relevant when:
+- the project uses a private package registry (e.g., GitHub Packages, Verdaccio, Artifactory)
+- internal packages have names that could plausibly exist on the public npm registry
+- the package manager is configured to check both public and private registries
+
+### Mitigation rules
+
+Rules:
+- use scoped package names for all internal packages (e.g., `@relitrue/internal-utils`) — scoped names are significantly harder to squatter on npm
+- if using a private registry, configure the package manager to resolve internal package scopes exclusively from the private registry and not fall back to the public npm registry for those scopes
+- publish placeholder packages to the public npm registry for any internal package names that are not scoped, to prevent external actors from claiming them
+- verify the registry resolution configuration in `.npmrc` or `pnpm` workspace settings:
+
+```
+# Example .npmrc — route internal scope to private registry only
+@relitrue:registry=https://your-private-registry.example.com
+```
+
+- audit the package manager configuration during security reviews to confirm scope routing is correct
+- do not use generic or common-word package names for internal packages
+
+## 7. CI/CD Security
 
 Build pipelines must follow least privilege.
 
 Rules:
-- CI tokens must have minimal permissions
+- CI tokens must have minimal permissions scoped to what the pipeline requires
 - secrets must never appear in build logs
-- build artifacts must not contain secrets
+- build artifacts must not contain secrets or credentials
 - deployment credentials must be scoped narrowly
+- use short-lived CI tokens where the CI platform supports it (e.g., GitHub Actions OIDC)
+- do not persist deployment credentials in the repository or in artifacts
 
-## 7. Dependency Integrity
+## 8. Dependency Integrity
 
 Where supported, rely on dependency integrity protections provided by the package manager and lockfile.
 
-## 8. Prefer Existing Dependencies
+Rules:
+- enable subresource integrity checks where the package manager supports them
+- do not disable integrity verification in CI or production installs
+- treat integrity check failures as a build-blocking security event
+
+## 9. Prefer Existing Dependencies
 
 Before adding a new dependency:
 - check whether the project already includes an equivalent solution
 - prefer existing project dependencies and utilities
-- do not add a package for trivial helper logic
+- do not add a package for trivial helper logic that can be implemented in a few lines
+
+## 10. License Compliance
+
+All dependencies must use licenses compatible with the project's commercial use.
+
+Rules:
+- avoid GPL-licensed dependencies in server-side or client-bundled code unless legal review confirms compatibility
+- prefer MIT, Apache 2.0, BSD, or ISC licenses
+- flag any dependency with an unusual or restrictive license before merging
