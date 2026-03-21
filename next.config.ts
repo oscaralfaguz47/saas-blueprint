@@ -73,7 +73,6 @@ const securityHeaders = [
     ].join("; "),
   },
   { key: "X-DNS-Prefetch-Control", value: "on" },
-  { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
   { key: "Cross-Origin-Resource-Policy", value: "cross-origin" },
 ];
 
@@ -103,6 +102,20 @@ const nextConfig: NextConfig = {
         headers: [
           { key: "Cache-Control", value: "no-store, max-age=0" },
           { key: "Vary", value: "Origin, Accept-Encoding" },
+        ],
+      },
+      {
+        // Apply COOP only to authenticated app routes — never to auth pages
+        // Auth pages (sign-in, popup-callback) need window.opener access for OAuth popup flow
+        source: "/app/:path*",
+        headers: [
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
+        ],
+      },
+      {
+        source: "/admin/:path*",
+        headers: [
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
         ],
       },
     ];

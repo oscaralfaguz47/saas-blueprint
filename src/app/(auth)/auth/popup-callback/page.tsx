@@ -10,13 +10,24 @@ function PopupCallbackContent() {
     const error = searchParams.get("error");
     const success = !error;
 
-    if (window.opener && !window.opener.closed) {
-      window.opener.postMessage(
-        { type: "OAUTH_POPUP_RESULT", success },
-        window.location.origin
-      );
-    }
-    window.close();
+    const sendAndClose = () => {
+      if (window.opener && !window.opener.closed) {
+        try {
+          window.opener.postMessage(
+            { type: "OAUTH_POPUP_RESULT", success },
+            window.location.origin
+          );
+        } catch {
+          // opener may be cross-origin in some edge cases, ignore
+        }
+      }
+      // Delay close to give parent event loop time to process the message
+      setTimeout(() => window.close(), 300);
+    };
+
+    // Small defer to ensure React has hydrated and opener is accessible
+    const timer = setTimeout(sendAndClose, 50);
+    return () => clearTimeout(timer);
   }, [searchParams]);
 
   return (

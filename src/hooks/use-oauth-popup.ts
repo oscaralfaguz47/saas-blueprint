@@ -97,12 +97,14 @@ export function useOAuthPopup() {
 
         popupRef.current = popup;
 
+        let resolvedByMessage = false;
+
         // Listen for postMessage from the popup callback page
         function handleMessage(event: MessageEvent) {
           // Security: only accept messages from same origin
           if (event.origin !== window.location.origin) return;
           if (event.data?.type !== "OAUTH_POPUP_RESULT") return;
-
+          resolvedByMessage = true; // guard against poll interval overriding this
           cleanup();
           if (event.data.success) {
             resolve({ success: true });
@@ -120,7 +122,10 @@ export function useOAuthPopup() {
         const pollInterval = setInterval(() => {
           if (popup.closed) {
             cleanup();
-            resolve({ success: false, error: "cancelled" });
+            // Only resolve as cancelled if postMessage hasn't already resolved it
+            if (!resolvedByMessage) {
+              resolve({ success: false, error: "cancelled" });
+            }
           }
         }, 500);
 

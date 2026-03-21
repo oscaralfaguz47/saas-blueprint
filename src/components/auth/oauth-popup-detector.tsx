@@ -7,6 +7,9 @@ export function OAuthPopupDetector() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
+    // Do not run on popup-callback — that page handles postMessage itself
+    if (window.location.pathname === "/auth/popup-callback") return;
+
     if (!window.opener || window.opener.closed) return;
 
     const error = searchParams.get("error");
@@ -22,7 +25,6 @@ export function OAuthPopupDetector() {
       },
       window.location.origin
     );
-
     setTimeout(() => window.close(), 150);
   }, [searchParams]);
 
