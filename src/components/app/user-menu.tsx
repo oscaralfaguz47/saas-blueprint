@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { IconLogout, IconSettings } from "@/components/ui/icons";
+import { useTheme } from "@/components/theme/theme-provider";
+import { useApiFetch } from "@/hooks/use-api-fetch";
 
 type UserMenuProps = {
   user: {
@@ -96,6 +99,33 @@ export default function UserMenu({ user }: UserMenuProps) {
   const initials = initialsFrom(user.name || user.email);
 
   const [open, setOpen] = useState(false);
+  const { theme, setTheme } = useTheme();
+  const apiFetch = useApiFetch();
+  const router = useRouter();
+  const [themeSaving, setThemeSaving] = useState(false);
+
+  const isDark = theme === "dark";
+
+  async function handleThemeToggle() {
+    if (themeSaving) return;
+    const next = isDark ? "light" : "dark";
+    setTheme(next);
+    setThemeSaving(true);
+    try {
+      const res = await apiFetch("/api/account/appearance", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: next === "light" ? "LIGHT" : "DARK" }),
+      });
+      if (!res.ok) throw new Error("appearance_failed");
+      router.refresh();
+    } catch {
+      setTheme(isDark ? "dark" : "light");
+    } finally {
+      setThemeSaving(false);
+    }
+  }
+
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const menuId = useId();
@@ -118,11 +148,6 @@ export default function UserMenu({ user }: UserMenuProps) {
 
   async function handleSignOut() {
     setOpen(false);
-    // Use fetch + manual redirect instead of signOut() from next-auth/react.
-    // signOut() follows NextAuth's server-side redirect which uses the Host
-    // header (localhost:3000 behind ngrok) instead of window.location.origin.
-    // By calling the endpoint directly and redirecting ourselves, we always
-    // land on the correct domain.
     try {
       const csrfRes = await fetch("/api/auth/csrf");
       const { csrfToken } = await csrfRes.json() as { csrfToken: string };
@@ -133,7 +158,7 @@ export default function UserMenu({ user }: UserMenuProps) {
         redirect: "manual",
       });
     } catch {
-      // Best-effort: even if fetch fails, redirect to sign-in.
+      // Best-effort
     }
     window.location.href = "/auth/sign-in";
   }
@@ -201,6 +226,109 @@ export default function UserMenu({ user }: UserMenuProps) {
           </div>
 
           <div className="py-1">
+            <div
+              className="flex items-center justify-between px-4 py-2.5"
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-2.5">
+                <span className="flex items-center gap-1.5 text-sm text-(--text-secondary)">
+                  {isDark ? "Dark" : "Light"}
+                  {themeSaving && (
+                    <svg
+                      className="h-3 w-3 animate-spin text-(--text-muted)"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                      />
+                    </svg>
+                  )}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                role="switch"
+                aria-checked={!isDark}
+                aria-label="Toggle theme"
+                disabled={themeSaving}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={handleThemeToggle}
+                className="relative inline-flex h-7 w-14 shrink-0 cursor-pointer items-center justify-between rounded-full px-0.5 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:ring-offset-2 focus:ring-offset-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-50"
+                style={{
+                  backgroundColor: "color-mix(in srgb, var(--color-text-primary) 15%, transparent)",
+                  border: "1px solid color-mix(in srgb, var(--color-text-primary) 20%, transparent)",
+                }}
+              >
+                <span
+                  aria-hidden="true"
+                  className="absolute h-6 w-6 rounded-full transition-all duration-200 ease-in-out"
+                  style={{
+                    left: isDark ? "2px" : "calc(100% - 26px)",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    backgroundColor: "var(--color-primary)",
+                    boxShadow: "0 1px 4px rgba(0,0,0,0.3)",
+                  }}
+                />
+
+                <span className="relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full">
+                  <svg
+                    width="13"
+                    height="13"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ color: isDark ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.4)" }}
+                  >
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                  </svg>
+                </span>
+
+                <span className="relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full">
+                  <svg
+                    width="13"
+                    height="13"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ color: isDark ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.95)" }}
+                  >
+                    <circle cx="12" cy="12" r="5" />
+                    <line x1="12" y1="1" x2="12" y2="3" />
+                    <line x1="12" y1="21" x2="12" y2="23" />
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                    <line x1="1" y1="12" x2="3" y2="12" />
+                    <line x1="21" y1="12" x2="23" y2="12" />
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                  </svg>
+                </span>
+              </button>
+            </div>
+
+            <div className="my-1 border-t border-(--border-subtle)" />
+
             <MenuItem
               href="/app/account"
               label="My Account"

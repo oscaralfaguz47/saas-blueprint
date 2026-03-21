@@ -4,10 +4,9 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ProfileTab } from "./profile-tab";
-import { AppearanceTab } from "./appearance-tab";
 import { SecurityTab } from "./security-tab";
 
-export type AccountTab = "profile" | "appearance" | "security";
+export type AccountTab = "profile" | "security";
 
 export type AccountProfile = {
   id: string;
@@ -29,7 +28,6 @@ export type AccountSecurity = {
 
 const ALL_TABS: { id: AccountTab; label: string }[] = [
   { id: "profile", label: "Profile" },
-  { id: "appearance", label: "Appearance" },
   { id: "security", label: "Security" },
 ];
 
@@ -85,9 +83,6 @@ export function AccountSettingsTabs({
         </TabsList>
         <TabsContent value="profile">
           <ProfileTab profile={profile} loginMethod={loginMethod} />
-        </TabsContent>
-        <TabsContent value="appearance">
-          <AppearanceTab initialMode={profile.appearance} />
         </TabsContent>
         <TabsContent value="security">
           <SecurityTab
