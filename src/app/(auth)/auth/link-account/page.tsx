@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createHash } from "node:crypto";
+import { env } from "@/lib/env";
 import { prisma } from "@/server/db";
 import AuthCard from "@/components/auth/auth-card";
 import LinkAccountForm from "./link-account-form";
@@ -64,7 +65,7 @@ export default async function LinkAccountPage({ searchParams }: Props) {
     );
   }
 
-  const appName = process.env.APP_NAME?.trim() || "Relitrue";
+  const appName = env.APP_NAME?.trim() || "Relitrue";
   return (
     <AuthCard
       title="Link your Microsoft account"

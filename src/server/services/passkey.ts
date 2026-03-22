@@ -10,13 +10,14 @@ import type {
   AuthenticationResponseJSON,
 } from "@simplewebauthn/browser";
 import { prisma } from "@/server/db";
+import { env } from "@/lib/env";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 function getRpConfig() {
-  const origin = process.env.NEXTAUTH_URL ?? "https://localhost:3000";
+  const origin = env.NEXTAUTH_URL ?? "https://localhost:3000";
   const url = new URL(origin);
   return {
-    rpName: process.env.WEBAUTHN_RP_NAME ?? process.env.APP_NAME ?? "SaaS Blueprint",
+    rpName: env.WEBAUTHN_RP_NAME ?? env.APP_NAME ?? "SaaS Blueprint",
     rpID: url.hostname,
     origin,
   };

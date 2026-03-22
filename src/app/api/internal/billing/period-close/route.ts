@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
+import { env } from "@/lib/env";
 import { runPeriodClose } from "@/server/billing/period-close";
 import { apiError, apiSuccess, withErrorHandler } from "@/lib/api-response";
 
-const SECRET = process.env.BILLING_PERIOD_CLOSE_SECRET;
+const SECRET = env.BILLING_PERIOD_CLOSE_SECRET;
 
 function isAuthorized(req: Request): boolean {
   if (!SECRET) return false;

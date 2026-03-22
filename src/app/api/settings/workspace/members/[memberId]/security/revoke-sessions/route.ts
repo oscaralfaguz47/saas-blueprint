@@ -68,10 +68,11 @@ export const PATCH = withErrorHandler(async (
   if (!canManageMemberSecurity(ctx.actorRole, ctx.targetRole)) {
     return ApiErrors.FORBIDDEN();
   }
-  if (!checkMemberSecurityRateLimit(session.user.id)) {
-    return ApiErrors.RATE_LIMITED(
-      "Too many security actions. Try again in a minute."
-    );
+  const rl = await checkMemberSecurityRateLimit(session.user.id);
+  if (!rl.allowed) {
+    return ApiErrors.RATE_LIMITED("Too many security actions. Try again in a minute.", {
+      retryAfterSeconds: rl.retryAfterSeconds,
+    });
   }
 
   const now = new Date();

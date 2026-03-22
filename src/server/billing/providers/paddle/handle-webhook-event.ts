@@ -23,8 +23,9 @@ import { fetchPaddleSubscription } from "./fetch-subscription";
 import { setPaddleAddressDescription } from "@/server/billing/paddle/customer/update-billing-details";
 import { PADDLE_API_BASE, getPaddleApiKey } from "@/server/billing/paddle/paddle-api";
 import { mapAddressToProfile, type PaddleAddress } from "@/server/billing/billing-profile/sync-from-paddle";
+import { env } from "@/lib/env";
 
-const BILLING_WEBHOOK_ACTOR_USER_ID = process.env.BILLING_WEBHOOK_ACTOR_USER_ID;
+const BILLING_WEBHOOK_ACTOR_USER_ID = env.BILLING_WEBHOOK_ACTOR_USER_ID;
 
 function getAuditActorUserId(): string | null {
   return BILLING_WEBHOOK_ACTOR_USER_ID ?? null;

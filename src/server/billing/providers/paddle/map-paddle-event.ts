@@ -1,5 +1,6 @@
 import "server-only";
 
+import { env } from "@/lib/env";
 import type { SubscriptionStatus } from "@prisma/client";
 import type {
   BillingEventSanitizedPayload,
@@ -18,9 +19,9 @@ const PLAN_TIER_ORDER: Record<PaddlePlanCode, number> = {
 /** Resolve planCode from Paddle price_id (fallback when custom_data missing). EPIC 5: enterprise. */
 export function getPlanCodeFromPriceId(priceId: string | null | undefined): PaddlePlanCode | null {
   if (!priceId || typeof priceId !== "string") return null;
-  const starter = process.env.PADDLE_PRICE_ID_STARTER;
-  const pro = process.env.PADDLE_PRICE_ID_PRO;
-  const enterprise = process.env.PADDLE_PRICE_ID_ENTERPRISE;
+  const starter = env.PADDLE_PRICE_ID_STARTER;
+  const pro = env.PADDLE_PRICE_ID_PRO;
+  const enterprise = env.PADDLE_PRICE_ID_ENTERPRISE;
   if (starter && priceId === starter) return "starter";
   if (pro && priceId === pro) return "pro";
   if (enterprise && priceId === enterprise) return "enterprise";
@@ -52,7 +53,7 @@ export function getHighestPlanCodeFromItems(
 }
 
 /** Configurable grace period (days) when status is past_due. */
-const GRACE_DAYS = Number(process.env.PADDLE_GRACE_DAYS) || 7;
+const GRACE_DAYS = env.PADDLE_GRACE_DAYS ?? 7;
 
 /**
  * Map Paddle subscription status to internal SubscriptionStatus.

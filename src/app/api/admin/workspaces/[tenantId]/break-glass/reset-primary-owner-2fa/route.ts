@@ -7,6 +7,8 @@ import { prisma } from "@/server/db";
 import { writeAuditLog } from "@/server/services/audit";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { adminBreakGlassReset2FABodySchema } from "@/lib/validations/admin";
+import { parseBody } from "@/lib/validations";
+import { ValidationError } from "@/lib/validations/common";
 import { z } from "zod";
 
 const paramsSchema = z.object({ tenantId: z.string().cuid() });
@@ -22,8 +24,11 @@ export const POST = withErrorHandler(async (
   if (authErrorMfa) return authErrorMfa;
   if (!session?.user?.id) return ApiErrors.UNAUTHENTICATED();
 
-  if (!checkAdminBreakGlassLimit(session.user.id))
-    return ApiErrors.RATE_LIMITED("Too many attempts. Try again in a minute.");
+  const rl = await checkAdminBreakGlassLimit(session.user.id);
+  if (!rl.allowed)
+    return ApiErrors.RATE_LIMITED("Too many attempts. Try again in a minute.", {
+      retryAfterSeconds: rl.retryAfterSeconds,
+    });
 
   const stepUpOk = await isStepUpEligible(
     session.user.sessionToken ?? undefined,
@@ -35,9 +40,12 @@ export const POST = withErrorHandler(async (
 
   let body: { confirm: "RESET 2FA" };
   try {
-    body = await adminBreakGlassReset2FABodySchema.parseAsync(await req.json());
-  } catch {
-    return ApiErrors.VALIDATION_ERROR('Body must include confirm: "RESET 2FA"');
+    body = await parseBody(req, adminBreakGlassReset2FABodySchema);
+  } catch (e) {
+    if (e instanceof ValidationError) {
+      return ApiErrors.VALIDATION_ERROR('Body must include confirm: "RESET 2FA"');
+    }
+    throw e;
   }
   if (body.confirm !== "RESET 2FA")
     return ApiErrors.VALIDATION_ERROR('Confirmation must be exactly "RESET 2FA"');

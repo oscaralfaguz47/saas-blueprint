@@ -6,6 +6,7 @@ import {
   isOwnerLevel,
   onlyPrimaryOwnerCanChangeOwnerLevel,
 } from "@/server/security/authority";
+import { checkRateLimit, type RateLimitResult } from "@/lib/rate-limit";
 import { prisma } from "@/server/db";
 
 /** E6: Member security actions; used for governance constraint checks. */
@@ -144,28 +145,8 @@ export async function assertGovernanceConstraints(
 }
 
 /** E6: Rate limit — 5 requests per minute per actor for member security endpoints. */
-const RATE_LIMIT_WINDOW_MS = 60 * 1000;
-const RATE_LIMIT_MAX = 5;
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-
-export function checkMemberSecurityRateLimit(actorUserId: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(actorUserId);
-  if (!entry) {
-    rateLimitMap.set(actorUserId, {
-      count: 1,
-      resetAt: now + RATE_LIMIT_WINDOW_MS,
-    });
-    return true;
-  }
-  if (now >= entry.resetAt) {
-    rateLimitMap.set(actorUserId, {
-      count: 1,
-      resetAt: now + RATE_LIMIT_WINDOW_MS,
-    });
-    return true;
-  }
-  if (entry.count >= RATE_LIMIT_MAX) return false;
-  entry.count += 1;
-  return true;
+export async function checkMemberSecurityRateLimit(
+  actorUserId: string
+): Promise<RateLimitResult> {
+  return checkRateLimit(`member:security:${actorUserId}`, 5, 60_000);
 }

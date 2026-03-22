@@ -1,6 +1,99 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
+import { env } from "@/lib/env";
+
+/** Cryptographic nonce for CSP (Edge-safe; no Node Buffer). */
+function generateCspNonce(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!);
+  return btoa(binary);
+}
+
+/** Mirrors R2 origin logic previously in next.config.ts (same as env-based derivation). */
+function getR2OriginForCsp(): string {
+  const explicit = env.NEXT_PUBLIC_R2_BUCKET_URL?.replace(/\/+$/, "");
+  if (explicit) return explicit;
+  const accountId = env.R2_ACCOUNT_ID?.trim();
+  const bucket = env.R2_BUCKET_NAME?.trim();
+  if (accountId && bucket)
+    return `https://${bucket}.${accountId}.r2.cloudflarestorage.com`;
+  return "";
+}
+
+function buildCsp(nonce: string): string {
+  const isProd = process.env.NODE_ENV === "production";
+  const r2Origin = getR2OriginForCsp();
+
+  const connectSrc = [
+    "'self'",
+    "https://*.paddle.com",
+    "https://*.vercel.app",
+    "https://*.ngrok-free.app",
+    "https://*.ngrok-free.dev",
+    "wss://*.ngrok-free.app",
+    "wss://*.ngrok-free.dev",
+    "https://accounts.google.com",
+    "https://login.microsoftonline.com",
+    "https://github.com",
+    ...(r2Origin ? [r2Origin] : []),
+  ].join(" ");
+
+  const imgSrc = [
+    "'self'",
+    "data:",
+    "blob:",
+    "https://lh3.googleusercontent.com",
+    "https://avatars.githubusercontent.com",
+    ...(r2Origin ? [r2Origin] : []),
+  ].join(" ");
+
+  const scriptSrcParts = [
+    "'self'",
+    `'nonce-${nonce}'`,
+    "'wasm-unsafe-eval'",
+    "https://*.paddle.com",
+  ];
+  if (!isProd) {
+    scriptSrcParts.push("'unsafe-eval'");
+  }
+  const scriptSrc = scriptSrcParts.join(" ");
+
+  return [
+    "default-src 'self'",
+    `script-src ${scriptSrc}`,
+    "style-src 'self' 'unsafe-inline' https://*.paddle.com",
+    `img-src ${imgSrc}`,
+    "font-src 'self'",
+    `connect-src ${connectSrc}`,
+    "frame-src 'self' https://*.paddle.com",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+  ].join("; ");
+}
+
+function nextWithNonce(
+  req: NextRequest,
+  nonce: string,
+  configure?: (res: NextResponse) => void
+): NextResponse {
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-nonce", nonce);
+  const res = NextResponse.next({ request: { headers: requestHeaders } });
+  res.headers.set("Content-Security-Policy", buildCsp(nonce));
+  res.headers.set("x-nonce", nonce);
+  configure?.(res);
+  return res;
+}
+
+function redirectWithCsp(req: NextRequest, url: URL, nonce: string): NextResponse {
+  const res = NextResponse.redirect(url);
+  res.headers.set("Content-Security-Policy", buildCsp(nonce));
+  return res;
+}
 
 /**
  * Public routes (no auth required)
@@ -68,8 +161,8 @@ function isAdminPath(pathname: string) {
 }
 
 function normalizePlatformAllowlist() {
-  const single = (process.env.BOOTSTRAP_ADMIN_EMAIL ?? "").trim().toLowerCase();
-  const raw = process.env.PLATFORM_ADMIN_EMAILS ?? "";
+  const single = (env.BOOTSTRAP_ADMIN_EMAIL ?? "").trim().toLowerCase();
+  const raw = env.PLATFORM_ADMIN_EMAILS ?? "";
   const list = raw
     .split(",")
     .map((s) => s.trim().toLowerCase())
@@ -82,6 +175,8 @@ function normalizePlatformAllowlist() {
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  const nonce = generateCspNonce();
 
   // Extra hardening: always allow Next internal paths and static assets (never intercept auth)
   if (
@@ -99,15 +194,15 @@ export async function middleware(req: NextRequest) {
     pathname.endsWith(".woff") ||
     pathname.endsWith(".woff2")
   ) {
-    return NextResponse.next();
+    return nextWithNonce(req, nonce);
   }
 
   // Handle CORS preflight requests for API routes
   if (req.method === "OPTIONS" && pathname.startsWith("/api/")) {
     const origin = req.headers.get("origin") ?? "";
     const allowedOrigins = [
-      process.env.NEXTAUTH_URL ?? "",
-      process.env.NEXTAUTH_URL_INTERNAL ?? "",
+      env.NEXTAUTH_URL ?? "",
+      env.NEXTAUTH_URL_INTERNAL ?? "",
       "https://saas-blueprint-three.vercel.app",
     ].filter(Boolean);
 
@@ -125,21 +220,22 @@ export async function middleware(req: NextRequest) {
     res.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
     res.headers.set("Access-Control-Max-Age", "86400");
     res.headers.set("Vary", "Origin");
+    res.headers.set("Content-Security-Policy", buildCsp(nonce));
     return res;
   }
 
   // Cron endpoints are invoked by Vercel Cron (or tools like Postman) with Authorization: Bearer CRON_SECRET.
   // They must bypass session auth here so the route handler can return JSON (401/200); auth is enforced inside the route.
   if (pathname === "/api/internal/cron" || pathname.startsWith("/api/internal/cron/")) {
-    return NextResponse.next();
+    return nextWithNonce(req, nonce);
   }
 
   // 1) Public routes: pass-through (+ hardening for /r/)
   if (isPublicPath(pathname)) {
     if (pathname.startsWith("/r/")) {
-      const res = NextResponse.next();
-      res.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
-      return res;
+      return nextWithNonce(req, nonce, (res) => {
+        res.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+      });
     }
     // Clear MFA cookie so a previous user's verification cannot allow another user to skip 2FA:
     // - on sign-in/sign-out pages (when user visits those URLs)
@@ -149,30 +245,30 @@ export async function middleware(req: NextRequest) {
       pathname === "/auth/sign-out" ||
       pathname.startsWith("/api/auth/callback/");
     if (shouldClearMfaCookie) {
-      const res = NextResponse.next();
-      res.cookies.set("mfa_just_verified", "", {
-        maxAge: 0,
-        path: "/",
-        httpOnly: true,
-        sameSite: "lax",
+      return nextWithNonce(req, nonce, (res) => {
+        res.cookies.set("mfa_just_verified", "", {
+          maxAge: 0,
+          path: "/",
+          httpOnly: true,
+          sameSite: "lax",
+        });
       });
-      return res;
     }
-    return NextResponse.next();
+    return nextWithNonce(req, nonce);
   }
 
   // 2) Anything not protected stays public
   if (!isProtectedPath(pathname)) {
-    return NextResponse.next();
+    return nextWithNonce(req, nonce);
   }
 
   // 3) Protected routes require auth
-  const secret = process.env.NEXTAUTH_SECRET;
+  const secret = env.NEXTAUTH_SECRET;
 
-  // Fail-safe: if secret is missing, do NOT attempt getToken (can throw/hang in edge)
+  // Fail-safe: if secret is missing, do NOT attempt getToken (can throw/hang in dev misconfig)
   // In production you SHOULD enforce it, but this avoids "app never loads" in dev misconfig.
   if (!secret) {
-    const res = NextResponse.redirect(new URL("/auth/sign-in", req.url));
+    const res = redirectWithCsp(req, new URL("/auth/sign-in", req.url), nonce);
     res.headers.set("X-Auth-Error", "Missing NEXTAUTH_SECRET");
     return res;
   }
@@ -193,7 +289,7 @@ export async function middleware(req: NextRequest) {
     const callbackUrl = req.nextUrl.pathname + req.nextUrl.search;
     url.searchParams.set("callbackUrl", callbackUrl);
 
-    return NextResponse.redirect(url);
+    return redirectWithCsp(req, url, nonce);
   }
 
   // 4) Admin area allowlist gating by email
@@ -205,14 +301,14 @@ export async function middleware(req: NextRequest) {
     if (!isAllowed) {
       const url = req.nextUrl.clone();
       url.pathname = "/unauthorized";
-      return NextResponse.redirect(url);
+      return redirectWithCsp(req, url, nonce);
     }
   }
 
-  const response = NextResponse.next();
-  response.headers.set("X-Content-Type-Options", "nosniff");
-  response.headers.set("X-Permitted-Cross-Domain-Policies", "none");
-  return response;
+  return nextWithNonce(req, nonce, (res) => {
+    res.headers.set("X-Content-Type-Options", "nosniff");
+    res.headers.set("X-Permitted-Cross-Domain-Policies", "none");
+  });
 }
 
 export const config = {

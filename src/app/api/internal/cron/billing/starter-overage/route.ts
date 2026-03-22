@@ -1,10 +1,11 @@
 import "server-only";
 
 import { NextResponse } from "next/server";
+import { env } from "@/lib/env";
 import { runStarterOverageScheduling } from "@/server/billing/overage/schedule-starter-overage";
 import { apiError, apiSuccess, withErrorHandler } from "@/lib/api-response";
 
-const CRON_SECRET = process.env.CRON_SECRET;
+const CRON_SECRET = env.CRON_SECRET;
 
 function isCronAuthorized(req: Request): boolean {
   if (!CRON_SECRET) return false;

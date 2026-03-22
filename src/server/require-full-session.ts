@@ -1,6 +1,7 @@
 import type { Session } from "next-auth";
 import { NextResponse } from "next/server";
 import { ApiErrors } from "@/lib/api-response";
+import { logSessionInvalid } from "@/server/security-log";
 import { checkAndUpdateSessionActivity } from "@/server/services/inactivity";
 import { isMfaEnforcedForUser } from "@/server/security/member-security-governance";
 
@@ -17,7 +18,13 @@ export async function requireFullSession(session: Session | null): Promise<NextR
     session.user.authLevel === "PENDING_MFA" ||
     (session.user.totpEnabled === true && !session.user.mfaVerified);
 
-  if (needsMfa) return ApiErrors.MFA_REQUIRED();
+  if (needsMfa) {
+    logSessionInvalid({
+      reason: session.user.authLevel === "PENDING_MFA" ? "pending_mfa" : "mfa_not_verified",
+      userId: session.user.id,
+    });
+    return ApiErrors.MFA_REQUIRED();
+  }
   return checkActivityAndReturn(session);
 }
 
@@ -42,6 +49,10 @@ async function checkActivityAndReturn(session: Session): Promise<NextResponse | 
   if (session.user.sessionToken) {
     const activity = await checkAndUpdateSessionActivity(session.user.sessionToken);
     if (activity.status === "expired" || activity.status === "session_not_found") {
+      logSessionInvalid({
+        reason: activity.status === "expired" ? "expired" : "not_found",
+        userId: session.user.id,
+      });
       return ApiErrors.UNAUTHENTICATED();
     }
   }

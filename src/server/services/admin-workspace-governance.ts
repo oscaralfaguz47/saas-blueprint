@@ -12,6 +12,7 @@ import {
 } from "@/server/security/authority";
 import { getOwnerLevelCount } from "@/server/security/member-security-governance";
 import { sendInvitationEmail } from "@/server/services/invitation-email";
+import { env } from "@/lib/env";
 import { getBaseUrlFromRequest } from "@/lib/request-utils";
 import crypto from "crypto";
 
@@ -507,7 +508,7 @@ export async function executeCreateInvitation(params: {
     userAgent,
   });
 
-  const baseUrl = req ? getBaseUrlFromRequest(req) : process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const baseUrl = req ? getBaseUrlFromRequest(req) : env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   const inviteUrl = `${baseUrl.replace(/\/$/, "")}/invite?token=${encodeURIComponent(rawToken)}`;
 
   if (sendEmail && req) {

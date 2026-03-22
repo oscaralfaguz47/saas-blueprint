@@ -1,10 +1,10 @@
 import "server-only";
-import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
 import { randomBytes, createHash } from "node:crypto";
 import { z } from "zod";
+import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 
 const INTENT_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -12,16 +12,19 @@ const BodySchema = z.object({
   provider: z.enum(["azure-ad", "google"]),
 });
 
-export async function POST(req: Request) {
+export const POST = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.id || session.user.authLevel !== "FULL") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user?.id) {
+    return ApiErrors.UNAUTHENTICATED();
+  }
+  if (session.user.authLevel !== "FULL") {
+    return ApiErrors.FORBIDDEN();
   }
 
   const body = await req.json().catch(() => null);
   const parse = BodySchema.safeParse(body);
   if (!parse.success) {
-    return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
+    return ApiErrors.VALIDATION_ERROR("Invalid provider");
   }
 
   const { provider } = parse.data;
@@ -32,7 +35,7 @@ export async function POST(req: Request) {
     select: { email: true },
   });
   if (!user?.email) {
-    return NextResponse.json({ error: "User email not found" }, { status: 400 });
+    return ApiErrors.VALIDATION_ERROR("User email not found");
   }
 
   const expectedEmail = user.email.trim().toLowerCase();
@@ -54,5 +57,5 @@ export async function POST(req: Request) {
     data: { userId, targetProvider: provider, expectedEmail, tokenHash, expiresAt },
   });
 
-  return NextResponse.json({ token: rawToken });
-}
+  return apiSuccess({ token: rawToken });
+});

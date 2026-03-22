@@ -1,9 +1,10 @@
 import "server-only";
 
+import { env } from "@/lib/env";
 import { prisma } from "@/server/db";
 
 function normalizeAllowlist() {
-  const raw = process.env.BOOTSTRAP_ADMIN_EMAIL ?? "";
+  const raw = env.BOOTSTRAP_ADMIN_EMAIL ?? "";
   return raw
     .split(",")
     .map((s) => s.trim().toLowerCase())

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { Inter } from "next/font/google";
+import { headers } from "next/headers";
 import "./globals.css";
 import Providers from "./providers";
 import { OAuthPopupDetector } from "@/components/auth/oauth-popup-detector";
@@ -15,17 +16,21 @@ export const metadata: Metadata = {
   description: "SaaS Blueprint",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const nonce = (await headers()).get("x-nonce") ?? "";
+
   /* suppressHydrationWarning: reduces hydration errors when extensions modify the DOM (see: incognito vs normal window). */
   return (
     <html lang="en" className={inter.className} suppressHydrationWarning>
       <head>
         <script
+          nonce={nonce}
           dangerouslySetInnerHTML={{
             __html: `try{var p=location.pathname,a=p.startsWith('/app')||p.startsWith('/admin'),s=a&&localStorage.getItem('atl.theme.app'),t=s==='light'||s==='dark'||s==='system'?s:'dark';document.documentElement.setAttribute('data-theme',t)}catch(e){document.documentElement.setAttribute('data-theme','dark')}`,
           }}
         />
         <script
+          nonce={nonce}
           dangerouslySetInnerHTML={{
             __html: `
       try {

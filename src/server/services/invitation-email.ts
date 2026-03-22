@@ -1,6 +1,7 @@
 import "server-only";
 
 import { Resend } from "resend";
+import { env } from "@/lib/env";
 
 /**
  * Send invitation email for workspace invite (A3).
@@ -16,8 +17,8 @@ export async function sendInvitationEmail(params: {
   const { tenantName, invitedEmail, baseUrl } = params;
   const inviteLink = `${baseUrl.replace(/\/$/, "")}/invite?token=${encodeURIComponent(params.rawToken)}`;
 
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.EMAIL_FROM;
+  const apiKey = env.RESEND_API_KEY;
+  const from = env.EMAIL_FROM;
   if (!apiKey || !from) {
     if (process.env.NODE_ENV === "development") {
       // eslint-disable-next-line no-console
@@ -59,8 +60,8 @@ export async function sendInvitationDeclinedNotificationToInviter(params: {
   const { inviterEmail, workspaceName, declinedEmail } = params;
   if (!inviterEmail?.trim()) return;
 
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.EMAIL_FROM;
+  const apiKey = env.RESEND_API_KEY;
+  const from = env.EMAIL_FROM;
   if (!apiKey || !from) {
     if (process.env.NODE_ENV === "development") {
       // eslint-disable-next-line no-console
@@ -101,8 +102,8 @@ export async function sendEmail(params: {
   subject: string;
   html: string;
 }): Promise<void> {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.EMAIL_FROM;
+  const apiKey = env.RESEND_API_KEY;
+  const from = env.EMAIL_FROM;
   if (!apiKey || !from) {
     throw new Error("RESEND_API_KEY and EMAIL_FROM must be set to send emails.");
   }

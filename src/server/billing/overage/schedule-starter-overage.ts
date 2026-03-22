@@ -1,5 +1,6 @@
 import "server-only";
 
+import { env } from "@/lib/env";
 import { prisma } from "@/server/db";
 import { getBillingPeriodForTenant } from "../get-or-create-billing-state";
 import { resolveTenantPlan } from "../resolve-tenant-plan";
@@ -143,14 +144,14 @@ async function createPaddleOneTimeCharge(params: {
   unitPriceCents: number;
   effectiveFromNextBillingPeriod: boolean;
 }): Promise<string | null> {
-  const priceId = process.env.PADDLE_PRICE_ID_STARTER_OVERAGE_REQUEST;
+  const priceId = env.PADDLE_PRICE_ID_STARTER_OVERAGE_REQUEST;
   if (!priceId) {
     return null;
   }
-  const base = process.env.PADDLE_ENVIRONMENT === "production"
+  const base = env.PADDLE_ENVIRONMENT === "production"
     ? "https://api.paddle.com"
     : "https://sandbox-api.paddle.com";
-  const key = process.env.PADDLE_API_KEY;
+  const key = env.PADDLE_API_KEY;
   if (!key) return null;
 
   try {

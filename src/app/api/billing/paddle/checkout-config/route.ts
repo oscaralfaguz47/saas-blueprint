@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { env } from "@/lib/env";
 
 /**
  * GET /api/billing/paddle/checkout-config
@@ -8,15 +9,15 @@ import { NextResponse } from "next/server";
  */
 export async function GET() {
   const raw =
-    typeof process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN === "string"
-      ? process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN
+    typeof env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN === "string"
+      ? env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN
       : "";
   const token = raw.trim();
   const clientTokenSet = token.length > 0;
   const environment =
-    process.env.PADDLE_ENVIRONMENT === "production"
+    env.PADDLE_ENVIRONMENT === "production"
       ? "production"
-      : process.env.PADDLE_ENVIRONMENT === "sandbox"
+      : env.PADDLE_ENVIRONMENT === "sandbox"
         ? "sandbox"
         : null;
   const tokenPrefix = token.startsWith("test_")

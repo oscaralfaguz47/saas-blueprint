@@ -19,34 +19,7 @@ import {
 } from "@/server/services/remember-device";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { parseBody, auth2FaVerifySchema } from "@/lib/validations";
-
-const RATE_LIMIT_WINDOW_MS = 60 * 1000;
-const RATE_LIMIT_MAX = 10;
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-
-function getClientKey(req: Request, userId?: string): string {
-  const forwarded = req.headers.get("x-forwarded-for");
-  const ip = forwarded?.split(",")[0]?.trim() ?? "unknown";
-  return userId ? `${userId}:${ip}` : ip;
-}
-
-function checkRateLimit(key: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(key);
-  if (!entry) {
-    rateLimitMap.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return true;
-  }
-  if (now >= entry.resetAt) {
-    rateLimitMap.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return true;
-  }
-  if (entry.count >= RATE_LIMIT_MAX) return false;
-  entry.count += 1;
-  return true;
-}
-
-
+import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
  * POST /api/auth/2fa/verify
@@ -60,8 +33,15 @@ export const POST = withErrorHandler(async (req: Request) => {
   const sessionToken = session.user.sessionToken;
   if (!sessionToken) return ApiErrors.UNAUTHENTICATED();
 
-  if (!checkRateLimit(getClientKey(req, session.user.id))) {
-    return ApiErrors.RATE_LIMITED("Too many attempts. Try again in a minute.");
+  const rateLimitResult = await checkRateLimit(
+    `2fa:verify:${session.user.id}`,
+    10,
+    60 * 1000
+  );
+  if (!rateLimitResult.allowed) {
+    return ApiErrors.RATE_LIMITED("Too many attempts. Try again in a minute.", {
+      retryAfterSeconds: rateLimitResult.retryAfterSeconds,
+    });
   }
 
   const sessionRow = await prisma.session.findUnique({

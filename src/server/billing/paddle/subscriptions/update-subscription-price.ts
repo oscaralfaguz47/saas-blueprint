@@ -1,5 +1,6 @@
 import "server-only";
 
+import { env } from "@/lib/env";
 import { PADDLE_API_BASE, getPaddleApiKey } from "../paddle-api";
 import { getPlanCodeFromPriceId } from "@/server/billing/providers/paddle/map-paddle-event";
 import { fetchPaddleSubscription } from "@/server/billing/providers/paddle/fetch-subscription";
@@ -21,6 +22,12 @@ export type UpdateSubscriptionPriceParams = {
   tenantId?: string;
 };
 
+const PADDLE_PRICE_IDS: Record<string, string | undefined> = {
+  PADDLE_PRICE_ID_STARTER: env.PADDLE_PRICE_ID_STARTER,
+  PADDLE_PRICE_ID_PRO: env.PADDLE_PRICE_ID_PRO,
+  PADDLE_PRICE_ID_ENTERPRISE: env.PADDLE_PRICE_ID_ENTERPRISE,
+};
+
 function getPriceIdForPlan(planCode: string): string | null {
   const envKey =
     planCode === "starter"
@@ -31,7 +38,7 @@ function getPriceIdForPlan(planCode: string): string | null {
           ? "PADDLE_PRICE_ID_ENTERPRISE"
           : null;
   if (!envKey) return null;
-  return process.env[envKey] ?? null;
+  return PADDLE_PRICE_IDS[envKey] ?? null;
 }
 
 /**

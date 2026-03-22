@@ -1,5 +1,7 @@
 import "server-only";
 
+import { env } from "@/lib/env";
+
 /**
  * Returns the name of the link-challenge cookie derived from APP_NAME.
  *
@@ -10,7 +12,7 @@ import "server-only";
  * Must be called at runtime so that the env var is resolved from the current process.
  */
 export function getLinkChallengeCookieName(): string {
-  const appName = (process.env.APP_NAME ?? "app")
+  const appName = (env.APP_NAME ?? "app")
     .trim()
     .toLowerCase()
     .replace(/\s+/g, "-")

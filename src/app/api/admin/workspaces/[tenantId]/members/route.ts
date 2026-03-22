@@ -53,8 +53,11 @@ export const GET = withErrorHandler(async (
   if (authError) return authError;
   if (!session?.user?.id) return ApiErrors.UNAUTHENTICATED();
 
-  if (!checkAdminMembersOrInvitesListLimit(session.user.id))
-    return ApiErrors.RATE_LIMITED("Too many requests. Try again in a minute.");
+  const rl = await checkAdminMembersOrInvitesListLimit(session.user.id);
+  if (!rl.allowed)
+    return ApiErrors.RATE_LIMITED("Too many requests. Try again in a minute.", {
+      retryAfterSeconds: rl.retryAfterSeconds,
+    });
 
   const { tenantId } = paramsSchema.parse(await context.params);
 

@@ -5,6 +5,7 @@ import { requireFullSession } from "@/server/require-full-session";
 import { ApiErrors, apiError, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { generateEmailOtp } from "@/server/services/email-otp";
 import { sendMagicLink } from "@/server/services/send-magic-link";
+import { env } from "@/lib/env";
 
 /**
  * POST /api/auth/step-up/send-code
@@ -28,17 +29,17 @@ export const POST = withErrorHandler(async () => {
     );
   }
 
-  const from = process.env.EMAIL_FROM ?? "";
+  const from = env.EMAIL_FROM ?? "";
   if (!from) {
     return ApiErrors.INTERNAL_ERROR("Email is not configured. Contact support.");
   }
 
   await sendMagicLink({
     email: session.user.email,
-    url: `${process.env.NEXTAUTH_URL ?? ""}/app`,
+    url: `${env.NEXTAUTH_URL ?? ""}/app`,
     from,
     otpCode: result.code,
-    appName: process.env.APP_NAME ?? undefined,
+    appName: env.APP_NAME ?? undefined,
   });
 
   return apiSuccess({ sent: true });

@@ -39,6 +39,9 @@ jobs:
       - name: Type check
         run: pnpm tsc --noEmit
 
+      - name: Run tests
+        run: pnpm test
+
       - name: Format check
         run: pnpm format:check
 

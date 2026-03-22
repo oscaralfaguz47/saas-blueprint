@@ -7,26 +7,7 @@ import { writeAuditLog } from "@/server/services/audit";
 import { generateTotpSecret, buildOtpauthUri } from "@/server/services/totp";
 import { encryptTotpSecret } from "@/server/services/account-encryption";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
-
-const RATE_LIMIT_WINDOW_MS = 60 * 1000;
-const RATE_LIMIT_MAX = 3;
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-
-function checkRateLimit(userId: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(userId);
-  if (!entry) {
-    rateLimitMap.set(userId, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return true;
-  }
-  if (now >= entry.resetAt) {
-    rateLimitMap.set(userId, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return true;
-  }
-  if (entry.count >= RATE_LIMIT_MAX) return false;
-  entry.count += 1;
-  return true;
-}
+import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
  * POST /api/account/2fa/setup
@@ -45,8 +26,15 @@ export const POST = withErrorHandler(async () => {
   if (!user) return ApiErrors.NOT_FOUND("User");
   if (user.isPlatformBlocked) return ApiErrors.FORBIDDEN();
 
-  if (!checkRateLimit(session.user.id)) {
-    return ApiErrors.RATE_LIMITED("Too many 2FA setup attempts. Try again in a minute.");
+  const rateLimitResult = await checkRateLimit(
+    `account:2fa:setup:${session.user.id}`,
+    3,
+    60 * 1000
+  );
+  if (!rateLimitResult.allowed) {
+    return ApiErrors.RATE_LIMITED("Too many 2FA setup attempts. Try again in a minute.", {
+      retryAfterSeconds: rateLimitResult.retryAfterSeconds,
+    });
   }
 
   const { raw, base32 } = generateTotpSecret();

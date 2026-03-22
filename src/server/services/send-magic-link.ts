@@ -1,5 +1,6 @@
 import "server-only";
 import { Resend } from "resend";
+import { env } from "@/lib/env";
 
 function escapeHtml(value: string): string {
   return value
@@ -22,13 +23,13 @@ export async function sendMagicLink(params: {
   otpCode?: string; // 6-digit code to show prominently
   appName?: string; // for email subject/branding
 }): Promise<void> {
-  const apiKey = process.env.RESEND_API_KEY;
+  const apiKey = env.RESEND_API_KEY;
   if (!apiKey) {
     throw new Error("RESEND_API_KEY is not configured");
   }
   const resend = new Resend(apiKey);
 
-  const appName = params.appName ?? process.env.APP_NAME ?? "Your Account";
+  const appName = params.appName ?? env.APP_NAME ?? "Your Account";
   const safeAppName = escapeHtml(appName);
   const safeUrl = escapeHtml(params.url);
 

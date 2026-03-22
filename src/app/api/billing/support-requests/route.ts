@@ -6,6 +6,7 @@ import { writeAuditLog } from "@/server/services/audit";
 import { sendEmail } from "@/server/services/invitation-email";
 import { prisma } from "@/server/db";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
+import { env } from "@/lib/env";
 import { parseBody } from "@/lib/validations/common";
 import { z } from "zod";
 
@@ -53,7 +54,7 @@ export const POST = withErrorHandler(async (req: Request) => {
     select: { id: true },
   });
 
-  const adminEmails = (process.env.PLATFORM_ADMIN_EMAILS ?? "")
+  const adminEmails = (env.PLATFORM_ADMIN_EMAILS ?? "")
     .split(",")
     .map((e) => e.trim())
     .filter(Boolean);

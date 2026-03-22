@@ -1,39 +1,15 @@
 import { getServerSession } from "next-auth";
+import { env } from "@/lib/env";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
 import { writeAuditLog } from "@/server/services/audit";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
-
-const RATE_LIMIT_WINDOW_MS = 60 * 1000;
-const RATE_LIMIT_MAX = 30;
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-
-function getClientKey(req: Request): string {
-  const forwarded = req.headers.get("x-forwarded-for");
-  const ip = forwarded?.split(",")[0]?.trim() ?? "unknown";
-  return ip;
-}
-
-function checkRateLimit(key: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(key);
-  if (!entry) {
-    rateLimitMap.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return true;
-  }
-  if (now >= entry.resetAt) {
-    rateLimitMap.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return true;
-  }
-  if (entry.count >= RATE_LIMIT_MAX) return false;
-  entry.count += 1;
-  return true;
-}
+import { checkRateLimit } from "@/lib/rate-limit";
 
 function getSessionCookieName(): string {
   const isSecure =
     process.env.NODE_ENV === "production" &&
-    (process.env.NEXTAUTH_URL ?? "").startsWith("https://");
+    (env.NEXTAUTH_URL ?? "").startsWith("https://");
   return isSecure ? "__Secure-next-auth.session-token" : "next-auth.session-token";
 }
 
@@ -43,8 +19,12 @@ function getSessionCookieName(): string {
  * clears session cookie, returns { ok: true }. Idempotent; no step-up required.
  */
 export const POST = withErrorHandler(async (req: Request) => {
-  if (!checkRateLimit(getClientKey(req))) {
-    return ApiErrors.RATE_LIMITED("Too many requests. Try again later.");
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const rateLimitResult = await checkRateLimit(`2fa:cancel:${ip}`, 30, 60 * 1000);
+  if (!rateLimitResult.allowed) {
+    return ApiErrors.RATE_LIMITED("Too many requests. Try again later.", {
+      retryAfterSeconds: rateLimitResult.retryAfterSeconds,
+    });
   }
 
   const session = await getServerSession(authOptions);

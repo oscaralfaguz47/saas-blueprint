@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isSafeInternalRedirect } from "@/lib/safe-redirect";
 
 /**
  * GET /api/clear-mfa-and-redirect?to=/auth/2fa
@@ -9,7 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
  */
 export async function GET(req: NextRequest) {
   const to = req.nextUrl.searchParams.get("to") ?? "/auth/2fa";
-  const path = to.startsWith("/") ? to : `/${to}`;
+  const path = isSafeInternalRedirect(to) ? to : "/";
 
   const res = NextResponse.redirect(new URL(path, req.url));
   res.cookies.set("mfa_just_verified", "", {

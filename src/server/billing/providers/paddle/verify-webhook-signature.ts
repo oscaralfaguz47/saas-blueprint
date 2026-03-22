@@ -1,13 +1,14 @@
 import "server-only";
 
 import { createHmac, timingSafeEqual } from "crypto";
+import { env } from "@/lib/env";
 
 const PADDLE_SIGNATURE_HEADER = "paddle-signature";
 const REPLAY_TOLERANCE_SEC = 5 * 60; // ±5 minutes
 
 function getWebhookSecrets(): string[] {
-  const current = process.env.PADDLE_WEBHOOK_SECRET_CURRENT ?? process.env.PADDLE_WEBHOOK_SECRET;
-  const previous = process.env.PADDLE_WEBHOOK_SECRET_PREVIOUS;
+  const current = env.PADDLE_WEBHOOK_SECRET_CURRENT ?? env.PADDLE_WEBHOOK_SECRET;
+  const previous = env.PADDLE_WEBHOOK_SECRET_PREVIOUS;
   const out: string[] = [];
   if (current) out.push(current);
   if (previous && previous !== current) out.push(previous);

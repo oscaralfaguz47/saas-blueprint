@@ -1,67 +1,37 @@
 import "server-only";
 
-/** Per-actor rate limits for platform admin endpoints. Keys: actor userId. */
-const store = new Map<string, Map<string, { count: number; resetAt: number }>>();
+import { checkRateLimit, type RateLimitResult } from "@/lib/rate-limit";
 
-const WINDOW_MS = 60 * 1000; // 1 minute
-
-function getOrCreateActorEntry(actorUserId: string): Map<string, { count: number; resetAt: number }> {
-  let entry = store.get(actorUserId);
-  if (!entry) {
-    entry = new Map();
-    store.set(actorUserId, entry);
-  }
-  return entry;
-}
-
-function check(
-  actorUserId: string,
-  key: string,
-  maxPerMinute: number
-): boolean {
-  const now = Date.now();
-  const actorEntry = getOrCreateActorEntry(actorUserId);
-  const slot = actorEntry.get(key);
-
-  if (!slot) {
-    actorEntry.set(key, { count: 1, resetAt: now + WINDOW_MS });
-    return true;
-  }
-  if (now >= slot.resetAt) {
-    actorEntry.set(key, { count: 1, resetAt: now + WINDOW_MS });
-    return true;
-  }
-  if (slot.count >= maxPerMinute) return false;
-  slot.count += 1;
-  return true;
-}
+export type { RateLimitResult };
 
 /** 60/min — e.g. user search (combobox). */
-export function checkAdminUserSearchLimit(actorUserId: string): boolean {
-  return check(actorUserId, "admin.users.search", 60);
+export async function checkAdminUserSearchLimit(actorUserId: string): Promise<RateLimitResult> {
+  return checkRateLimit(`admin:users:search:${actorUserId}`, 60, 60_000);
 }
 
 /** 30/min — workspaces list. */
-export function checkAdminWorkspacesListLimit(actorUserId: string): boolean {
-  return check(actorUserId, "admin.workspaces.list", 30);
+export async function checkAdminWorkspacesListLimit(actorUserId: string): Promise<RateLimitResult> {
+  return checkRateLimit(`admin:workspaces:list:${actorUserId}`, 30, 60_000);
 }
 
 /** 60/min — workspace summary (single tenant). */
-export function checkAdminWorkspaceDetailLimit(actorUserId: string): boolean {
-  return check(actorUserId, "admin.workspace.detail", 60);
+export async function checkAdminWorkspaceDetailLimit(actorUserId: string): Promise<RateLimitResult> {
+  return checkRateLimit(`admin:workspace:detail:${actorUserId}`, 60, 60_000);
 }
 
 /** 30/min — members or invites list per tenant. */
-export function checkAdminMembersOrInvitesListLimit(actorUserId: string): boolean {
-  return check(actorUserId, "admin.members.invites.list", 30);
+export async function checkAdminMembersOrInvitesListLimit(
+  actorUserId: string
+): Promise<RateLimitResult> {
+  return checkRateLimit(`admin:members:invites:list:${actorUserId}`, 30, 60_000);
 }
 
 /** 10/min — governance mutations (invite, revoke, role, status, transfer). */
-export function checkAdminMutationLimit(actorUserId: string): boolean {
-  return check(actorUserId, "admin.mutation", 10);
+export async function checkAdminMutationLimit(actorUserId: string): Promise<RateLimitResult> {
+  return checkRateLimit(`admin:mutation:${actorUserId}`, 10, 60_000);
 }
 
 /** 3/min — break-glass reset Primary Owner 2FA. */
-export function checkAdminBreakGlassLimit(actorUserId: string): boolean {
-  return check(actorUserId, "admin.break_glass.mfa_reset", 3);
+export async function checkAdminBreakGlassLimit(actorUserId: string): Promise<RateLimitResult> {
+  return checkRateLimit(`admin:break_glass:mfa_reset:${actorUserId}`, 3, 60_000);
 }

@@ -1,3 +1,5 @@
+import { env } from "@/lib/env";
+
 /**
  * Get the application base URL (origin) for building absolute links (e.g. invite links in emails).
  * Prefers the incoming request's host so links use the correct domain in production.
@@ -26,5 +28,5 @@ export function getBaseUrlFromRequest(req: Request): string {
     // fall through
   }
 
-  return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  return env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 }

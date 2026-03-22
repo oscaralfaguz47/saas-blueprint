@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
+import { env } from "@/lib/env";
 import { prisma } from "@/server/db";
 import { sendMagicLink } from "@/server/services/send-magic-link";
+import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 
 const BodySchema = z.object({ token: z.string().min(1) });
 
@@ -10,21 +11,16 @@ const MIN_SEND_INTERVAL_MS = 60 * 1000;
 const MAX_SENDS = 3;
 
 function hashVerificationToken(token: string): string {
-  const secret = process.env.NEXTAUTH_SECRET;
+  const secret = env.NEXTAUTH_SECRET;
   if (!secret) throw new Error("NEXTAUTH_SECRET not set");
   return createHash("sha256").update(`${token}${secret}`).digest("hex");
 }
 
-export async function POST(req: Request) {
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
+export const POST = withErrorHandler(async (req: Request) => {
+  const body = await req.json();
   const parse = BodySchema.safeParse(body);
   if (!parse.success) {
-    return NextResponse.json({ error: "Missing or invalid token" }, { status: 400 });
+    return ApiErrors.VALIDATION_ERROR("Missing or invalid token");
   }
   const rawToken = parse.data.token.trim();
 
@@ -44,24 +40,28 @@ export async function POST(req: Request) {
 
   const now = new Date();
   if (!challenge || challenge.consumedAt || challenge.expiresAt <= now) {
-    return NextResponse.json({ error: "Invalid or expired challenge" }, { status: 400 });
+    return ApiErrors.VALIDATION_ERROR("Invalid or expired challenge");
   }
 
   if (challenge.sendCount >= MAX_SENDS) {
-    return NextResponse.json({ error: "Maximum sends reached. Please try signing in with Microsoft again." }, { status: 429 });
+    return ApiErrors.RATE_LIMITED(
+      "Maximum sends reached. Please try signing in again."
+    );
   }
   if (challenge.lastSentAt && now.getTime() - challenge.lastSentAt.getTime() < MIN_SEND_INTERVAL_MS) {
-    return NextResponse.json({ error: "Please wait before requesting another email." }, { status: 429 });
+    return ApiErrors.RATE_LIMITED("Please wait before requesting another email.");
   }
 
-  const from = process.env.EMAIL_FROM;
+  const from = env.EMAIL_FROM;
   if (!from) {
-    return NextResponse.json({ error: "Email not configured" }, { status: 500 });
+    console.error("[link/send-email] EMAIL_FROM env var not set");
+    return ApiErrors.INTERNAL_ERROR();
   }
 
-  const baseUrl = process.env.NEXTAUTH_URL;
+  const baseUrl = env.NEXTAUTH_URL;
   if (!baseUrl) {
-    return NextResponse.json({ error: "Server misconfiguration" }, { status: 500 });
+    console.error("[link/send-email] NEXTAUTH_URL env var not set");
+    return ApiErrors.INTERNAL_ERROR();
   }
 
   const magicToken = randomBytes(32).toString("hex");
@@ -103,5 +103,5 @@ export async function POST(req: Request) {
     },
   });
 
-  return NextResponse.json({ ok: true });
-}
+  return apiSuccess({ ok: true });
+});

@@ -27,8 +27,11 @@ export const GET = withErrorHandler(async (req: Request) => {
   if (authError) return authError;
   if (!session?.user?.id) return ApiErrors.UNAUTHENTICATED();
 
-  if (!checkAdminWorkspacesListLimit(session.user.id))
-    return ApiErrors.RATE_LIMITED("Too many requests. Try again in a minute.");
+  const rl = await checkAdminWorkspacesListLimit(session.user.id);
+  if (!rl.allowed)
+    return ApiErrors.RATE_LIMITED("Too many requests. Try again in a minute.", {
+      retryAfterSeconds: rl.retryAfterSeconds,
+    });
 
   const url = new URL(req.url);
   const parsed = adminWorkspacesListQuerySchema.safeParse({

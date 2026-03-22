@@ -66,15 +66,44 @@ export function zodErrorToFieldErrors(
   return out;
 }
 
+/** Maximum JSON request body size for `parseBody` (UTF-8 bytes). */
+export const MAX_JSON_BODY_BYTES = 1 * 1024 * 1024; // 1 MB
+
 /**
  * Parse and validate request body with Zod.
  * Throws ValidationError with a user-facing message (no "Validation failed:" or field path).
+ * Enforces `Content-Type: application/json` (415) and body size (413) before parsing.
  */
 export async function parseBody<T>(req: Request, schema: z.ZodSchema<T>): Promise<T> {
-  let body: unknown;
+  // 1. Content-Type enforcement (415)
+  const contentType = req.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().includes("application/json")) {
+    throw new Error("UNSUPPORTED_MEDIA_TYPE");
+  }
 
+  // 2. Size limit enforcement (413)
+  const contentLength = req.headers.get("content-length");
+  if (contentLength !== null) {
+    const declaredSize = parseInt(contentLength, 10);
+    if (!isNaN(declaredSize) && declaredSize > MAX_JSON_BODY_BYTES) {
+      throw new Error("PAYLOAD_TOO_LARGE");
+    }
+  }
+
+  let rawText: string;
   try {
-    body = await req.json();
+    rawText = await req.text();
+  } catch {
+    throw new ValidationError("Invalid request body format");
+  }
+
+  if (Buffer.byteLength(rawText, "utf8") > MAX_JSON_BODY_BYTES) {
+    throw new Error("PAYLOAD_TOO_LARGE");
+  }
+
+  let body: unknown;
+  try {
+    body = JSON.parse(rawText);
   } catch {
     throw new ValidationError("Invalid request body format");
   }
@@ -84,7 +113,9 @@ export async function parseBody<T>(req: Request, schema: z.ZodSchema<T>): Promis
   } catch (error) {
     if (error instanceof z.ZodError) {
       const first = error.issues[0];
-      const message = first ? formatValidationMessage(first.message) : "Please check the value and try again.";
+      const message = first
+        ? formatValidationMessage(first.message)
+        : "Please check the value and try again.";
       throw new ValidationError(message);
     }
     throw error;

@@ -1,11 +1,12 @@
 import "server-only";
 
 import { NextResponse } from "next/server";
+import { env } from "@/lib/env";
 import { sendEmail } from "@/server/services/invitation-email";
 import { apiError, apiSuccess, withErrorHandler } from "@/lib/api-response";
 
-const CRON_SECRET = process.env.CRON_SECRET;
-const CRON_EMAIL_TO = process.env.CRON_EMAIL_TO;
+const CRON_SECRET = env.CRON_SECRET;
+const CRON_EMAIL_TO = env.CRON_EMAIL_TO;
 
 const LOG_PREFIX = "[cron/daily-email]";
 

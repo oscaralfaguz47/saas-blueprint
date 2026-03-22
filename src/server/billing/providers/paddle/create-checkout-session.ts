@@ -1,15 +1,25 @@
 import "server-only";
 
+import { env } from "@/lib/env";
 import { prisma } from "@/server/db";
 import type { PlanCode } from "@/server/billing/provider-types";
 
 const PADDLE_API_BASE =
-  process.env.PADDLE_ENVIRONMENT === "production"
+  env.PADDLE_ENVIRONMENT === "production"
     ? "https://api.paddle.com"
     : "https://sandbox-api.paddle.com";
 
+const PADDLE_PRICE_IDS: Record<
+  "PADDLE_PRICE_ID_STARTER" | "PADDLE_PRICE_ID_PRO" | "PADDLE_PRICE_ID_ENTERPRISE",
+  string | undefined
+> = {
+  PADDLE_PRICE_ID_STARTER: env.PADDLE_PRICE_ID_STARTER,
+  PADDLE_PRICE_ID_PRO: env.PADDLE_PRICE_ID_PRO,
+  PADDLE_PRICE_ID_ENTERPRISE: env.PADDLE_PRICE_ID_ENTERPRISE,
+};
+
 function getApiKey(): string {
-  const key = process.env.PADDLE_API_KEY;
+  const key = env.PADDLE_API_KEY;
   if (!key) throw new Error("PADDLE_API_KEY is not set");
   return key;
 }
@@ -24,15 +34,13 @@ function getPriceId(planCode: PlanCode): string {
         : planCode === "enterprise"
           ? "PADDLE_PRICE_ID_ENTERPRISE"
           : "PADDLE_PRICE_ID_PRO";
-  const id = process.env[envKey];
+  const id = PADDLE_PRICE_IDS[envKey];
   if (!id) throw new Error(`${envKey} is not set`);
   return id;
 }
 
 function getEnvironment(): "sandbox" | "production" {
-  return process.env.PADDLE_ENVIRONMENT === "production"
-    ? "production"
-    : "sandbox";
+  return env.PADDLE_ENVIRONMENT === "production" ? "production" : "sandbox";
 }
 
 /**

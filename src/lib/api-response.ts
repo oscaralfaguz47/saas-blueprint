@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { ValidationError } from "@/lib/validations/common";
 
 /**
@@ -56,9 +57,23 @@ export const ApiErrors = {
   /** Conflict (e.g. duplicate slug); 409 */
   CONFLICT: (message?: string, details?: unknown) =>
     apiError("CONFLICT", 409, message ?? "Resource conflict", details),
-  /** Rate limited; 429 */
-  RATE_LIMITED: (message?: string) =>
-    apiError("RATE_LIMITED", 429, message ?? "Too many requests"),
+  /** Rate limited; 429 — optional Retry-After header (seconds) */
+  RATE_LIMITED: (message?: string, options?: { retryAfterSeconds?: number }) => {
+    const body: ApiErrorBody = {
+      error: {
+        code: "RATE_LIMITED",
+        message: message ?? "Too many requests",
+        ...(options?.retryAfterSeconds != null
+          ? { details: { retryAfterSeconds: options.retryAfterSeconds } }
+          : {}),
+      },
+    };
+    const res = NextResponse.json(body, { status: 429 });
+    if (options?.retryAfterSeconds != null) {
+      res.headers.set("Retry-After", String(options.retryAfterSeconds));
+    }
+    return res;
+  },
   /** Invitation no longer valid (revoked or expired); 404, client can show inline message and remove from list */
   INVITATION_REVOKED_OR_EXPIRED: () =>
     apiError("NOT_FOUND", 404, "This invitation was revoked or has expired.", {
@@ -100,6 +115,12 @@ export const ApiErrors = {
     apiError("FORBIDDEN", 403, message ?? "Plan limit reached or subscription inactive. Upgrade to continue.", {
       code: "UPGRADE_REQUIRED",
     }),
+  /** Request body exceeds size limit; 413 */
+  PAYLOAD_TOO_LARGE: (message?: string) =>
+    apiError("PAYLOAD_TOO_LARGE", 413, message ?? "Request body is too large."),
+  /** Unsupported or missing Content-Type; 415 */
+  UNSUPPORTED_MEDIA_TYPE: (message?: string) =>
+    apiError("UNSUPPORTED_MEDIA_TYPE", 415, message ?? "Content-Type must be application/json."),
   /** Paddle rejected tax identifier (e.g. unsupported country); 400 — client can retry without Tax ID */
   TAX_IDENTIFIER_VALIDATION_FAILED: (message?: string) =>
     apiError("VALIDATION_ERROR", 400, message ?? "Tax identifier could not be validated for this country. You can continue without it.", {
@@ -127,9 +148,19 @@ export function withErrorHandler<T extends unknown[]>(
     try {
       return await handler(...args);
     } catch (error) {
-      console.error("API Error:", error);
+      // 1. Prisma known errors — map to semantic HTTP status codes
+      if (error instanceof PrismaClientKnownRequestError) {
+        if (error.code === "P2002") {
+          return ApiErrors.CONFLICT("A record with this value already exists.");
+        }
+        if (error.code === "P2025") {
+          return ApiErrors.NOT_FOUND();
+        }
+        console.error("Prisma error:", { code: error.code, meta: error.meta });
+        return ApiErrors.INTERNAL_ERROR();
+      }
 
-      // Handle known error types
+      // 2. Application-defined error types (preserve existing behavior)
       if (error instanceof Error) {
         if (error.name === "UpgradeRequiredError") {
           return ApiErrors.UPGRADE_REQUIRED(error.message);
@@ -152,12 +183,21 @@ export function withErrorHandler<T extends unknown[]>(
         if (error.message === "UNAUTHENTICATED") {
           return ApiErrors.UNAUTHENTICATED();
         }
-        // Do not leak internal messages (api-contract: no raw stack/DB errors)
+        if (error.message === "PAYLOAD_TOO_LARGE") {
+          return ApiErrors.PAYLOAD_TOO_LARGE();
+        }
+        if (error.message === "UNSUPPORTED_MEDIA_TYPE") {
+          return ApiErrors.UNSUPPORTED_MEDIA_TYPE();
+        }
+        if (error instanceof SyntaxError) {
+          return ApiErrors.VALIDATION_ERROR("Invalid request body format");
+        }
+        console.error("API Error:", error);
         return ApiErrors.INTERNAL_ERROR();
       }
 
+      console.error("API Error (unknown):", error);
       return ApiErrors.INTERNAL_ERROR();
     }
   };
 }
-

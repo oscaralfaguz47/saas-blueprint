@@ -1,5 +1,6 @@
 import "server-only";
 
+import { env } from "@/lib/env";
 import {
   getHighestPlanCodeFromItems,
   getPlanCodeFromPriceId,
@@ -10,12 +11,12 @@ import type { PaddleSubscriptionData } from "./paddle-types";
 import { paddleSubscriptionDataSchema } from "./paddle-types";
 
 const PADDLE_API_BASE =
-  process.env.PADDLE_ENVIRONMENT === "production"
+  env.PADDLE_ENVIRONMENT === "production"
     ? "https://api.paddle.com"
     : "https://sandbox-api.paddle.com";
 
 function getApiKey(): string {
-  const key = process.env.PADDLE_API_KEY;
+  const key = env.PADDLE_API_KEY;
   if (!key) throw new Error("PADDLE_API_KEY is not set");
   return key;
 }

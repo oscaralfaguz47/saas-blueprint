@@ -8,6 +8,8 @@ import { verifyTotpCode, hashBackupCode } from "@/server/services/totp";
 import { decryptTotpSecret } from "@/server/services/account-encryption";
 import { verifyEmailOtp } from "@/server/services/email-otp";
 import { z } from "zod";
+import { parseBody } from "@/lib/validations";
+import { ValidationError } from "@/lib/validations/common";
 
 const bodySchema = z.object({
   code: z.string().min(1).max(32).trim(),
@@ -24,13 +26,17 @@ export const POST = withErrorHandler(async (req: Request) => {
   if (mfaError) return mfaError;
   if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 
-  const body = await req.json().catch(() => null);
-  const parse = bodySchema.safeParse(body);
-  if (!parse.success) {
-    return ApiErrors.VALIDATION_ERROR("Please enter a valid code.");
+  let parsed: z.infer<typeof bodySchema>;
+  try {
+    parsed = await parseBody(req, bodySchema);
+  } catch (e) {
+    if (e instanceof ValidationError) {
+      return ApiErrors.VALIDATION_ERROR("Please enter a valid code.");
+    }
+    throw e;
   }
 
-  const { code } = parse.data;
+  const { code } = parsed;
   const userId = session.user.id;
 
   const security = await prisma.userSecurity.findUnique({

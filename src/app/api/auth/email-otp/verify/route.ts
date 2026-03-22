@@ -5,6 +5,8 @@ import { prisma } from "@/server/db";
 import { verifyEmailOtp } from "@/server/services/email-otp";
 import { createPasskeyOneTimeToken } from "@/server/auth-options";
 import { writeAuditLog } from "@/server/services/audit";
+import { parseBody } from "@/lib/validations";
+import { ValidationError } from "@/lib/validations/common";
 
 const bodySchema = z.object({
   email: z.string().email().max(191).transform((v) => v.trim().toLowerCase()),
@@ -12,13 +14,17 @@ const bodySchema = z.object({
 });
 
 export const POST = withErrorHandler(async (req: Request) => {
-  const body = await req.json().catch(() => null);
-  const parse = bodySchema.safeParse(body);
-  if (!parse.success) {
-    return ApiErrors.VALIDATION_ERROR("Please enter a valid 6-digit code.");
+  let parsed: z.infer<typeof bodySchema>;
+  try {
+    parsed = await parseBody(req, bodySchema);
+  } catch (e) {
+    if (e instanceof ValidationError) {
+      return ApiErrors.VALIDATION_ERROR("Please enter a valid 6-digit code.");
+    }
+    throw e;
   }
 
-  const { email, code } = parse.data;
+  const { email, code } = parsed;
   const result = await verifyEmailOtp(email, code);
 
   if (!result.success) {
@@ -112,4 +118,3 @@ export const POST = withErrorHandler(async (req: Request) => {
 
   return apiSuccess({ sessionToken, email: result.email });
 });
-

@@ -10,6 +10,7 @@ import type { AzureADProfile } from "next-auth/providers/azure-ad";
 
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { prisma } from "@/server/db";
+import { env } from "@/lib/env";
 import { getNextAuthCookieHeader } from "@/server/nextauth-cookie-header";
 
 import { ensureBootstrapPlatformOwner } from "@/server/services/platform-bootstrap";
@@ -421,7 +422,7 @@ async function fetchAndUploadMicrosoftPhotoToR2(
 
 // Tenant segment for Entra issuer URL (e.g. "organizations"). Hardcoded safe default.
 function getEntraTenantId(): string {
-  const issuer = process.env.MICROSOFT_ENTRA_ID_ISSUER?.trim();
+  const issuer = env.MICROSOFT_ENTRA_ID_ISSUER?.trim();
   if (!issuer) return "organizations";
   const match = issuer.match(/login\.microsoftonline\.com\/([^/]+)/i);
   return match ? match[1] : "organizations";
@@ -470,8 +471,8 @@ export const authOptions: NextAuthOptions = {
 
   providers: [
     GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID ?? "",
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+      clientId: env.GOOGLE_CLIENT_ID ?? "",
+      clientSecret: env.GOOGLE_CLIENT_SECRET ?? "",
       // Required so the adapter resolves user.id to the EXISTING user when a
       // Settings linking intent is present (same pattern as Azure AD). Without
       // it, a different Google email creates a new User, so the intent (tied
@@ -483,8 +484,8 @@ export const authOptions: NextAuthOptions = {
 
     // Microsoft Entra ID (organizations only). Uses azure-ad provider; callback id is "azure-ad".
     AzureADProvider({
-      clientId: process.env.MICROSOFT_ENTRA_ID_CLIENT_ID ?? "",
-      clientSecret: process.env.MICROSOFT_ENTRA_ID_CLIENT_SECRET ?? "",
+      clientId: env.MICROSOFT_ENTRA_ID_CLIENT_ID ?? "",
+      clientSecret: env.MICROSOFT_ENTRA_ID_CLIENT_SECRET ?? "",
       tenantId: getEntraTenantId(),
       // allowDangerousEmailAccountLinking is required for the adapter to correctly
       // upsert users by email. Without it, the adapter returns the existing user id
@@ -523,7 +524,7 @@ export const authOptions: NextAuthOptions = {
     }),
 
     EmailProvider({
-      from: process.env.EMAIL_FROM,
+      from: env.EMAIL_FROM,
       async sendVerificationRequest({ identifier, url, provider }) {
         await sendMagicLink({
           email: identifier,
@@ -1153,7 +1154,7 @@ export const authOptions: NextAuthOptions = {
       ]);
 
       // Optional: assign PlatformAdmin based on env allowlist (your existing logic)
-      const bootstrapEmail = (process.env.BOOTSTRAP_ADMIN_EMAIL ?? "").trim().toLowerCase();
+      const bootstrapEmail = (env.BOOTSTRAP_ADMIN_EMAIL ?? "").trim().toLowerCase();
       const userEmail = (user.email ?? "").trim().toLowerCase();
 
       if (!bootstrapEmail || !userEmail) return;

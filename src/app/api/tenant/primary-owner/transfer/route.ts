@@ -7,37 +7,15 @@ import { requireFullSession } from "@/server/require-full-session";
 import { writeAuditLog } from "@/server/services/audit";
 import { apiError, ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { parseBody } from "@/lib/validations";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { z } from "zod";
 
 const STEP_UP_WINDOW_SECONDS = 10 * 60; // 10 minutes
-const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
-const RATE_LIMIT_MAX = 3;
 
 const transferPrimaryOwnerSchema = z.object({
   newPrimaryOwnerUserId: z.string().cuid(),
   workspaceSlugConfirm: z.string().max(80).optional(),
 });
-
-const rateLimitMap = new Map<
-  string,
-  { count: number; resetAt: number }
->();
-
-function checkTransferRateLimit(tenantId: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(tenantId);
-  if (!entry) {
-    rateLimitMap.set(tenantId, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return true;
-  }
-  if (now >= entry.resetAt) {
-    rateLimitMap.set(tenantId, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return true;
-  }
-  if (entry.count >= RATE_LIMIT_MAX) return false;
-  entry.count += 1;
-  return true;
-}
 
 /**
  * A7: Transfer Primary Ownership. Only Primary Owner can call.
@@ -66,10 +44,15 @@ export const POST = withErrorHandler(async (req: Request) => {
   const tenant = membership?.tenant;
   if (!tenant) return ApiErrors.NO_TENANT();
 
-  if (!checkTransferRateLimit(tenant.id)) {
-    return ApiErrors.RATE_LIMITED(
-      "Too many transfer attempts. Try again later."
-    );
+  const rateLimitResult = await checkRateLimit(
+    `tenant:owner:transfer:${tenant.id}`,
+    3,
+    60 * 60 * 1000
+  );
+  if (!rateLimitResult.allowed) {
+    return ApiErrors.RATE_LIMITED("Too many transfer attempts. Try again later.", {
+      retryAfterSeconds: rateLimitResult.retryAfterSeconds,
+    });
   }
 
   let body: z.infer<typeof transferPrimaryOwnerSchema>;

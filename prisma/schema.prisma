@@ -709,13 +709,24 @@ model BillingEvent {
 
   payload Json
 
-  createdAt DateTime @default(now())
+  /// Processing outcome. null = not yet attempted, "ok" = succeeded,
+  /// "failed" = handler threw, "skipped" = duplicate event ignored,
+  /// "validation_error" = payload did not match expected schema.
+  processStatus String? @db.VarChar(20)
+
+  /// When processStatus is "failed", stores a safe summary of the error
+  /// (no stack traces, no secrets) for operational diagnosis.
+  processError String? @db.VarChar(500)
+
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
 
   tenant       Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, createdAt])
   @@index([subscriptionId, createdAt])
+  @@index([processStatus, createdAt])
 }
 
 model AuditLog {
@@ -987,6 +998,16 @@ model Session {
   @@index([lastActivityAt])
   @@index([userId, authLevel])
   @@index([userId, revokedAt])
+}
+
+model RateLimit {
+  id      String   @id @default(cuid())
+  key     String
+  count   Int      @default(1)
+  resetAt DateTime
+
+  @@unique([key])
+  @@index([resetAt])
 }
 
 model RememberedDevice {

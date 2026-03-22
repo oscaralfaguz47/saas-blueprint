@@ -6,6 +6,9 @@ import { generateEmailOtp } from "@/server/services/email-otp";
 import { sendMagicLink } from "@/server/services/send-magic-link";
 import { writeAuditLog } from "@/server/services/audit";
 import { ApiErrors, apiError, apiSuccess, withErrorHandler } from "@/lib/api-response";
+import { parseBody } from "@/lib/validations";
+import { ValidationError } from "@/lib/validations/common";
+import { env } from "@/lib/env";
 
 const bodySchema = z.object({
   email: z.string().email().max(191).transform((v) => v.trim().toLowerCase()),
@@ -18,20 +21,24 @@ function getSafeCallbackUrl(value: string | null | undefined) {
 }
 
 function hashVerificationToken(token: string): string {
-  const secret = process.env.NEXTAUTH_SECRET;
+  const secret = env.NEXTAUTH_SECRET;
   if (!secret) throw new Error("NEXTAUTH_SECRET not set");
   return createHash("sha256").update(`${token}${secret}`).digest("hex");
 }
 
 export const POST = withErrorHandler(async (req: Request) => {
-  const body = await req.json().catch(() => null);
-  const parse = bodySchema.safeParse(body);
-  if (!parse.success) {
-    return ApiErrors.VALIDATION_ERROR("Please enter a valid email address.");
+  let parsed: z.infer<typeof bodySchema>;
+  try {
+    parsed = await parseBody(req, bodySchema);
+  } catch (e) {
+    if (e instanceof ValidationError) {
+      return ApiErrors.VALIDATION_ERROR("Please enter a valid email address.");
+    }
+    throw e;
   }
 
-  const email = parse.data.email;
-  const callbackUrl = getSafeCallbackUrl(parse.data.callbackUrl ?? null);
+  const email = parsed.email;
+  const callbackUrl = getSafeCallbackUrl(parsed.callbackUrl ?? null);
 
   const otpResult = await generateEmailOtp(email);
   if (!otpResult.success) {
@@ -44,12 +51,12 @@ export const POST = withErrorHandler(async (req: Request) => {
     );
   }
 
-  const magicFrom = process.env.EMAIL_FROM;
+  const magicFrom = env.EMAIL_FROM;
   if (!magicFrom) {
     return ApiErrors.INTERNAL_ERROR("Email not configured");
   }
 
-  const baseUrl = process.env.NEXTAUTH_URL;
+  const baseUrl = env.NEXTAUTH_URL;
   if (!baseUrl) {
     return ApiErrors.INTERNAL_ERROR("Server misconfiguration");
   }
@@ -76,7 +83,7 @@ export const POST = withErrorHandler(async (req: Request) => {
     url: magicLinkUrl,
     from: magicFrom,
     otpCode: otpResult.code,
-    appName: process.env.APP_NAME ?? undefined,
+    appName: env.APP_NAME ?? undefined,
   });
 
   // Look up user for audit log (best effort)
@@ -102,4 +109,3 @@ export const POST = withErrorHandler(async (req: Request) => {
 
   return apiSuccess({ sent: true, email });
 });
-

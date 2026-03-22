@@ -23,8 +23,11 @@ export const POST = withErrorHandler(async (
   if (authError) return authError;
   if (!session?.user?.id) return ApiErrors.UNAUTHENTICATED();
 
-  if (!checkAdminMutationLimit(session.user.id))
-    return ApiErrors.RATE_LIMITED("Too many actions. Try again in a minute.");
+  const rl = await checkAdminMutationLimit(session.user.id);
+  if (!rl.allowed)
+    return ApiErrors.RATE_LIMITED("Too many actions. Try again in a minute.", {
+      retryAfterSeconds: rl.retryAfterSeconds,
+    });
 
   const { tenantId } = paramsSchema.parse(await context.params);
 
