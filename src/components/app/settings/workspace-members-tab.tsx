@@ -142,6 +142,25 @@ function getSecurityActionPath(userId: string, action: SecurityMenuAction): stri
   }
 }
 
+function getSecurityActionLabel(action: SecurityMenuAction): string {
+  switch (action) {
+    case "force-2fa":
+      return "enforce two-factor authentication";
+    case "reset-2fa":
+      return "reset two-factor authentication";
+    case "disable-2fa":
+      return "disable two-factor authentication";
+    case "revoke-sessions":
+      return "revoke all active sessions";
+    case "revoke-remembered-devices":
+      return "revoke all remembered devices";
+    default: {
+      const _exhaustive: never = action;
+      return String(_exhaustive);
+    }
+  }
+}
+
 export function WorkspaceMembersTab({
   tenant,
   permissions,
@@ -843,6 +862,7 @@ export function WorkspaceMembersTab({
         onSuccess={() => void handleStepUpSuccess()}
         hasTwoFactor={hasTwoFactor}
         email={sessionData?.user?.email ?? null}
+        actionLabel={stepUpAction ? getSecurityActionLabel(stepUpAction.action) : null}
       />
     </div>
   );

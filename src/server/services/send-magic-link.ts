@@ -22,6 +22,7 @@ export async function sendMagicLink(params: {
   from: string;
   otpCode?: string; // 6-digit code to show prominently
   appName?: string; // for email subject/branding
+  showMagicLink?: boolean; // default true — set to false for step-up emails
 }): Promise<void> {
   const apiKey = env.RESEND_API_KEY;
   if (!apiKey) {
@@ -38,6 +39,7 @@ export async function sendMagicLink(params: {
         code: params.otpCode,
         magicUrl: safeUrl,
         appName: safeAppName,
+        showMagicLink: params.showMagicLink ?? true,
       })
     : buildMagicLinkOnlyEmail({
         magicUrl: safeUrl,
@@ -52,8 +54,13 @@ export async function sendMagicLink(params: {
   });
 }
 
-function buildOtpEmail(params: { code: string; magicUrl: string; appName: string }): string {
-  const { code, magicUrl, appName } = params;
+function buildOtpEmail(params: {
+  code: string;
+  magicUrl: string;
+  appName: string;
+  showMagicLink?: boolean;
+}): string {
+  const { code, magicUrl, appName, showMagicLink = true } = params;
   const codeDisplay = code; // no space — use CSS letter-spacing for visual spacing
 
   return `<!DOCTYPE html>
@@ -90,7 +97,9 @@ function buildOtpEmail(params: { code: string; magicUrl: string; appName: string
               </p>
             </td>
           </tr>
-          <tr>
+          ${
+            showMagicLink
+              ? `<tr>
             <td style="padding:0 40px;">
               <table width="100%" cellpadding="0" cellspacing="0">
                 <tr>
@@ -114,7 +123,9 @@ function buildOtpEmail(params: { code: string; magicUrl: string; appName: string
                 This link expires in 10 minutes and can only be used once.
               </p>
             </td>
-          </tr>
+          </tr>`
+              : ""
+          }
           <tr>
             <td style="padding:20px 40px;background:#fafafa;border-top:1px solid #e4e4e7;text-align:center;">
               <p style="margin:0;font-size:12px;color:#a1a1aa;">

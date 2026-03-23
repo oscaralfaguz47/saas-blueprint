@@ -40,6 +40,7 @@ export const POST = withErrorHandler(async () => {
     from,
     otpCode: result.code,
     appName: env.APP_NAME ?? undefined,
+    showMagicLink: false,
   });
 
   return apiSuccess({ sent: true });

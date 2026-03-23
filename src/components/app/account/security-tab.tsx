@@ -730,6 +730,24 @@ export function SecurityTab({
       .finally(() => setAutoLogoutLoading(false));
   };
 
+  function getStepUpActionLabel(
+    pending: typeof stepUpPending,
+  ): string | null {
+    if (!pending) return null;
+    switch (pending.kind) {
+      case "disable2fa":
+        return "disable two-factor authentication";
+      case "regenerateBackup":
+        return "regenerate backup codes";
+      case "autoLogoutOff":
+        return "disable inactivity auto-logout";
+      case "autoLogoutOn":
+        return "update inactivity auto-logout";
+      default:
+        return null;
+    }
+  }
+
   async function handleRegisterPasskey() {
     setPasskeyError(null);
     setRegisteringPasskey(true);
@@ -1438,6 +1456,7 @@ export function SecurityTab({
         }}
         hasTwoFactor={hasTwoFactor}
         email={sessionData?.user?.email ?? null}
+        actionLabel={getStepUpActionLabel(stepUpPending)}
       />
     </div>
   );
