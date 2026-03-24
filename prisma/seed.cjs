@@ -75,6 +75,16 @@ const PERMISSIONS = [
   { code: "admin.mfa.reset", scope: "VENDOR", description: "Reset MFA (vendor)" },
   { code: "admin.billing.read", scope: "VENDOR", description: "Read billing/subscriptions (vendor)" },
   { code: "admin.audit.read", scope: "VENDOR", description: "Read platform audit logs (vendor)" },
+  { code: "admin.support.read", scope: "VENDOR", description: "View support tickets across workspaces (vendor)" },
+  { code: "admin.support.reply", scope: "VENDOR", description: "Post public replies on support tickets (vendor)" },
+  { code: "admin.support.manage", scope: "VENDOR", description: "Manage support tickets (assign, status, internal notes) (vendor)" },
+  { code: "admin.knowledge_base.read", scope: "VENDOR", description: "View Knowledge Base CMS (vendor)" },
+  { code: "admin.knowledge_base.manage", scope: "VENDOR", description: "Manage Knowledge Base content (vendor)" },
+  { code: "support.ticket.create", scope: "TENANT", description: "Create support tickets" },
+  { code: "support.ticket.read_own", scope: "TENANT", description: "Read own support tickets" },
+  { code: "support.ticket.read_workspace", scope: "TENANT", description: "Read all workspace support tickets" },
+  { code: "support.ticket.reply_own", scope: "TENANT", description: "Reply on own support tickets" },
+  { code: "support.ticket.reply_workspace", scope: "TENANT", description: "Reply on any workspace support ticket" },
 ];
 
 const VENDOR_ROLES = [
@@ -83,16 +93,26 @@ const VENDOR_ROLES = [
     permissions: [
       "admin.tenants.read", "admin.tenants.suspend", "admin.users.read", "admin.users.block",
       "admin.sessions.revoke", "admin.mfa.reset", "admin.billing.read", "admin.audit.read",
+      "admin.support.read", "admin.support.reply", "admin.support.manage",
+      "admin.knowledge_base.read", "admin.knowledge_base.manage",
     ],
   },
   {
     name: "SupportAdmin",
     permissions: [
       "admin.tenants.read", "admin.users.read", "admin.sessions.revoke", "admin.mfa.reset", "admin.audit.read",
+      "admin.support.read", "admin.support.reply", "admin.support.manage",
+      "admin.knowledge_base.read",
     ],
   },
   { name: "BillingOps", permissions: ["admin.tenants.read", "admin.billing.read", "admin.audit.read"] },
-  { name: "ReadOnlySupport", permissions: ["admin.tenants.read", "admin.users.read", "admin.audit.read"] },
+  {
+    name: "ReadOnlySupport",
+    permissions: [
+      "admin.tenants.read", "admin.users.read", "admin.audit.read",
+      "admin.support.read", "admin.knowledge_base.read",
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------------

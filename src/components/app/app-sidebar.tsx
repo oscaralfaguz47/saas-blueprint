@@ -8,6 +8,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconFileText,
+  IconHelpCircle,
   IconPlus,
   IconSettings,
   IconWorkspace,
@@ -215,6 +216,11 @@ export default function AppSidebar({
   const requestsActive = isRequestsActive(pathname);
   const workspaceSettingsActive =
     pathname === "/app/settings/workspace" || pathname.startsWith("/app/settings/workspace?");
+  const helpActive =
+    pathname === "/help" ||
+    pathname.startsWith("/help/") ||
+    pathname === "/app/help" ||
+    pathname.startsWith("/app/help/");
   const platformAdminActive = pathname.startsWith("/admin");
 
   const showLabels = !collapsed;
@@ -329,18 +335,31 @@ export default function AppSidebar({
           {showLabels ? <span>Create workspace</span> : null}
         </button>
 
-        {canAccessWorkspaceSettings ? (
+        {/* Workspace settings (RBAC) + Help (always): Help must stay outside the permission ternary. */}
+        <div className="mt-1 flex flex-col gap-0.5">
+          {canAccessWorkspaceSettings ? (
+            <Link
+              href="/app/settings/workspace"
+              onClick={() => isMobile && onClose()}
+              aria-current={workspaceSettingsActive ? "page" : undefined}
+              title="Workspace settings"
+              className={`flex w-full items-center rounded-lg py-2.5 text-sm transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} ${workspaceSettingsActive ? `${activeBg} font-medium text-(--text-primary)` : `text-(--text-secondary) ${hoverBg} hover:text-(--text-primary)`}`}
+            >
+              <IconWorkspace size={18} className="shrink-0" />
+              {showLabels ? <span>Workspace settings</span> : null}
+            </Link>
+          ) : null}
           <Link
-            href="/app/settings/workspace"
+            href="/app/help/inbox"
             onClick={() => isMobile && onClose()}
-            aria-current={workspaceSettingsActive ? "page" : undefined}
-            title="Workspace settings"
-            className={`flex w-full items-center rounded-lg py-2.5 text-sm transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} ${workspaceSettingsActive ? `${activeBg} font-medium text-(--text-primary)` : `text-(--text-secondary) ${hoverBg} hover:text-(--text-primary)`}`}
+            aria-current={helpActive ? "page" : undefined}
+            title="Help & Support"
+            className={`flex w-full items-center rounded-lg py-2.5 text-sm transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} ${helpActive ? `${activeBg} font-medium text-(--text-primary)` : `text-(--text-secondary) ${hoverBg} hover:text-(--text-primary)`}`}
           >
-            <IconWorkspace size={18} className="shrink-0" />
-            {showLabels ? <span>Workspace settings</span> : null}
+            <IconHelpCircle size={18} className="shrink-0" />
+            {showLabels ? <span>Help &amp; Support</span> : null}
           </Link>
-        ) : null}
+        </div>
       </div>
 
       {/* Collapse toggle — desktop only */}

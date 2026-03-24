@@ -27,7 +27,12 @@ export type TenantPermission =
   | "tenant.approvals.assign_internal"
   | "tenant.approvals.assign_external"
   | "tenant.approvals.remind"
-  | "tenant.payments.manage";
+  | "tenant.payments.manage"
+  | "support.ticket.create"
+  | "support.ticket.read_own"
+  | "support.ticket.read_workspace"
+  | "support.ticket.reply_own"
+  | "support.ticket.reply_workspace";
 
 export async function hasTenantPermission(params: {
   userId: string;

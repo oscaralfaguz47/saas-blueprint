@@ -59,7 +59,8 @@ src/
 
 - Node.js 18+ 
 - pnpm (recommended) or npm/yarn
-- PostgreSQL database
+- PostgreSQL **with pgvector** for local development (semantic KB search). The repo’s `docker-compose.yml` uses `pgvector/pgvector:pg16` — use that or another pgvector-enabled image; plain `postgres:16` will not have the `vector` extension.
+- **Neon / staging / production:** enable pgvector once per database before migrating — see [`docs/NEON_PGVECTOR.md`](./docs/NEON_PGVECTOR.md).
 
 ### Installation
 
@@ -92,6 +93,12 @@ Required variables:
 
 4. **Set up the database**
 
+If using Docker Compose for Postgres, start it first (image includes pgvector):
+
+```bash
+docker compose up -d postgres
+```
+
 ```bash
 # Run migrations
 pnpm prisma migrate dev
@@ -99,6 +106,8 @@ pnpm prisma migrate dev
 # Seed the database (optional)
 pnpm prisma db seed
 ```
+
+**Semantic search:** After deploying migrations that add vector columns, re-index published KB articles (CMS **Reindex** per article, or equivalent). See [`docs/KB_SEMANTIC_SEARCH.md`](./docs/KB_SEMANTIC_SEARCH.md).
 
 5. **Start the development server**
 

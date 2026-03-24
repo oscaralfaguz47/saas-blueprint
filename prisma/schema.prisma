@@ -1,11 +1,13 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DATABASE_DIRECT_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DATABASE_DIRECT_URL")
+  extensions = [vector]
 }
 
 enum RoleKey {
@@ -120,6 +122,61 @@ enum ApprovalRequestStatus {
   NO_RESPONSE
 }
 
+enum KbArticleType {
+  FAQ
+  GUIDE
+  BILLING
+  SECURITY
+  PRICING
+  TROUBLESHOOTING
+}
+
+enum KbVisibility {
+  PUBLIC
+  AUTHENTICATED
+  INTERNAL
+}
+
+enum KbArticleStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum KbSearchMode {
+  KEYWORD
+  AI
+}
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_FOR_CUSTOMER
+  CLOSED
+}
+
+enum SupportTicketType {
+  SUPPORT
+  SALES_INQUIRY
+}
+
+enum AiChatMessageRole {
+  USER
+  ASSISTANT
+}
+
+enum SupportTicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum SupportMessageAuthorKind {
+  WORKSPACE_USER
+  PLATFORM_ADMIN
+  SYSTEM
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -168,6 +225,18 @@ model User {
   workspaceMemberSecurity WorkspaceMemberSecurity[] @relation("WorkspaceMemberSecurity")
   authLinkChallenges AuthLinkChallenge[]
   accountLinkIntents AccountLinkIntent[]
+
+  kbCategoriesCreated    KnowledgeBaseCategory[]        @relation("KbCategoryCreatedBy")
+  kbCategoriesUpdated    KnowledgeBaseCategory[]        @relation("KbCategoryUpdatedBy")
+  kbArticlesCreated      KnowledgeBaseArticle[]         @relation("KbArticleCreatedBy")
+  kbArticlesUpdated      KnowledgeBaseArticle[]         @relation("KbArticleUpdatedBy")
+  kbRevisionsCreated     KnowledgeBaseArticleRevision[]   @relation("KbRevisionCreatedBy")
+  kbSearchLogs           KnowledgeBaseSearchLog[]
+  ticketsCreated         SupportTicket[]                @relation("TicketCreatedBy")
+  ticketsAsRequester     SupportTicket[]                @relation("TicketRequester")
+  ticketsAssigned      SupportTicket[]                @relation("TicketAssignee")
+  ticketMessagesAuthored SupportTicketMessage[]         @relation("MessageAuthor")
+  aiChatSessions         AiChatSession[]
 
   @@index([identityProvider, identityId])
 }
@@ -305,6 +374,10 @@ model Tenant {
   tenantRolloverLots    TenantRolloverLot[]
   /// EPIC 5: Scheduled overage charges (Starter; one-time on next invoice).
   tenantOverageCharges  TenantOverageCharge[]
+
+  supportTickets            SupportTicket[]
+  backgroundJobs            BackgroundJob[]
+  knowledgeBaseSearchLogs   KnowledgeBaseSearchLog[]
 
   @@index([status])
   @@index([createdByUserId])
@@ -756,6 +829,263 @@ model AuditLog {
   @@index([tenantId, createdAt])
   @@index([actorUserId, createdAt])
   @@index([action, createdAt])
+}
+
+/// Help & Support / Knowledge Base — global categories (not tenant-scoped).
+model KnowledgeBaseCategory {
+  id              String   @id @default(cuid())
+  name            String   @db.VarChar(200)
+  slug            String   @unique @db.VarChar(191)
+  description     String?  @db.VarChar(1000)
+  icon            String?  @db.VarChar(80)
+  sortOrder       Int      @default(0)
+  isPublished     Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdByUserId String
+  updatedByUserId String
+
+  createdBy User @relation("KbCategoryCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy User @relation("KbCategoryUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: Restrict)
+
+  articles       KnowledgeBaseArticle[]
+  supportTickets SupportTicket[]
+
+  @@index([isPublished])
+  @@index([sortOrder])
+}
+
+model KnowledgeBaseTag {
+  id        String   @id @default(cuid())
+  name      String   @unique @db.VarChar(120)
+  slug      String   @unique @db.VarChar(191)
+  createdAt DateTime @default(now())
+
+  articles KnowledgeBaseArticleTag[]
+
+  @@index([slug])
+}
+
+model KnowledgeBaseArticle {
+  id              String          @id @default(cuid())
+  title           String          @db.VarChar(300)
+  slug            String          @unique @db.VarChar(191)
+  excerpt         String?         @db.VarChar(500)
+  bodyMarkdown    String
+  articleType     KbArticleType
+  visibility      KbVisibility
+  status          KbArticleStatus @default(DRAFT)
+  isFeatured      Boolean         @default(false)
+  sortOrder       Int             @default(0)
+  categoryId      String
+  publishedAt     DateTime?
+  lastIndexedAt   DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  createdByUserId String
+  updatedByUserId String
+
+  category  KnowledgeBaseCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  createdBy User                  @relation("KbArticleCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy User                  @relation("KbArticleUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: Restrict)
+
+  revisions KnowledgeBaseArticleRevision[]
+  tags      KnowledgeBaseArticleTag[]
+  chunks    KnowledgeBaseChunk[]
+  searchLogsAsTopArticle KnowledgeBaseSearchLog[] @relation("SearchLogTopArticle")
+
+  @@index([status])
+  @@index([visibility])
+  @@index([categoryId])
+  @@index([publishedAt])
+  @@index([updatedAt])
+  @@index([status, visibility, publishedAt])
+  @@index([isFeatured])
+}
+
+model KnowledgeBaseArticleRevision {
+  id              String          @id @default(cuid())
+  articleId       String
+  title           String          @db.VarChar(300)
+  excerpt         String?         @db.VarChar(500)
+  bodyMarkdown    String
+  articleType     KbArticleType
+  visibility      KbVisibility
+  status          KbArticleStatus
+  snapshotReason  String?         @db.VarChar(200)
+  createdAt       DateTime        @default(now())
+  createdByUserId String
+
+  article   KnowledgeBaseArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  createdBy User                 @relation("KbRevisionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  chunks    KnowledgeBaseChunk[]
+
+  @@index([articleId])
+  @@index([createdAt])
+}
+
+model KnowledgeBaseArticleTag {
+  articleId String
+  tagId     String
+
+  article KnowledgeBaseArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  tag     KnowledgeBaseTag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, tagId])
+  @@index([tagId])
+}
+
+model KnowledgeBaseChunk {
+  id           String                       @id @default(cuid())
+  articleId    String
+  revisionId   String?
+  chunkIndex   Int
+  plainText    String
+  tokenCount   Int?
+  embedding    Unsupported("vector(1536)")?
+  visibility   KbVisibility
+  status       KbArticleStatus
+  createdAt    DateTime                     @default(now())
+  updatedAt    DateTime                     @updatedAt
+
+  article  KnowledgeBaseArticle         @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  revision KnowledgeBaseArticleRevision? @relation(fields: [revisionId], references: [id], onDelete: SetNull)
+
+  @@index([articleId])
+  @@index([status])
+  @@index([visibility])
+  @@index([status, visibility])
+}
+
+model KnowledgeBaseSearchLog {
+  id                           String     @id @default(cuid())
+  queryTextRedactedOrTruncated String     @db.VarChar(500)
+  queryHash                    String?    @db.VarChar(64)
+  searchMode                   KbSearchMode
+  resultCount                  Int
+  topArticleId                 String?
+  wasHelpful                   Boolean?
+  isAuthenticated              Boolean
+  userId                       String?
+  tenantId                     String?
+  createdAt                    DateTime   @default(now())
+
+  topArticle KnowledgeBaseArticle? @relation("SearchLogTopArticle", fields: [topArticleId], references: [id], onDelete: SetNull)
+  user       User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
+  tenant     Tenant?               @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([searchMode])
+  @@index([tenantId])
+  @@index([queryHash])
+}
+
+model SupportTicket {
+  id                     String                @id @default(cuid())
+  tenantId               String?
+  createdByUserId        String?
+  requesterUserId        String?
+  requesterEmail         String?               @db.VarChar(255)
+  ticketType             SupportTicketType     @default(SUPPORT)
+  subject                String                @db.VarChar(255)
+  descriptionPreview     String?               @db.VarChar(500)
+  topicCategoryId        String?
+  status                 SupportTicketStatus   @default(OPEN)
+  priority               SupportTicketPriority @default(MEDIUM)
+  assigneePlatformUserId String?
+  lastMessageAt          DateTime              @default(now())
+  closedAt               DateTime?
+  reopenedAt             DateTime?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+
+  tenant        Tenant?                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy     User?                  @relation("TicketCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  requester     User?                  @relation("TicketRequester", fields: [requesterUserId], references: [id], onDelete: SetNull)
+  assignee      User?                  @relation("TicketAssignee", fields: [assigneePlatformUserId], references: [id], onDelete: SetNull)
+  topicCategory KnowledgeBaseCategory? @relation(fields: [topicCategoryId], references: [id], onDelete: SetNull)
+  messages      SupportTicketMessage[]
+
+  @@index([tenantId, status, createdAt])
+  @@index([requesterUserId])
+  @@index([assigneePlatformUserId])
+  @@index([lastMessageAt])
+  @@index([status])
+  @@index([createdAt])
+  @@index([tenantId])
+  @@index([ticketType])
+}
+
+model AiChatSession {
+  id              String    @id @default(cuid())
+  userId          String?
+  visitorEmail    String?   @db.VarChar(255)
+  isAuthenticated Boolean   @default(false)
+  tenantId        String?
+  startedAt       DateTime  @default(now())
+  endedAt         DateTime?
+  messageCount    Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user     User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  messages AiChatMessage[]
+
+  @@index([userId])
+  @@index([visitorEmail])
+  @@index([tenantId])
+  @@index([startedAt])
+  @@index([isAuthenticated])
+}
+
+model AiChatMessage {
+  id              String            @id @default(cuid())
+  sessionId       String
+  role            AiChatMessageRole
+  content         String            @db.Text
+  citedArticleIds String[]          @default([])
+  createdAt       DateTime          @default(now())
+
+  session AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+}
+
+model SupportTicketMessage {
+  id           String                   @id @default(cuid())
+  ticketId     String
+  authorUserId String?
+  authorKind   SupportMessageAuthorKind
+  bodyText     String
+  isInternal   Boolean                  @default(false)
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author User?         @relation("MessageAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, createdAt])
+  @@index([isInternal])
+}
+
+model BackgroundJob {
+  id             String    @id @default(cuid())
+  jobType        String    @db.VarChar(80)
+  idempotencyKey String    @unique @db.VarChar(191)
+  payload        Json
+  status         String    @default("PENDING") @db.VarChar(20)
+  tenantId       String?
+  attempts       Int       @default(0)
+  lastError      String?   @db.VarChar(500)
+  createdAt      DateTime  @default(now())
+  processedAt    DateTime?
+  scheduledFor   DateTime  @default(now())
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([status, scheduledFor])
+  @@index([tenantId])
+  @@index([jobType])
 }
 
 model FeatureFlag {

@@ -47,3 +47,11 @@ export {
   auth2FaVerifySchema,
   autoLogoutPatchSchema,
 } from "./account";
+
+export {
+  kbCategoryCreateSchema,
+  kbCategoryPatchSchema,
+  kbArticleListQuerySchema,
+  kbArticleCreateSchema,
+  kbArticlePatchSchema,
+} from "./kb-admin";

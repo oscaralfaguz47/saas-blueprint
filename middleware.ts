@@ -136,6 +136,10 @@ function isPublicPath(pathname: string) {
   // External public approval pages
   if (pathname.startsWith("/r/")) return true;
 
+  // Public Help Center (KB) — pages and unauthenticated search APIs
+  if (pathname.startsWith("/help")) return true;
+  if (pathname.startsWith("/api/help")) return true;
+
   return false;
 }
 

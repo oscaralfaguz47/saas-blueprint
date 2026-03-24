@@ -20,6 +20,8 @@ export default defineConfig({
       DATABASE_DIRECT_URL: "postgresql://test:test@127.0.0.1:5432/test",
       NEXTAUTH_URL: "http://localhost:3000",
       NEXTAUTH_SECRET: "01234567890123456789012345678901",
+      EMBEDDING_MODEL: "text-embedding-3-small",
+      EMBEDDING_DIMENSIONS: "1536",
     },
     coverage: {
       provider: "v8",

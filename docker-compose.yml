@@ -1,6 +1,7 @@
 services:
   postgres:
-    image: postgres:16
+    # pgvector-enabled image (semantic search). Do not use plain postgres:16 locally.
+    image: pgvector/pgvector:pg16
     container_name: nextjs-postgres
     restart: always
     ports:

@@ -51,14 +51,22 @@ type InviteItem = {
   invitedBy: { name: string | null; email: string | null } | null;
 };
 
+type WorkspaceSegment = "overview" | "members" | "invites";
+
 type Props = {
   tenantId: string;
   canResetPrimaryOwner2FA: boolean;
+  /** When set, URL-driven nested segment (Platform Admin workspace manage). */
+  segment?: WorkspaceSegment;
 };
 
 const ROLES = ["Owner", "Admin", "Finance", "Member"];
 
-export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Props) {
+export function ManageWorkspaceClient({
+  tenantId,
+  canResetPrimaryOwner2FA,
+  segment,
+}: Props) {
   const apiFetch = useApiFetch();
   const toast = useToast();
   const [workspace, setWorkspace] = useState<WorkspaceSummary | null>(null);
@@ -69,6 +77,7 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
   const [invites, setInvites] = useState<InviteItem[]>([]);
   const [invitesLoading, setInvitesLoading] = useState(false);
   const [tab, setTab] = useState("members");
+  const showLegacyTabs = segment == null;
   const [roleLoadingId, setRoleLoadingId] = useState<string | null>(null);
   const [statusLoadingId, setStatusLoadingId] = useState<string | null>(null);
   const [revokeLoadingId, setRevokeLoadingId] = useState<string | null>(null);
@@ -158,13 +167,20 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
     return () => clearTimeout(t);
   }, [invitesSearch]);
 
-  useEffect(() => {
-    if (tab === "members") fetchMembersRef.current();
-  }, [tenantId, tab, membersSearchSent]);
+  const showMembers =
+    (!showLegacyTabs && segment === "members") || (showLegacyTabs && tab === "members");
+  const showInvites =
+    (!showLegacyTabs && segment === "invites") || (showLegacyTabs && tab === "invites");
+  const showSummary = segment == null || segment === "overview";
+  const tabValue = (segment ?? tab) as string;
 
   useEffect(() => {
-    if (tab === "invites") fetchInvitesRef.current();
-  }, [tenantId, tab, invitesSearchSent]);
+    if (showMembers) fetchMembersRef.current();
+  }, [tenantId, showMembers, membersSearchSent]);
+
+  useEffect(() => {
+    if (showInvites) fetchInvitesRef.current();
+  }, [tenantId, showInvites, invitesSearchSent]);
 
   const handleRoleChange = async (membershipId: string, role: string) => {
     setRoleLoadingId(membershipId);
@@ -365,7 +381,7 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
         </div>
       ) : workspaceError || !workspace ? (
         <p className="text-sm text-(--color-danger)">{workspaceError ?? "Workspace not found"}</p>
-      ) : (
+      ) : showSummary ? (
         <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) p-4">
           <h1 className="text-2xl font-semibold text-(--text-primary)">{workspace.name}</h1>
           <dl className="mt-3 grid gap-1 text-sm">
@@ -403,13 +419,16 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
             )}
           </dl>
         </div>
-      )}
+      ) : null}
 
-      <Tabs value={tab} onValueChange={setTab}>
+      {(segment == null || segment !== "overview") && (
+      <Tabs value={tabValue} onValueChange={showLegacyTabs ? setTab : () => {}}>
+        {showLegacyTabs ? (
         <TabsList>
           <TabsTrigger value="members">Members</TabsTrigger>
           <TabsTrigger value="invites">Invites</TabsTrigger>
         </TabsList>
+        ) : null}
 
         <TabsContent value="members" className="mt-4">
           <div className="mb-4">
@@ -648,6 +667,7 @@ export function ManageWorkspaceClient({ tenantId, canResetPrimaryOwner2FA }: Pro
           )}
         </TabsContent>
       </Tabs>
+      )}
 
       {canResetPrimaryOwner2FA && primaryOwner && (
         <div className="rounded-lg border border-(--color-warning-soft) bg-(--color-warning-soft) p-4">

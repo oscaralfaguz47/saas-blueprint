@@ -1,12 +1,8 @@
 "use client";
 
-import { SessionProvider } from "next-auth/react";
 import { ToastProvider } from "@/components/ui/toast";
 
+/** App providers. `SessionProvider` lives in `SessionProviderShell` in root `layout.tsx`. */
 export default function Providers({ children }: { children: React.ReactNode }) {
-  return (
-    <SessionProvider>
-      <ToastProvider>{children}</ToastProvider>
-    </SessionProvider>
-  );
+  return <ToastProvider>{children}</ToastProvider>;
 }

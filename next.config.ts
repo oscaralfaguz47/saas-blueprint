@@ -15,6 +15,16 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  async redirects() {
+    return [
+      { source: "/app/help", destination: "/app/help/inbox", permanent: false },
+      { source: "/app/help/", destination: "/app/help/inbox", permanent: false },
+      { source: "/app/help/search", destination: "/app/help/inbox", permanent: false },
+      { source: "/app/help/search/", destination: "/app/help/inbox", permanent: false },
+      { source: "/help/search", destination: "/help", permanent: false },
+      { source: "/help/search/", destination: "/help", permanent: false },
+    ];
+  },
   async headers() {
     return [
       {

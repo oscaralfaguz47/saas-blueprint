@@ -64,6 +64,8 @@ const envSchema = z.object({
 
   // ── Platform admin ──────────────────────────────────────────────────────
   BOOTSTRAP_ADMIN_EMAIL: z.string().email().optional(),
+  /** Single address for sales inquiries from public /help/new (notifications). */
+  PLATFORM_ADMIN_EMAIL: z.string().email().optional(),
   PLATFORM_ADMIN_EMAILS: z.string().optional(),
   BILLING_WEBHOOK_ACTOR_USER_ID: z.string().optional(),
 
@@ -71,6 +73,16 @@ const envSchema = z.object({
   CRON_SECRET: z.string().optional(),
   CRON_EMAIL_TO: z.string().email().optional(),
   BILLING_PERIOD_CLOSE_SECRET: z.string().optional(),
+
+  // ── AI (Help & Support KB search) ────────────────────────────────────────
+  AI_PROVIDER: z.enum(["openai", "anthropic"]).optional(),
+  AI_API_KEY: z.string().optional(),
+  AI_MODEL: z.string().optional(),
+  AI_MAX_TOKENS: z.coerce.number().int().positive().max(8192).optional(),
+  /** OpenAI embeddings model (semantic search). Same AI_API_KEY as chat. */
+  EMBEDDING_MODEL: z.string().min(1).default("text-embedding-3-small"),
+  EMBEDDING_DIMENSIONS: z.coerce.number().int().positive().default(1536),
+  KB_SEARCH_SIMILARITY_THRESHOLD: z.coerce.number().min(0).max(1).optional().default(0.65),
 
   // ── WebAuthn ────────────────────────────────────────────────────────────
   WEBAUTHN_RP_NAME: z.string().optional(),

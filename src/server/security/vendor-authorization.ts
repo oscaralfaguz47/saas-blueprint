@@ -11,7 +11,12 @@ export type VendorPermission =
   | "admin.sessions.revoke"
   | "admin.mfa.reset"
   | "admin.billing.read"
-  | "admin.audit.read";
+  | "admin.audit.read"
+  | "admin.support.read"
+  | "admin.support.reply"
+  | "admin.support.manage"
+  | "admin.knowledge_base.read"
+  | "admin.knowledge_base.manage";
 
 /**
  * Returns true if the user has the given vendor/platform permission.

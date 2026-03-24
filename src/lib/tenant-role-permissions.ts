@@ -39,6 +39,9 @@ export const ROLE_PERMS: Record<TenantSystemRoleName, string[]> = {
     "tenant.approvals.assign_external",
     "tenant.approvals.remind",
     "tenant.payments.manage",
+    "support.ticket.create",
+    "support.ticket.read_workspace",
+    "support.ticket.reply_workspace",
   ],
   Owner: [
     "tenant.audit.read",
@@ -62,6 +65,9 @@ export const ROLE_PERMS: Record<TenantSystemRoleName, string[]> = {
     "tenant.approvals.assign_external",
     "tenant.approvals.remind",
     "tenant.payments.manage",
+    "support.ticket.create",
+    "support.ticket.read_workspace",
+    "support.ticket.reply_workspace",
   ],
   Admin: [
     "tenant.audit.read",
@@ -84,6 +90,9 @@ export const ROLE_PERMS: Record<TenantSystemRoleName, string[]> = {
     "tenant.approvals.assign_external",
     "tenant.approvals.remind",
     "tenant.payments.manage",
+    "support.ticket.create",
+    "support.ticket.read_workspace",
+    "support.ticket.reply_workspace",
   ],
   Finance: [
     "tenant.audit.read",
@@ -104,6 +113,9 @@ export const ROLE_PERMS: Record<TenantSystemRoleName, string[]> = {
     "tenant.approvals.assign_external",
     "tenant.approvals.remind",
     "tenant.payments.manage",
+    "support.ticket.create",
+    "support.ticket.read_own",
+    "support.ticket.reply_own",
   ],
   Member: [
     "tenant.requests.create",
@@ -111,6 +123,9 @@ export const ROLE_PERMS: Record<TenantSystemRoleName, string[]> = {
     "tenant.requests.link",
     "tenant.requests.comment",
     "tenant.evidence.add",
+    "support.ticket.create",
+    "support.ticket.read_own",
+    "support.ticket.reply_own",
   ],
 };
 

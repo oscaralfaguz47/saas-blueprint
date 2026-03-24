@@ -4,7 +4,9 @@ import { Inter } from "next/font/google";
 import { headers } from "next/headers";
 import "./globals.css";
 import Providers from "./providers";
+import { SessionProviderShell } from "./session-provider-shell";
 import { OAuthPopupDetector } from "@/components/auth/oauth-popup-detector";
+import { ChatWidgetRoot } from "@/components/help/chat-widget-root";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -79,12 +81,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         />
       </head>
       <body suppressHydrationWarning>
-        <div id="__app-root" suppressHydrationWarning>
-          <Suspense fallback={null}>
-            <OAuthPopupDetector />
-          </Suspense>
-          <Providers>{children}</Providers>
-        </div>
+        <SessionProviderShell>
+          <div id="__app-root" suppressHydrationWarning>
+            <Suspense fallback={null}>
+              <OAuthPopupDetector />
+            </Suspense>
+            <Providers>{children}</Providers>
+          </div>
+          <ChatWidgetRoot />
+        </SessionProviderShell>
       </body>
     </html>
   );

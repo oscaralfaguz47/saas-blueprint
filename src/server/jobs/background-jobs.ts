@@ -1,0 +1,45 @@
+import "server-only";
+
+import { Prisma } from "@prisma/client";
+
+import { prisma } from "@/server/db";
+
+export const JOB_TYPES = {
+  KB_ARTICLE_INDEX: "kb.article.index",
+  SUPPORT_NEW_TICKET: "support.notification.new_ticket",
+  SUPPORT_NEW_REPLY: "support.notification.new_reply",
+  SUPPORT_TICKET_CLOSED: "support.notification.ticket_closed",
+} as const;
+
+/**
+ * Enqueue a background job. Duplicate `idempotencyKey` is ignored (idempotent no-op).
+ */
+export async function enqueueBackgroundJob(params: {
+  jobType: string;
+  idempotencyKey: string;
+  payload: Prisma.InputJsonValue;
+  tenantId?: string | null;
+  scheduledFor?: Date;
+}): Promise<void> {
+  try {
+    await prisma.backgroundJob.create({
+      data: {
+        jobType: params.jobType,
+        idempotencyKey: params.idempotencyKey,
+        payload: params.payload,
+        tenantId: params.tenantId ?? null,
+        scheduledFor: params.scheduledFor ?? new Date(),
+      },
+    });
+  } catch (e: unknown) {
+    if (
+      typeof e === "object" &&
+      e !== null &&
+      "code" in e &&
+      (e as { code: string }).code === "P2002"
+    ) {
+      return;
+    }
+    throw e;
+  }
+}

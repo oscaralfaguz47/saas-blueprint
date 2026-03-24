@@ -1,38 +1,22 @@
 import { ReactNode } from "react";
 import { getServerSession } from "next-auth";
-import { redirect, notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
 import { hasVendorPermission } from "@/server/security/vendor-authorization";
-import { checkAndUpdateSessionActivity } from "@/server/services/inactivity";
+import { requireFullSessionRsc } from "@/server/require-full-session-rsc";
 import { getPresignedGetUrlProfilePhoto, isR2Configured } from "@/server/services/r2-profile-photo";
 import { AppLayoutHydrationGate } from "@/components/app/app-layout-hydration-gate";
+import { AdminSubnav } from "@/components/app/admin/admin-subnav";
 
 export const dynamic = "force-dynamic";
 
 export default async function PlatformAdminLayout({ children }: { children: ReactNode }) {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.id) redirect("/auth/sign-in");
-
-  if (session.user.sessionToken) {
-    const activity = await checkAndUpdateSessionActivity(session.user.sessionToken);
-    if (activity.status === "expired" || activity.status === "session_not_found") {
-      redirect("/auth/sign-out?callbackUrl=/auth/sign-in&reason=session_expired");
-    }
-  }
-
-  const needsMfa =
-    session.user.authLevel === "PENDING_MFA" ||
-    (session.user.totpEnabled && !session.user.mfaVerified);
-  if (needsMfa) {
-    if (session.user.mfaEnforced && !session.user.totpEnabled) {
-      redirect("/auth/setup-2fa");
-    }
-    redirect("/auth/2fa");
-  }
+  const fullSession = await requireFullSessionRsc(session);
 
   const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
+    where: { id: fullSession.user.id },
     select: {
       isPlatformBlocked: true,
       name: true,
@@ -47,13 +31,13 @@ export default async function PlatformAdminLayout({ children }: { children: Reac
 
   // Platform Admin requires 2FA to be enabled (security policy)
   const security = await prisma.userSecurity.findUnique({
-    where: { userId: session.user.id },
+    where: { userId: fullSession.user.id },
     select: { totpEnabled: true },
   });
   if (!security?.totpEnabled) redirect("/unauthorized");
 
   const canAccess = await hasVendorPermission({
-    userId: session.user.id,
+    userId: fullSession.user.id,
     legacyRole: user.role ?? undefined,
     permission: "admin.tenants.read",
   });
@@ -73,8 +57,8 @@ export default async function PlatformAdminLayout({ children }: { children: Reac
     <AppLayoutHydrationGate
       initialTheme={initialTheme}
       user={{
-        name: user.name ?? session.user.name ?? null,
-        email: user.email ?? session.user.email ?? null,
+        name: user.name ?? fullSession.user.name ?? null,
+        email: user.email ?? fullSession.user.email ?? null,
         image: avatarUrl,
       }}
       workspace={null}
@@ -82,7 +66,10 @@ export default async function PlatformAdminLayout({ children }: { children: Reac
       pendingInvitationsCount={0}
       canAccessPlatformAdmin={true}
     >
-      {children}
+      <div className="mx-auto w-full max-w-6xl px-4 py-6">
+        <AdminSubnav />
+        {children}
+      </div>
     </AppLayoutHydrationGate>
   );
 }

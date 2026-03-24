@@ -27,8 +27,8 @@ describe("checkRateLimit", () => {
   });
 
   it("allows request when no existing entry", async () => {
-    vi.mocked(prisma.$transaction).mockImplementationOnce(async (fn: (tx: MockRateLimitTx) => Promise<unknown>) => {
-      return fn({
+    vi.mocked(prisma.$transaction).mockImplementationOnce(async (fn) => {
+      return (fn as unknown as (tx: MockRateLimitTx) => Promise<unknown>)({
         rateLimit: {
           findUnique: vi.fn().mockResolvedValue(null),
           upsert: vi.fn().mockResolvedValue({}),
@@ -48,8 +48,8 @@ describe("checkRateLimit", () => {
       resetAt: new Date(Date.now() - 1000),
     };
 
-    vi.mocked(prisma.$transaction).mockImplementationOnce(async (fn: (tx: MockRateLimitTx) => Promise<unknown>) => {
-      return fn({
+    vi.mocked(prisma.$transaction).mockImplementationOnce(async (fn) => {
+      return (fn as unknown as (tx: MockRateLimitTx) => Promise<unknown>)({
         rateLimit: {
           findUnique: vi.fn().mockResolvedValue(expiredEntry),
           upsert: vi.fn().mockResolvedValue({}),
@@ -68,8 +68,8 @@ describe("checkRateLimit", () => {
       resetAt: new Date(Date.now() + 30_000),
     };
 
-    vi.mocked(prisma.$transaction).mockImplementationOnce(async (fn: (tx: MockRateLimitTx) => Promise<unknown>) => {
-      return fn({
+    vi.mocked(prisma.$transaction).mockImplementationOnce(async (fn) => {
+      return (fn as unknown as (tx: MockRateLimitTx) => Promise<unknown>)({
         rateLimit: {
           findUnique: vi.fn().mockResolvedValue(fullEntry),
           upsert: vi.fn(),
