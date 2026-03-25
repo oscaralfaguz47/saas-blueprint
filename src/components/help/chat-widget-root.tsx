@@ -6,15 +6,21 @@ import { ChatWidget } from "@/components/help/chat-widget";
 
 /**
  * Renders the floating chat outside route layouts so `position: fixed` is not
- * affected by transformed ancestors (e.g. product shell). Hidden on platform admin.
+ * affected by transformed ancestors (e.g. product shell).
+ *
+ * Hidden visually on platform admin routes (/admin/**) but kept mounted to
+ * avoid stale pathname issues during navigation transitions in Next.js App Router.
+ * Using display:none instead of conditional unmounting preserves the mounted
+ * state across /admin <-> /app navigations.
  */
 export function ChatWidgetRoot() {
   const pathname = usePathname() ?? "";
   const isAdmin = pathname.startsWith("/admin");
   const forcedSurface = pathname.startsWith("/app") ? "app" : "public";
-  if (process.env.NODE_ENV === "development") {
-    console.log("[chat-widget-root] rendering", { pathname, isAdmin, forcedSurface });
-  }
-  if (isAdmin) return null;
-  return <ChatWidget forcedSurface={forcedSurface} />;
+
+  return (
+    <div style={isAdmin ? { display: "none" } : undefined}>
+      <ChatWidget forcedSurface={forcedSurface} />
+    </div>
+  );
 }

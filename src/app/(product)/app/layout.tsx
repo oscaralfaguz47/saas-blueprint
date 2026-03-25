@@ -99,17 +99,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     // If no workspaces, redirect to appropriate destination
     if (activeMembershipCount === 0) {
       if (canAccessPlatformAdmin) {
-        const platformAdminSecurity = await prisma.userSecurity.findUnique({
-          where: { userId },
-          select: { totpEnabled: true },
-        });
-        if (platformAdminSecurity?.totpEnabled) {
-          redirect("/admin/workspaces");
-        }
-        // PlatformAdmin without 2FA: fall through to render app shell normally.
-        // They can navigate to Account Settings to enable 2FA.
-        // Do NOT redirect — that causes infinite loops since /app/*
-        // routes all go through this layout.
+        // Platform Admin without workspace — allow access to app shell.
+        // Destination routing (e.g. → /admin/workspaces) is handled by
+        // /app/page.tsx, not here. This layout only provides the shell.
       } else if (pendingInvitationsCount > 0) {
         await writeAuditLog({
           actorUserId: userId,
