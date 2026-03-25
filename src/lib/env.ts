@@ -80,9 +80,13 @@ const envSchema = z.object({
   AI_MODEL: z.string().optional(),
   AI_MAX_TOKENS: z.coerce.number().int().positive().max(8192).optional(),
   /** OpenAI embeddings model (semantic search). Same AI_API_KEY as chat. */
-  EMBEDDING_MODEL: z.string().min(1).default("text-embedding-3-small"),
-  EMBEDDING_DIMENSIONS: z.coerce.number().int().positive().default(1536),
-  KB_SEARCH_SIMILARITY_THRESHOLD: z.coerce.number().min(0).max(1).optional().default(0.65),
+  EMBEDDING_MODEL: z.string().optional().default("text-embedding-3-large"),
+  EMBEDDING_DIMENSIONS: z.coerce.number().int().positive().optional().default(1536),
+  /**
+   * Cosine-similarity floor for pgvector retrieval (0–1). Recommended default `0.40`
+   * for `text-embedding-3-large` at 1536 dimensions.
+   */
+  KB_SEARCH_SIMILARITY_THRESHOLD: z.coerce.number().min(0).max(1).optional().default(0.4),
 
   // ── WebAuthn ────────────────────────────────────────────────────────────
   WEBAUTHN_RP_NAME: z.string().optional(),

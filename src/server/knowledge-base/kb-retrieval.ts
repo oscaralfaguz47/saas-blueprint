@@ -1,6 +1,6 @@
 import "server-only";
 
-import { KbVisibility } from "@prisma/client";
+import { KbArticleStatus, KbVisibility } from "@prisma/client";
 
 import { generateEmbedding } from "@/server/ai/ai-provider";
 import { env } from "@/lib/env";
@@ -28,17 +28,7 @@ export type RetrieveKbChunksParams = {
 const MAX_CONTEXT_TOKENS = 3000;
 
 function buildSearchableQuery(query: string): string {
-  const q = query.trim();
-  if (!q) return q;
-  const lower = q.toLowerCase();
-  const aliases: string[] = [];
-
-  if (/\bpais(es)?\b/u.test(lower) || /\bcountry\b/u.test(lower)) aliases.push("country");
-  if (/\bfactura(s)?\b/u.test(lower) || /\bbilling\b/u.test(lower)) aliases.push("billing");
-  if (/\bdireccion\b/u.test(lower) || /\baddress\b/u.test(lower)) aliases.push("address");
-
-  if (aliases.length === 0) return q;
-  return `${q} ${Array.from(new Set(aliases)).join(" ")}`.trim();
+  return query.trim();
 }
 
 type SemanticRow = {
@@ -66,6 +56,76 @@ type KeywordRow = {
 function estimateTokens(plainText: string, tokenCount: number | null): number {
   if (tokenCount != null && tokenCount > 0) return tokenCount;
   return Math.ceil(plainText.length / 4);
+}
+
+async function retrieveChunksByTitleMatch(
+  params: RetrieveKbChunksParams
+): Promise<KbChunk[]> {
+  const q = params.query.trim();
+  if (q.length < 3) return [];
+
+  const visibilityFilter = params.isAuthenticated
+    ? { in: [KbVisibility.PUBLIC, KbVisibility.AUTHENTICATED] }
+    : KbVisibility.PUBLIC;
+
+  const rawTerms = q
+    .split(/\s+/)
+    .map((w) => w.replace(/[^\p{L}\p{N}-]/gu, ""))
+    .filter((w) => w.length >= 4);
+  const terms = Array.from(new Set(rawTerms)).slice(0, 8);
+  const titleFilter =
+    terms.length > 0
+      ? {
+          OR: [
+            { title: { contains: q, mode: "insensitive" as const } },
+            ...terms.map((t) => ({
+              title: { contains: t, mode: "insensitive" as const },
+            })),
+          ],
+        }
+      : { title: { contains: q, mode: "insensitive" as const } };
+
+  const articles = await prisma.knowledgeBaseArticle.findMany({
+    where: {
+      status: KbArticleStatus.PUBLISHED,
+      visibility: visibilityFilter,
+      ...titleFilter,
+    },
+    select: { id: true, title: true, slug: true },
+    orderBy: { updatedAt: "desc" },
+    take: 3,
+  });
+
+  if (articles.length === 0) return [];
+
+  const articleIds = articles.map((a) => a.id);
+  const chunks = await prisma.knowledgeBaseChunk.findMany({
+    where: {
+      articleId: { in: articleIds },
+      status: KbArticleStatus.PUBLISHED,
+      visibility: visibilityFilter,
+    },
+    orderBy: [{ articleId: "asc" }, { chunkIndex: "asc" }],
+    take: 6,
+    select: {
+      id: true,
+      articleId: true,
+      chunkIndex: true,
+      plainText: true,
+      tokenCount: true,
+    },
+  });
+
+  const articleMap = new Map(articles.map((a) => [a.id, a]));
+
+  return chunks.map((c) => ({
+    id: c.id,
+    articleId: c.articleId,
+    chunkIndex: c.chunkIndex,
+    plainText: c.plainText,
+    articleTitle: articleMap.get(c.articleId)?.title ?? "",
+    articleSlug: articleMap.get(c.articleId)?.slug ?? "",
+  }));
 }
 
 function applyTokenBudget(rows: SemanticRow[], maxTokens: number): KbChunk[] {
@@ -240,7 +300,7 @@ async function retrieveKbChunksSemantic(
 ): Promise<SemanticRow[]> {
   const vec = formatVectorForSql(queryEmbedding);
   const fetchLimit = Math.min(48, Math.max(params.limit * 3, params.limit, 12));
-  const threshold = env.KB_SEARCH_SIMILARITY_THRESHOLD ?? 0.65;
+  const threshold = env.KB_SEARCH_SIMILARITY_THRESHOLD ?? 0.40;
 
   if (params.isAuthenticated) {
     return prisma.$queryRaw<SemanticRow[]>`
@@ -298,12 +358,14 @@ function isPgVectorLikelyError(e: unknown): boolean {
 }
 
 /**
- * Hybrid retrieval: semantic (pgvector cosine) when embeddings work; otherwise keyword search.
+ * Hybrid retrieval: title match first, then semantic (pgvector cosine) or keyword search.
  * Never throws for pgvector / embedding failures — falls back to keyword search.
  */
 export async function retrieveKbChunks(params: RetrieveKbChunksParams): Promise<KbChunk[]> {
   const q = buildSearchableQuery(params.query);
   if (q.length < 2) return [];
+
+  const titleMatches = await retrieveChunksByTitleMatch(params);
 
   let queryEmbedding: number[] | null = null;
   try {
@@ -312,10 +374,13 @@ export async function retrieveKbChunks(params: RetrieveKbChunksParams): Promise<
     queryEmbedding = null;
   }
 
+  let bodyChunks: KbChunk[] = [];
+
   if (queryEmbedding?.length) {
     try {
       const semantic = await retrieveKbChunksSemantic(params, queryEmbedding);
       console.log("[kb-retrieval] semantic_results", {
+        model: env.EMBEDDING_MODEL ?? "text-embedding-3-large",
         query: params.query.slice(0, 60),
         chunkCount: semantic.length,
         scores: semantic.map((r) => ({
@@ -325,15 +390,14 @@ export async function retrieveKbChunks(params: RetrieveKbChunksParams): Promise<
         threshold: env.KB_SEARCH_SIMILARITY_THRESHOLD,
       });
       if (semantic.length > 0) {
-        return applyTokenBudget(semantic, MAX_CONTEXT_TOKENS);
+        bodyChunks = applyTokenBudget(semantic, MAX_CONTEXT_TOKENS);
+      } else {
+        console.log("[kb-retrieval] fallback_to_keyword", {
+          query: params.query.slice(0, 60),
+          reason: "semantic returned 0 results above threshold",
+        });
+        bodyChunks = await retrieveKbChunksKeywordSearch(params);
       }
-      // If semantic search ran but nothing is relevant enough, try lexical fallback.
-      // Fallback itself has a rank threshold and can still return [].
-      console.log("[kb-retrieval] fallback_to_keyword", {
-        query: params.query.slice(0, 60),
-        reason: "semantic returned 0 results above threshold",
-      });
-      return retrieveKbChunksKeywordSearch(params);
     } catch (e) {
       if (isPgVectorLikelyError(e)) {
         console.warn("[kb-retrieval] semantic_search_unavailable", {
@@ -344,8 +408,32 @@ export async function retrieveKbChunks(params: RetrieveKbChunksParams): Promise<
           reason: e instanceof Error ? e.name : "unknown",
         });
       }
+      bodyChunks = await retrieveKbChunksKeywordSearch(params);
+    }
+  } else {
+    bodyChunks = await retrieveKbChunksKeywordSearch(params);
+  }
+
+  const seen = new Set<string>();
+  const merged: KbChunk[] = [];
+  for (const c of [...titleMatches, ...bodyChunks]) {
+    if (!seen.has(c.id)) {
+      seen.add(c.id);
+      merged.push(c);
     }
   }
 
-  return retrieveKbChunksKeywordSearch(params);
+  return applyTokenBudget(
+    merged.map((c) => ({
+      id: c.id,
+      articleId: c.articleId,
+      chunkIndex: c.chunkIndex,
+      plainText: c.plainText,
+      tokenCount: null,
+      articleTitle: c.articleTitle,
+      articleSlug: c.articleSlug,
+      similarity: 0,
+    })),
+    MAX_CONTEXT_TOKENS
+  );
 }

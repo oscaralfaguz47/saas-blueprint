@@ -28,14 +28,14 @@ function normalizeEmbeddingInput(text: string): string {
 
 /**
  * Generates a single embedding vector for the given text.
- * Uses OpenAI `text-embedding-3-small` (1536 dims) by default via env.
+ * Uses OpenAI `text-embedding-3-large` (1536 dims) by default via env.
  * Enforces explicit timeout. Throws {@link AiProviderError} on failure.
  * Never logs input text or vectors — only success token counts or failure (no payload).
  */
 export async function generateEmbedding(text: string): Promise<number[]> {
   const provider = env.AI_PROVIDER;
   const apiKey = env.AI_API_KEY?.trim();
-  const embeddingModel = env.EMBEDDING_MODEL?.trim() || "text-embedding-3-small";
+  const embeddingModel = env.EMBEDDING_MODEL?.trim() || "text-embedding-3-large";
   const dimensions = env.EMBEDDING_DIMENSIONS ?? 1536;
 
   if (provider !== "openai" || !apiKey) {
@@ -54,8 +54,6 @@ export async function generateEmbedding(text: string): Promise<number[]> {
     console.log("[ai-provider] embedding_request", {
       model: embeddingModel,
       inputLength: input.length,
-      inputPreview: input.slice(0, 80),
-      keyPrefix: env.AI_API_KEY?.slice(0, 10) ?? "MISSING",
     });
 
     const res = await fetch("https://api.openai.com/v1/embeddings", {
@@ -130,7 +128,7 @@ export async function chatCompletion(params: ChatCompletionParams): Promise<stri
   const provider = env.AI_PROVIDER;
   const apiKey = env.AI_API_KEY?.trim();
   const chatModel = env.AI_MODEL?.trim() || "gpt-4o-mini";
-  const defaultMax = env.AI_MAX_TOKENS ?? 512;
+  const defaultMax = env.AI_MAX_TOKENS ?? 600;
 
   if (!provider || !apiKey) {
     const err = new Error("AI_PROVIDER_UNAVAILABLE");
@@ -149,7 +147,6 @@ export async function chatCompletion(params: ChatCompletionParams): Promise<stri
         systemPromptLength: params.systemPrompt.length,
         userMessageLength: params.userMessage.length,
         maxTokens: params.maxTokens,
-        keyPrefix: env.AI_API_KEY?.slice(0, 10) ?? "MISSING",
       });
 
       const res = await fetch("https://api.openai.com/v1/chat/completions", {

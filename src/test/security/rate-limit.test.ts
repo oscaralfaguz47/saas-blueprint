@@ -84,11 +84,12 @@ describe("checkRateLimit", () => {
     expect(result.retryAfterSeconds).toBeLessThanOrEqual(30);
   });
 
-  it("fails open when DB throws", async () => {
+  it("fails closed when DB throws", async () => {
     vi.mocked(prisma.$transaction).mockRejectedValueOnce(new Error("DB connection failed"));
 
     const result = await checkRateLimit("test:key", 5, 60_000);
-    expect(result.allowed).toBe(true);
+    expect(result.allowed).toBe(false);
+    expect(result.retryAfterSeconds).toBe(60);
   });
 
   it("uses unique keys to isolate different actions", async () => {

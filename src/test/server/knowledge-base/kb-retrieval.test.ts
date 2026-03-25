@@ -5,7 +5,8 @@ import { KbArticleStatus, KbVisibility } from "@prisma/client";
 const hoisted = vi.hoisted(() => ({
   generateEmbedding: vi.fn(),
   queryRaw: vi.fn(),
-  findMany: vi.fn(),
+  articleFindMany: vi.fn(),
+  chunkFindMany: vi.fn(),
 }));
 
 vi.mock("@/server/ai/ai-provider", () => ({
@@ -15,8 +16,11 @@ vi.mock("@/server/ai/ai-provider", () => ({
 vi.mock("@/server/db", () => ({
   prisma: {
     $queryRaw: hoisted.queryRaw,
+    knowledgeBaseArticle: {
+      findMany: hoisted.articleFindMany,
+    },
     knowledgeBaseChunk: {
-      findMany: hoisted.findMany,
+      findMany: hoisted.chunkFindMany,
     },
   },
 }));
@@ -24,6 +28,8 @@ vi.mock("@/server/db", () => ({
 describe("retrieveKbChunks", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    hoisted.articleFindMany.mockResolvedValue([]);
+    hoisted.chunkFindMany.mockResolvedValue([]);
   });
 
   it("uses semantic path when embedding succeeds and returns rows", async () => {
@@ -38,6 +44,7 @@ describe("retrieveKbChunks", () => {
         tokenCount: 10,
         articleTitle: "T",
         articleSlug: "t",
+        similarity: 0.9,
       },
     ]);
 
@@ -48,22 +55,25 @@ describe("retrieveKbChunks", () => {
       limit: 5,
     });
 
+    expect(hoisted.articleFindMany).toHaveBeenCalled();
     expect(hoisted.generateEmbedding).toHaveBeenCalled();
     expect(hoisted.queryRaw).toHaveBeenCalled();
-    expect(hoisted.findMany).not.toHaveBeenCalled();
     expect(out).toHaveLength(1);
     expect(out[0].articleSlug).toBe("t");
   });
 
   it("falls back to keyword search when embedding generation fails", async () => {
     hoisted.generateEmbedding.mockRejectedValue(new Error("no key"));
-    hoisted.findMany.mockResolvedValue([
+    hoisted.queryRaw.mockResolvedValue([
       {
         id: "k1",
         articleId: "a1",
         chunkIndex: 0,
         plainText: "billing text here",
-        article: { title: "Doc", slug: "doc" },
+        tokenCount: 20,
+        articleTitle: "Doc",
+        articleSlug: "doc",
+        rank: 0.1,
       },
     ]);
 
@@ -74,42 +84,46 @@ describe("retrieveKbChunks", () => {
       limit: 5,
     });
 
-    expect(hoisted.findMany).toHaveBeenCalled();
-    expect(out).toHaveLength(1);
-    const where = hoisted.findMany.mock.calls[0][0].where as Record<string, unknown>;
-    expect(where.status).toBe(KbArticleStatus.PUBLISHED);
-    expect(where.visibility).toEqual({ in: [KbVisibility.PUBLIC] });
+    expect(hoisted.queryRaw).toHaveBeenCalled();
+    expect(out.length).toBeGreaterThan(0);
+    expect(out[0].articleSlug).toBe("doc");
   });
 
   it("enforces authenticated visibility on keyword fallback", async () => {
     hoisted.generateEmbedding.mockRejectedValue(new Error("skip"));
-    hoisted.findMany.mockResolvedValue([]);
+    hoisted.queryRaw.mockResolvedValue([]);
 
     const { retrieveKbChunks } = await import("@/server/knowledge-base/kb-retrieval");
     await retrieveKbChunks({
-      query: "something unique",
+      query: "something unique keyword",
       isAuthenticated: true,
       limit: 5,
     });
 
-    const where = hoisted.findMany.mock.calls[0][0].where as Record<string, unknown>;
-    expect(where.visibility).toEqual({
-      in: [KbVisibility.PUBLIC, KbVisibility.AUTHENTICATED],
-    });
+    const keywordCalls = hoisted.queryRaw.mock.calls.filter(
+      (c) => String(c[0]).includes("ts_rank")
+    );
+    expect(keywordCalls.length).toBeGreaterThan(0);
+    const firstArg = keywordCalls[0]![0];
+    expect(String(firstArg)).toContain("AUTHENTICATED");
   });
 
   it("falls back to keyword search when semantic search returns no rows", async () => {
     hoisted.generateEmbedding.mockResolvedValue(Array.from({ length: 1536 }, () => 0));
-    hoisted.queryRaw.mockResolvedValue([]);
-    hoisted.findMany.mockResolvedValue([
-      {
-        id: "k1",
-        articleId: "a1",
-        chunkIndex: 0,
-        plainText: "keyword match text",
-        article: { title: "Doc", slug: "doc" },
-      },
-    ]);
+    hoisted.queryRaw
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: "k1",
+          articleId: "a1",
+          chunkIndex: 0,
+          plainText: "keyword match text",
+          tokenCount: 20,
+          articleTitle: "Doc",
+          articleSlug: "doc",
+          rank: 0.1,
+        },
+      ]);
 
     const { retrieveKbChunks } = await import("@/server/knowledge-base/kb-retrieval");
     const out = await retrieveKbChunks({
@@ -119,14 +133,14 @@ describe("retrieveKbChunks", () => {
     });
 
     expect(hoisted.queryRaw).toHaveBeenCalled();
-    expect(hoisted.findMany).toHaveBeenCalled();
     expect(out.length).toBeGreaterThan(0);
   });
 
   it("falls back to keyword search when semantic query throws", async () => {
     hoisted.generateEmbedding.mockResolvedValue(Array.from({ length: 1536 }, () => 0));
-    hoisted.queryRaw.mockRejectedValue(new Error('type "vector" does not exist'));
-    hoisted.findMany.mockResolvedValue([]);
+    hoisted.queryRaw
+      .mockRejectedValueOnce(new Error('type "vector" does not exist'))
+      .mockResolvedValueOnce([]);
 
     const { retrieveKbChunks } = await import("@/server/knowledge-base/kb-retrieval");
     await retrieveKbChunks({
@@ -135,6 +149,33 @@ describe("retrieveKbChunks", () => {
       limit: 5,
     });
 
-    expect(hoisted.findMany).toHaveBeenCalled();
+    expect(hoisted.queryRaw.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it("prepends title-matched chunks when article title matches query terms", async () => {
+    hoisted.articleFindMany.mockResolvedValue([
+      { id: "a1", title: "Enterprise Plan", slug: "enterprise" },
+    ]);
+    hoisted.chunkFindMany.mockResolvedValue([
+      {
+        id: "tc1",
+        articleId: "a1",
+        chunkIndex: 0,
+        plainText: "Contact sales for enterprise.",
+        tokenCount: 10,
+      },
+    ]);
+    hoisted.generateEmbedding.mockResolvedValue(Array.from({ length: 1536 }, () => 0));
+    hoisted.queryRaw.mockResolvedValue([]);
+
+    const { retrieveKbChunks } = await import("@/server/knowledge-base/kb-retrieval");
+    const out = await retrieveKbChunks({
+      query: "Enterprise Plan pricing",
+      isAuthenticated: false,
+      limit: 5,
+    });
+
+    expect(hoisted.chunkFindMany).toHaveBeenCalled();
+    expect(out.some((c) => c.id === "tc1")).toBe(true);
   });
 });

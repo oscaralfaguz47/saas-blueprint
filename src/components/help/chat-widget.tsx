@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { createPortal } from "react-dom";
 import {
@@ -10,6 +11,7 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type KeyboardEvent,
 } from "react";
 
 import { IconChatBubble, IconX } from "@/components/ui/icons";
@@ -22,6 +24,8 @@ type ChatLine = {
   role: "user" | "assistant";
   content: string;
   sources: SourceArticle[];
+  showSupportCta?: boolean;
+  supportCtaLabel?: string;
   createdAt: number;
 };
 
@@ -52,11 +56,25 @@ function TypingDots() {
 const EMPTY_KB =
   "I don't have enough information in our Knowledge Base to answer that. I recommend creating a support request so our team can help.";
 
+/** Matches API `query` Zod schema (`max(500)`). */
+const CHAT_QUERY_MAX_LENGTH = 500;
+
+const MESSAGE_TOO_LONG =
+  "Your message is too long. Please keep it under 500 characters.";
+
+function hasSpanishIndicators(text: string): boolean {
+  const lower = text.toLowerCase();
+  return /\b(gracias|hola|ayuda|soporte|solicitud|por favor|puedo|necesito|entendido|perfecto)\b/u.test(
+    lower
+  );
+}
+
 export type ChatWidgetProps = {
   forcedSurface: "app" | "public";
 };
 
 export function ChatWidget({ forcedSurface }: ChatWidgetProps) {
+  const router = useRouter();
   const { data: session, status } = useSession();
   /** Bubble always renders after `mounted`; this only gates API surfaces (never `status === "loading"`). */
   const useAppFlow =
@@ -227,12 +245,28 @@ export function ChatWidget({ forcedSurface }: ChatWidgetProps) {
       });
 
       if (res.status === 400) {
-        const errBody = (await res.json()) as { error?: { code?: string } };
+        const errBody = (await res.json()) as {
+          error?: { code?: string; message?: string };
+        };
         if (errBody.error?.code === "VISITOR_EMAIL_REQUIRED") {
           setError("Email is required. Please enter it above and try again.");
           setLoading(false);
           return;
         }
+        if (
+          errBody.error?.code === "VALIDATION_ERROR" &&
+          errBody.error?.message === "Invalid request body"
+        ) {
+          setError(MESSAGE_TOO_LONG);
+          setLoading(false);
+          return;
+        }
+      }
+
+      if (res.status === 413) {
+        setError(MESSAGE_TOO_LONG);
+        setLoading(false);
+        return;
       }
 
       if (!res.ok) {
@@ -244,13 +278,21 @@ export function ChatWidget({ forcedSurface }: ChatWidgetProps) {
       const j = (await res.json()) as {
         data?: {
           aiAnswer?: string | null;
+          citedArticleIds?: string[];
           citedArticles?: SourceArticle[];
+          resultCount?: number;
         };
       };
       const ai =
         j.data?.aiAnswer?.trim() && j.data.aiAnswer.trim().length > 0
           ? j.data.aiAnswer.trim()
           : EMPTY_KB;
+      const citedArticleIds = Array.isArray(j.data?.citedArticleIds) ? j.data!.citedArticleIds! : [];
+      const resultCount = typeof j.data?.resultCount === "number" ? j.data.resultCount : 0;
+      const showSupportCta = resultCount === 0 || citedArticleIds.length === 0;
+      const supportCtaLabel = hasSpanishIndicators(ai)
+        ? "+ Crear una solicitud de soporte"
+        : "+ Create a support request";
       const sources = Array.isArray(j.data?.citedArticles) ? j.data!.citedArticles! : [];
 
       setLines((prev) => [
@@ -260,6 +302,8 @@ export function ChatWidget({ forcedSurface }: ChatWidgetProps) {
           role: "assistant",
           content: ai,
           sources,
+          showSupportCta,
+          supportCtaLabel,
           createdAt: Date.now(),
         },
       ]);
@@ -268,6 +312,26 @@ export function ChatWidget({ forcedSurface }: ChatWidgetProps) {
       setError("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const canSubmit =
+    !loading &&
+    !creatingSession &&
+    (useAppFlow || emailGateDone) &&
+    draft.trim().length >= 2 &&
+    draft.length <= CHAT_QUERY_MAX_LENGTH;
+
+  const handleSend = () => {
+    void sendMessage(draft);
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      if (canSubmit) {
+        handleSend();
+      }
     }
   };
 
@@ -413,6 +477,17 @@ export function ChatWidget({ forcedSurface }: ChatWidgetProps) {
                         ))}
                       </div>
                     ) : null}
+                    {m.role === "assistant" && m.showSupportCta ? (
+                      <div className="mt-2 border-t border-(--border-subtle) pt-2">
+                        <button
+                          type="button"
+                          onClick={() => router.push(contactHref)}
+                          className="inline-flex h-8 items-center justify-center rounded-lg border border-(--border-strong) bg-(--bg-surface-elev) px-3 text-xs font-medium text-(--text-primary) hover:bg-(--bg-surface-hover)"
+                        >
+                          {m.supportCtaLabel ?? "+ Create a support request"}
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               ))}
@@ -432,36 +507,63 @@ export function ChatWidget({ forcedSurface }: ChatWidgetProps) {
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  void sendMessage(draft);
+                  handleSend();
                 }}
-                className="flex gap-2"
+                className="flex flex-col gap-1"
               >
-                <label htmlFor="chat-widget-input" className="sr-only">
-                  Message
-                </label>
-                <textarea
-                  id="chat-widget-input"
-                  ref={textareaRef}
-                  rows={2}
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  disabled={loading || (!useAppFlow && !emailGateDone) || creatingSession}
-                  placeholder={
-                    useAppFlow || emailGateDone
-                      ? "Ask a question…"
-                      : "Enter email above to chat"
-                  }
-                  className="min-h-[2.75rem] max-h-24 flex-1 resize-y rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2 text-sm"
-                />
-                <button
-                  type="submit"
-                  disabled={
-                    loading || draft.trim().length < 2 || (!useAppFlow && !emailGateDone) || creatingSession
-                  }
-                  className="inline-flex h-11 shrink-0 items-center justify-center self-end rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white disabled:opacity-50"
-                >
-                  {loading ? <Spinner size="sm" /> : "Send"}
-                </button>
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <label htmlFor="chat-widget-input" className="sr-only">
+                      Message
+                    </label>
+                    <textarea
+                      id="chat-widget-input"
+                      ref={textareaRef}
+                      rows={2}
+                      maxLength={CHAT_QUERY_MAX_LENGTH}
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      disabled={loading || (!useAppFlow && !emailGateDone) || creatingSession}
+                      placeholder={
+                        useAppFlow || emailGateDone
+                          ? "Ask a question…"
+                          : "Enter email above to chat"
+                      }
+                      className="min-h-[2.75rem] max-h-24 w-full resize-y rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={
+                      loading ||
+                      draft.trim().length < 2 ||
+                      draft.length > CHAT_QUERY_MAX_LENGTH ||
+                      (!useAppFlow && !emailGateDone) ||
+                      creatingSession
+                    }
+                    className="inline-flex h-11 shrink-0 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white disabled:opacity-50"
+                  >
+                    {loading ? <Spinner size="sm" /> : "Send"}
+                  </button>
+                </div>
+                <p className="hidden text-[11px] text-(--text-muted) sm:block">
+                  Press Enter to send · Shift+Enter for new line
+                </p>
+                {draft.length > 0 ? (
+                  <p
+                    className={`text-right text-[11px] ${
+                      draft.length >= 480
+                        ? "text-(--color-danger)"
+                        : draft.length > 400
+                          ? "text-(--color-warning)"
+                          : "text-(--text-muted)"
+                    }`}
+                    aria-live="polite"
+                  >
+                    {draft.length} / {CHAT_QUERY_MAX_LENGTH}
+                  </p>
+                ) : null}
               </form>
               <p className="mt-2 text-center text-[11px] text-(--text-muted)">
                 Need hands-on help?{" "}

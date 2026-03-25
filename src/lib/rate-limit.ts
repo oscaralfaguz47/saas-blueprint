@@ -62,10 +62,8 @@ export async function checkRateLimit(
 
     return result;
   } catch {
-    // If the rate limit check itself fails (e.g. DB timeout), fail open
-    // to avoid blocking legitimate users due to infrastructure issues.
-    // Log the error for observability but allow the request through.
-    console.error("[rate-limit] DB check failed, failing open for key:", key);
-    return { allowed: true, retryAfterSeconds: 0 };
+    // Fail closed: avoid cost/abuse exposure when rate-limit storage is unavailable.
+    console.error("[rate-limit] DB check failed, failing closed for key:", key);
+    return { allowed: false, retryAfterSeconds: 60 };
   }
 }

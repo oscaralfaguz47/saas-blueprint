@@ -4,7 +4,7 @@ import { apiError, ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-res
 import { executeAiChatMessage } from "@/server/help/ai-chat-persist";
 import { getClientIp } from "@/server/http-client-ip";
 import { prisma } from "@/server/db";
-import { checkKbAiAnswerLimit } from "@/server/support/support-rate-limits";
+import { checkKbAiAnswerLimit, checkKbSessionMessageLimit } from "@/server/support/support-rate-limits";
 
 const bodySchema = z.object({
   query: z.string().min(2).max(500),
@@ -26,9 +26,16 @@ export const POST = withErrorHandler(async (
   }
 
   const rawParams = await context.params;
-  const sessionId = z.string().cuid().safeParse(rawParams.sessionId);
-  if (!sessionId.success) {
+  const sessionIdParse = z.string().cuid().safeParse(rawParams.sessionId);
+  if (!sessionIdParse.success) {
     return ApiErrors.VALIDATION_ERROR("Invalid session");
+  }
+
+  const sessionRl = await checkKbSessionMessageLimit(sessionIdParse.data);
+  if (!sessionRl.allowed) {
+    return ApiErrors.RATE_LIMITED("Session message limit reached", {
+      retryAfterSeconds: sessionRl.retryAfterSeconds,
+    });
   }
 
   const ct = req.headers.get("content-type") ?? "";
@@ -54,7 +61,7 @@ export const POST = withErrorHandler(async (
   }
 
   const session = await prisma.aiChatSession.findFirst({
-    where: { id: sessionId.data, isAuthenticated: false },
+    where: { id: sessionIdParse.data, isAuthenticated: false },
     select: { id: true, visitorEmail: true },
   });
   if (!session) {

@@ -7,7 +7,10 @@ import { getCurrentTenantId } from "@/server/billing/tenant-context";
 import { executeAiChatMessage } from "@/server/help/ai-chat-persist";
 import { prisma } from "@/server/db";
 import { requireFullSession } from "@/server/require-full-session";
-import { checkKbAiAnswerLimitUser } from "@/server/support/support-rate-limits";
+import {
+  checkKbAiAnswerLimitUser,
+  checkKbSessionMessageLimit,
+} from "@/server/support/support-rate-limits";
 
 const bodySchema = z.object({
   query: z.string().min(2).max(500),
@@ -39,14 +42,21 @@ export const POST = withErrorHandler(async (
     });
   }
 
-  const tenantId = await getCurrentTenantId({ session, req });
-  if (!tenantId) return ApiErrors.NO_TENANT();
-
   const rawParams = await context.params;
   const sessionIdParse = z.string().cuid().safeParse(rawParams.sessionId);
   if (!sessionIdParse.success) {
     return ApiErrors.VALIDATION_ERROR("Invalid session");
   }
+
+  const sessionRl = await checkKbSessionMessageLimit(sessionIdParse.data);
+  if (!sessionRl.allowed) {
+    return ApiErrors.RATE_LIMITED("Session message limit reached", {
+      retryAfterSeconds: sessionRl.retryAfterSeconds,
+    });
+  }
+
+  const tenantId = await getCurrentTenantId({ session, req });
+  if (!tenantId) return ApiErrors.NO_TENANT();
 
   const ct = req.headers.get("content-type") ?? "";
   if (!ct.toLowerCase().includes("application/json")) {

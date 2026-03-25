@@ -17,6 +17,7 @@
     "db:migrate": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "sync:role-permissions": "tsx scripts/sync-tenant-role-permissions.ts",
+    "reindex:kb": "tsx scripts/reindex-kb.ts",
     "vercel-build": "node scripts/vercel-build.cjs"
   },
   "dependencies": {
@@ -48,6 +49,7 @@
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6.0.1",
     "@vitest/coverage-v8": "^2.1.9",
+    "dotenv": "^17.3.1",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
     "eslint-config-prettier": "^10.1.8",

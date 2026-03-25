@@ -21,6 +21,20 @@ export async function executeAiChatMessage(params: {
   citedArticles: { id: string; title: string; slug: string }[];
   resultCount: number;
 }> {
+  const sess = await prisma.aiChatSession.findUnique({
+    where: { id: params.sessionId },
+    select: { messageCount: true },
+  });
+  if (!sess || sess.messageCount >= 50) {
+    return {
+      aiAnswer:
+        "This session has reached its message limit. Please start a new conversation.",
+      citedArticleIds: [],
+      citedArticles: [],
+      resultCount: 0,
+    };
+  }
+
   const result = await runKbAiAnswer({
     query: params.query,
     isAuthenticated: params.isAuthenticated,

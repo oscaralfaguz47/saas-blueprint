@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 const mockEnv = vi.hoisted(() => ({
   AI_PROVIDER: "openai" as "openai" | "anthropic" | undefined,
   AI_API_KEY: "sk-test",
-  EMBEDDING_MODEL: "text-embedding-3-small",
+  EMBEDDING_MODEL: "text-embedding-3-large",
   EMBEDDING_DIMENSIONS: 1536,
 }));
 
@@ -16,7 +16,7 @@ describe("generateEmbedding", () => {
     vi.stubGlobal("fetch", vi.fn());
     mockEnv.AI_PROVIDER = "openai";
     mockEnv.AI_API_KEY = "sk-test";
-    mockEnv.EMBEDDING_MODEL = "text-embedding-3-small";
+    mockEnv.EMBEDDING_MODEL = "text-embedding-3-large";
     mockEnv.EMBEDDING_DIMENSIONS = 1536;
   });
 
@@ -44,7 +44,7 @@ describe("generateEmbedding", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
     const [, init] = vi.mocked(fetch).mock.calls[0];
     const body = JSON.parse((init as RequestInit).body as string);
-    expect(body.model).toBe("text-embedding-3-small");
+    expect(body.model).toBe("text-embedding-3-large");
     expect(body.input).toBe("hello world");
     expect(body.dimensions).toBe(1536);
   });

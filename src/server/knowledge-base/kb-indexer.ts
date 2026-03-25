@@ -19,12 +19,15 @@ function stripMarkdown(md: string): string {
 
 function splitIntoChunks(text: string, maxLen: number): string[] {
   if (!text) return [];
+  const overlap = 200;
+  const step = maxLen - overlap;
   const out: string[] = [];
   let i = 0;
   while (i < text.length) {
-    const slice = text.slice(i, i + maxLen);
-    out.push(slice.trim());
-    i += maxLen;
+    const slice = text.slice(i, i + maxLen).trim();
+    if (slice) out.push(slice);
+    if (i + maxLen >= text.length) break;
+    i += step;
   }
   return out.filter(Boolean);
 }
@@ -48,6 +51,7 @@ export async function indexKbArticle(articleId: string): Promise<void> {
     select: {
       id: true,
       status: true,
+      title: true,
       bodyMarkdown: true,
       visibility: true,
     },
@@ -65,7 +69,9 @@ export async function indexKbArticle(articleId: string): Promise<void> {
   }
 
   const plain = stripMarkdown(article.bodyMarkdown);
-  const pieces = splitIntoChunks(plain, 1200);
+  const titlePrefix = article.title ? `${article.title}. ` : "";
+  const fullText = titlePrefix + plain;
+  const pieces = splitIntoChunks(fullText, 1200);
 
   const created: { id: string; plainText: string }[] = [];
 

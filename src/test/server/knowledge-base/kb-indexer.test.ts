@@ -33,6 +33,7 @@ describe("indexKbArticle", () => {
     hoisted.findUnique.mockResolvedValue({
       id: "art1",
       status: KbArticleStatus.PUBLISHED,
+      title: "Test Article",
       bodyMarkdown: "Hello world. ".repeat(20),
       visibility: KbVisibility.PUBLIC,
     });

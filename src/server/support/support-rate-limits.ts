@@ -17,7 +17,7 @@ export async function checkKbSearchLimit(identifier: string) {
 
 /** Public AI answer — per IP. */
 export async function checkKbAiAnswerLimit(identifier: string) {
-  return checkRateLimit(`kb:ai:ip:${identifier}`, 30, 60_000);
+  return checkRateLimit(`kb:ai:ip:${identifier}`, 10, 60_000);
 }
 
 /** Authenticated search — per user. */
@@ -26,7 +26,12 @@ export async function checkKbSearchLimitUser(userId: string) {
 }
 
 export async function checkKbAiAnswerLimitUser(userId: string) {
-  return checkRateLimit(`kb:ai:user:${userId}`, 30, 60_000);
+  return checkRateLimit(`kb:ai:user:${userId}`, 20, 60_000);
+}
+
+/** AI chat — per session (each user message consumes one unit; aligns with hourly abuse cap). */
+export async function checkKbSessionMessageLimit(sessionId: string) {
+  return checkRateLimit(`kb:ai:session:${sessionId}`, 30, 60 * 60 * 1000);
 }
 
 /** Public help sales form — per IP. */
