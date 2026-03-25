@@ -37,7 +37,7 @@ export default async function AdminManageWorkspacePage({
     <ManageWorkspaceClient
       tenantId={tenantId}
       canResetPrimaryOwner2FA={canResetPrimaryOwner2FA}
-      segment="overview"
+      segment="members"
     />
   );
 }

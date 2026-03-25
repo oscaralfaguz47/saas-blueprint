@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import {
   Table,
   TableBody,
@@ -51,7 +50,7 @@ type InviteItem = {
   invitedBy: { name: string | null; email: string | null } | null;
 };
 
-type WorkspaceSegment = "overview" | "members" | "invites";
+type WorkspaceSegment = "members" | "invites";
 
 type Props = {
   tenantId: string;
@@ -70,7 +69,6 @@ export function ManageWorkspaceClient({
   const apiFetch = useApiFetch();
   const toast = useToast();
   const [workspace, setWorkspace] = useState<WorkspaceSummary | null>(null);
-  const [workspaceLoading, setWorkspaceLoading] = useState(true);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [members, setMembers] = useState<MemberItem[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
@@ -99,7 +97,6 @@ export function ManageWorkspaceClient({
   const [invitesSearchSent, setInvitesSearchSent] = useState("");
 
   const fetchWorkspace = useCallback(async () => {
-    setWorkspaceLoading(true);
     setWorkspaceError(null);
     try {
       const res = await apiFetch(`/api/admin/workspaces/${tenantId}`);
@@ -111,8 +108,6 @@ export function ManageWorkspaceClient({
       setWorkspace(data.data);
     } catch {
       setWorkspaceError("Failed to load workspace");
-    } finally {
-      setWorkspaceLoading(false);
     }
   }, [tenantId, apiFetch]);
 
@@ -171,8 +166,11 @@ export function ManageWorkspaceClient({
     (!showLegacyTabs && segment === "members") || (showLegacyTabs && tab === "members");
   const showInvites =
     (!showLegacyTabs && segment === "invites") || (showLegacyTabs && tab === "invites");
-  const showSummary = segment == null || segment === "overview";
-  const tabValue = (segment ?? tab) as string;
+  /** Radix tabs only define "members" | "invites". */
+  const tabValue =
+    segment === "invites" ? "invites" : segment === "members" ? "members" : showLegacyTabs ? tab : "members";
+  const showMemberInviteTabs =
+    segment == null || segment === "members" || segment === "invites";
 
   useEffect(() => {
     if (showMembers) fetchMembersRef.current();
@@ -362,66 +360,15 @@ export function ManageWorkspaceClient({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2 text-sm text-(--text-muted)">
-        <Link href="/admin/workspaces" className="hover:text-(--text-primary)">
-          Workspaces
-        </Link>
-        <span>/</span>
-        <span className="text-(--text-primary)">Manage</span>
-      </div>
-
       <div className="rounded-lg border border-(--color-warning-soft) bg-(--color-warning-soft) p-3 text-sm text-(--color-warning)">
         You are in Platform Admin mode. Actions here affect this workspace.
       </div>
 
-      {workspaceLoading ? (
-        <div className="flex flex-col items-center justify-center gap-3 py-12">
-          <Spinner size="md" />
-          <p className="text-sm text-(--text-muted)">Loading workspace…</p>
-        </div>
-      ) : workspaceError || !workspace ? (
-        <p className="text-sm text-(--color-danger)">{workspaceError ?? "Workspace not found"}</p>
-      ) : showSummary ? (
-        <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) p-4">
-          <h1 className="text-2xl font-semibold text-(--text-primary)">{workspace.name}</h1>
-          <dl className="mt-3 grid gap-1 text-sm">
-            <div>
-              <span className="text-(--text-muted)">Slug: </span>
-              <span>{workspace.slug}</span>
-            </div>
-            <div>
-              <span className="text-(--text-muted)">Status: </span>
-              <span>{workspace.status}</span>
-            </div>
-            {workspace.timezone && (
-              <div>
-                <span className="text-(--text-muted)">Timezone: </span>
-                <span>{workspace.timezone}</span>
-              </div>
-            )}
-            {workspace.currency && (
-              <div>
-                <span className="text-(--text-muted)">Currency: </span>
-                <span>{workspace.currency}</span>
-              </div>
-            )}
-            {workspace.dateFormat && (
-              <div>
-                <span className="text-(--text-muted)">Date format: </span>
-                <span>{workspace.dateFormat}</span>
-              </div>
-            )}
-            {workspace.description && (
-              <div>
-                <span className="text-(--text-muted)">Description: </span>
-                <span>{workspace.description}</span>
-              </div>
-            )}
-          </dl>
-        </div>
+      {workspaceError ? (
+        <p className="text-sm text-(--color-danger)">{workspaceError}</p>
       ) : null}
 
-      {(segment == null || segment !== "overview") && (
+      {showMemberInviteTabs && (
       <Tabs value={tabValue} onValueChange={showLegacyTabs ? setTab : () => {}}>
         {showLegacyTabs ? (
         <TabsList>
@@ -431,6 +378,7 @@ export function ManageWorkspaceClient({
         ) : null}
 
         <TabsContent value="members" className="mt-4">
+          <h2 className="mb-4 text-lg font-semibold text-(--text-primary)">Workspace members</h2>
           <div className="mb-4">
             <Input
               placeholder="Search by name or email"
@@ -580,6 +528,7 @@ export function ManageWorkspaceClient({
         </TabsContent>
 
         <TabsContent value="invites" className="mt-4">
+          <h2 className="mb-4 text-lg font-semibold text-(--text-primary)">Workspace invites</h2>
           <div className="mb-3 flex flex-wrap items-center gap-3">
             <Input
               id="admin-invites-search"

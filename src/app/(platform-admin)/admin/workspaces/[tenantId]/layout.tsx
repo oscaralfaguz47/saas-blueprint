@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { notFound } from "next/navigation";
 import { z } from "zod";
 
+import { AdminWorkspaceSectionNav } from "@/components/app/admin/admin-workspace-section-nav";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
 import { requireFullSessionRsc } from "@/server/require-full-session-rsc";
@@ -33,32 +34,75 @@ export default async function AdminWorkspaceTenantLayout({
 
   const tenant = await prisma.tenant.findUnique({
     where: { id: tenantId },
-    select: { id: true, name: true },
+    select: {
+      name: true,
+      slug: true,
+      status: true,
+      timezone: true,
+      currency: true,
+      dateFormat: true,
+      description: true,
+    },
   });
   if (!tenant) notFound();
 
   const base = `/admin/workspaces/${tenantId}`;
   const tabs = [
-    { href: base, label: "Overview" },
-    { href: `${base}/members`, label: "Members" },
+    { href: base, label: "Members" },
     { href: `${base}/invites`, label: "Invites" },
     { href: `${base}/support`, label: "Support" },
   ] as const;
 
   return (
     <div>
-      <nav className="mb-4 flex flex-wrap gap-2 border-b border-(--border-subtle) pb-3" aria-label="Workspace sections">
-        {tabs.map((t) => (
-          <Link
-            key={t.href}
-            href={t.href}
-            className="rounded-md px-3 py-1.5 text-sm font-medium text-(--text-secondary) hover:bg-(--nav-hover) hover:text-(--text-primary)"
-          >
-            {t.label}
-          </Link>
-        ))}
-      </nav>
-      {children}
+      <div className="mb-4 flex items-center gap-2 text-sm text-(--text-muted)">
+        <Link href="/admin/workspaces" className="hover:text-(--text-primary)">
+          Workspaces
+        </Link>
+        <span>/</span>
+        <span className="text-(--text-primary)">Manage</span>
+      </div>
+      <AdminWorkspaceSectionNav membersRootHref={base} tabs={tabs} />
+      <div className="space-y-6">
+        <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) p-4">
+          <h1 className="text-2xl font-semibold text-(--text-primary)">{tenant.name}</h1>
+          <dl className="mt-3 grid gap-1 text-sm">
+            <div>
+              <span className="text-(--text-muted)">Slug: </span>
+              <span>{tenant.slug}</span>
+            </div>
+            <div>
+              <span className="text-(--text-muted)">Status: </span>
+              <span>{tenant.status}</span>
+            </div>
+            {tenant.timezone && (
+              <div>
+                <span className="text-(--text-muted)">Timezone: </span>
+                <span>{tenant.timezone}</span>
+              </div>
+            )}
+            {tenant.currency && (
+              <div>
+                <span className="text-(--text-muted)">Currency: </span>
+                <span>{tenant.currency}</span>
+              </div>
+            )}
+            {tenant.dateFormat && (
+              <div>
+                <span className="text-(--text-muted)">Date format: </span>
+                <span>{tenant.dateFormat}</span>
+              </div>
+            )}
+            {tenant.description && (
+              <div>
+                <span className="text-(--text-muted)">Description: </span>
+                <span>{tenant.description}</span>
+              </div>
+            )}
+          </dl>
+        </div>
+        {children}
+      </div>
     </div>
   );
 }
