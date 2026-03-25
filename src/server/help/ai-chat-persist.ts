@@ -20,6 +20,7 @@ export async function executeAiChatMessage(params: {
   citedArticleIds: string[];
   citedArticles: { id: string; title: string; slug: string }[];
   resultCount: number;
+  responseType: "greeting" | "answer" | "no_answer";
 }> {
   const sess = await prisma.aiChatSession.findUnique({
     where: { id: params.sessionId },
@@ -32,6 +33,7 @@ export async function executeAiChatMessage(params: {
       citedArticleIds: [],
       citedArticles: [],
       resultCount: 0,
+      responseType: "no_answer",
     };
   }
 
@@ -96,5 +98,6 @@ export async function executeAiChatMessage(params: {
     citedArticleIds: result.citedArticleIds,
     citedArticles,
     resultCount: result.resultCount,
+    responseType: result.responseType,
   };
 }

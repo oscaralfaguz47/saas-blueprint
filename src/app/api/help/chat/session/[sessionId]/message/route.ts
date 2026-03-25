@@ -95,6 +95,7 @@ export const POST = withErrorHandler(async (
     citedArticleIds: out.citedArticleIds,
     citedArticles: out.citedArticles,
     resultCount: out.resultCount,
+    responseType: out.responseType,
     sessionId: session.id,
   });
 });

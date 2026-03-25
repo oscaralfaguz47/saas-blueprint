@@ -281,6 +281,7 @@ export function ChatWidget({ forcedSurface }: ChatWidgetProps) {
           citedArticleIds?: string[];
           citedArticles?: SourceArticle[];
           resultCount?: number;
+          responseType?: "greeting" | "answer" | "no_answer";
         };
       };
       const ai =
@@ -288,8 +289,8 @@ export function ChatWidget({ forcedSurface }: ChatWidgetProps) {
           ? j.data.aiAnswer.trim()
           : EMPTY_KB;
       const citedArticleIds = Array.isArray(j.data?.citedArticleIds) ? j.data!.citedArticleIds! : [];
-      const resultCount = typeof j.data?.resultCount === "number" ? j.data.resultCount : 0;
-      const showSupportCta = resultCount === 0 || citedArticleIds.length === 0;
+      const responseType = j.data?.responseType ?? "no_answer";
+      const showSupportCta = responseType === "no_answer";
       const supportCtaLabel = hasSpanishIndicators(ai)
         ? "+ Crear una solicitud de soporte"
         : "+ Create a support request";

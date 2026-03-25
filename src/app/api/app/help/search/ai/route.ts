@@ -79,5 +79,6 @@ export const POST = withErrorHandler(async (req: Request) => {
     citedArticleIds: result.citedArticleIds,
     citedArticles,
     resultCount: result.resultCount,
+    responseType: result.responseType,
   });
 });
