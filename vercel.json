@@ -21,6 +21,10 @@
     {
       "path": "/api/internal/cron/daily-email",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/internal/cron/jobs",
+      "schedule": "* * * * *"
     }
   ],
   "headers": [

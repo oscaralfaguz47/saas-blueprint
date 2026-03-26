@@ -38,3 +38,15 @@ export async function checkKbSessionMessageLimit(sessionId: string) {
 export async function checkHelpSalesInquiryLimit(identifier: string) {
   return checkRateLimit(`help:sales:ip:${identifier}`, 10, 60_000);
 }
+
+export async function checkNotificationPollLimit(userId: string) {
+  return checkRateLimit(`notifications:poll:${userId}`, 60, 60_000);
+}
+
+export async function checkNotificationMarkReadLimit(userId: string) {
+  return checkRateLimit(`notifications:mark_read:${userId}`, 120, 60_000);
+}
+
+export async function checkNotificationMarkAllReadLimit(userId: string) {
+  return checkRateLimit(`notifications:mark_all_read:${userId}`, 10, 60_000);
+}

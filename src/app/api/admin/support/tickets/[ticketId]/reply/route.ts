@@ -73,8 +73,8 @@ export const POST = withErrorHandler(async (
   });
 
   await enqueueBackgroundJob({
-    jobType: JOB_TYPES.SUPPORT_NEW_REPLY,
-    idempotencyKey: `support:new_reply:${msg.id}`,
+    jobType: JOB_TYPES.SUPPORT_TICKET_REPLY_NOTIFY,
+    idempotencyKey: `support:reply_notify:${msg.id}`,
     payload: { ticketId, messageId: msg.id },
     tenantId: ticket.tenantId,
   });

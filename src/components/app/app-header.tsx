@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { NotificationsBell } from "@/components/app/notifications-bell";
 import UserMenu from "@/components/app/user-menu";
-import { IconBell, IconMenu } from "@/components/ui/icons";
+import { IconMenu } from "@/components/ui/icons";
 
 type Workspace = {
   id: string;
@@ -87,13 +88,7 @@ export default function AppHeader({
               {pendingInvitationsCount} {pendingInvitationsCount !== 1 ? "invitations" : "invitation"}
             </Link>
           ) : null}
-          <button
-            type="button"
-            aria-label="Notifications"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-(--text-secondary) transition-colors duration-150 hover:bg-(--bg-surface-elev) hover:text-(--text-primary)"
-          >
-            <IconBell size={18} />
-          </button>
+          <NotificationsBell />
           <UserMenu user={user} />
         </div>
       </div>

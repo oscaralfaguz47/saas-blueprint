@@ -129,5 +129,12 @@ export const POST = withErrorHandler(async (
     tenantId,
   });
 
+  await enqueueBackgroundJob({
+    jobType: JOB_TYPES.SUPPORT_USER_REPLY_NOTIFY,
+    idempotencyKey: `support:user_reply_notify:${msg.id}`,
+    payload: { ticketId, messageId: msg.id },
+    tenantId,
+  });
+
   return apiSuccess({ messageId: msg.id });
 });

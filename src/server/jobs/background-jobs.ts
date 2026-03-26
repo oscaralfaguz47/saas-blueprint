@@ -9,6 +9,10 @@ export const JOB_TYPES = {
   SUPPORT_NEW_TICKET: "support.notification.new_ticket",
   SUPPORT_NEW_REPLY: "support.notification.new_reply",
   SUPPORT_TICKET_CLOSED: "support.notification.ticket_closed",
+  SUPPORT_TICKET_REPLY_NOTIFY: "support.notification.reply_notify",
+  SUPPORT_TICKET_STATUS_NOTIFY: "support.notification.status_notify",
+  NOTIFICATION_CLEANUP: "notification.cleanup",
+  SUPPORT_USER_REPLY_NOTIFY: "support.notification.user_reply_notify",
 } as const;
 
 /**

@@ -119,6 +119,7 @@ export function SupportTicketsAdminClient() {
   const noteTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const shouldRefocusReplyRef = useRef(false);
   const shouldRefocusNoteRef = useRef(false);
+  const adminMessagesEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     apiFetchRef.current = apiFetch;
@@ -262,6 +263,31 @@ export function SupportTicketsAdminClient() {
   const updateListItem = useCallback((ticketId: string, updater: (row: Row) => Row) => {
     setItems((prev) => prev.map((row) => (row.id === ticketId ? updater(row) : row)));
   }, []);
+
+  const scrollAdminMessagesToBottom = useCallback(() => {
+    window.setTimeout(() => {
+      adminMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, 50);
+  }, []);
+
+  useEffect(() => {
+    if (detailMessages.length > 0) {
+      scrollAdminMessagesToBottom();
+    }
+  }, [detailMessages, scrollAdminMessagesToBottom]);
+
+  useEffect(() => {
+    const handleTicketRefresh = (e: Event) => {
+      const detail = (e as CustomEvent<{ ticketId: string }>).detail;
+      if (detail?.ticketId && detail.ticketId === selectedTicketId) {
+        void loadDetail(selectedTicketId);
+      }
+    };
+    window.addEventListener("relitrue:ticket-refresh", handleTicketRefresh);
+    return () => {
+      window.removeEventListener("relitrue:ticket-refresh", handleTicketRefresh);
+    };
+  }, [loadDetail, selectedTicketId]);
 
   useEffect(() => {
     setReplyText("");
@@ -795,6 +821,7 @@ export function SupportTicketsAdminClient() {
                         </div>
                       );
                     })}
+                    <div ref={adminMessagesEndRef} />
                   </div>
                 )}
               </CardContent>

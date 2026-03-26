@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { env } from "@/lib/env";
 import { apiError, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { processPendingBackgroundJobs } from "@/server/jobs/process-background-jobs";
+import { enqueueBackgroundJob, JOB_TYPES } from "@/server/jobs/background-jobs";
 
 const CRON_SECRET = env.CRON_SECRET;
 
@@ -26,6 +27,17 @@ async function handleCron(req: Request): Promise<NextResponse> {
   }
 
   const result = await processPendingBackgroundJobs();
+
+  // Enqueue daily notification cleanup — idempotency key is date-scoped
+  // so it runs at most once per UTC day regardless of how often cron fires.
+  const todayKey = new Date().toISOString().slice(0, 10); // "2026-03-26"
+  await enqueueBackgroundJob({
+    jobType: JOB_TYPES.NOTIFICATION_CLEANUP,
+    idempotencyKey: `notification:cleanup:${todayKey}`,
+    payload: {},
+    tenantId: null,
+  });
+
   return withCronHeaders(apiSuccess(result));
 }
 

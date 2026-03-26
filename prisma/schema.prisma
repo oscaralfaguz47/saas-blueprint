@@ -236,6 +236,7 @@ model User {
   ticketsAsRequester     SupportTicket[]                @relation("TicketRequester")
   ticketsAssigned      SupportTicket[]                @relation("TicketAssignee")
   ticketMessagesAuthored SupportTicketMessage[]         @relation("MessageAuthor")
+  notifications         UserNotification[]
   aiChatSessions         AiChatSession[]
 
   @@index([identityProvider, identityId])
@@ -1424,4 +1425,24 @@ model OtpSessionToken {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+/// In-app notifications for workspace users.
+/// Extensible: notificationType covers support tickets today, other sources in the future.
+model UserNotification {
+  id               String   @id @default(cuid())
+  userId           String
+  notificationType String   @db.VarChar(80)
+  title            String   @db.VarChar(255)
+  body             String?  @db.VarChar(500)
+  entityType       String   @db.VarChar(80)
+  entityId         String   @db.VarChar(191)
+  actionUrl        String?  @db.VarChar(512)
+  readAt           DateTime?
+  createdAt        DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@index([userId, createdAt])
 }

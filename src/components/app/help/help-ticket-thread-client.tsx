@@ -104,6 +104,19 @@ export function HelpTicketThreadClient({ ticketId }: { ticketId: string }) {
   }, [load]);
 
   useEffect(() => {
+    const handleTicketRefresh = (e: Event) => {
+      const detail = (e as CustomEvent<{ ticketId: string }>).detail;
+      if (detail?.ticketId === ticketId) {
+        void load();
+      }
+    };
+    window.addEventListener("relitrue:ticket-refresh", handleTicketRefresh);
+    return () => {
+      window.removeEventListener("relitrue:ticket-refresh", handleTicketRefresh);
+    };
+  }, [load, ticketId]);
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 

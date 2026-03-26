@@ -70,6 +70,17 @@ export const PATCH = withErrorHandler(async (
     },
   });
 
+  await enqueueBackgroundJob({
+    jobType: JOB_TYPES.SUPPORT_TICKET_STATUS_NOTIFY,
+    idempotencyKey: `support:status_notify:${ticketId}:${body.status}`,
+    payload: {
+      ticketId,
+      previousStatus: ticket.status,
+      newStatus: body.status,
+    },
+    tenantId: ticket.tenantId,
+  });
+
   if (body.status === SupportTicketStatus.CLOSED) {
     await enqueueBackgroundJob({
       jobType: JOB_TYPES.SUPPORT_TICKET_CLOSED,
