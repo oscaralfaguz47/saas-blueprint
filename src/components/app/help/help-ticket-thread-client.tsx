@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { CardContent, CardRoot } from "@/components/ui/card";
@@ -93,8 +93,13 @@ export function HelpTicketThreadClient({ ticketId }: { ticketId: string }) {
     }
   }, [apiFetch, ticketId]);
 
+  const initialLoadDone = useRef(false);
+
   useEffect(() => {
-    void load();
+    if (!initialLoadDone.current) {
+      initialLoadDone.current = true;
+      void load();
+    }
   }, [load]);
 
   const send = useCallback(async () => {
