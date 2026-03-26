@@ -56,7 +56,30 @@ function HelpNavContent({
   categories,
 }: HelpLeftRailClientProps) {
   const pathname = usePathname() ?? "";
-  const [expandedSlug, setExpandedSlug] = useState<string | null>(null);
+  const getInitialExpandedSlug = () => {
+    for (const c of categories) {
+      for (const a of c.articles) {
+        const href = `${basePath}/article/${a.slug}`;
+        if (pathname === href || pathname.startsWith(`${href}/`)) {
+          return c.slug;
+        }
+      }
+      // Also expand if we're on the category page itself
+      const categoryHref = `${basePath}/category/${c.slug}`;
+      if (pathname === categoryHref || pathname.startsWith(`${categoryHref}/`)) {
+        return c.slug;
+      }
+    }
+    return null;
+  };
+
+  const [expandedSlug, setExpandedSlug] = useState<string | null>(getInitialExpandedSlug);
+
+  useEffect(() => {
+    const slug = getInitialExpandedSlug();
+    if (slug) setExpandedSlug(slug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync accordion to URL path only
+  }, [pathname]);
 
   const inboxActive = pathname === `${basePath}/inbox`;
   const newActive = pathname === `${basePath}/new`;
@@ -67,8 +90,8 @@ function HelpNavContent({
   };
 
   return (
-    <div className="flex flex-col gap-0">
-      <div className="text-quiet-uppercase px-1 pb-2 text-[11px] font-semibold tracking-wide text-(--text-muted)">
+    <div className="flex flex-col gap-0 pt-1">
+      <div className="text-quiet-uppercase px-2 pb-2 text-[11px] font-semibold tracking-wide text-(--text-muted)">
         Help &amp; Support
       </div>
       <nav className="flex flex-col gap-0.5" aria-label="Help section">
@@ -104,7 +127,7 @@ function HelpNavContent({
       {categories.length > 0 ? (
         <>
           <div className="my-3 border-t border-(--border-subtle)" aria-hidden />
-          <div className="text-quiet-uppercase px-1 pb-2 text-[11px] font-semibold tracking-wide text-(--text-muted)">
+          <div className="text-quiet-uppercase px-2 pb-2 text-[11px] font-semibold tracking-wide text-(--text-muted)">
             Categories
           </div>
           <nav className="flex flex-col gap-0.5" aria-label="Help categories">
@@ -194,7 +217,7 @@ export function HelpLeftRailClient(props: HelpLeftRailClientProps) {
         ) : null}
       </div>
 
-      <aside className="hidden w-60 shrink-0 border-r border-(--border-subtle) pr-4 md:block">
+      <aside className="hidden w-56 shrink-0 border-r border-(--border-subtle) pr-4 md:block">
         <HelpNavContent {...props} />
       </aside>
     </>
