@@ -356,16 +356,6 @@ export function ChatWidget({ forcedSurface }: ChatWidgetProps) {
     await ensurePublicSession();
   };
 
-  if (process.env.NODE_ENV === "development") {
-    console.log("[chat-widget] render check", {
-      mounted,
-      forcedSurface,
-      sessionStatus: status,
-      hasSession: !!session?.user?.id,
-      pathname: typeof window !== "undefined" ? window.location.pathname : "ssr",
-    });
-  }
-
   if (!mounted) {
     return null;
   }
