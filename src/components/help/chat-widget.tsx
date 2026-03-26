@@ -562,7 +562,7 @@ export function ChatWidget({ forcedSurface }: ChatWidgetProps) {
                       (!useAppFlow && !emailGateDone) ||
                       creatingSession
                     }
-                    className="inline-flex h-11 shrink-0 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white disabled:opacity-50"
+                    className="inline-flex h-11 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {loading || creatingSession ? "Sending..." : "Send"}
                   </button>
@@ -597,10 +597,18 @@ export function ChatWidget({ forcedSurface }: ChatWidgetProps) {
 
         <button
           type="button"
-          onClick={() => void openPanel()}
-          title="Quick question? Ask AI"
-          aria-label="Quick question? Ask AI — open AI Help Assistant"
-          className={`relative inline-flex h-14 w-14 items-center justify-center rounded-full bg-(--color-primary) text-white shadow-lg ring-2 ring-white/20 transition hover:bg-(--color-primary-hover) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary-soft) ${
+          onClick={() => {
+            if (open) {
+              setOpen(false);
+            } else {
+              void openPanel();
+            }
+          }}
+          title={open ? "Close chat" : "Quick question? Ask AI"}
+          aria-label={
+            open ? "Close AI Help Assistant" : "Quick question? Ask AI — open AI Help Assistant"
+          }
+          className={`relative inline-flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-(--color-primary) text-white shadow-lg ring-2 ring-white/20 transition hover:bg-(--color-primary-hover) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary-soft) ${
             pulse ? "animate-pulse" : ""
           }`}
         >

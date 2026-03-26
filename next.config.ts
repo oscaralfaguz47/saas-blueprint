@@ -23,6 +23,29 @@ const nextConfig: NextConfig = {
       { source: "/app/help/search/", destination: "/app/help/inbox", permanent: false },
       { source: "/help/search", destination: "/help", permanent: false },
       { source: "/help/search/", destination: "/help", permanent: false },
+      // These use `has` to check for the NextAuth session cookie
+      {
+        source: "/help",
+        has: [
+          {
+            type: "cookie",
+            key: "next-auth.session-token",
+          },
+        ],
+        destination: "/app/help/new",
+        permanent: false,
+      },
+      {
+        source: "/help",
+        has: [
+          {
+            type: "cookie",
+            key: "__Secure-next-auth.session-token",
+          },
+        ],
+        destination: "/app/help/new",
+        permanent: false,
+      },
     ];
   },
   async headers() {

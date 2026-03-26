@@ -55,20 +55,47 @@ export default async function PublicHelpArticlePage({ params }: Props) {
   const callbackPath = `/help/article/${slug}`;
 
   return (
-    <article className="mx-auto max-w-3xl px-4 py-10">
-      <nav className="text-sm text-(--text-muted)">
-        <a href="/help" className="hover:text-(--text-primary)">
-          Help
-        </a>{" "}
-        /{" "}
-        <a href={`/help/category/${article.category.slug}`} className="hover:text-(--text-primary)">
+    <article className="mx-auto max-w-3xl px-4 py-10 md:py-14">
+      {/* Breadcrumb */}
+      <nav className="flex items-center gap-1.5 text-xs text-(--text-muted)">
+        <a href="/help" className="transition-colors hover:text-(--text-primary)">
+          Help & Support
+        </a>
+        <span>/</span>
+        <a
+          href={`/help/category/${article.category.slug}`}
+          className="transition-colors hover:text-(--text-primary)"
+        >
           {article.category.name}
         </a>
+        <span>/</span>
+        <span className="max-w-[200px] truncate font-medium text-(--text-primary)">{article.title}</span>
       </nav>
-      <h1 className="mt-4 text-3xl font-semibold text-(--text-primary)">{article.title}</h1>
-      <div className="mt-6">
+
+      {/* Article header */}
+      <div className="mt-6 rounded-2xl border border-(--border-subtle) bg-(--bg-surface) px-6 py-8 shadow-sm">
+        <h1 className="text-2xl font-bold tracking-tight text-(--text-primary) sm:text-3xl">
+          {article.title}
+        </h1>
+        {article.excerpt ? (
+          <p className="mt-3 text-base leading-relaxed text-(--text-muted)">{article.excerpt}</p>
+        ) : null}
+        <p className="mt-4 text-xs text-(--text-muted)">
+          Published{" "}
+          {new Date(article.publishedAt ?? article.updatedAt).toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          })}
+        </p>
+      </div>
+
+      {/* Article body */}
+      <div className="prose prose-sm mt-6 max-w-none rounded-2xl border border-(--border-subtle) bg-(--bg-surface) px-6 py-8 text-(--text-primary) shadow-sm">
         <SafeMarkdown markdown={article.bodyMarkdown} />
       </div>
+
+      {/* Contact CTA for anonymous */}
       {!isAuthenticated ? <HelpContactSupportCta signInCallbackUrl={callbackPath} /> : null}
     </article>
   );
