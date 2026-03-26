@@ -389,7 +389,11 @@ export function ChatWidget({ forcedSurface }: ChatWidgetProps) {
           <div
             role="dialog"
             aria-label="AI Help Assistant"
-            className="flex max-h-[70vh] w-screen max-w-[100vw] flex-col overflow-hidden rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev) shadow-xl sm:h-[520px] sm:w-96 sm:max-w-none"
+            style={{
+              backgroundColor: "var(--bg-surface-elev, #1a1f2e)",
+              width: "min(calc(100vw - 48px), 384px)",
+            }}
+            className="flex max-h-[85vh] flex-col overflow-hidden rounded-t-2xl rounded-b-none border border-(--border-subtle) shadow-xl sm:h-[520px] sm:max-h-none sm:max-w-none sm:rounded-xl"
           >
             <div className="flex shrink-0 items-start justify-between gap-2 border-b border-(--border-subtle) px-4 py-3">
               <div>
@@ -608,7 +612,11 @@ export function ChatWidget({ forcedSurface }: ChatWidgetProps) {
           aria-label={
             open ? "Close AI Help Assistant" : "Quick question? Ask AI — open AI Help Assistant"
           }
-          className={`relative inline-flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-(--color-primary) text-white shadow-lg ring-2 ring-white/20 transition hover:bg-(--color-primary-hover) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary-soft) ${
+          style={{
+            backgroundColor: "var(--color-primary, #3b82f6)",
+            color: "#ffffff",
+          }}
+          className={`relative inline-flex h-14 w-14 cursor-pointer items-center justify-center rounded-full text-white shadow-lg ring-2 ring-white/20 transition hover:bg-(--color-primary-hover) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary-soft) ${
             pulse ? "animate-pulse" : ""
           }`}
         >

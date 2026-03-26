@@ -11,31 +11,50 @@ export default async function TermsPage() {
   const isLoggedIn = !!session?.user;
 
   return (
-    <main className="min-h-screen bg-(--marketing-legal-bg)">
+    <main
+      className="min-h-screen bg-(--marketing-legal-bg)"
+      style={{ backgroundColor: "var(--marketing-legal-bg, #0f1117)" }}
+    >
       {/* Header */}
-      <header className="border-b border-(--border-subtle) bg-(--bg-main)">
+      <header
+        className="border-b border-(--border-subtle) bg-(--bg-main)"
+        style={{ backgroundColor: "var(--bg-main, #0f1117)" }}
+      >
         <Container>
           <div className="flex h-16 items-center justify-between">
-            <Link href="/" className="text-sm font-medium text-(--text-primary)">
-              ATL
-            </Link>
-
-            <nav className="flex items-center gap-6 text-sm">
+            <div className="flex items-center gap-3">
+              <Link
+                href="/"
+                className="grid h-9 w-9 place-items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface)"
+              >
+                <span className="text-xs font-semibold text-(--text-primary)">ATL</span>
+              </Link>
+              <Link href="/" className="text-sm font-medium text-(--text-primary)">
+                ATL
+              </Link>
+            </div>
+            <nav className="flex items-center gap-3">
+              <Link
+                href="/"
+                className="text-sm font-medium text-(--text-secondary) transition-colors hover:text-(--text-primary)"
+              >
+                Home
+              </Link>
               <Link
                 href="/pricing"
-                className="text-(--text-secondary) hover:text-(--text-primary)"
+                className="hidden text-sm font-medium text-(--text-secondary) transition-colors hover:text-(--text-primary) md:inline"
               >
                 Pricing
               </Link>
               <Link
                 href="/privacy"
-                className="text-(--text-secondary) hover:text-(--text-primary)"
+                className="hidden text-sm font-medium text-(--text-secondary) transition-colors hover:text-(--text-primary) md:inline"
               >
                 Privacy
               </Link>
               <Link
                 href={isLoggedIn ? "/app/requests" : "/auth/sign-in"}
-                className="text-(--text-secondary) hover:text-(--text-primary)"
+                className="inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 text-sm font-medium text-(--text-secondary) transition-colors hover:text-(--text-primary)"
               >
                 {isLoggedIn ? "Go to app" : "Sign in"}
               </Link>
@@ -210,10 +229,35 @@ export default async function TermsPage() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-(--border-subtle) bg-(--bg-main)">
+      <footer
+        className="border-t border-(--border-subtle) bg-(--bg-main)"
+        style={{ backgroundColor: "var(--bg-main, #0f1117)" }}
+      >
         <Container>
-          <div className="py-8 text-sm text-(--text-muted)">
-            © {new Date().getFullYear()} ATL. All rights reserved.
+          <div className="flex flex-col gap-4 py-10 md:flex-row md:items-center md:justify-between">
+            <div className="text-sm text-(--text-muted)">
+              © {new Date().getFullYear()} ATL. All rights reserved.
+            </div>
+            <div className="flex items-center gap-6 text-sm">
+              <Link
+                href="/privacy"
+                className="text-(--text-secondary) transition-colors hover:text-(--text-primary)"
+              >
+                Privacy
+              </Link>
+              <Link
+                href="/pricing"
+                className="text-(--text-secondary) transition-colors hover:text-(--text-primary)"
+              >
+                Pricing
+              </Link>
+              <Link
+                href="/auth/sign-in"
+                className="text-(--text-secondary) transition-colors hover:text-(--text-primary)"
+              >
+                Sign in
+              </Link>
+            </div>
           </div>
         </Container>
       </footer>

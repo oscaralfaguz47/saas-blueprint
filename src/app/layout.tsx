@@ -88,6 +88,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             </Suspense>
             <Providers>{children}</Providers>
           </div>
+        </SessionProviderShell>
+        <SessionProviderShell>
           <ChatWidgetRoot />
         </SessionProviderShell>
       </body>

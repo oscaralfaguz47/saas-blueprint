@@ -46,15 +46,14 @@ const nextConfig: NextConfig = {
         destination: "/app/help/new",
         permanent: false,
       },
-      // Anonymous users visiting /help → /help/new (after cookie rules above)
       {
-        source: "/help",
-        destination: "/help/new",
+        source: "/help/new",
+        destination: "/help",
         permanent: false,
       },
       {
-        source: "/help/",
-        destination: "/help/new",
+        source: "/help/new/",
+        destination: "/help",
         permanent: false,
       },
     ];

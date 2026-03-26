@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 const OPEN_CHAT_WIDGET_EVENT = "open-chat-widget";
 
@@ -12,12 +12,18 @@ export function dispatchOpenChatWidget(): void {
 type OpenChatWidgetTriggerProps = {
   children: ReactNode;
   className?: string;
+  style?: CSSProperties;
 };
 
 /** Button that opens the floating AI chat via a document event (handled in `ChatWidget`). */
-export function OpenChatWidgetTrigger({ children, className }: OpenChatWidgetTriggerProps) {
+export function OpenChatWidgetTrigger({ children, className, style }: OpenChatWidgetTriggerProps) {
   return (
-    <button type="button" className={className} onClick={() => dispatchOpenChatWidget()}>
+    <button
+      type="button"
+      className={className}
+      style={style}
+      onClick={() => dispatchOpenChatWidget()}
+    >
       {children}
     </button>
   );

@@ -83,7 +83,7 @@ function HelpNavContent({
 
   const inboxActive = pathname === `${basePath}/inbox`;
   const newActive = pathname === `${basePath}/new`;
-  const getInTouchActive = pathname === "/help/new";
+  const getInTouchActive = pathname === "/help/new" || pathname === "/help";
 
   const toggleCategory = (slug: string) => {
     setExpandedSlug((prev) => (prev === slug ? null : slug));
@@ -107,7 +107,7 @@ function HelpNavContent({
           </span>
         </button>
         {showPublicGetInTouch ? (
-          <NavLink href="/help/new" active={getInTouchActive}>
+          <NavLink href="/help" active={getInTouchActive}>
             Get in touch
           </NavLink>
         ) : null}
