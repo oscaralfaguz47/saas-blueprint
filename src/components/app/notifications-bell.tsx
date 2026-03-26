@@ -105,18 +105,56 @@ export function NotificationsBell({ initialUnreadCount = 0 }: Props) {
     mountedRef.current = true;
     void fetchNotifications();
 
-    const intervalId = window.setInterval(() => {
-      void fetchNotifications();
-    }, 30_000);
+    let intervalId: ReturnType<typeof window.setInterval> | null = null;
 
-    const onFocus = () => {
-      void fetchNotifications();
+    function startPolling() {
+      if (intervalId !== null) return; // already running
+      intervalId = window.setInterval(() => {
+        // Extra guard: do not fetch if tab became hidden between ticks
+        if (document.visibilityState === "visible") {
+          void fetchNotifications();
+        }
+      }, 30_000);
+    }
+
+    function stopPolling() {
+      if (intervalId === null) return;
+      window.clearInterval(intervalId);
+      intervalId = null;
+    }
+
+    // Start or stop polling based on tab visibility
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        // Tab became visible — fetch immediately then restart polling
+        void fetchNotifications();
+        startPolling();
+      } else {
+        // Tab went to background — pause polling
+        stopPolling();
+      }
     };
+
+    // Fetch immediately when user switches back to this window
+    // (covers OS-level window focus, not just tab switching)
+    const onFocus = () => {
+      if (document.visibilityState === "visible") {
+        void fetchNotifications();
+      }
+    };
+
+    // Only start polling if the tab is already visible on mount
+    if (document.visibilityState === "visible") {
+      startPolling();
+    }
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("focus", onFocus);
 
     return () => {
       mountedRef.current = false;
-      window.clearInterval(intervalId);
+      stopPolling();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("focus", onFocus);
     };
   }, [fetchNotifications]);

@@ -48,12 +48,47 @@ export function useActivityTracker({ enabled, autoLogoutMinutes }: UseActivityTr
 
   // Always-on: session validity check every 30 seconds
   useEffect(() => {
-    validityIntervalRef.current = setInterval(() => {
-      void checkValidity();
-    }, VALIDITY_CHECK_MS);
+    // Background interval is slower — reduces requests when tab is not visible
+    // but never stops entirely (session revocation must still be detected)
+    const BACKGROUND_CHECK_MS = 5 * 60 * 1000; // 5 minutes when hidden
+
+    function stopInterval() {
+      if (validityIntervalRef.current) {
+        clearInterval(validityIntervalRef.current);
+        validityIntervalRef.current = null;
+      }
+    }
+
+    function startInterval(ms: number) {
+      stopInterval();
+      validityIntervalRef.current = setInterval(() => {
+        void checkValidity();
+      }, ms);
+    }
+
+    // Start with the appropriate interval based on current visibility
+    if (document.visibilityState === "visible") {
+      startInterval(VALIDITY_CHECK_MS);
+    } else {
+      startInterval(BACKGROUND_CHECK_MS);
+    }
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        // Tab became visible — check immediately then switch to fast interval
+        void checkValidity();
+        startInterval(VALIDITY_CHECK_MS);
+      } else {
+        // Tab went to background — switch to slow interval
+        startInterval(BACKGROUND_CHECK_MS);
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
 
     return () => {
-      if (validityIntervalRef.current) clearInterval(validityIntervalRef.current);
+      stopInterval();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [checkValidity]);
 
