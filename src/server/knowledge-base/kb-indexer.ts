@@ -52,6 +52,7 @@ export async function indexKbArticle(articleId: string): Promise<void> {
       id: true,
       status: true,
       title: true,
+      excerpt: true,
       bodyMarkdown: true,
       visibility: true,
     },
@@ -70,7 +71,10 @@ export async function indexKbArticle(articleId: string): Promise<void> {
 
   const plain = stripMarkdown(article.bodyMarkdown);
   const titlePrefix = article.title ? `${article.title}. ` : "";
-  const fullText = titlePrefix + plain;
+  const excerptPrefix = article.excerpt?.trim()
+    ? `${article.excerpt.trim()}. `
+    : "";
+  const fullText = titlePrefix + excerptPrefix + plain;
   const pieces = splitIntoChunks(fullText, 1200);
 
   const created: { id: string; plainText: string }[] = [];

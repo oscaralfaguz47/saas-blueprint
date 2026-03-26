@@ -199,6 +199,21 @@ export function ChatWidget({ forcedSurface }: ChatWidgetProps) {
     return () => window.removeEventListener("open-chat-widget", handler);
   }, [openPanel]);
 
+  // Focus textarea when loading completes (after response arrives)
+  const prevLoadingRef = useRef(false);
+  useEffect(() => {
+    if (prevLoadingRef.current === true && loading === false) {
+      // Small delay to ensure the textarea is re-enabled before focusing
+      const t = setTimeout(() => {
+        if (textareaRef.current && !textareaRef.current.disabled) {
+          textareaRef.current.focus();
+        }
+      }, 50);
+      return () => clearTimeout(t);
+    }
+    prevLoadingRef.current = loading;
+  }, [loading]);
+
   const sendMessage = async (text: string) => {
     const query = text.trim();
     if (query.length < 2 || loading) return;
@@ -428,10 +443,14 @@ export function ChatWidget({ forcedSurface }: ChatWidgetProps) {
               {lines.length === 0 && (useAppFlow || emailGateDone) ? (
                 <div className="rounded-lg border border-dashed border-(--border-subtle) bg-(--bg-surface) p-3 text-sm">
                   <p className="font-medium text-(--text-primary)">
-                    Hi! I&apos;m the Relitrue support assistant.
+                    {useAppFlow
+                      ? "Hi! I'm the Relitrue support assistant."
+                      : "Hi! How can I help you today?"}
                   </p>
                   <p className="mt-1 text-(--text-muted)">
-                    Ask me anything about billing, requests, approvals, and more.
+                    {useAppFlow
+                      ? "Ask me anything about your account, billing, requests, approvals, and workflows."
+                      : "I can help you with questions about Relitrue. For account-specific help, you may need to sign in."}
                   </p>
                   {titles.length > 0 ? (
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -545,7 +564,7 @@ export function ChatWidget({ forcedSurface }: ChatWidgetProps) {
                     }
                     className="inline-flex h-11 shrink-0 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white disabled:opacity-50"
                   >
-                    {loading ? <Spinner size="sm" /> : "Send"}
+                    {loading || creatingSession ? "Sending..." : "Send"}
                   </button>
                 </div>
                 <p className="hidden text-[11px] text-(--text-muted) sm:block">
