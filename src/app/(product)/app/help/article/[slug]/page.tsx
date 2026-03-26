@@ -80,9 +80,6 @@ export default async function AppHelpArticlePage({ params }: Props) {
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="secondary">{article.category.name}</Badge>
           <Badge variant="default">{typeLabel[article.articleType] ?? article.articleType}</Badge>
-          {article.visibility === KbVisibility.AUTHENTICATED ? (
-            <Badge variant="warning">Signed-in only</Badge>
-          ) : null}
         </div>
         <h1 className="mt-4 text-3xl font-semibold tracking-tight text-(--text-primary)">{article.title}</h1>
         <p className="mt-2 text-sm text-(--text-muted)">Published {dateLabel}</p>
