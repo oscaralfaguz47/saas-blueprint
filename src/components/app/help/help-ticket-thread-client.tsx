@@ -105,23 +105,35 @@ export function HelpTicketThreadClient({ ticketId }: { ticketId: string }) {
   const send = useCallback(async () => {
     if (!reply.trim()) return;
     setSending(true);
+    const messageText = reply.trim();
     try {
       const res = await apiFetch(`/api/app/help/tickets/${ticketId}/reply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: reply.trim() }),
+        body: JSON.stringify({ message: messageText }),
       });
       if (!res.ok) {
         toast.addToast("error", "Could not send reply");
         return;
       }
+      const json = (await res.json()) as { data?: { messageId?: string } };
+
+      // Optimistically append the new message to local state
+      // instead of re-fetching all messages from the server
+      const newMsg: Msg = {
+        id: json.data?.messageId ?? `temp-${Date.now()}`,
+        bodyText: messageText,
+        authorKind: "WORKSPACE_USER",
+        authorUserId: null,
+        createdAt: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, newMsg]);
       setReply("");
-      await load();
       toast.addToast("success", "Reply sent");
     } finally {
       setSending(false);
     }
-  }, [apiFetch, load, reply, ticketId, toast]);
+  }, [apiFetch, reply, ticketId, toast]);
 
   if (loading) {
     return (
