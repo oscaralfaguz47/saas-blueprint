@@ -1,12 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { CardContent, CardRoot } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Spinner } from "@/components/ui/spinner";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { useToast } from "@/components/ui/toast";
 
@@ -69,6 +68,8 @@ export function HelpTicketThreadClient({ ticketId }: { ticketId: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const replyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -102,6 +103,10 @@ export function HelpTicketThreadClient({ ticketId }: { ticketId: string }) {
     }
   }, [load]);
 
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
   const send = useCallback(async () => {
     if (!reply.trim()) return;
     setSending(true);
@@ -129,11 +134,24 @@ export function HelpTicketThreadClient({ ticketId }: { ticketId: string }) {
       };
       setMessages((prev) => [...prev, newMsg]);
       setReply("");
+      setTimeout(() => replyTextareaRef.current?.focus(), 50);
       toast.addToast("success", "Reply sent");
     } finally {
       setSending(false);
     }
   }, [apiFetch, reply, ticketId, toast]);
+
+  const handleReplyKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        if (!sending && reply.trim() && reply.length <= 4000) {
+          void send();
+        }
+      }
+    },
+    [sending, reply, send],
+  );
 
   if (loading) {
     return (
@@ -187,7 +205,14 @@ export function HelpTicketThreadClient({ ticketId }: { ticketId: string }) {
         </div>
       ) : null}
 
-      <div className="space-y-4">
+      <div
+        className="space-y-4 pr-2"
+        style={{
+          maxHeight: "45vh",
+          overflowY: "auto",
+          scrollBehavior: "smooth",
+        }}
+      >
         {messages.map((m) => {
           const mine = m.authorKind === "WORKSPACE_USER";
           return (
@@ -212,28 +237,59 @@ export function HelpTicketThreadClient({ ticketId }: { ticketId: string }) {
             </div>
           );
         })}
+        <div ref={messagesEndRef} />
       </div>
 
       {closed ? null : (
-        <div className="border-t border-(--border-subtle) pt-6">
-          <label className="text-sm font-medium text-(--text-primary)">Reply</label>
-          <textarea
-            value={reply}
-            onChange={(e) => setReply(e.target.value)}
-            disabled={sending}
-            rows={5}
-            className="mt-2 w-full max-w-2xl rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 py-2.5 text-sm shadow-sm focus:border-(--color-primary-soft) focus:outline-none focus:ring-2 focus:ring-(--color-primary-soft)/25"
-            placeholder="Write your reply…"
-          />
-          <button
-            type="button"
-            onClick={() => void send()}
-            disabled={sending || !reply.trim()}
-            className="mt-3 inline-flex h-10 min-w-[8rem] items-center justify-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {sending ? <Spinner size="sm" /> : null}
-            Send reply
-          </button>
+        <div className="border-t border-(--border-subtle) pt-4">
+          <div>
+            <div className="flex items-end gap-3">
+              <textarea
+                ref={replyTextareaRef}
+                value={reply}
+                onChange={(e) => setReply(e.target.value)}
+                onKeyDown={handleReplyKeyDown}
+                disabled={sending}
+                rows={3}
+                maxLength={4000}
+                className="flex-1 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 py-2.5 text-sm shadow-sm focus:border-(--color-primary-soft) focus:outline-none focus:ring-2 focus:ring-(--color-primary-soft)/25 resize-none"
+                placeholder="Write your reply…"
+              />
+              <button
+                type="button"
+                onClick={() => void send()}
+                disabled={sending || !reply.trim() || reply.length > 4000}
+                style={{ backgroundColor: "var(--color-primary, #3b82f6)" }}
+                className="mb-0.5 inline-flex h-10 w-28 shrink-0 items-center justify-center rounded-lg px-4 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {sending ? "Sending..." : "Send reply"}
+              </button>
+            </div>
+            <div
+              className="mt-1 items-center justify-between"
+              style={{ display: "flex", paddingRight: "7.5rem" }}
+            >
+              <p className="text-[11px] text-(--text-muted)">
+                Press Enter to send · Shift+Enter for new line
+              </p>
+              {reply.length > 0 ? (
+                <p
+                  className={`text-[11px] ${
+                    reply.length >= 3900
+                      ? "text-(--color-danger)"
+                      : reply.length > 3500
+                        ? "text-(--color-warning)"
+                        : "text-(--text-muted)"
+                  }`}
+                  aria-live="polite"
+                >
+                  {reply.length} / 4000
+                </p>
+              ) : (
+                <p className="text-[11px] text-(--text-muted)">0 / 4000</p>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

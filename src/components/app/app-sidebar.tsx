@@ -100,8 +100,8 @@ export default function AppSidebar({
     const controller = new AbortController();
     const signal = controller.signal;
     
-    // We set loading to true. Even in Strict Mode, the second mount's finally block will clear it.
-    setTenantsLoading(true);
+    // Only show spinner if we have no data yet (first load)
+    if (tenants.length === 0) setTenantsLoading(true);
     lastFetchAttemptRef.current = Date.now();
 
     apiFetch("/api/tenant", { showToastOnError: true, signal })
@@ -121,7 +121,7 @@ export default function AppSidebar({
     return () => {
       controller.abort();
     };
-  }, [isMobile, open, apiFetch]);
+  }, [isMobile, open, apiFetch, tenants.length]);
 
   const refetchTenants = useCallback(() => {
     lastFetchAttemptRef.current = Date.now();
