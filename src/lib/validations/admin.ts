@@ -4,6 +4,7 @@ import { z } from "zod";
 export const adminUsersSearchQuerySchema = z.object({
   q: z.string().min(2).max(120),
   limit: z.coerce.number().int().min(1).max(20).default(10),
+  platformAdminsOnly: z.coerce.boolean().optional().default(false),
 });
 
 /** GET /api/admin/workspaces — cursor pagination and filters. */

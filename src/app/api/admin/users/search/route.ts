@@ -22,20 +22,36 @@ export const GET = withErrorHandler(async (req: Request) => {
   const parsed = adminUsersSearchQuerySchema.safeParse({
     q: url.searchParams.get("q") ?? "",
     limit: url.searchParams.get("limit"),
+    platformAdminsOnly: url.searchParams.get("platformAdminsOnly"),
   });
   if (!parsed.success)
     return ApiErrors.VALIDATION_ERROR("Invalid query", parsed.error.flatten());
 
-  const { q, limit } = parsed.data;
+  const { q, limit, platformAdminsOnly } = parsed.data;
   const term = q.trim();
   if (term.length < 2)
     return ApiErrors.VALIDATION_ERROR("Search term must be at least 2 characters.");
 
   const users = await prisma.user.findMany({
     where: {
-      OR: [
-        { email: { contains: term, mode: "insensitive" } },
-        { name: { contains: term, mode: "insensitive" } },
+      AND: [
+        {
+          OR: [
+            { email: { contains: term, mode: "insensitive" } },
+            { name: { contains: term, mode: "insensitive" } },
+          ],
+        },
+        ...(platformAdminsOnly
+          ? [
+              {
+                OR: [
+                  { role: { in: ["ADMIN", "MANAGER"] } },
+                  { vendorUserRoles: { some: {} } },
+                ],
+              },
+            ]
+          : []),
+        { isPlatformBlocked: false },
       ],
     },
     select: { id: true, name: true, email: true },

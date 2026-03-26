@@ -35,6 +35,12 @@ export default async function PrivacyPage() {
             </div>
             <nav className="flex items-center gap-3">
               <Link
+                href="/help"
+                className="text-sm font-medium text-(--text-secondary) transition-colors hover:text-(--text-primary)"
+              >
+                Get in touch
+              </Link>
+              <Link
                 href="/"
                 className="text-sm font-medium text-(--text-secondary) transition-colors hover:text-(--text-primary)"
               >

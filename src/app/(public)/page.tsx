@@ -44,6 +44,13 @@ export default async function PublicHomePage() {
 
             <nav className="flex items-center gap-3">
               <Link
+                href="/help"
+                className="text-sm font-medium text-(--text-secondary) transition-colors hover:text-(--text-primary)"
+              >
+                Get in touch
+              </Link>
+
+              <Link
                 href="/pricing"
                 className="text-sm font-medium text-(--text-secondary) transition-colors hover:text-(--text-primary)"
               >
