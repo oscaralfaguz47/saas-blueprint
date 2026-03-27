@@ -565,7 +565,10 @@ export function SupportTicketsAdminClient() {
 
   return (
     <div className="flex flex-col gap-4 lg:flex-row">
-      <div className={selectedTicketId ? "hidden min-w-0 lg:block lg:w-[42%]" : "min-w-0 lg:w-[42%]"}>
+      <div
+        className={selectedTicketId ? "hidden min-w-0 lg:block lg:flex-none" : "min-w-0 w-full"}
+        style={selectedTicketId ? { width: "480px" } : undefined}
+      >
         <div className="mb-4 flex flex-col gap-3 sm:flex-row">
           <select
             value={statusFilter}
@@ -588,54 +591,42 @@ export function SupportTicketsAdminClient() {
         {items.length === 0 ? (
           <EmptyState title="No tickets" description="There are no support tickets to display." />
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-(--border-subtle)">
+          <div className="overflow-hidden rounded-lg border border-(--border-subtle)">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Subject</TableHead>
                   <TableHead>Type</TableHead>
-                  <TableHead>Workspace</TableHead>
-                  <TableHead>Requester</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Priority</TableHead>
-                  <TableHead>Assignee</TableHead>
-                  <TableHead>Last message</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {items.map((t) => (
                   <TableRow key={t.id} className={selectedTicketId === t.id ? "bg-(--nav-active)/40" : ""}>
-                    <TableCell className="max-w-[240px] truncate font-medium">
+                    <TableCell className="w-full font-medium">
                       <button
                         type="button"
                         onClick={() => setTicketIdInUrl(t.id)}
-                        className="truncate text-left text-primary hover:underline"
+                        className="block w-full max-w-[200px] truncate text-left text-primary hover:underline"
+                        title={t.subject}
                       >
                         {t.subject}
                       </button>
                     </TableCell>
-                    <TableCell className="text-(--text-muted) text-xs">
+                    <TableCell className="whitespace-nowrap text-xs text-(--text-muted)">
                       {t.ticketType === "SALES_INQUIRY" ? "Sales" : "Support"}
                     </TableCell>
-                    <TableCell>
-                      {t.tenant ? (
-                        <Link
-                          className="text-primary hover:underline"
-                          href={`/admin/workspaces/${t.tenant.id}`}
-                        >
-                          {t.tenant.name}
-                        </Link>
-                      ) : (
-                        <span className="text-(--text-muted)">—</span>
-                      )}
+                    <TableCell className="whitespace-nowrap text-xs">
+                      {t.status === "OPEN" ? "Open"
+                        : t.status === "IN_PROGRESS" ? "In progress"
+                        : t.status === "WAITING_FOR_CUSTOMER" ? "Waiting"
+                        : t.status === "CLOSED" ? "Closed"
+                        : formatStatus(t.status)}
                     </TableCell>
-                    <TableCell className="text-(--text-muted)">
-                      {t.requester?.email ?? t.requesterEmail ?? "—"}
+                    <TableCell className="whitespace-nowrap text-xs">
+                      {t.priority}
                     </TableCell>
-                    <TableCell>{formatStatus(t.status)}</TableCell>
-                    <TableCell>{t.priority}</TableCell>
-                    <TableCell className="text-(--text-muted)">{t.assignee?.email ?? "—"}</TableCell>
-                    <TableCell className="text-(--text-muted)">{formatDate(t.lastMessageAt)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -644,7 +635,7 @@ export function SupportTicketsAdminClient() {
         )}
       </div>
 
-      <div className={selectedTicketId ? "min-w-0 flex-1" : "hidden lg:block lg:min-w-0 lg:flex-1"}>
+      <div className={selectedTicketId ? "min-w-0 flex-1" : "hidden"}>
         {!selectedTicketId ? (
           <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) p-6">
             <p className="text-sm text-(--text-muted)">Select a ticket to view details.</p>
@@ -696,7 +687,7 @@ export function SupportTicketsAdminClient() {
                 </div>
 
                 {/* Row 3: Meta + controls in two columns */}
-                <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <div className="mt-4 flex flex-col gap-4">
                   {/* Left column: ticket meta */}
                   <div className="space-y-1 text-sm text-(--text-secondary)">
                     <p>
