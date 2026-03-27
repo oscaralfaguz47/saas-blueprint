@@ -11,6 +11,7 @@ import { prisma } from "@/server/db";
 import { requireFullSession } from "@/server/require-full-session";
 import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { writeAuditLog } from "@/server/services/audit";
+import { findLeastLoadedAdmin } from "@/server/support/support-auto-assign";
 import { checkSupportTicketCreateLimit } from "@/server/support/support-rate-limits";
 
 const createSchema = z.object({
@@ -128,6 +129,20 @@ export const POST = withErrorHandler(async (req: Request) => {
     return t;
   });
 
+  const assigneeId = await findLeastLoadedAdmin();
+  if (assigneeId) {
+    await prisma.supportTicket.update({
+      where: { id: ticket.id },
+      data: { assigneePlatformUserId: assigneeId },
+    });
+    await enqueueBackgroundJob({
+      jobType: JOB_TYPES.SUPPORT_TICKET_ASSIGNED_NOTIFY,
+      idempotencyKey: `support:assigned_notify:${ticket.id}`,
+      payload: { ticketId: ticket.id, assigneeId },
+      tenantId,
+    });
+  }
+
   await writeAuditLog({
     actorUserId: session.user.id,
     actorContext: "TENANT",
@@ -141,7 +156,7 @@ export const POST = withErrorHandler(async (req: Request) => {
   await enqueueBackgroundJob({
     jobType: JOB_TYPES.SUPPORT_NEW_TICKET,
     idempotencyKey: `support:new_ticket:${ticket.id}`,
-    payload: { ticketId: ticket.id },
+    payload: { ticketId: ticket.id, assigneeId: assigneeId ?? null },
     tenantId,
   });
 

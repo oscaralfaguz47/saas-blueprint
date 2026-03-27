@@ -42,6 +42,7 @@ type DetailTicket = {
   subject: string;
   status: TicketStatus;
   priority: string;
+  ticketType: string;
   createdAt: string;
   tenant: { id: string; name: string; slug: string } | null;
   requester: { id: string; name: string | null; email: string | null } | null;
@@ -120,6 +121,7 @@ export function SupportTicketsAdminClient() {
   const shouldRefocusReplyRef = useRef(false);
   const shouldRefocusNoteRef = useRef(false);
   const adminMessagesEndRef = useRef<HTMLDivElement | null>(null);
+  const itemsRef = useRef<Row[]>([]);
 
   useEffect(() => {
     apiFetchRef.current = apiFetch;
@@ -215,6 +217,10 @@ export function SupportTicketsAdminClient() {
   }, [loadList]);
 
   useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+  useEffect(() => {
     if (!selectedTicketId) {
       setDetailTicket(null);
       setDetailMessages([]);
@@ -222,6 +228,14 @@ export function SupportTicketsAdminClient() {
       setReplyText("");
       setNoteText("");
       return;
+    }
+    // Use ref to avoid re-firing when items update (e.g. after optimistic reply).
+    // items intentionally excluded from deps — use itemsRef.
+    const selectedRow = itemsRef.current.find((r) => r.id === selectedTicketId);
+    if (selectedRow?.ticketType === "SALES_INQUIRY") {
+      setActiveComposer("note");
+    } else {
+      setActiveComposer("reply");
     }
     void loadDetail(selectedTicketId);
   }, [loadDetail, selectedTicketId]);
@@ -654,118 +668,130 @@ export function SupportTicketsAdminClient() {
         ) : (
           <div className="space-y-4">
             <CardRoot>
-              <CardContent className="space-y-4 p-4">
+              <CardContent className="p-4">
+                {/* Row 1: Subject + close button */}
                 <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="text-lg font-semibold text-(--text-primary)">{detailTicket.subject}</h3>
-                    <p className="mt-1 text-xs text-(--text-muted)">Created {formatDate(detailTicket.createdAt)}</p>
+                  <div className="min-w-0">
+                    <h3 className="text-lg font-semibold text-(--text-primary) leading-tight">
+                      {detailTicket.subject}
+                    </h3>
+                    <p className="mt-0.5 text-xs text-(--text-muted)">
+                      Created {formatDate(detailTicket.createdAt)}
+                    </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => setTicketIdInUrl(null)}
-                    className="rounded px-2 text-lg leading-none text-(--text-muted) hover:bg-(--nav-hover) hover:text-(--text-primary)"
+                    className="shrink-0 rounded px-2 text-lg leading-none text-(--text-muted) hover:bg-(--nav-hover) hover:text-(--text-primary)"
                     aria-label="Close ticket panel"
-                    title="Close"
                   >
                     X
                   </button>
                 </div>
 
-                <div className="flex flex-wrap gap-2">
+                {/* Row 2: Badges */}
+                <div className="mt-2 flex flex-wrap gap-2">
                   <Badge variant="secondary">{formatStatus(detailTicket.status)}</Badge>
                   <Badge variant="secondary">{detailTicket.priority}</Badge>
                 </div>
 
-                <div className="grid gap-2 text-sm text-(--text-secondary)">
-                  <p>
-                    <span className="text-(--text-muted)">Workspace:</span>{" "}
-                    {detailTicket.tenant ? (
-                      <Link className="text-primary hover:underline" href={`/admin/workspaces/${detailTicket.tenant.id}`}>
-                        {detailTicket.tenant.name}
-                      </Link>
-                    ) : (
-                      "—"
-                    )}
-                  </p>
-                  <p>
-                    <span className="text-(--text-muted)">Requester:</span>{" "}
-                    {detailTicket.requester?.email ?? detailTicket.requesterEmail ?? "—"}
-                  </p>
-                  <p>
-                    <span className="text-(--text-muted)">Assignee:</span>{" "}
-                    {detailTicket.assignee?.email ?? "Unassigned"}
-                  </p>
-                </div>
-
-                <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) p-3">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-(--text-muted)">
-                    Assignee
-                  </p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Input
-                      value={assigneeSearch}
-                      onChange={(e) => setAssigneeSearch(e.target.value)}
-                      placeholder="Search admin user by email/name"
-                      className="w-full sm:max-w-sm"
-                    />
-                    <button
-                      type="button"
-                      disabled={assigneePending}
-                      onClick={() => void handleAssign(null)}
-                      className="h-10 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 text-sm text-(--text-primary) hover:bg-(--nav-hover) disabled:opacity-60"
-                    >
-                      {assigneePending ? "Updating..." : "Unassign"}
-                    </button>
+                {/* Row 3: Meta + controls in two columns */}
+                <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  {/* Left column: ticket meta */}
+                  <div className="space-y-1 text-sm text-(--text-secondary)">
+                    <p>
+                      <span className="text-(--text-muted)">Workspace:</span>{" "}
+                      {detailTicket.tenant ? (
+                        <Link className="text-primary hover:underline" href={`/admin/workspaces/${detailTicket.tenant.id}`}>
+                          {detailTicket.tenant.name}
+                        </Link>
+                      ) : "—"}
+                    </p>
+                    <p>
+                      <span className="text-(--text-muted)">Requester:</span>{" "}
+                      {detailTicket.requester?.email ?? detailTicket.requesterEmail ?? "—"}
+                    </p>
+                    <p>
+                      <span className="text-(--text-muted)">Assignee:</span>{" "}
+                      {detailTicket.assignee?.email ?? "Unassigned"}
+                    </p>
                   </div>
-                  {assigneeSearchPending ? (
-                    <p className="mt-2 text-xs text-(--text-muted)">Searching users...</p>
-                  ) : assigneeOptions.length > 0 ? (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {assigneeOptions.map((opt) => (
+
+                  {/* Right column: assignee search + status controls */}
+                  <div className="space-y-3">
+                    {/* Assignee search */}
+                    <div>
+                      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-(--text-muted)">
+                        Assignee
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={assigneeSearch}
+                          onChange={(e) => setAssigneeSearch(e.target.value)}
+                          placeholder="Search by email/name"
+                          className="min-w-0 flex-1 text-sm"
+                        />
                         <button
-                          key={opt.id}
                           type="button"
                           disabled={assigneePending}
-                          onClick={() => void handleAssign(opt.id)}
-                          className="rounded-md border border-(--border-subtle) bg-(--bg-surface) px-2.5 py-1.5 text-xs text-(--text-primary) hover:bg-(--nav-hover) disabled:opacity-60"
+                          onClick={() => void handleAssign(null)}
+                          className="h-9 shrink-0 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 text-sm text-(--text-primary) hover:bg-(--nav-hover) disabled:opacity-60"
                         >
-                          {opt.email ?? opt.name ?? opt.id}
+                          {assigneePending ? "..." : "Unassign"}
                         </button>
-                      ))}
+                      </div>
+                      {assigneeSearchPending ? (
+                        <p className="mt-1.5 text-xs text-(--text-muted)">Searching...</p>
+                      ) : assigneeOptions.length > 0 ? (
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {assigneeOptions.map((opt) => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              disabled={assigneePending}
+                              onClick={() => void handleAssign(opt.id)}
+                              className="rounded-md border border-(--border-subtle) bg-(--bg-surface) px-2 py-1 text-xs text-(--text-primary) hover:bg-(--nav-hover) disabled:opacity-60"
+                            >
+                              {opt.email ?? opt.name ?? opt.id}
+                            </button>
+                          ))}
+                        </div>
+                      ) : assigneeSearch.trim().length >= 2 ? (
+                        <p className="mt-1.5 text-xs text-(--text-muted)">No users found.</p>
+                      ) : null}
                     </div>
-                  ) : assigneeSearch.trim().length >= 2 ? (
-                    <p className="mt-2 text-xs text-(--text-muted)">No users found.</p>
-                  ) : null}
-                </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <select
-                    disabled={statusPending || detailTicket.status === "CLOSED"}
-                    defaultValue=""
-                    onChange={(e) => {
-                      const next = e.target.value as TicketStatus;
-                      if (next) void handleStatusChange(next);
-                      e.currentTarget.value = "";
-                    }}
-                    className="h-10 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 text-sm text-(--text-primary) disabled:opacity-60"
-                  >
-                    <option value="">Change status...</option>
-                    {validNextStatuses.map((status) => (
-                      <option key={status} value={status}>
-                        {formatStatus(status)}
-                      </option>
-                    ))}
-                  </select>
-                  {detailTicket.status === "CLOSED" ? (
-                    <button
-                      type="button"
-                      disabled={reopenPending}
-                      onClick={() => void handleReopen()}
-                      className="h-10 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--nav-hover) disabled:opacity-60"
-                    >
-                      {reopenPending ? "Reopening..." : "Reopen"}
-                    </button>
-                  ) : null}
+                    {/* Status controls */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        disabled={statusPending || detailTicket.status === "CLOSED"}
+                        defaultValue=""
+                        onChange={(e) => {
+                          const next = e.target.value as TicketStatus;
+                          if (next) void handleStatusChange(next);
+                          e.currentTarget.value = "";
+                        }}
+                        className="h-9 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 text-sm text-(--text-primary) disabled:opacity-60"
+                      >
+                        <option value="">Change status...</option>
+                        {validNextStatuses.map((status) => (
+                          <option key={status} value={status}>
+                            {formatStatus(status)}
+                          </option>
+                        ))}
+                      </select>
+                      {detailTicket.status === "CLOSED" ? (
+                        <button
+                          type="button"
+                          disabled={reopenPending}
+                          onClick={() => void handleReopen()}
+                          className="h-9 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--nav-hover) disabled:opacity-60"
+                        >
+                          {reopenPending ? "Reopening..." : "Reopen"}
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </CardRoot>
@@ -807,7 +833,7 @@ export function SupportTicketsAdminClient() {
                           >
                             <div className="mb-1 flex flex-wrap items-center gap-2 text-xs">
                               <span className="font-semibold text-(--text-primary)">
-                                {admin ? "Platform admin" : "Workspace user"}
+                                {msg.author?.name ?? msg.author?.email ?? (admin ? "Platform admin" : "Workspace user")}
                               </span>
                               {msg.isInternal ? (
                                 <span className="rounded-full border border-amber-400/40 bg-amber-400/15 px-2 py-0.5 font-medium text-amber-900 dark:text-amber-100">
@@ -830,21 +856,23 @@ export function SupportTicketsAdminClient() {
             <CardRoot>
               <CardContent className="space-y-3 p-4">
                 <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setReplyText("");
-                      setNoteText("");
-                      setActiveComposer("reply");
-                    }}
-                    className={`rounded-md px-3 py-1.5 text-sm ${
-                      activeComposer === "reply"
-                        ? "bg-(--nav-active) text-(--text-primary)"
-                        : "bg-(--bg-surface-elev) text-(--text-muted)"
-                    }`}
-                  >
-                    Reply to customer
-                  </button>
+                  {detailTicket.ticketType !== "SALES_INQUIRY" ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReplyText("");
+                        setNoteText("");
+                        setActiveComposer("reply");
+                      }}
+                      className={`rounded-md px-3 py-1.5 text-sm ${
+                        activeComposer === "reply"
+                          ? "bg-(--nav-active) text-(--text-primary)"
+                          : "bg-(--bg-surface-elev) text-(--text-muted)"
+                      }`}
+                    >
+                      Reply to customer
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => {
@@ -862,7 +890,7 @@ export function SupportTicketsAdminClient() {
                   </button>
                 </div>
 
-                {activeComposer === "reply" ? (
+                {activeComposer === "reply" && detailTicket.ticketType !== "SALES_INQUIRY" ? (
                   <div className="space-y-2">
                     <textarea
                       ref={replyTextareaRef}

@@ -1,5 +1,9 @@
 import { getServerSession } from "next-auth";
-import { SupportMessageAuthorKind, SupportTicketStatus } from "@prisma/client";
+import {
+  SupportMessageAuthorKind,
+  SupportTicketStatus,
+  SupportTicketType,
+} from "@prisma/client";
 import { z } from "zod";
 
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
@@ -29,9 +33,14 @@ export const POST = withErrorHandler(async (
 
   const ticket = await prisma.supportTicket.findUnique({
     where: { id: ticketId },
-    select: { id: true, status: true, tenantId: true },
+    select: { id: true, status: true, tenantId: true, ticketType: true },
   });
   if (!ticket) return ApiErrors.NOT_FOUND();
+  if (ticket.ticketType === SupportTicketType.SALES_INQUIRY) {
+    return ApiErrors.VALIDATION_ERROR(
+      "Replies are not supported for Sales inquiry tickets."
+    );
+  }
   if (ticket.status === SupportTicketStatus.CLOSED) {
     return ApiErrors.CONFLICT("Ticket is closed");
   }

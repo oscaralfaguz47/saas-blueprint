@@ -1,5 +1,5 @@
 import { getServerSession } from "next-auth";
-import { SupportTicketStatus } from "@prisma/client";
+import { SupportTicketStatus, SupportTicketType } from "@prisma/client";
 import { z } from "zod";
 
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
@@ -30,7 +30,7 @@ export const PATCH = withErrorHandler(async (
 
   const ticket = await prisma.supportTicket.findUnique({
     where: { id: ticketId },
-    select: { id: true, status: true, tenantId: true },
+    select: { id: true, status: true, tenantId: true, ticketType: true },
   });
   if (!ticket) return ApiErrors.NOT_FOUND();
 
@@ -70,18 +70,23 @@ export const PATCH = withErrorHandler(async (
     },
   });
 
-  await enqueueBackgroundJob({
-    jobType: JOB_TYPES.SUPPORT_TICKET_STATUS_NOTIFY,
-    idempotencyKey: `support:status_notify:${ticketId}:${body.status}`,
-    payload: {
-      ticketId,
-      previousStatus: ticket.status,
-      newStatus: body.status,
-    },
-    tenantId: ticket.tenantId,
-  });
+  if (ticket.ticketType !== SupportTicketType.SALES_INQUIRY) {
+    await enqueueBackgroundJob({
+      jobType: JOB_TYPES.SUPPORT_TICKET_STATUS_NOTIFY,
+      idempotencyKey: `support:status_notify:${ticketId}:${body.status}`,
+      payload: {
+        ticketId,
+        previousStatus: ticket.status,
+        newStatus: body.status,
+      },
+      tenantId: ticket.tenantId,
+    });
+  }
 
-  if (body.status === SupportTicketStatus.CLOSED) {
+  if (
+    body.status === SupportTicketStatus.CLOSED &&
+    ticket.ticketType !== SupportTicketType.SALES_INQUIRY
+  ) {
     await enqueueBackgroundJob({
       jobType: JOB_TYPES.SUPPORT_TICKET_CLOSED,
       idempotencyKey: `support:closed:${ticketId}:${closedAt!.toISOString()}`,

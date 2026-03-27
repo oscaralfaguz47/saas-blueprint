@@ -9,8 +9,10 @@ import { z } from "zod";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { env } from "@/lib/env";
 import { getClientIp } from "@/server/http-client-ip";
+import { JOB_TYPES, enqueueBackgroundJob } from "@/server/jobs/background-jobs";
 import { prisma } from "@/server/db";
 import { sendEmail } from "@/server/services/invitation-email";
+import { findLeastLoadedAdmin } from "@/server/support/support-auto-assign";
 import { checkHelpSalesInquiryLimit } from "@/server/support/support-rate-limits";
 
 const bodySchema = z.object({
@@ -85,6 +87,20 @@ export const POST = withErrorHandler(async (req: Request) => {
 
     return t;
   });
+
+  const assigneeId = await findLeastLoadedAdmin();
+  if (assigneeId) {
+    await prisma.supportTicket.update({
+      where: { id: ticket.id },
+      data: { assigneePlatformUserId: assigneeId },
+    });
+    await enqueueBackgroundJob({
+      jobType: JOB_TYPES.SUPPORT_TICKET_ASSIGNED_NOTIFY,
+      idempotencyKey: `support:assigned_notify:${ticket.id}`,
+      payload: { ticketId: ticket.id, assigneeId },
+      tenantId: null,
+    });
+  }
 
   const notifyTo = env.PLATFORM_ADMIN_EMAIL?.trim();
   if (notifyTo) {

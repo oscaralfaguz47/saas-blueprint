@@ -322,11 +322,13 @@ async function executeJob(job: {
         id: true,
         subject: true,
         status: true,
+        ticketType: true,
         requesterEmail: true,
         requester: { select: { email: true, name: true } },
       },
     });
     if (!ticket || ticket.status !== "CLOSED") return;
+    if (ticket.ticketType === "SALES_INQUIRY") return;
     const toEmail = ticket.requester?.email ?? ticket.requesterEmail;
     if (!toEmail) return;
     const base = appUrl();
@@ -372,12 +374,14 @@ async function executeJob(job: {
         id: true,
         tenantId: true,
         subject: true,
+        ticketType: true,
         requesterUserId: true,
         requesterEmail: true,
         requester: { select: { id: true, email: true, name: true } },
       },
     });
     if (!ticket) return;
+    if (ticket.ticketType === "SALES_INQUIRY") return;
 
     if (ticket.requesterUserId) {
       await prisma.userNotification.create({
@@ -445,12 +449,14 @@ async function executeJob(job: {
         id: true,
         tenantId: true,
         subject: true,
+        ticketType: true,
         requesterUserId: true,
         requesterEmail: true,
         requester: { select: { id: true, email: true, name: true } },
       },
     });
     if (!ticket) return;
+    if (ticket.ticketType === "SALES_INQUIRY") return;
 
     if (ticket.requesterUserId) {
       await prisma.userNotification.create({
@@ -602,6 +608,83 @@ async function executeJob(job: {
     } catch (e) {
       const msgErr = e instanceof Error ? e.message : "unknown";
       console.error("[jobs] admin reply email failed", msgErr);
+    }
+
+    return;
+  }
+
+  if (job.jobType === JOB_TYPES.SUPPORT_TICKET_ASSIGNED_NOTIFY) {
+    const ticketId = typeof payload.ticketId === "string" ? payload.ticketId : null;
+    const assigneeId = typeof payload.assigneeId === "string" ? payload.assigneeId : null;
+    if (!ticketId || !assigneeId) throw new Error("invalid_payload");
+
+    const [ticket, assignee] = await Promise.all([
+      prisma.supportTicket.findUnique({
+        where: { id: ticketId },
+        select: {
+          id: true,
+          subject: true,
+          ticketType: true,
+          requesterEmail: true,
+          requester: { select: { email: true, name: true } },
+          tenant: { select: { name: true } },
+        },
+      }),
+      prisma.user.findUnique({
+        where: { id: assigneeId },
+        select: { id: true, name: true, email: true },
+      }),
+    ]);
+
+    if (!ticket || !assignee?.email) return;
+
+    const base = appUrl();
+    const adminTicketUrl = base
+      ? `${base}/admin/support?ticketId=${ticketId}`
+      : `/admin/support?ticketId=${ticketId}`;
+
+    const requesterLabel =
+      ticket.requester?.email ?? ticket.requesterEmail ?? "An anonymous user";
+    const workspaceLabel = ticket.tenant?.name ?? "No workspace (Sales inquiry)";
+    const isSales = ticket.ticketType === "SALES_INQUIRY";
+
+    await prisma.userNotification.create({
+      data: {
+        userId: assigneeId,
+        notificationType: "support.ticket.assigned",
+        title: "You were assigned a new support ticket",
+        body: ticket.subject,
+        entityType: "SupportTicket",
+        entityId: ticketId,
+        actionUrl: `/admin/support?ticketId=${ticketId}`,
+      },
+    });
+
+    try {
+      await sendTicketEmail({
+        to: assignee.email,
+        subject: `New ticket assigned to you: ${ticket.subject}`,
+        html: buildSupportEmail({
+          recipientName: assignee.name ?? "there",
+          preheader: `New support ticket assigned to you: ${ticket.subject}`,
+          bodyHtml: `
+  <p style="margin:0;font-size:15px;color:#3f3f46;line-height:1.6;">
+    A new support ticket has been assigned to you.
+  </p>
+  <div style="margin:16px 0 0;background:#f4f4f5;border-radius:8px;padding:14px 16px;">
+    <p style="margin:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:#71717a;">Ticket</p>
+    <p style="margin:6px 0 0;font-size:15px;font-weight:600;color:#09090b;">${escapeHtml(ticket.subject)}</p>
+    <p style="margin:6px 0 0;font-size:13px;color:#3f3f46;">From: <strong>${escapeHtml(requesterLabel)}</strong></p>
+    ${isSales ? "" : `<p style="margin:4px 0 0;font-size:13px;color:#3f3f46;">Workspace: <strong>${escapeHtml(workspaceLabel)}</strong></p>`}
+  </div>`,
+          ctaLabel: "View ticket",
+          ctaUrl: adminTicketUrl,
+          footerNote: "You're receiving this because this ticket was assigned to you.",
+        }),
+      });
+    } catch (e) {
+      const msgErr = e instanceof Error ? e.message : "unknown";
+      console.error("[jobs] assigned notify email failed", msgErr);
     }
 
     return;
