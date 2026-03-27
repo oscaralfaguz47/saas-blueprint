@@ -71,7 +71,6 @@ const envSchema = z.object({
 
   // ── Internal / Cron ─────────────────────────────────────────────────────
   CRON_SECRET: z.string().optional(),
-  CRON_EMAIL_TO: z.string().email().optional(),
   BILLING_PERIOD_CLOSE_SECRET: z.string().optional(),
 
   // ── AI (Help & Support KB search) ────────────────────────────────────────
