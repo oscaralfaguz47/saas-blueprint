@@ -24,7 +24,7 @@
     },
     {
       "path": "/api/internal/cron/jobs",
-      "schedule": "* * * * *"
+      "schedule": "0 * * * *"  //"* * * * *" for every minute
     }
   ],
   "headers": [
