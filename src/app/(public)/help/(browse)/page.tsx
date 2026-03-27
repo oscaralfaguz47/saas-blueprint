@@ -1,10 +1,8 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import Link from "next/link";
 
 import { CardContent, CardRoot } from "@/components/ui/card";
-import { Spinner } from "@/components/ui/spinner";
 
 export default function PublicHelpHomePage() {
   const [email, setEmail] = useState("");
@@ -46,16 +44,26 @@ export default function PublicHelpHomePage() {
       <div className="mx-auto max-w-lg py-6">
         <CardRoot>
           <CardContent className="p-6 text-center">
-            <p className="text-sm font-medium text-(--text-primary)">
+            <p className="text-base font-semibold text-(--text-primary)">
               Thanks! We&apos;ll be in touch shortly.
             </p>
-            <Link
-              href="/help"
-              className="mt-4 inline-flex h-10 items-center justify-center rounded-lg px-4 text-sm font-medium text-white"
+            <p className="mt-1 text-sm text-(--text-muted)">
+              We received your message and will respond within one business day.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setDoneEmail(null);
+                setEmail("");
+                setSubject("");
+                setMessage("");
+                setError(null);
+              }}
+              className="mt-4 inline-flex h-10 items-center justify-center rounded-lg px-6 text-sm font-medium text-white"
               style={{ backgroundColor: "var(--color-primary, #3b82f6)" }}
             >
-              Back to Help
-            </Link>
+              Ok!
+            </button>
           </CardContent>
         </CardRoot>
       </div>
@@ -125,6 +133,15 @@ export default function PublicHelpHomePage() {
                 placeholder="Tell us about your use case or question..."
                 className="mt-1 w-full rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 py-2 text-sm"
               />
+              <p className={`mt-1 text-right text-xs ${
+                message.length >= 3900
+                  ? "text-(--color-danger)"
+                  : message.length > 3500
+                    ? "text-warning"
+                    : "text-(--text-muted)"
+              }`}>
+                {message.length} / 4000
+              </p>
             </div>
             {error ? (
               <p className="text-sm text-(--color-danger)">{error}</p>
@@ -135,7 +152,7 @@ export default function PublicHelpHomePage() {
               className="inline-flex h-10 w-full items-center justify-center rounded-lg text-sm font-semibold text-white disabled:opacity-50"
               style={{ backgroundColor: "var(--color-primary, #3b82f6)" }}
             >
-              {submitting ? <Spinner size="sm" /> : "Send message"}
+              {submitting ? "Sending message..." : "Send message"}
             </button>
           </form>
         </CardContent>

@@ -311,14 +311,7 @@ export function NotificationsBell({ initialUnreadCount = 0 }: Props) {
             </button>
           </div>
 
-          <div
-            className="max-h-96 overflow-y-auto"
-            style={{
-              scrollbarWidth: "thin",
-              scrollbarColor: "var(--border-strong) transparent",
-              overscrollBehavior: "contain",
-            }}
-          >
+          <div className="scrollbar-custom max-h-96 overflow-y-auto">
             {loading ? (
               <div className="space-y-2 px-2 py-1">
                 <Skeleton className="h-14 w-full" />

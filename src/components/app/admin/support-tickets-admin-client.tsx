@@ -803,14 +803,8 @@ export function SupportTicketsAdminClient() {
                   <EmptyState title="No messages" description="This ticket has no messages yet." />
                 ) : (
                   <div
-                    className="space-y-3 rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev)/55 p-3 pr-2"
-                    style={{
-                      maxHeight: "45vh",
-                      overflowY: "auto",
-                      overscrollBehavior: "contain",
-                      scrollbarWidth: "thin",
-                      scrollbarColor: "var(--border-strong) transparent",
-                    }}
+                    className="scrollbar-custom space-y-3 rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev)/55 p-3 pr-2"
+                    style={{ maxHeight: "45vh", overflowY: "auto" }}
                   >
                     {detailMessages.map((msg) => {
                       if (msg.authorKind === "SYSTEM") {
