@@ -105,7 +105,7 @@ export function NotificationsBell({ initialUnreadCount = 0 }: Props) {
     mountedRef.current = true;
     void fetchNotifications();
 
-    let intervalId: ReturnType<typeof window.setInterval> | null = null;
+    let intervalId: number | null = null;
 
     function startPolling() {
       if (intervalId !== null) return; // already running
