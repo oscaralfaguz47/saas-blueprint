@@ -76,6 +76,7 @@ export function NotificationsBell({ initialUnreadCount = 0 }: Props) {
   const mountedRef = useRef(true);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
 
   const fetchNotifications = useCallback(async () => {
     try {
@@ -203,6 +204,19 @@ export function NotificationsBell({ initialUnreadCount = 0 }: Props) {
     return () => document.removeEventListener("mousedown", onDocumentMouseDown);
   }, [open]);
 
+  // Adjust dropdown horizontal position to prevent viewport overflow on mobile
+  useEffect(() => {
+    if (!open || !dropdownRef.current) return;
+    const rect = dropdownRef.current.getBoundingClientRect();
+    if (rect.left < 8) {
+      // Dropdown overflows left edge — shift it right
+      const overflow = 8 - rect.left;
+      dropdownRef.current.style.right = `-${overflow}px`;
+    } else {
+      dropdownRef.current.style.right = "0px";
+    }
+  }, [open]);
+
   const badgeText = useMemo(() => {
     if (unreadCount <= 0) return null;
     if (unreadCount >= 10) return "9+";
@@ -297,7 +311,15 @@ export function NotificationsBell({ initialUnreadCount = 0 }: Props) {
       </div>
 
       {open ? (
-        <div className="absolute right-0 z-50 mt-2 w-[22rem] min-w-[280px] max-w-[90vw] rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-2 shadow-xl">
+        <div
+          ref={dropdownRef}
+          className="absolute z-50 mt-2 w-[22rem] rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-2 shadow-xl"
+          style={{
+            minWidth: "280px",
+            maxWidth: "calc(100vw - 16px)",
+            right: 0,
+          }}
+        >
           <div className="mb-2 flex flex-nowrap items-center justify-between gap-2 px-2 py-1">
             <p className="text-sm font-semibold text-(--text-primary)">Notifications</p>
             <button
