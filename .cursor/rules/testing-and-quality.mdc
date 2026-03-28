@@ -107,6 +107,14 @@ Required negative test cases:
 - attempt to upload a disallowed MIME type → expect 400
 - attempt to create a duplicate active subscription → expect 409
 
+Required Platform Admin security test cases:
+- attempt to call any `/api/admin/**` endpoint with a valid session but TOTP not enabled → expect 403 with `MFA_REQUIRED`
+- attempt to call any `/api/admin/**` endpoint with a valid session, TOTP enabled, but not verified in current session → expect 401 or 403
+- attempt to call any `/api/admin/**` endpoint as a platform-blocked user → expect 403
+- attempt to call any `/api/admin/**` endpoint as an authenticated user not in the platform admin email allowlist → expect 403 or 404
+- attempt to call a mutation endpoint (e.g. transfer-primary-owner, member status change) with a read-only permission → expect 403 or 404
+- verify that removing the `User.role === "ADMIN"` legacy bypass does not allow access without a valid `VendorUserRole` record
+
 ---
 
 ## 6. Mocking and Test Double Rules

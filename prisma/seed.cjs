@@ -70,6 +70,11 @@ const PERMISSIONS = [
   { code: "admin.tenants.read", scope: "VENDOR", description: "Read tenants (vendor)" },
   { code: "admin.tenants.suspend", scope: "VENDOR", description: "Suspend/reactivate tenants (vendor)" },
   { code: "admin.users.read", scope: "VENDOR", description: "Read users (vendor)" },
+  {
+    code: "admin.users.manage",
+    scope: "VENDOR",
+    description: "Manage workspace members (roles, status) via platform admin (vendor)",
+  },
   { code: "admin.users.block", scope: "VENDOR", description: "Block/unblock users (vendor)" },
   { code: "admin.sessions.revoke", scope: "VENDOR", description: "Force logout users (vendor)" },
   { code: "admin.mfa.reset", scope: "VENDOR", description: "Reset MFA (vendor)" },
@@ -91,7 +96,8 @@ const VENDOR_ROLES = [
   {
     name: "PlatformAdmin",
     permissions: [
-      "admin.tenants.read", "admin.tenants.suspend", "admin.users.read", "admin.users.block",
+      "admin.tenants.read", "admin.tenants.suspend", "admin.users.read", "admin.users.manage",
+      "admin.users.block",
       "admin.sessions.revoke", "admin.mfa.reset", "admin.billing.read", "admin.audit.read",
       "admin.support.read", "admin.support.reply", "admin.support.manage",
       "admin.knowledge_base.read", "admin.knowledge_base.manage",

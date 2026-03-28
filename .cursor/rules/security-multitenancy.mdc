@@ -104,6 +104,24 @@ Cross-tenant or platform-level operations must be:
 - authorization-hardened
 - limited to dedicated administrative code paths
 
+## 11. Platform Admin Access Requirements
+
+Platform Admin access has stricter requirements than regular authenticated access.
+
+Rules:
+- Platform Admin users must have TOTP (two-factor authentication) enabled to access any admin resource
+- This applies to both UI pages (`/admin/**`) and API endpoints (`/api/admin/**`)
+- The `requireAdminAuth` helper must always verify `UserSecurity.totpEnabled === true` from the database — never trust session or JWT claims for this check
+- The middleware email allowlist must cover `/api/admin/**` in addition to `/admin/**` UI paths
+- Platform Admin vendor permissions must be DB-driven via `VendorUserRole` — legacy `User.role` shortcuts that bypass TOTP enforcement are not permitted
+- A platform-blocked user (`isPlatformBlocked: true`) must be denied access to all admin endpoints regardless of TOTP or permission status
+- All platform admin mutations must generate audit log entries with `actorContext: "VENDOR"`
+
+Enforcement layers (all three must independently enforce access):
+1. Middleware — email allowlist at the edge for both `/admin` and `/api/admin`
+2. Platform admin layout — TOTP check + vendor permission check at page render
+3. `requireAdminAuth` — TOTP check + platform-block check + vendor permission check at every API route
+
 ## Enforcement Expectation
 
 Every tenant-aware server path must:

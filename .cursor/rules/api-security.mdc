@@ -110,34 +110,24 @@ Server-side code must be protected against prototype pollution attacks.
 
 ### What is prototype pollution
 
-Prototype pollution occurs when untrusted input is merged into a JavaScript object in a way that modifies `Object.prototype` or the prototype chain, potentially overwriting built-in properties and affecting the entire runtime.
+Prototype pollution occurs when untrusted input is merged into a JavaScript object in a way that modifies Object.prototype or the prototype chain, potentially overwriting built-in properties and affecting the entire runtime.
 
 ### Risk scenarios
 
 High-risk patterns:
-- using `Object.assign({}, userInput)` with untrusted nested objects
-- using spread syntax (`{ ...userInput }`) with deep untrusted objects
-- using deep merge utilities (e.g., `lodash.merge`, `deepmerge`) with untrusted input
+- using Object.assign({}, userInput) with untrusted nested objects
+- using spread syntax with deep untrusted objects
+- using deep merge utilities (e.g., lodash.merge, deepmerge) with untrusted input
 - constructing objects from query parameters or JSON bodies without schema validation
 
 ### Mitigation rules
 
 Rules:
-- always validate and parse untrusted input through Zod before using it — Zod strips unknown keys and validates shape, which eliminates most pollution vectors
+- always validate and parse untrusted input through Zod before using it
 - never use deep merge utilities directly on untrusted input without prior schema validation
-- never access `__proto__`, `constructor`, or `prototype` as dynamic keys from user input
-- if building objects dynamically from user-supplied keys, validate that keys do not include `__proto__`, `constructor`, or `prototype`
-
-```ts
-// FORBIDDEN — merging raw untrusted input
-const config = Object.assign({}, defaultConfig, req.body)
-
-// CORRECT — validate first, then use the typed result
-const parsed = mySchema.parse(req.body)
-const config = Object.assign({}, defaultConfig, parsed)
-```
-
-- use `Object.create(null)` for lookup maps built from user-controlled keys to avoid prototype chain exposure
+- never access __proto__, constructor, or prototype as dynamic keys from user input
+- if building objects dynamically from user-supplied keys, validate that keys do not include __proto__, constructor, or prototype
+- use Object.create(null) for lookup maps built from user-controlled keys to avoid prototype chain exposure
 
 ---
 
@@ -150,13 +140,13 @@ Rules:
 - include the following fields on every security log entry:
 
 Required fields:
-- `event` — stable dot-separated event name (e.g., `auth.login.failed`, `api.rate_limited`, `api.forbidden`)
-- `requestId` — correlation ID for the request
-- `tenantId` — when available and applicable
-- `userId` — when available and applicable
-- `ip` — source IP address (when available and safe to log)
-- `timestamp` — ISO 8601 timestamp
-- `details` — safe, machine-readable metadata relevant to the event
+- event — stable dot-separated event name (e.g., auth.login.failed, api.rate_limited, api.forbidden)
+- requestId — correlation ID for the request
+- tenantId — when available and applicable
+- userId — when available and applicable
+- ip — source IP address (when available and safe to log)
+- timestamp — ISO 8601 timestamp
+- details — safe, machine-readable metadata relevant to the event
 
 Forbidden in security log entries:
 - raw secrets or tokens
@@ -165,14 +155,14 @@ Forbidden in security log entries:
 - unnecessary PII
 
 Example security log events to emit:
-- `auth.login.failed` — failed login attempt
-- `auth.session.invalid` — invalid or expired session used
-- `api.rate_limited` — request rejected by rate limiter
-- `api.forbidden` — authenticated request denied by authorization
-- `api.unauthenticated` — request to protected endpoint without valid session
-- `api.tenant_isolation_violation` — cross-tenant access attempt detected
-- `webhook.signature_invalid` — webhook received with invalid signature
-- `webhook.replay_detected` — duplicate webhook event ID detected
+- auth.login.failed — failed login attempt
+- auth.session.invalid — invalid or expired session used
+- api.rate_limited — request rejected by rate limiter
+- api.forbidden — authenticated request denied by authorization
+- api.unauthenticated — request to protected endpoint without valid session
+- api.tenant_isolation_violation — cross-tenant access attempt detected
+- webhook.signature_invalid — webhook received with invalid signature
+- webhook.replay_detected — duplicate webhook event ID detected
 
 ---
 
@@ -187,3 +177,95 @@ Every Route Handler must:
 - enforce rate limiting where applicable
 - log security-relevant failures using the structured log pattern
 - return errors using the standard API error shape
+
+---
+
+## 9. Platform Admin API Endpoint Rules
+
+All /api/admin/** Route Handlers have additional mandatory requirements
+beyond the standard checklist above.
+
+### 9.1 Mandatory requireAdminAuth on every admin route handler
+
+Every /api/admin/** Route Handler must call requireAdminAuth(session, permission)
+as the first operation after getServerSession. No admin endpoint may
+skip this call for any reason including internal tools, debugging, or
+read-only perception.
+
+Required pattern for every /api/admin/** route handler:
+
+  const session = await getServerSession(authOptions);
+  const authError = await requireAdminAuth(session, "admin.<domain>.<action>");
+  if (authError) return authError;
+  if (!session?.user?.id) return ApiErrors.UNAUTHENTICATED();
+
+### 9.2 Correct permission scope per operation type
+
+Use the minimum permission required for the operation:
+
+| Operation type | Required permission |
+|---|---|
+| Read workspace/tenant data | admin.tenants.read |
+| Suspend or modify tenant status | admin.tenants.suspend |
+| Read user data | admin.users.read |
+| Mutate user status or role | admin.users.manage |
+| Block a platform user | admin.users.block |
+| Read support tickets | admin.support.read |
+| Reply to support tickets | admin.support.reply |
+| Manage support tickets (status, assignee, note, reopen) | admin.support.manage |
+| Read knowledge base | admin.knowledge_base.read |
+| Manage knowledge base articles and categories | admin.knowledge_base.manage |
+| Revoke sessions | admin.sessions.revoke |
+| Reset MFA (break-glass) | admin.mfa.reset |
+| Read audit logs | admin.audit.read |
+| Read billing data | admin.billing.read |
+
+Do NOT use a read permission (admin.tenants.read) to guard a mutation
+endpoint. Mutations must use the mutation-scoped permission.
+
+### 9.3 requireAdminAuth enforces all of these in order
+
+The requireAdminAuth helper enforces the following checks on every call:
+1. Full session validation (MFA verified, session not expired or revoked)
+2. Platform block check (isPlatformBlocked === false)
+3. TOTP enabled check (UserSecurity.totpEnabled === true) from the DB — never from JWT
+4. Vendor permission check via requirePlatformPermission
+
+Do not duplicate these checks inline — rely on the shared helper.
+
+### 9.4 Admin API rate limiting
+
+All /api/admin/** endpoints must apply rate limiting via the
+checkAdmin*Limit helpers in src/server/security/admin-rate-limit.ts.
+
+Use the appropriate limit helper per endpoint type:
+- checkAdminWorkspacesListLimit — list/search operations
+- checkAdminWorkspaceDetailLimit — single resource fetch
+- checkAdminMutationLimit — write operations (status change, role change)
+- checkAdminBreakGlassLimit — sensitive break-glass operations (strict)
+- checkAdminUserSearchLimit — user search operations
+
+### 9.5 Audit logging on all admin mutations
+
+Every admin mutation endpoint must write an audit log entry via writeAuditLog
+with actorContext: "VENDOR". Read-only endpoints do not require audit logs.
+
+Required audit log fields for admin mutations:
+- actorUserId — the platform admin performing the action
+- actorContext: "VENDOR"
+- tenantId — the affected tenant (may be null for platform-wide actions)
+- action — stable dot-separated event name (e.g. admin.workspace.member.status_changed)
+- targetType — the entity type affected
+- targetId — the entity ID affected
+- metadata — safe, minimal, machine-readable context (no PII, no secrets)
+
+### 9.6 Anti-enumeration on admin endpoints
+
+Admin endpoints must prefer HTTP 404 over HTTP 403 when the resource
+does not exist or the caller lacks permission — same as tenant-scoped
+endpoints. This prevents attackers from learning the shape of the admin
+data model through error code differences.
+
+requireAdminAuth already returns 404 on permission failure. Do not
+override this behavior with explicit 403 responses unless the spec
+requires it for a specific known error condition (e.g. MFA_REQUIRED).

@@ -146,3 +146,45 @@ Use shared authorization helpers for:
 - request access checks
 - creator-only actions
 - concealed resource responses
+## Platform-Level Permission Catalog
+
+These permissions govern access to `/api/admin/**` endpoints and the
+Platform Admin UI. They are separate from tenant RBAC permissions above.
+
+### Tenant administration (read)
+- `admin.tenants.read` — read workspace/tenant data (list, detail, invites, members)
+
+### Tenant administration (write)
+- `admin.tenants.suspend` — suspend, activate, or modify tenant status; transfer primary owner
+
+### User administration
+- `admin.users.read` — search and view platform user data
+- `admin.users.manage` — change member status or role within a workspace
+- `admin.users.block` — block a user at the platform level
+
+### Session and MFA management
+- `admin.sessions.revoke` — revoke user sessions
+- `admin.mfa.reset` — reset a user's 2FA (break-glass)
+
+### Support
+- `admin.support.read` — view support tickets and conversation history
+- `admin.support.reply` — send replies to support tickets
+- `admin.support.manage` — change ticket status, assignee, add internal notes, reopen
+
+### Knowledge base
+- `admin.knowledge_base.read` — view KB articles and categories
+- `admin.knowledge_base.manage` — create, edit, publish, archive KB articles and categories
+
+### Billing and audit
+- `admin.billing.read` — view billing data
+- `admin.audit.read` — view audit logs
+
+## Platform Admin Permission Enforcement Rules
+
+Rules:
+- platform permissions are entirely separate from tenant RBAC roles
+- a user may have tenant RBAC roles (OWNER, ADMIN, MEMBER) and platform admin permissions independently
+- platform permissions are granted via DB-driven VendorUserRole records — not from User.role
+- the legacy User.role === "ADMIN" shortcut must not bypass platform permission checks
+- every /api/admin/** endpoint must use requireAdminAuth which enforces TOTP + block + permissions
+- read permissions must never be used to guard mutation endpoints
