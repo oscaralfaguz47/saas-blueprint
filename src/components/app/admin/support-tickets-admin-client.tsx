@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent }
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-import { Badge } from "@/components/ui/badge";
 import { CardContent, CardRoot } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
@@ -603,29 +602,58 @@ export function SupportTicketsAdminClient() {
               </TableHeader>
               <TableBody>
                 {items.map((t) => (
-                  <TableRow key={t.id} className={selectedTicketId === t.id ? "bg-(--nav-active)/40" : ""}>
+                  <TableRow
+                    key={t.id}
+                    onClick={() => setTicketIdInUrl(t.id)}
+                    className={`cursor-pointer transition-colors duration-100 ${
+                      selectedTicketId === t.id
+                        ? "bg-(--nav-active)/40"
+                        : "hover:bg-(--nav-active)/20"
+                    }`}
+                  >
                     <TableCell className="w-full font-medium">
-                      <button
-                        type="button"
-                        onClick={() => setTicketIdInUrl(t.id)}
-                        className="block w-full max-w-[200px] truncate text-left text-primary hover:underline"
+                      <span
+                        className="block max-w-[200px] truncate text-primary"
                         title={t.subject}
                       >
                         {t.subject}
-                      </button>
+                      </span>
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-xs text-(--text-muted)">
                       {t.ticketType === "SALES_INQUIRY" ? "Sales" : "Support"}
                     </TableCell>
-                    <TableCell className="whitespace-nowrap text-xs">
-                      {t.status === "OPEN" ? "Open"
-                        : t.status === "IN_PROGRESS" ? "In progress"
-                        : t.status === "WAITING_FOR_CUSTOMER" ? "Waiting"
-                        : t.status === "CLOSED" ? "Closed"
-                        : formatStatus(t.status)}
+                    <TableCell className="whitespace-nowrap">
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                        t.status === "OPEN"
+                          ? "bg-blue-500/10 text-blue-700 dark:text-blue-300"
+                          : t.status === "IN_PROGRESS"
+                            ? "bg-amber-400/15 text-amber-800 dark:text-amber-200"
+                            : t.status === "WAITING_FOR_CUSTOMER"
+                              ? "bg-orange-500/10 text-orange-700 dark:text-orange-300"
+                              : t.status === "CLOSED"
+                                ? "bg-(--bg-surface-elev) text-(--text-muted)"
+                                : "bg-(--bg-surface-elev) text-(--text-muted)"
+                      }`}>
+                        {t.status === "OPEN" ? "Open"
+                          : t.status === "IN_PROGRESS" ? "In progress"
+                          : t.status === "WAITING_FOR_CUSTOMER" ? "Waiting"
+                          : t.status === "CLOSED" ? "Closed"
+                          : formatStatus(t.status)}
+                      </span>
                     </TableCell>
-                    <TableCell className="whitespace-nowrap text-xs">
-                      {t.priority}
+                    <TableCell className="whitespace-nowrap">
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                        t.priority === "HIGH"
+                          ? "bg-red-500/10 text-red-700 dark:text-red-300"
+                          : t.priority === "MEDIUM"
+                            ? "bg-amber-400/15 text-amber-800 dark:text-amber-200"
+                            : "bg-(--bg-surface-elev) text-(--text-muted)"
+                      }`}>
+                        {t.priority === "HIGH" ? "High"
+                          : t.priority === "MEDIUM" ? "Medium"
+                          : t.priority === "LOW" ? "Low"
+                          : t.priority}
+                      </span>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -682,8 +710,33 @@ export function SupportTicketsAdminClient() {
 
                 {/* Row 2: Badges */}
                 <div className="mt-2 flex flex-wrap gap-2">
-                  <Badge variant="secondary">{formatStatus(detailTicket.status)}</Badge>
-                  <Badge variant="secondary">{detailTicket.priority}</Badge>
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${
+                    detailTicket.status === "OPEN"
+                      ? "bg-blue-500/10 text-blue-700 dark:text-blue-300"
+                      : detailTicket.status === "IN_PROGRESS"
+                        ? "bg-amber-400/15 text-amber-800 dark:text-amber-200"
+                        : detailTicket.status === "WAITING_FOR_CUSTOMER"
+                          ? "bg-orange-500/10 text-orange-700 dark:text-orange-300"
+                          : "bg-(--bg-surface-elev) text-(--text-muted)"
+                  }`}>
+                    {detailTicket.status === "OPEN" ? "Open"
+                      : detailTicket.status === "IN_PROGRESS" ? "In progress"
+                      : detailTicket.status === "WAITING_FOR_CUSTOMER" ? "Waiting for customer"
+                      : detailTicket.status === "CLOSED" ? "Closed"
+                      : formatStatus(detailTicket.status)}
+                  </span>
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${
+                    detailTicket.priority === "HIGH"
+                      ? "bg-red-500/10 text-red-700 dark:text-red-300"
+                      : detailTicket.priority === "MEDIUM"
+                        ? "bg-amber-400/15 text-amber-800 dark:text-amber-200"
+                        : "bg-(--bg-surface-elev) text-(--text-muted)"
+                  }`}>
+                    {detailTicket.priority === "HIGH" ? "High"
+                      : detailTicket.priority === "MEDIUM" ? "Medium"
+                      : detailTicket.priority === "LOW" ? "Low"
+                      : detailTicket.priority}
+                  </span>
                 </div>
 
                 {/* Row 3: Meta + controls in two columns */}
