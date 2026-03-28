@@ -6,7 +6,7 @@ import { prisma } from "@/server/db";
 import { requireFullSession } from "@/server/require-full-session";
 import { requirePlatformPermission } from "@/server/security/platform-authorization";
 import type { VendorPermission } from "@/server/security/vendor-authorization";
-import { ApiErrors } from "@/lib/api-response";
+import { ApiErrors, apiError } from "@/lib/api-response";
 
 /**
  * Enforce auth + MFA + platform-block + vendor permission for /api/admin/* routes.
@@ -26,6 +26,19 @@ export async function requireAdminAuth(
     select: { isPlatformBlocked: true },
   });
   if (!user || user.isPlatformBlocked) return ApiErrors.FORBIDDEN();
+
+  // Platform Admin requires TOTP — same policy as `(platform-admin)` layout (read from DB, not JWT).
+  const security = await prisma.userSecurity.findUnique({
+    where: { userId: session.user.id },
+    select: { totpEnabled: true },
+  });
+  if (!security?.totpEnabled) {
+    return apiError(
+      "MFA_REQUIRED",
+      403,
+      "Two-factor authentication is required to access this resource."
+    );
+  }
 
   try {
     await requirePlatformPermission({

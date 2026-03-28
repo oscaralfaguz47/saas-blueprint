@@ -19,7 +19,7 @@ export const POST = withErrorHandler(async (
   context: { params: Promise<{ tenantId: string }> }
 ) => {
   const session = await getServerSession(authOptions);
-  const authError = await requireAdminAuth(session, "admin.tenants.read");
+  const authError = await requireAdminAuth(session, "admin.tenants.suspend");
   if (authError) return authError;
   if (!session?.user?.id) return ApiErrors.UNAUTHENTICATED();
 

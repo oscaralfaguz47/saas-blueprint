@@ -161,7 +161,7 @@ function isProtectedPath(pathname: string) {
 }
 
 function isAdminPath(pathname: string) {
-  return pathname.startsWith("/admin");
+  return pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
 }
 
 function normalizePlatformAllowlist() {

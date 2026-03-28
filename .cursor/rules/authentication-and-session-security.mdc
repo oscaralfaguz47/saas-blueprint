@@ -72,6 +72,25 @@ Where supported, MFA should use stronger methods such as:
 
 SMS-based MFA should be avoided when stronger options are available.
 
+## 11. Platform Admin 2FA Mandatory Policy
+
+Two-factor authentication (TOTP) is **mandatory** for all Platform Admin users.
+
+Rules:
+- Platform Admin users must have TOTP enabled before accessing any admin UI page or admin API endpoint
+- The platform admin layout (`src/app/(platform-admin)/layout.tsx`) must verify `UserSecurity.totpEnabled === true` at render time and redirect to `/unauthorized` if not
+- The shared `requireAdminAuth` helper (`src/server/security/admin-route-auth.ts`) must verify `UserSecurity.totpEnabled === true` from the database on every admin API request — never from the JWT or session token, which may be stale
+- If TOTP is not enabled, return HTTP 403 with error code `MFA_REQUIRED`
+- The middleware email allowlist must apply to both `/admin/**` UI paths and `/api/admin/**` API paths
+- The legacy `User.role === "ADMIN"` bypass in vendor authorization must not grant admin access without TOTP verification — all platform admins must use DB-driven `VendorUserRole` records
+- These checks are defense-in-depth: the UI layout check, the API middleware check, and the `requireAdminAuth` check must all independently enforce the TOTP requirement
+
+Implementation references:
+- `src/app/(platform-admin)/layout.tsx` — UI enforcement via redirect
+- `src/server/security/admin-route-auth.ts` — API enforcement via `requireAdminAuth`
+- `src/server/security/vendor-authorization.ts` — DB-driven RBAC, no legacy bypass
+- `middleware.ts` — edge-level allowlist covering both UI and API admin paths
+
 ## 6. Suspicious Login Detection
 
 Detect unusual login behavior when feasible.

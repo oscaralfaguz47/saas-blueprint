@@ -7,6 +7,7 @@ export type VendorPermission =
   | "admin.tenants.read"
   | "admin.tenants.suspend"
   | "admin.users.read"
+  | "admin.users.manage"
   | "admin.users.block"
   | "admin.sessions.revoke"
   | "admin.mfa.reset"
@@ -25,7 +26,7 @@ export type VendorPermission =
  *  - VendorRole/VendorRolePermission/VendorUserRole (DB-driven RBAC)
  *
  * Transitional fallback:
- *  - legacyRole (User.role) mapping to avoid breaking behavior during migration.
+ *  - legacy MANAGER (User.role) subset only — legacy ADMIN bypass removed (vendor RBAC + TOTP only).
  *
  * IMPORTANT:
  *  - Supports multiple vendor roles per user.
@@ -46,12 +47,8 @@ export async function hasVendorPermission(params: {
 
   if (!user || user.isPlatformBlocked) return false;
 
-  // 1) Transitional fallback (remove once migration completes)
-  // NOTE: Keep this mapping minimal and explicitly scoped.
-  if (legacyRole === "ADMIN") return true;
-
+  // 1) Legacy role fallback — MANAGER only, limited subset (no legacy ADMIN bypass).
   if (legacyRole === "MANAGER") {
-    // Managers get a limited subset (adjust as needed)
     return (
       permission === "admin.tenants.read" ||
       permission === "admin.users.read" ||
