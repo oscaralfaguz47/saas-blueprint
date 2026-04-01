@@ -17,6 +17,7 @@ export const PADDLE_SUPPORTED_EVENT_TYPES = [
   "subscription.trialing",
   "subscription.activated",
   "transaction.completed",
+  "transaction.updated",
 ] as const;
 export type PaddleSupportedEventType = (typeof PADDLE_SUPPORTED_EVENT_TYPES)[number];
 

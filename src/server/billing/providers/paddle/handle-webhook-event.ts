@@ -18,7 +18,7 @@ import {
   parseMetadataFromCustomData,
   parseSubscriptionData,
 } from "./map-paddle-event";
-import { handleTransactionCompleted } from "./handle-transaction-completed";
+import { handleTransactionCompleted, handleTransactionUpdated } from "./handle-transaction-completed";
 import { fetchPaddleSubscription } from "./fetch-subscription";
 import { setPaddleAddressDescription } from "@/server/billing/paddle/customer/update-billing-details";
 import { PADDLE_API_BASE, getPaddleApiKey } from "@/server/billing/paddle/paddle-api";
@@ -343,6 +343,11 @@ export async function handleWebhookEvent(params: {
 
   if (eventType === "transaction.completed") {
     const result = await handleTransactionCompleted(envelope);
+    return { processed: result.processed };
+  }
+
+  if (eventType === "transaction.updated") {
+    const result = await handleTransactionUpdated(envelope);
     return { processed: result.processed };
   }
 
