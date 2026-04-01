@@ -19,6 +19,7 @@ export const adminWorkspacesListQuerySchema = z.object({
     .transform((s) =>
       s ? s.split(",").map((id) => id.trim()).filter(Boolean).slice(0, 10) : undefined
     ),
+  plan: z.enum(["free", "starter", "pro", "enterprise"]).optional(),
 });
 
 /** POST /api/admin/workspaces/:tenantId/break-glass/reset-primary-owner-2fa body. */

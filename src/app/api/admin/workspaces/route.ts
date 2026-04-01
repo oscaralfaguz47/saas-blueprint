@@ -1,5 +1,5 @@
 import { getServerSession } from "next-auth";
-import type { TenantStatus } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { authOptions } from "@/server/auth-options";
 import { requireAdminAuth } from "@/server/security/admin-route-auth";
 import { checkAdminWorkspacesListLimit } from "@/server/security/admin-rate-limit";
@@ -21,6 +21,46 @@ function encodeCursor(createdAt: string, id: string): string {
   return Buffer.from(JSON.stringify({ createdAt, id }), "utf8").toString("base64url");
 }
 
+function planFilterClause(
+  plan: "free" | "starter" | "pro" | "enterprise",
+): Prisma.TenantWhereInput {
+  if (plan === "free") {
+    return {
+      OR: [
+        { subscriptions: { none: { provider: "paddle" } } },
+        {
+          subscriptions: {
+            some: {
+              provider: "paddle",
+              OR: [
+                { currentEntitlementPlanCode: { equals: "free", mode: "insensitive" } },
+                {
+                  currentEntitlementPlanCode: null,
+                  plan: { code: { equals: "free", mode: "insensitive" } },
+                },
+              ],
+            },
+          },
+        },
+      ],
+    };
+  }
+  return {
+    subscriptions: {
+      some: {
+        provider: "paddle",
+        OR: [
+          { currentEntitlementPlanCode: { equals: plan, mode: "insensitive" } },
+          {
+            currentEntitlementPlanCode: null,
+            plan: { code: { equals: plan, mode: "insensitive" } },
+          },
+        ],
+      },
+    },
+  };
+}
+
 export const GET = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
   const authError = await requireAdminAuth(session, "admin.tenants.read");
@@ -40,24 +80,23 @@ export const GET = withErrorHandler(async (req: Request) => {
     q: url.searchParams.get("q") ?? undefined,
     status: url.searchParams.get("status") ?? undefined,
     userIds: url.searchParams.get("userIds") ?? undefined,
+    plan: (() => {
+      const p = url.searchParams.get("plan");
+      return p?.trim() ? p : undefined;
+    })(),
   });
   if (!parsed.success)
     return ApiErrors.VALIDATION_ERROR("Invalid query", parsed.error.flatten());
 
-  const { cursor, limit, q, status, userIds } = parsed.data;
+  const { cursor, limit, q, status, userIds, plan } = parsed.data;
   const take = Math.min(limit, 50);
 
-  type Where = {
-    status?: TenantStatus;
-    OR?: Array<{ name?: { contains: string; mode: "insensitive" }; slug?: { contains: string; mode: "insensitive" } }>;
-    id?: { in: string[] };
-  };
-  const where: Where = {};
+  const base: Prisma.TenantWhereInput = {};
 
-  if (status) where.status = status;
+  if (status) base.status = status;
   if (q?.trim()) {
     const term = q.trim();
-    where.OR = [
+    base.OR = [
       { name: { contains: term, mode: "insensitive" } },
       { slug: { contains: term, mode: "insensitive" } },
     ];
@@ -72,13 +111,19 @@ export const GET = withErrorHandler(async (req: Request) => {
     if (ids.length === 0) {
       return apiSuccess({ items: [], nextCursor: null });
     }
-    where.id = { in: ids };
+    base.id = { in: ids };
   }
 
-  const cursorWhere = cursor
+  let where: Prisma.TenantWhereInput = base;
+  if (plan) {
+    const pf = planFilterClause(plan);
+    where = Object.keys(base).length > 0 ? { AND: [base, pf] } : pf;
+  }
+
+  const cursorWhere: Prisma.TenantWhereInput | undefined = cursor
     ? (() => {
         const decoded = decodeCursor(cursor);
-        if (!decoded) return {};
+        if (!decoded) return undefined;
         return {
           OR: [
             { createdAt: { lt: new Date(decoded.createdAt) } },
@@ -86,13 +131,33 @@ export const GET = withErrorHandler(async (req: Request) => {
           ],
         };
       })()
-    : {};
+    : undefined;
 
-  const fullWhere = Object.keys(cursorWhere).length > 0 ? { ...where, ...cursorWhere } : where;
+  const fullWhere: Prisma.TenantWhereInput =
+    cursorWhere !== undefined ? { AND: [where, cursorWhere] } : where;
 
   const rows = await prisma.tenant.findMany({
     where: fullWhere,
-    select: { id: true, name: true, slug: true, status: true, createdAt: true },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      status: true,
+      createdAt: true,
+      subscriptions: {
+        where: { provider: "paddle" },
+        orderBy: { currentPeriodEnd: "desc" },
+        take: 1,
+        select: {
+          currentEntitlementPlanCode: true,
+          pendingPlanCode: true,
+          pendingChangeType: true,
+          entitlementEffectiveUntil: true,
+          cancelAtPeriodEnd: true,
+          plan: { select: { code: true } },
+        },
+      },
+    },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: take + 1,
   });
@@ -101,17 +166,31 @@ export const GET = withErrorHandler(async (req: Request) => {
   const slice = hasMore ? rows.slice(0, take) : rows;
   const last = slice[slice.length - 1];
   const nextCursor =
-    hasMore && last
-      ? encodeCursor(last.createdAt.toISOString(), last.id)
-      : null;
+    hasMore && last ? encodeCursor(last.createdAt.toISOString(), last.id) : null;
 
-  const items = slice.map((t) => ({
-    id: t.id,
-    name: t.name,
-    slug: t.slug,
-    status: t.status,
-    createdAt: t.createdAt.toISOString(),
-  }));
+  const items = slice.map((t) => {
+    const sub = t.subscriptions?.[0] ?? null;
+    const planCode = (
+      sub?.currentEntitlementPlanCode ??
+      sub?.plan?.code ??
+      "free"
+    ).toLowerCase();
+    const pendingPlanCode = sub?.pendingPlanCode?.toLowerCase() ?? null;
+    const pendingChangeType = sub?.pendingChangeType ?? null;
+    const entitlementEffectiveUntil = sub?.entitlementEffectiveUntil?.toISOString() ?? null;
+
+    return {
+      id: t.id,
+      name: t.name,
+      slug: t.slug,
+      status: t.status,
+      createdAt: t.createdAt.toISOString(),
+      planCode,
+      pendingPlanCode,
+      pendingChangeType,
+      entitlementEffectiveUntil,
+    };
+  });
 
   return apiSuccess({ items, nextCursor });
 });
