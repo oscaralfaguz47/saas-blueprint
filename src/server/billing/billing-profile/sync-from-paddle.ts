@@ -106,11 +106,19 @@ export async function syncBillingProfileFromPaddle(params: {
   const [addressesRes, businessesRes] = await Promise.all([
     fetch(
       `${PADDLE_API_BASE}/customers/${encodeURIComponent(providerCustomerId)}/addresses`,
-      { method: "GET", headers: { Authorization: `Bearer ${getPaddleApiKey()}` } }
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${getPaddleApiKey()}` },
+        signal: AbortSignal.timeout(15_000),
+      }
     ),
     fetch(
       `${PADDLE_API_BASE}/customers/${encodeURIComponent(providerCustomerId)}/businesses`,
-      { method: "GET", headers: { Authorization: `Bearer ${getPaddleApiKey()}` } }
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${getPaddleApiKey()}` },
+        signal: AbortSignal.timeout(15_000),
+      }
     ),
   ]);
   if (!addressesRes.ok) return { updated: false };

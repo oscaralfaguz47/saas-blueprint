@@ -60,7 +60,10 @@ export function verifyPaddleWebhookSignature(
   const secrets = getWebhookSecrets();
   if (secrets.length === 0) {
     // eslint-disable-next-line no-console
-    console.warn("[billing] webhook_secret_configured: false");
+    console.warn("[billing]", {
+      event: "billing.webhook.secret_not_configured",
+      timestamp: new Date().toISOString(),
+    });
     throw new Error("Paddle webhook secret not configured");
   }
 

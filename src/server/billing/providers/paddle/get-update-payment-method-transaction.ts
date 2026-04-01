@@ -33,6 +33,7 @@ export async function getUpdatePaymentMethodTransaction(params: {
       headers: {
         Authorization: `Bearer ${getApiKey()}`,
       },
+      signal: AbortSignal.timeout(15_000),
     }
   );
   if (!res.ok) {

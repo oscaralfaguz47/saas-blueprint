@@ -2,7 +2,10 @@ import "server-only";
 
 import { prisma } from "@/server/db";
 import type { PlanCode, PlanFeatures, RequestsLimits } from "./provider-types";
-import { resolveEffectiveSubscription } from "./resolve-effective-subscription";
+import {
+  resolveEffectiveSubscription,
+  type EffectiveSubscription,
+} from "./resolve-effective-subscription";
 import { getPlanCatalogEntry } from "./plans/catalog";
 
 export type ResolvedTenantPlan = {
@@ -106,11 +109,16 @@ function parseFeaturesJson(featuresJson: unknown): PlanFeatures {
 /**
  * Resolve plan and limits for a tenant. Uses effective subscription; if no subscription,
  * falls back to free plan. Request-scoped caching is safe for same tenantId.
+ * Pass `cachedEffective` when the caller already called `resolveEffectiveSubscription` for this tenant.
  */
 export async function resolveTenantPlan(
-  tenantId: string
+  tenantId: string,
+  cachedEffective?: EffectiveSubscription | null
 ): Promise<ResolvedTenantPlan> {
-  const effective = await resolveEffectiveSubscription(tenantId);
+  const effective =
+    cachedEffective !== undefined
+      ? cachedEffective
+      : await resolveEffectiveSubscription(tenantId);
 
   if (!effective) {
     return {

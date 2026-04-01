@@ -15,6 +15,7 @@ import { Dialog } from "@/components/ui/dialog";
 import {
   IN_APP_PLAN_CATALOG,
   formatPriceMonthly,
+  formatPriceExact,
   isUpgrade,
   isDowngrade,
   type PlanCode,
@@ -285,6 +286,7 @@ function statusBadgeLabel(
   pendingPlanCode?: string | null,
   periodEnd?: string,
   pendingChangeType?: string | null,
+  planCode?: string | null,
 ): string {
   // Only show "Canceling" for scheduled cancellation to Free. Paid->paid downgrade shows "Active".
   if (pendingChangeType === "cancel_to_free_end_of_period") return "Canceling";
@@ -298,7 +300,12 @@ function statusBadgeLabel(
   if (s === "TRIAL") return "Trial";
   if (s === "PAST_DUE") return "Past due";
   if (s === "SUSPENDED") return "Suspended";
-  if (s === "CANCELED") return "Canceled";
+  if (s === "CANCELED") {
+    // When canceled and already on free, the cancellation completed successfully.
+    // Show "Free" — there is nothing alarming to communicate.
+    if (!planCode || planCode === "free") return "Free";
+    return "Canceled";
+  }
   return status;
 }
 
@@ -458,6 +465,7 @@ export function WorkspaceBillingTab() {
   const [paymentDeclinedPlanCode, setPaymentDeclinedPlanCode] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [transactions, setTransactions] = useState<BillingTransactionItem[]>([]);
+  const transactionsLengthRef = useRef(0);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
   const [transactionsHasMore, setTransactionsHasMore] = useState(false);
   const transactionsScrollSentinelRef = useRef<HTMLTableRowElement>(null);
@@ -578,13 +586,16 @@ export function WorkspaceBillingTab() {
         setTransactionsLoading(true);
       }
       try {
-        const offset = append ? transactions.length : 0;
+        const offset = append ? transactionsLengthRef.current : 0;
         const res = await apiFetch(
           `/api/billing/transactions?filter=completed&limit=${TRANSACTIONS_PAGE_SIZE}&offset=${offset}`,
           { showToastOnError: false },
         );
         if (!res.ok) {
-          if (!append) setTransactions([]);
+          if (!append) {
+            setTransactions([]);
+            transactionsLengthRef.current = 0;
+          }
           setTransactionsHasMore(false);
           return;
         }
@@ -596,12 +607,20 @@ export function WorkspaceBillingTab() {
         const list = Array.isArray(data?.transactions) ? data.transactions : [];
         setTransactionsHasMore(Boolean(data?.hasMore));
         if (append) {
-          setTransactions((prev) => [...prev, ...list]);
+          setTransactions((prev) => {
+            const next = [...prev, ...list];
+            transactionsLengthRef.current = next.length;
+            return next;
+          });
         } else {
           setTransactions(list);
+          transactionsLengthRef.current = list.length;
         }
       } catch {
-        if (!append) setTransactions([]);
+        if (!append) {
+          setTransactions([]);
+          transactionsLengthRef.current = 0;
+        }
         setTransactionsHasMore(false);
       } finally {
         if (append) {
@@ -611,7 +630,7 @@ export function WorkspaceBillingTab() {
         }
       }
     },
-    [apiFetch, transactions.length],
+    [apiFetch],
   );
 
   useEffect(() => {
@@ -1544,7 +1563,7 @@ export function WorkspaceBillingTab() {
           </button>
         </Alert>
       )}
-      {billingState.isCanceled && (
+      {billingState.isCanceled && summary.planCode !== "free" && (
         <Alert
           variant="info"
           title="Canceled"
@@ -1568,10 +1587,12 @@ export function WorkspaceBillingTab() {
               <span className="text-2xl font-bold tracking-tight text-(--text-primary)">{planLabel} plan</span>
               <Badge
                 variant={
-                  billingState.isCancelingAtPeriodEnd &&
-                  (summary.pendingPlanCode === "free" || !summary.pendingPlanCode)
+                  billingState.isCanceled && summary.planCode === "free"
                     ? "secondary"
-                    : statusBadgeVariant(summary.subscriptionStatus)
+                    : billingState.isCancelingAtPeriodEnd &&
+                        (summary.pendingPlanCode === "free" || !summary.pendingPlanCode)
+                      ? "secondary"
+                      : statusBadgeVariant(summary.subscriptionStatus)
                 }
               >
                 {statusBadgeLabel(
@@ -1580,6 +1601,7 @@ export function WorkspaceBillingTab() {
                   summary.pendingPlanCode,
                   summary.periodEnd,
                   summary.pendingChangeType,
+                  summary.planCode,
                 )}
               </Badge>
             </div>
@@ -1706,7 +1728,7 @@ export function WorkspaceBillingTab() {
                       </p>
                     )}
                     <p className="border-t border-(--border-subtle) pt-2 text-base font-semibold text-(--text-primary)">
-                      Estimated total · {formatPriceMonthly(nextInvoiceTotalCents)}
+                      Estimated total · {formatPriceExact(nextInvoiceTotalCents)}
                     </p>
                   </>
                 )}

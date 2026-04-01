@@ -20,6 +20,7 @@ export async function updateSubscriptionBusiness(
           "Content-Type": "application/json",
           Authorization: `Bearer ${getPaddleApiKey()}`,
         },
+        signal: AbortSignal.timeout(15_000),
         body: JSON.stringify({ business_id: businessId.trim() }),
       }
     );

@@ -3,7 +3,10 @@ import "server-only";
 import { prisma } from "@/server/db";
 import type { TenantBillingState } from "@prisma/client";
 import { resolveTenantPlan } from "./resolve-tenant-plan";
-import { resolveEffectiveSubscription } from "./resolve-effective-subscription";
+import {
+  resolveEffectiveSubscription,
+  type EffectiveSubscription,
+} from "./resolve-effective-subscription";
 
 /** Start of calendar month UTC (00:00:00.000). */
 export function getPeriodStartForDate(date: Date): Date {
@@ -24,9 +27,13 @@ export function getPeriodEndForDate(date: Date): Date {
  */
 export async function getBillingPeriodForTenant(
   tenantId: string,
-  atDate: Date = new Date()
+  atDate: Date = new Date(),
+  preResolvedEffective?: EffectiveSubscription | null
 ): Promise<{ periodStart: Date; periodEnd: Date }> {
-  const effective = await resolveEffectiveSubscription(tenantId);
+  const effective =
+    preResolvedEffective !== undefined
+      ? preResolvedEffective
+      : await resolveEffectiveSubscription(tenantId);
   if (
     effective?.currentPeriodStart &&
     effective?.currentPeriodEnd &&
@@ -47,9 +54,11 @@ export async function getOrCreateBillingState(
   tenantId: string,
   atDate: Date = new Date()
 ): Promise<TenantBillingState> {
+  const effective = await resolveEffectiveSubscription(tenantId);
   const { periodStart, periodEnd } = await getBillingPeriodForTenant(
     tenantId,
-    atDate
+    atDate,
+    effective
   );
 
   const existing = await prisma.tenantBillingState.findUnique({
@@ -60,7 +69,9 @@ export async function getOrCreateBillingState(
 
   if (existing) return existing;
 
-  const { planCode } = await resolveTenantPlan(tenantId);
+  // Resolve plan code for the new billing state row. We already loaded effective above;
+  // pass it through so resolveTenantPlan does not query the subscription again (cold path).
+  const { planCode } = await resolveTenantPlan(tenantId, effective);
 
   return prisma.tenantBillingState.upsert({
     where: {

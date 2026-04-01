@@ -29,6 +29,7 @@ async function paddleFetch<T>(
   try {
     const res = await fetch(`${PADDLE_API_BASE}${path}`, {
       ...init,
+      signal: AbortSignal.timeout(15_000),
       headers: {
         Authorization: `Bearer ${getPaddleApiKey()}`,
         ...init.headers,
@@ -42,7 +43,12 @@ async function paddleFetch<T>(
     return { ok: true, data: json.data };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
-    return { ok: false, error: message };
+    const isTimeout =
+      e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+    return {
+      ok: false,
+      error: isTimeout ? "Paddle API timeout. Please try again." : message,
+    };
   }
 }
 

@@ -82,6 +82,7 @@ export async function reviseTransactionBillingDetails(
         Authorization: `Bearer ${getPaddleApiKey()}`,
         "Content-Type": "application/json",
       },
+      signal: AbortSignal.timeout(15_000),
       body: JSON.stringify(body),
     }
   );

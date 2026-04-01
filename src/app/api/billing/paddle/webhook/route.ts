@@ -140,11 +140,13 @@ export async function POST(req: Request) {
       return apiError("VALIDATION_ERROR", 400, "Invalid webhook payload schema");
     }
     const errorMessage = err instanceof Error ? err.message : String(err);
-    console.error("[billing/webhook] process_failure", {
+    console.error("[billing]", {
+      event: "billing.webhook.process_failure",
+      timestamp: new Date().toISOString(),
       eventType: event_type,
       providerEventId: event_id,
-      billingEventId,
-      error: errorMessage,
+      billingEventId: billingEventId ?? null,
+      error: errorMessage.slice(0, 300),
     });
     logWebhookReceived({
       eventType: event_type,

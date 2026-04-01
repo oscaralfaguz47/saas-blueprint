@@ -10,6 +10,13 @@ import { writeAuditLog } from "@/server/services/audit";
 const OVERAGE_UNIT_CENTS = 25; // $0.25 per request (Starter)
 const BATCH_SIZE = 50;
 
+/** Minimum overage units before creating a Paddle charge.
+ *  Paddle rejects one-time charges below ~$0.70.
+ *  At $0.25/unit, 3 units = $0.75 is the technical floor.
+ *  We use 5 units ($1.25) as the product-level minimum for a clean threshold.
+ *  Tenants with 1–4 overage units in a period are not charged. */
+const OVERAGE_MIN_BILLABLE_UNITS = 5;
+
 /**
  * EPIC 5: For Starter tenants nearing period end, compute overage and create Paddle one-time charge
  * effective_from next_billing_period. Persist TenantOverageCharge for idempotence.
@@ -45,7 +52,9 @@ export async function runStarterOverageScheduling(params?: {
     if (!sub.currentPeriodEnd || !sub.providerCustomerId) continue;
     const periodEnd = new Date(sub.currentPeriodEnd);
     const hoursUntilEnd = (periodEnd.getTime() - now.getTime()) / (1000 * 60 * 60);
-    if (hoursUntilEnd > 24) continue;
+    // Process tenants within 24h before period end OR up to 2h after period end
+    // (safety window to catch charges missed if tenant hit threshold in last minutes of period)
+    if (hoursUntilEnd > 24 || hoursUntilEnd < -2) continue;
 
     const { periodStart } = await getBillingPeriodForTenant(
       sub.tenantId,
@@ -78,7 +87,7 @@ export async function runStarterOverageScheduling(params?: {
     );
     const totalAvailable = included + Math.min(rolloverAvailable, starterEntry.rolloverMaxAvailable);
     const overageUnits = Math.max(0, used - totalAvailable);
-    if (overageUnits === 0) continue;
+    if (overageUnits < OVERAGE_MIN_BILLABLE_UNITS) continue;
 
     const existing = await prisma.tenantOverageCharge.findUnique({
       where: {
@@ -155,26 +164,29 @@ async function createPaddleOneTimeCharge(params: {
   if (!key) return null;
 
   try {
-    const res = await fetch(`${base}/subscriptions/${params.subscriptionId}/one-time-charges`, {
+    const requestBody = {
+      items: [
+        {
+          price_id: priceId,
+          quantity: params.units,
+        },
+      ],
+      effective_from: params.effectiveFromNextBillingPeriod
+        ? "next_billing_period"
+        : "immediate",
+    };
+    const res = await fetch(`${base}/subscriptions/${params.subscriptionId}/charge`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${key}`,
       },
-      body: JSON.stringify({
-        items: [
-          {
-            price_id: priceId,
-            quantity: params.units,
-          },
-        ],
-        effective_from: params.effectiveFromNextBillingPeriod
-          ? "next_billing_period"
-          : "immediate",
-      }),
+      signal: AbortSignal.timeout(15_000),
+      body: JSON.stringify(requestBody),
     });
+    const responseText = await res.text();
     if (!res.ok) return null;
-    const json = (await res.json()) as { data?: { id?: string } };
+    const json = JSON.parse(responseText) as { data?: { id?: string } };
     return json?.data?.id ?? null;
   } catch {
     return null;

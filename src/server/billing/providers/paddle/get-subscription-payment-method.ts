@@ -55,6 +55,7 @@ export async function getSubscriptionPaymentMethod(params: {
     {
       method: "GET",
       headers: { Authorization: `Bearer ${getApiKey()}` },
+      signal: AbortSignal.timeout(15_000),
     }
   );
   if (listRes.ok) {
@@ -84,6 +85,7 @@ export async function getSubscriptionPaymentMethod(params: {
     {
       method: "GET",
       headers: { Authorization: `Bearer ${getApiKey()}` },
+      signal: AbortSignal.timeout(15_000),
     }
   );
   if (!txListRes.ok) return null;
@@ -144,6 +146,7 @@ export async function getSubscriptionPaymentMethod(params: {
     {
       method: "GET",
       headers: { Authorization: `Bearer ${getApiKey()}` },
+      signal: AbortSignal.timeout(15_000),
     }
   );
   if (!pmRes.ok) return null;

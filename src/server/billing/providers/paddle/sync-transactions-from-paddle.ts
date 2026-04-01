@@ -72,6 +72,7 @@ export async function syncTransactionsFromPaddle(params: {
     const res = await fetch(url.toString(), {
       method: "GET",
       headers: { Authorization: `Bearer ${getApiKey()}` },
+      signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) {
       const err = await res.text();

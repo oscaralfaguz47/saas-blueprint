@@ -47,6 +47,7 @@ export async function getTransactionDetails(providerTransactionId: string): Prom
   const res = await fetch(url.toString(), {
     method: "GET",
     headers: { Authorization: `Bearer ${getPaddleApiKey()}` },
+    signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) return null;
   const json = (await res.json()) as { data?: PaddleTransaction };

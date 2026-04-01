@@ -33,6 +33,7 @@ export async function fetchPaddleSubscription(
     {
       method: "GET",
       headers: { Authorization: `Bearer ${getApiKey()}` },
+      signal: AbortSignal.timeout(15_000),
     }
   );
   if (!res.ok) {
@@ -109,6 +110,7 @@ export async function fetchPaddleCustomerCountry(
     {
       method: "GET",
       headers: { Authorization: `Bearer ${getApiKey()}` },
+      signal: AbortSignal.timeout(15_000),
     }
   );
   if (!res.ok) {

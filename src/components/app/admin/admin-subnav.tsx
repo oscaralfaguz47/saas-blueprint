@@ -8,6 +8,7 @@ const tabs = [
   { href: "/admin/support", label: "Support" },
   { href: "/admin/knowledge-base", label: "Knowledge Base" },
   { href: "/admin/chat", label: "Chat History" },
+  { href: "/admin/cron-jobs", label: "Cron Jobs" },
 ] as const;
 
 export function AdminSubnav() {

@@ -24,7 +24,9 @@ export const GET = withErrorHandler(async (req: Request) => {
   if (!isCronAuthorized(req)) {
     return withCronHeaders(apiError("UNAUTHORIZED", 401, "Invalid or missing cron secret"));
   }
-  const result = await runPeriodClose();
+  const result = await runPeriodClose({
+    actorUserId: env.BILLING_WEBHOOK_ACTOR_USER_ID ?? null,
+  });
   return withCronHeaders(apiSuccess({ closed: result.closed }));
 });
 
@@ -32,6 +34,8 @@ export const POST = withErrorHandler(async (req: Request) => {
   if (!isCronAuthorized(req)) {
     return withCronHeaders(apiError("UNAUTHORIZED", 401, "Invalid or missing cron secret"));
   }
-  const result = await runPeriodClose();
+  const result = await runPeriodClose({
+    actorUserId: env.BILLING_WEBHOOK_ACTOR_USER_ID ?? null,
+  });
   return withCronHeaders(apiSuccess({ closed: result.closed }));
 });

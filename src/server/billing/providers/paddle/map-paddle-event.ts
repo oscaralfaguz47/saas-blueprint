@@ -143,7 +143,7 @@ export function getGraceUntilForPastDue(): Date {
  * Determine if Paddle scheduled_change indicates cancel at period end.
  */
 export function isCancelAtPeriodEnd(
-  scheduledChange: { action?: string } | null | undefined
+  scheduledChange: { action?: string | null } | null | undefined
 ): boolean {
   return scheduledChange?.action === "cancel";
 }
