@@ -11,26 +11,13 @@ import { logCheckoutInitiated } from "@/server/billing/billing-log";
 import { prisma } from "@/server/db";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { parseBody } from "@/lib/validations/common";
+import { type PlanCode, isUpgrade, isDowngrade } from "@/lib/billing/plan-catalog";
 import { z } from "zod";
 
 const changePlanBodySchema = z.object({
   targetPlanCode: z.enum(["free", "starter", "pro", "enterprise"]),
   effective: z.enum(["immediate", "next_period"]).optional().default("next_period"),
 });
-
-const PLAN_ORDER = ["free", "starter", "pro", "enterprise"] as const;
-type PlanCode = (typeof PLAN_ORDER)[number];
-
-function planOrderIndex(code: string): number {
-  const i = PLAN_ORDER.indexOf(code as PlanCode);
-  return i >= 0 ? i : -1;
-}
-function isUpgrade(currentCode: string, targetCode: string): boolean {
-  return planOrderIndex(targetCode) > planOrderIndex(currentCode);
-}
-function isDowngrade(currentCode: string, targetCode: string): boolean {
-  return planOrderIndex(targetCode) < planOrderIndex(currentCode);
-}
 
 export const POST = withErrorHandler(async (req: Request) => {
   const session = await getServerSession(authOptions);
@@ -177,11 +164,14 @@ export const POST = withErrorHandler(async (req: Request) => {
     }
   }
 
-  if (!isUpgrade(currentCode, targetCode) && !isDowngrade(currentCode, targetCode)) {
+  if (
+    !isUpgrade(currentCode as PlanCode, targetCode) &&
+    !isDowngrade(currentCode as PlanCode, targetCode)
+  ) {
     return apiSuccess({ mode: "update_subscription" as const, effective: "next_period" as const });
   }
 
-  const isUpgradeFlow = isUpgrade(currentCode, targetCode);
+  const isUpgradeFlow = isUpgrade(currentCode as PlanCode, targetCode);
   const isResumeFromCancellation =
     subscription.cancelAtPeriodEnd && subscription.pendingPlanCode === "free";
   const clearScheduledCancel =
@@ -194,7 +184,7 @@ export const POST = withErrorHandler(async (req: Request) => {
     if (isResumeFromCancellation) {
       // "Schedule instead" to a smaller plan = downgrade: keep current plan until period end.
       // "Resume" to same/larger plan = cancel the cancellation and use chosen plan immediately.
-      const scheduleInsteadDowngrade = isDowngrade(currentCode, targetCode);
+      const scheduleInsteadDowngrade = isDowngrade(currentCode as PlanCode, targetCode);
 
       // Two-step flow: Paddle forbids combining scheduled_change with items/proration in one PATCH.
       // Step 1: Clear only scheduled_change (no items, no proration).

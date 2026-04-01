@@ -4,6 +4,10 @@ import { env } from "@/lib/env";
 import { prisma } from "@/server/db";
 import type { PlanCode } from "@/server/billing/provider-types";
 
+function paddleSignal(ms = 15_000): AbortSignal {
+  return AbortSignal.timeout(ms);
+}
+
 const PADDLE_API_BASE =
   env.PADDLE_ENVIRONMENT === "production"
     ? "https://api.paddle.com"
@@ -53,6 +57,7 @@ async function findPaddleCustomerByEmail(email: string): Promise<{ id: string } 
   const res = await fetch(url.toString(), {
     method: "GET",
     headers: { Authorization: `Bearer ${getApiKey()}` },
+    signal: paddleSignal(),
   });
   if (!res.ok) {
     const err = await res.text();
@@ -77,6 +82,7 @@ async function createPaddleCustomer(params: {
       Authorization: `Bearer ${getApiKey()}`,
       "Content-Type": "application/json",
     },
+    signal: paddleSignal(),
     body: JSON.stringify({
       email: params.email,
       name: params.name ?? undefined,
@@ -130,6 +136,7 @@ async function createPaddleTransaction(params: {
       Authorization: `Bearer ${getApiKey()}`,
       "Content-Type": "application/json",
     },
+    signal: paddleSignal(),
     body: JSON.stringify(body),
   });
   if (!res.ok) {

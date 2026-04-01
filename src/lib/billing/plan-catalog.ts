@@ -107,6 +107,18 @@ export function formatPriceMonthly(cents: number): string {
   return `$${(cents / 100).toFixed(0)}`;
 }
 
+/**
+ * Format a price in cents, showing decimals only when the amount has cents.
+ * $5900 → "$59", $6275 → "$62.75", $375 → "$3.75"
+ */
+export function formatPriceExact(cents: number): string {
+  if (cents === 0) return "$0";
+  const dollars = cents / 100;
+  return dollars % 1 === 0
+    ? `$${dollars.toFixed(0)}`
+    : `$${dollars.toFixed(2)}`;
+}
+
 /** Order for comparison: free < starter < pro < enterprise. */
 export const PLAN_ORDER: PlanCode[] = ["free", "starter", "pro", "enterprise"];
 

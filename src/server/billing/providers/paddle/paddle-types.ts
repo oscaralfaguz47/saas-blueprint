@@ -27,25 +27,16 @@ export const paddleMetadataSchema = z.object({
 });
 
 /** Current billing period from Paddle (ISO timestamps). */
-export const paddleBillingPeriodSchema = z
-  .object({
-    starts_at: z.string(),
-    ends_at: z.string(),
-  })
-  .refine(
-    (p) => {
-      const start = new Date(p.starts_at).getTime();
-      const end = new Date(p.ends_at).getTime();
-      return !Number.isNaN(start) && !Number.isNaN(end) && start < end;
-    },
-    { message: "Period start must be before period end" }
-  );
+export const paddleBillingPeriodSchema = z.object({
+  starts_at: z.string(),
+  ends_at: z.string(),
+});
 
 /** Subscription item: Paddle webhook sends price.id (nested); API may send price_id. */
 const subscriptionItemSchema = z.object({
   price_id: z.string().optional(),
-  price: z.object({ id: z.string() }).optional(),
-});
+  price: z.object({ id: z.string() }).passthrough().optional(),
+}).passthrough();
 
 /** Subscription data shape in Paddle webhook (only fields we use). */
 export const paddleSubscriptionDataSchema = z.object({
@@ -58,13 +49,14 @@ export const paddleSubscriptionDataSchema = z.object({
   current_billing_period: paddleBillingPeriodSchema.nullable().optional(),
   scheduled_change: z
     .object({
-      action: z.string().optional(),
-      effective_at: z.string().optional(),
-      resume_at: z.string().optional(),
+      action: z.string().nullable().optional(),
+      effective_at: z.string().nullable().optional(),
+      resume_at: z.string().nullable().optional(),
     })
+    .passthrough()
     .nullable()
     .optional(),
-});
+}).passthrough();
 
 /** Top-level webhook envelope (event_id, event_type, data). */
 export const paddleWebhookEnvelopeSchema = z.object({

@@ -24,15 +24,12 @@ export type BillingProfileData = {
 
 function countryDisplayName(code: string): string {
   if (!code || code.length !== 2) return code ?? "";
-  const names: Record<string, string> = {
-    US: "United States",
-    GB: "United Kingdom",
-    CA: "Canada",
-    AU: "Australia",
-    DE: "Germany",
-    FR: "France",
-  };
-  return names[code.toUpperCase()] ?? code.toUpperCase();
+  try {
+    const displayNames = new Intl.DisplayNames(["en"], { type: "region" });
+    return displayNames.of(code.toUpperCase()) ?? code.toUpperCase();
+  } catch {
+    return code.toUpperCase();
+  }
 }
 
 export function BillingProfileSection() {

@@ -20,6 +20,8 @@ export const POST = withErrorHandler(async (req: Request) => {
     return apiError("UNAUTHORIZED", 401, "Invalid or missing internal secret");
   }
 
-  const result = await runPeriodClose();
+  const result = await runPeriodClose({
+    actorUserId: env.BILLING_WEBHOOK_ACTOR_USER_ID ?? null,
+  });
   return apiSuccess({ closed: result.closed });
 });

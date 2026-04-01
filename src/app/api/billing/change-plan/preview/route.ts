@@ -4,20 +4,12 @@ import { requireFullSession } from "@/server/require-full-session";
 import { getCurrentTenantId, requireTenantPermission } from "@/server/billing/tenant-context";
 import { prisma } from "@/server/db";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
+import { type PlanCode, isUpgrade } from "@/lib/billing/plan-catalog";
 import { z } from "zod";
 
 const querySchema = z.object({
   targetPlanCode: z.enum(["free", "starter", "pro", "enterprise"]),
 });
-
-const PLAN_ORDER = ["free", "starter", "pro", "enterprise"] as const;
-function planOrderIndex(code: string): number {
-  const i = PLAN_ORDER.indexOf(code as (typeof PLAN_ORDER)[number]);
-  return i >= 0 ? i : -1;
-}
-function isUpgrade(currentCode: string, targetCode: string): boolean {
-  return planOrderIndex(targetCode) > planOrderIndex(currentCode);
-}
 
 /**
  * GET /api/billing/change-plan/preview?targetPlanCode=...
@@ -97,7 +89,9 @@ export const GET = withErrorHandler(async (req: Request) => {
   }
 
   const effectiveFromDate = subscription.currentPeriodEnd;
-  const effectiveAt = isUpgrade(currentPlanCode, targetPlanCode) ? ("immediate" as const) : ("next_period" as const);
+  const effectiveAt = isUpgrade(currentPlanCode as PlanCode, targetPlanCode)
+    ? ("immediate" as const)
+    : ("next_period" as const);
 
   return apiSuccess({
     currentPlanCode,

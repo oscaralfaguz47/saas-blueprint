@@ -199,15 +199,14 @@ export const PUT = withErrorHandler(async (req: Request) => {
     .map((e) => e.trim())
     .filter(Boolean);
   if (adminEmails.length > 0) {
-    try {
-      await sendEmail({
-        to: adminEmails[0],
-        subject: "Billing profile updated",
-        html: `<p>Tenant ${tenantId} updated billing details (future invoices).</p>`,
-      });
-    } catch {
-      // non-blocking
-    }
+    // Fire-and-forget: non-critical internal notification; must not block the user response
+    void sendEmail({
+      to: adminEmails[0],
+      subject: "Billing profile updated",
+      html: `<p>Tenant ${tenantId} updated billing details (future invoices).</p>`,
+    }).catch(() => {
+      // Intentionally swallowed: notification failure must not affect billing profile update
+    });
   }
 
   await writeAuditLog({

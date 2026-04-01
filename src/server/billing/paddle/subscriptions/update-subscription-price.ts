@@ -131,6 +131,7 @@ export async function updateSubscriptionPrice(
           "Content-Type": "application/json",
           Authorization: `Bearer ${getPaddleApiKey()}`,
         },
+        signal: AbortSignal.timeout(15_000),
         body: JSON.stringify(body),
       }
     );

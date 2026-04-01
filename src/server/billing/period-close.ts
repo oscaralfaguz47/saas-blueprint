@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db";
 import {
   getPeriodStartForDate,
@@ -11,6 +12,16 @@ import { writeAuditLog } from "@/server/services/audit";
 import { updateSubscriptionPrice } from "@/server/billing/paddle/subscriptions/update-subscription-price";
 
 const ROLLOVER_EXPIRY_DAYS = 60;
+
+type ScheduledDowngradeSubscriptionRow = Prisma.SubscriptionGetPayload<{
+  select: {
+    id: true;
+    tenantId: true;
+    providerSubscriptionId: true;
+    pendingPlanCode: true;
+    downgradePaddleAppliedAt: true;
+  };
+}>;
 
 /**
  * EPIC 5: Close billing periods that have ended; create TenantRolloverLot (60d expiry); apply pendingPlanCode (downgrade to free).
@@ -155,56 +166,83 @@ export async function runPeriodClose(params?: {
  * Downgrades are never applied at click time (no proration/credits); we only update Paddle here at period end.
  */
 async function applyScheduledPaidDowngrades(now: Date): Promise<void> {
-  const subs = await prisma.subscription.findMany({
-    where: {
-      provider: "paddle",
+  const BATCH_SIZE = 50;
+  let cursor: string | undefined = undefined;
+  let hasMore = true;
+
+  while (hasMore) {
+    const where = {
+      provider: "paddle" as const,
       pendingPlanCode: { not: null },
       currentPeriodEnd: { not: null, lt: now },
-    },
-    select: {
+    };
+    const select = {
       id: true,
       tenantId: true,
       providerSubscriptionId: true,
       pendingPlanCode: true,
       downgradePaddleAppliedAt: true,
-    },
-  });
-  for (const sub of subs) {
-    const code = sub.pendingPlanCode?.toLowerCase();
-    if (!code || code === "free") continue;
-    if (code !== "starter" && code !== "pro" && code !== "enterprise") continue;
-
-    if (sub.downgradePaddleAppliedAt != null) {
-      // Legacy: Paddle was already updated at click time; only sync our DB and clear pending fields.
-      const plan = await prisma.plan.findFirst({
-        where: { code: { equals: code, mode: "insensitive" }, isActive: true },
-        select: { id: true },
-      });
-      if (plan) {
-        await prisma.subscription.update({
-          where: { id: sub.id },
-          data: {
-            planId: plan.id,
-            pendingPlanCode: null,
-            downgradePaddleAppliedAt: null,
-            pendingChangeType: null,
-            pendingEffectiveAt: null,
-            entitlementEffectiveUntil: null,
-          },
+    };
+    const subs: ScheduledDowngradeSubscriptionRow[] = cursor
+      ? await prisma.subscription.findMany({
+          where,
+          select,
+          take: BATCH_SIZE,
+          skip: 1,
+          cursor: { id: cursor },
+          orderBy: { id: "asc" },
+        })
+      : await prisma.subscription.findMany({
+          where,
+          select,
+          take: BATCH_SIZE,
+          orderBy: { id: "asc" },
         });
-      }
-      continue;
+
+    hasMore = subs.length === BATCH_SIZE;
+    if (subs.length > 0) {
+      cursor = subs[subs.length - 1]?.id;
     }
 
-    if (!sub.providerSubscriptionId) continue;
-    const result = await updateSubscriptionPrice({
-      providerSubscriptionId: sub.providerSubscriptionId,
-      targetPlanCode: code as "starter" | "pro" | "enterprise",
-      effective: "next_period",
-      tenantId: sub.tenantId,
-    });
-    if (!result.ok) {
-      console.error("[applyScheduledPaidDowngrades]", sub.id, result.error);
+    for (const sub of subs) {
+      const code = sub.pendingPlanCode?.toLowerCase();
+      if (!code || code === "free") continue;
+      if (code !== "starter" && code !== "pro" && code !== "enterprise") continue;
+
+      if (sub.downgradePaddleAppliedAt != null) {
+        // Legacy: Paddle was already updated at click time; only sync our DB and clear pending fields.
+        const plan = await prisma.plan.findFirst({
+          where: { code: { equals: code, mode: "insensitive" }, isActive: true },
+          select: { id: true },
+        });
+        if (plan) {
+          await prisma.subscription.update({
+            where: { id: sub.id },
+            data: {
+              planId: plan.id,
+              pendingPlanCode: null,
+              downgradePaddleAppliedAt: null,
+              pendingChangeType: null,
+              pendingEffectiveAt: null,
+              entitlementEffectiveUntil: null,
+              billingPlanCode: code,
+              currentEntitlementPlanCode: code,
+            },
+          });
+        }
+        continue;
+      }
+
+      if (!sub.providerSubscriptionId) continue;
+      const result = await updateSubscriptionPrice({
+        providerSubscriptionId: sub.providerSubscriptionId,
+        targetPlanCode: code as "starter" | "pro" | "enterprise",
+        effective: "next_period",
+        tenantId: sub.tenantId,
+      });
+      if (!result.ok) {
+        console.error("[applyScheduledPaidDowngrades]", sub.id, result.error);
+      }
     }
   }
 }
@@ -245,8 +283,14 @@ async function applyPendingPlanCodeIfNeeded(
     where: { id: sub.id },
     data: {
       planId: freePlan.id,
+      status: "CANCELED",
       cancelAtPeriodEnd: false,
       pendingPlanCode: null,
+      pendingChangeType: null,
+      pendingEffectiveAt: null,
+      entitlementEffectiveUntil: null,
+      billingPlanCode: "free",
+      currentEntitlementPlanCode: "free",
     },
   });
 

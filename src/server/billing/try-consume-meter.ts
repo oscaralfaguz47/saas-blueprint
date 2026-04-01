@@ -7,7 +7,6 @@ import {
   getPeriodEndForDate,
   getOrCreateBillingState,
 } from "./get-or-create-billing-state";
-import { resolveEffectiveSubscription } from "./resolve-effective-subscription";
 import { resolveTenantPlan } from "./resolve-tenant-plan";
 
 export class UpgradeRequiredError extends Error {
@@ -54,14 +53,14 @@ export async function checkMeterLimit(params: {
 
   if (delta <= 0) return;
 
-  const effective = await resolveEffectiveSubscription(tenantId);
-  if (effective?.isBlocked) {
+  const resolved = await resolveTenantPlan(tenantId);
+
+  if (resolved.isBlocked) {
     throw new UpgradeRequiredError(
       "Subscription is suspended or canceled. Upgrade or renew to continue."
     );
   }
 
-  const resolved = await resolveTenantPlan(tenantId);
   const periodStart = maybePeriodStart
     ? getPeriodStartForDate(maybePeriodStart)
     : resolved.currentPeriodStart
@@ -117,14 +116,14 @@ export async function tryConsumeMeter(
   }
 
   return prisma.$transaction(async (tx) => {
-    const effective = await resolveEffectiveSubscription(tenantId);
-    if (effective?.isBlocked) {
+    const resolved = await resolveTenantPlan(tenantId);
+
+    if (resolved.isBlocked) {
       throw new UpgradeRequiredError(
         "Subscription is suspended or canceled. Upgrade or renew to continue."
       );
     }
 
-    const resolved = await resolveTenantPlan(tenantId);
     const periodStart = maybePeriodStart
       ? getPeriodStartForDate(maybePeriodStart)
       : resolved.currentPeriodStart

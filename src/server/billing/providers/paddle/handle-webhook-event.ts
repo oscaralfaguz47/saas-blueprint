@@ -56,6 +56,7 @@ async function resolveTenantIdByProviderCustomerId(providerCustomerId: string): 
     const res = await fetch(url.toString(), {
       method: "GET",
       headers: { Authorization: `Bearer ${getPaddleApiKey()}` },
+      signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) return null;
     const json = (await res.json()) as { data?: Array<{ id?: string }> };
@@ -92,6 +93,7 @@ async function resolveTenantIdByProviderBusinessId(
     const res = await fetch(url.toString(), {
       method: "GET",
       headers: { Authorization: `Bearer ${getPaddleApiKey()}` },
+      signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) return null;
     const json = (await res.json()) as { data?: Array<{ id?: string; business_id?: string | null }> };
@@ -438,10 +440,22 @@ export async function handleWebhookEvent(params: {
     const planCodeFromItems = getHighestPlanCodeFromItems(dataToUse.items);
     const existingBySub = await prisma.subscription.findFirst({
       where: { provider: "paddle", providerSubscriptionId },
-      select: { tenantId: true },
+      select: { tenantId: true, plan: { select: { code: true } }, currentEntitlementPlanCode: true },
     });
-    if (existingBySub && planCodeFromItems && planCodeFromItems !== "free") {
-      resolvedMetadata = { tenantId: existingBySub.tenantId, planCode: planCodeFromItems };
+    if (existingBySub) {
+      // Use plan code from items, or fall back to current entitlement/plan in DB.
+      // This ensures cancellation webhooks from Paddle dashboard are processed even
+      // when price IDs don't match env vars or custom_data is missing.
+      const planCode =
+        planCodeFromItems && planCodeFromItems !== "free"
+          ? planCodeFromItems
+          : (existingBySub.currentEntitlementPlanCode ?? existingBySub.plan?.code ?? null);
+      if (planCode && planCode !== "free") {
+        resolvedMetadata = {
+          tenantId: existingBySub.tenantId,
+          planCode: planCode as "starter" | "pro" | "enterprise",
+        };
+      }
     }
   }
 
@@ -647,10 +661,26 @@ export async function handleWebhookEvent(params: {
     } else {
       entitlementCode = newBilling;
       billingCode = newBilling;
-      pendingChangeType = existingSub?.pendingChangeType ?? null;
-      pendingPlanCode = existingSub?.pendingPlanCode ?? null;
-      pendingEffectiveAt = existingSub?.pendingEffectiveAt ?? null;
-      entitlementEffectiveUntil = existingSub?.entitlementEffectiveUntil ?? null;
+      // If Paddle no longer has a scheduled change (scheduled_change is null),
+      // clear any pending cancellation or downgrade we have stored.
+      // This handles the case where a user or admin reverts a scheduled cancellation
+      // from the Paddle dashboard ("Don't cancel subscription").
+      const hasScheduledChangeinPaddle = !!(
+        dataToUse.scheduled_change &&
+        typeof dataToUse.scheduled_change === "object" &&
+        dataToUse.scheduled_change.action
+      );
+      if (!hasScheduledChangeinPaddle) {
+        pendingChangeType = null;
+        pendingPlanCode = null;
+        pendingEffectiveAt = null;
+        entitlementEffectiveUntil = null;
+      } else {
+        pendingChangeType = existingSub?.pendingChangeType ?? null;
+        pendingPlanCode = existingSub?.pendingPlanCode ?? null;
+        pendingEffectiveAt = existingSub?.pendingEffectiveAt ?? null;
+        entitlementEffectiveUntil = existingSub?.entitlementEffectiveUntil ?? null;
+      }
     }
 
     const entitlementPlan = await tx.plan.findFirst({

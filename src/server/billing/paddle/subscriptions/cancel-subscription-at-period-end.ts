@@ -19,6 +19,7 @@ export async function cancelSubscriptionAtPeriodEnd(
           "Content-Type": "application/json",
           Authorization: `Bearer ${getPaddleApiKey()}`,
         },
+        signal: AbortSignal.timeout(15_000),
         body: JSON.stringify({ effective_from: "next_billing_period" }),
       }
     );
