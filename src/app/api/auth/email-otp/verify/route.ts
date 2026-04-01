@@ -5,6 +5,7 @@ import { prisma } from "@/server/db";
 import { verifyEmailOtp } from "@/server/services/email-otp";
 import { createPasskeyOneTimeToken } from "@/server/auth-options";
 import { writeAuditLog } from "@/server/services/audit";
+import { ensureBootstrapPlatformOwner } from "@/server/services/platform-bootstrap";
 import { parseBody } from "@/lib/validations";
 import { ValidationError } from "@/lib/validations/common";
 
@@ -81,6 +82,7 @@ export const POST = withErrorHandler(async (req: Request) => {
     select: { id: true, isPlatformBlocked: true, role: true, name: true, image: true, email: true },
   });
 
+  let isNewUser = false;
   if (!user) {
     user = await prisma.user.create({
       data: {
@@ -89,6 +91,19 @@ export const POST = withErrorHandler(async (req: Request) => {
       },
       select: { id: true, isPlatformBlocked: true, role: true, name: true, image: true, email: true },
     });
+    isNewUser = true;
+  }
+
+  // Run bootstrap for new users created via OTP (bypasses NextAuth adapter,
+  // so events.createUser never fires — we must call this explicitly here).
+  if (isNewUser) {
+    try {
+      await ensureBootstrapPlatformOwner({ userId: user.id, email: user.email });
+    } catch (err) {
+      // Non-fatal: log but do not fail the sign-in. Bootstrap is idempotent
+      // and will be retried on next sign-in via the signIn callback.
+      console.error("[email-otp/verify] Bootstrap platform owner failed:", err);
+    }
   }
 
   if (user.isPlatformBlocked) return ApiErrors.FORBIDDEN();
