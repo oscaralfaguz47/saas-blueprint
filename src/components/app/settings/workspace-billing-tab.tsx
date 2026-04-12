@@ -2258,14 +2258,14 @@ export function WorkspaceBillingTab() {
                     : "Billed upfront for the full year. ~15% savings versus monthly. Downgrades take effect at renewal."}
                 </p>
                 <div
-                  className="inline-flex shrink-0 rounded-full border border-(--border-subtle) bg-(--bg-surface) p-0.5"
+                  className="inline-flex shrink-0 cursor-pointer rounded-full border border-(--border-subtle) bg-(--bg-surface) p-0.5"
                   role="group"
                   aria-label="Display billing cycle"
                 >
                   <button
                     type="button"
                     onClick={() => setChangePlanBillingCycle("monthly")}
-                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                    className={`cursor-pointer rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
                       changePlanBillingCycle === "monthly"
                         ? "bg-(--color-primary) text-white"
                         : "text-(--text-secondary) hover:text-(--text-primary)"
@@ -2276,7 +2276,7 @@ export function WorkspaceBillingTab() {
                   <button
                     type="button"
                     onClick={() => setChangePlanBillingCycle("annual")}
-                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                    className={`cursor-pointer rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
                       changePlanBillingCycle === "annual"
                         ? "bg-(--color-primary) text-white"
                         : "text-(--text-secondary) hover:text-(--text-primary)"
@@ -2325,12 +2325,16 @@ export function WorkspaceBillingTab() {
                           <div className="flex items-start justify-between gap-2">
                             <h3 className="flex flex-wrap items-center gap-1.5 font-semibold text-(--text-primary)">
                               <span>{plan.name}</span>
-                              {isCurrent && summary?.billingInterval === "annual" && (
+                              {isCurrent &&
+                                plan.priceMonthlyCents > 0 &&
+                                summary?.billingInterval === "annual" && (
                                 <Badge variant="secondary" className="font-normal">
                                   Annual
                                 </Badge>
                               )}
-                              {isCurrent && summary?.billingInterval === "monthly" && (
+                              {isCurrent &&
+                                plan.priceMonthlyCents > 0 &&
+                                summary?.billingInterval === "monthly" && (
                                 <Badge variant="secondary" className="font-normal">
                                   Monthly
                                 </Badge>
@@ -2360,7 +2364,7 @@ export function WorkspaceBillingTab() {
                           ) : plan.priceYearlyCents > 0 ? (
                             <div className="mt-1">
                               <p className="text-lg font-medium text-(--text-primary)">
-                                {formatPriceExact(Math.round(plan.priceYearlyCents / 12))}/mo
+                                {formatPriceExact(Math.round(plan.priceYearlyCents / 12))}/month
                               </p>
                               <p className="text-xs text-(--text-muted)">
                                 {formatPriceExact(plan.priceYearlyCents)} billed annually

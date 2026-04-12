@@ -16,6 +16,8 @@ import {
 
 type BillingSummary = {
   planCode: string;
+  billingInterval?: "monthly" | "annual";
+  pendingBillingInterval?: "monthly" | "annual" | null;
   subscriptionStatus: string;
   periodStart: string;
   periodEnd: string;
@@ -543,16 +545,32 @@ export function AdminWorkspaceBillingTab({ tenantId }: Props) {
     summary?.pendingPlanCode &&
     summary.pendingPlanCode !== "free";
 
+  const isAnnualSub = summary.billingInterval === "annual";
+
   let nextInvoicePlanLabel = planLabel;
-  let nextInvoicePlanCents = currentPlanItem?.priceMonthlyCents ?? 0;
+  let nextInvoicePlanCents = isAnnualSub
+    ? (currentPlanItem?.priceYearlyCents ?? currentPlanItem?.priceMonthlyCents ?? 0)
+    : (currentPlanItem?.priceMonthlyCents ?? 0);
+
   if (isScheduledCancelToFree) {
     nextInvoicePlanLabel = "Free";
     nextInvoicePlanCents = 0;
   } else if (isScheduledDowngradeToPaid && summary?.pendingPlanCode) {
-    const targetPlanItem = IN_APP_PLAN_CATALOG.find((p) => p.code === summary.pendingPlanCode);
+    const pendingNorm =
+      summary.pendingPlanCode.toLowerCase() === "enterprise"
+        ? "scale"
+        : summary.pendingPlanCode;
+    const targetPlanItem = IN_APP_PLAN_CATALOG.find((p) => p.code === pendingNorm);
     nextInvoicePlanLabel = PLAN_LABELS[summary.pendingPlanCode] ?? summary.pendingPlanCode;
-    nextInvoicePlanCents = targetPlanItem?.priceMonthlyCents ?? 0;
+    const pendingIsAnnual = summary.pendingBillingInterval === "annual";
+    nextInvoicePlanCents = pendingIsAnnual
+      ? (targetPlanItem?.priceYearlyCents ?? targetPlanItem?.priceMonthlyCents ?? 0)
+      : (targetPlanItem?.priceMonthlyCents ?? 0);
   }
+
+  const nextInvoiceIsAnnual = isScheduledDowngradeToPaid
+    ? summary?.pendingBillingInterval === "annual"
+    : isAnnualSub;
 
   const nextInvoiceOverageCents = isScheduledCancelToFree ? 0 : (summary?.overageEstimate ?? 0);
   const nextInvoiceTotalCents = nextInvoicePlanCents + nextInvoiceOverageCents;
@@ -631,7 +649,7 @@ export function AdminWorkspaceBillingTab({ tenantId }: Props) {
         />
       )}
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+      <div className={`grid grid-cols-1 gap-6 ${!billingState.hasPaidPlan ? "md:grid-cols-2" : ""}`}>
         <CardRoot className="relative overflow-hidden border border-(--border-strong) bg-(--bg-surface-elev) shadow-sm">
           <CardHeader className="pb-4">
             <p className="text-xs font-semibold tracking-wider text-(--text-muted) uppercase">
@@ -665,17 +683,24 @@ export function AdminWorkspaceBillingTab({ tenantId }: Props) {
               currentPlanItem &&
               currentPlanItem.priceMonthlyCents > 0 && (
                 <p className="mt-2 text-base font-medium text-(--text-primary)">
-                  {formatPriceMonthly(currentPlanItem.priceMonthlyCents)} / month
+                  {summary.billingInterval === "annual" && currentPlanItem.priceYearlyCents > 0
+                    ? `${formatPriceExact(currentPlanItem.priceYearlyCents)} / year`
+                    : `${formatPriceMonthly(currentPlanItem.priceMonthlyCents)} / month`}
                 </p>
               )}
-            {nextChargeDate && billingState.hasPaidPlan && (
-              <p className="mt-1 text-sm text-(--text-muted)">Next charge · {nextChargeDate}</p>
+            {/* Only show request usage for Free plan — paid plans have unlimited requests */}
+            {!billingState.hasPaidPlan && (
+              <p className="mt-3 text-sm text-(--text-secondary)">
+                Usage this period · {summary.used} / {summary.included} requests
+              </p>
             )}
-            <p className="mt-3 text-sm text-(--text-secondary)">
-              Usage this period · {summary.used} / {allowance > 0 ? allowance : summary.included}{" "}
-              requests
-              {summary.rolloverAvailable > 0 ? ` (${summary.rolloverAvailable} rollover)` : ""}
-            </p>
+            {billingState.hasPaidPlan && nextChargeDate && (
+              <p className="mt-3 text-sm text-(--text-muted)">
+                {summary.billingInterval === "annual"
+                  ? `Annual plan · renews ${nextChargeDate}`
+                  : `Monthly plan · renews ${nextChargeDate}`}
+              </p>
+            )}
             {summary.pendingPlanCode && summary.pendingPlanCode !== "free" && (
               <p className="mt-2 text-xs text-(--text-muted)">
                 Scheduled to downgrade to{" "}
@@ -686,58 +711,61 @@ export function AdminWorkspaceBillingTab({ tenantId }: Props) {
           </CardHeader>
         </CardRoot>
 
-        <CardRoot className="shadow-sm">
-          <CardHeader className="pb-3">
-            <p className="text-xs font-semibold tracking-wider text-(--text-muted) uppercase">
-              Usage this month
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <p className="text-sm font-medium text-(--text-secondary)">Requests used</p>
-              <p className="mt-1 text-3xl font-bold tracking-tight text-(--text-primary)">
-                {summary.used} / {allowance > 0 ? allowance : summary.included} requests
+        {/* Usage card — only shown for Free plan */}
+        {!billingState.hasPaidPlan && (
+          <CardRoot className="shadow-sm">
+            <CardHeader className="pb-3">
+              <p className="text-xs font-semibold tracking-wider text-(--text-muted) uppercase">
+                Usage this month
               </p>
-            </div>
-            <div
-              className="h-2.5 w-full overflow-hidden rounded-full bg-(--border-subtle)"
-              role="progressbar"
-              aria-valuenow={usagePct}
-              aria-valuemin={0}
-              aria-valuemax={100}
-            >
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <p className="text-sm font-medium text-(--text-secondary)">Requests used</p>
+                <p className="mt-1 text-3xl font-bold tracking-tight text-(--text-primary)">
+                  {summary.used} / {allowance > 0 ? allowance : summary.included} requests
+                </p>
+              </div>
               <div
-                className={`h-full rounded-full transition-[width] ${
-                  summary.threshold100
-                    ? "bg-(--destructive)"
-                    : summary.threshold80
-                      ? "bg-amber-500"
-                      : "bg-(--color-primary)"
-                }`}
-                style={{ width: `${usagePct}%` }}
-              />
-            </div>
-            {nextChargeDate && (
-              <p className="text-xs text-(--text-muted)">Resets {nextChargeDate}</p>
-            )}
-            {summary.threshold80 && !summary.threshold100 && (
-              <p className="text-xs text-amber-600 dark:text-amber-400">
-                This workspace has used 80% or more of its request allowance.
-              </p>
-            )}
-            {summary.threshold100 && (
-              <p className="text-xs text-(--destructive)">
-                This workspace has reached its request allowance for this period.
-              </p>
-            )}
-            {summary.overageEstimate > 0 && (
-              <p className="text-xs text-(--text-muted)">
-                Overage estimate: ${(summary.overageEstimate / 100).toFixed(2)}
-                {summary.overageCapReached && " (cap reached)"}
-              </p>
-            )}
-          </CardContent>
-        </CardRoot>
+                className="h-2.5 w-full overflow-hidden rounded-full bg-(--border-subtle)"
+                role="progressbar"
+                aria-valuenow={usagePct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              >
+                <div
+                  className={`h-full rounded-full transition-[width] ${
+                    summary.threshold100
+                      ? "bg-(--destructive)"
+                      : summary.threshold80
+                        ? "bg-amber-500"
+                        : "bg-(--color-primary)"
+                  }`}
+                  style={{ width: `${usagePct}%` }}
+                />
+              </div>
+              {nextChargeDate && (
+                <p className="text-xs text-(--text-muted)">Resets {nextChargeDate}</p>
+              )}
+              {summary.threshold80 && !summary.threshold100 && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  This workspace has used 80% or more of its request allowance.
+                </p>
+              )}
+              {summary.threshold100 && (
+                <p className="text-xs text-(--destructive)">
+                  This workspace has reached its request allowance for this period.
+                </p>
+              )}
+              {summary.overageEstimate > 0 && (
+                <p className="text-xs text-(--text-muted)">
+                  Overage estimate: ${(summary.overageEstimate / 100).toFixed(2)}
+                  {summary.overageCapReached && " (cap reached)"}
+                </p>
+              )}
+            </CardContent>
+          </CardRoot>
+        )}
       </div>
 
       {(billingState.hasPaidPlan && nextChargeDate) ||
@@ -764,7 +792,10 @@ export function AdminWorkspaceBillingTab({ tenantId }: Props) {
                   <>
                     <p className="text-sm font-medium text-(--text-primary)">{nextChargeDate}</p>
                     <p className="text-sm text-(--text-secondary)">
-                      {nextInvoicePlanLabel} plan · {formatPriceMonthly(nextInvoicePlanCents)}
+                      {nextInvoicePlanLabel} plan ·{" "}
+                      {nextInvoiceIsAnnual
+                        ? `${formatPriceExact(nextInvoicePlanCents)}/year`
+                        : formatPriceMonthly(nextInvoicePlanCents)}
                     </p>
                     {nextInvoiceOverageCents > 0 && (
                       <p className="text-sm text-(--text-secondary)">
