@@ -8,7 +8,8 @@ import { type PlanCode, isUpgrade } from "@/lib/billing/plan-catalog";
 import { z } from "zod";
 
 const querySchema = z.object({
-  targetPlanCode: z.enum(["free", "starter", "pro", "enterprise"]),
+  targetPlanCode: z.enum(["free", "starter", "pro", "scale"]),
+  billingInterval: z.enum(["monthly", "annual"]).optional().default("monthly"),
 });
 
 /**
@@ -35,11 +36,13 @@ export const GET = withErrorHandler(async (req: Request) => {
   const url = new URL(req.url);
   const parsed = querySchema.safeParse({
     targetPlanCode: url.searchParams.get("targetPlanCode") ?? undefined,
+    billingInterval: url.searchParams.get("billingInterval") ?? undefined,
   });
   if (!parsed.success) {
-    return ApiErrors.VALIDATION_ERROR("targetPlanCode is required and must be free|starter|pro|enterprise");
+    return ApiErrors.VALIDATION_ERROR("targetPlanCode is required and must be free|starter|pro|scale");
   }
   const targetPlanCode = parsed.data.targetPlanCode;
+  const billingInterval = parsed.data.billingInterval ?? "monthly";
 
   const subscription = await prisma.subscription.findFirst({
     where: { tenantId, provider: "paddle" },
@@ -54,6 +57,8 @@ export const GET = withErrorHandler(async (req: Request) => {
   });
 
   const currentPlanCode = (subscription?.plan?.code ?? "free").toLowerCase();
+  const currentPlanCodeForCatalog: PlanCode =
+    currentPlanCode === "enterprise" ? "scale" : (currentPlanCode as PlanCode);
 
   if (targetPlanCode === "free") {
     const effectiveFromDate = subscription?.currentPeriodEnd ?? null;
@@ -66,14 +71,18 @@ export const GET = withErrorHandler(async (req: Request) => {
       currency: subscription?.currency ?? "USD",
       nextPriceCents: null,
       requiresCheckout: false,
+      billingInterval,
     });
   }
 
   const targetPlan = await prisma.plan.findUnique({
     where: { code: targetPlanCode, isActive: true },
-    select: { priceMonthly: true },
+    select: { priceMonthly: true, priceYearly: true },
   });
-  const nextPriceCents = targetPlan?.priceMonthly ?? null;
+  const nextPriceCents =
+    billingInterval === "annual"
+      ? (targetPlan?.priceYearly ?? targetPlan?.priceMonthly ?? null)
+      : (targetPlan?.priceMonthly ?? null);
 
   if (!subscription?.providerSubscriptionId) {
     return apiSuccess({
@@ -85,11 +94,12 @@ export const GET = withErrorHandler(async (req: Request) => {
       currency: "USD",
       nextPriceCents,
       requiresCheckout: true,
+      billingInterval,
     });
   }
 
   const effectiveFromDate = subscription.currentPeriodEnd;
-  const effectiveAt = isUpgrade(currentPlanCode as PlanCode, targetPlanCode)
+  const effectiveAt = isUpgrade(currentPlanCodeForCatalog, targetPlanCode)
     ? ("immediate" as const)
     : ("next_period" as const);
 
@@ -102,5 +112,6 @@ export const GET = withErrorHandler(async (req: Request) => {
     currency: subscription.currency ?? "USD",
     nextPriceCents,
     requiresCheckout: false,
+    billingInterval,
   });
 });

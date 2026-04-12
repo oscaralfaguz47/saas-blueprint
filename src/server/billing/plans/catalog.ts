@@ -1,74 +1,73 @@
 import "server-only";
 
-/**
- * Canonical plan codes (EPIC 5).
- */
-export type ServerPlanCode = "free" | "starter" | "pro" | "enterprise";
+export type ServerPlanCode = "free" | "starter" | "pro" | "scale";
 
 export type PlanCatalogEntry = {
   code: ServerPlanCode;
-  /** Requests included per period. */
-  requestsIncluded: number;
+  priceMonthly: number; // cents
+  priceYearly: number; // cents
+  requestsIncluded: number; // -1 = unlimited
   hardCap: boolean;
-  /** Rollover: paid only. Cap on max available (included + rollover). */
   rolloverMaxAvailable: number;
-  /** Rollover expiry in days (0 = no rollover). */
   rolloverExpiryDays: number;
-  /** Overage cents per request (null = no overage billing). */
   overageCentsPerRequest: number | null;
-  /** Pro: soft cap for fair-use monitoring (no billing). */
   proSoftCapRequests: number | null;
-  pdfIncluded: number;
+  pdfIncluded: number; // -1 = unlimited
   pdfHardCap: boolean;
   pdfWatermark: boolean;
   zipEnabled: boolean;
+  membersLimit: number; // -1 = unlimited
+  auditRetentionDays: number;
+  emailBranding: "powered_by" | "removed";
+  storageLimitGb: number;
 };
 
 export const PLAN_CATALOG: Record<ServerPlanCode, PlanCatalogEntry> = {
   free: {
     code: "free",
-    requestsIncluded: 10,
+    priceMonthly: 0,
+    priceYearly: 0,
+    requestsIncluded: 35,
     hardCap: true,
-    rolloverMaxAvailable: 10,
+    rolloverMaxAvailable: 35,
     rolloverExpiryDays: 0,
     overageCentsPerRequest: null,
     proSoftCapRequests: null,
-    pdfIncluded: 1,
+    pdfIncluded: 3,
     pdfHardCap: true,
     pdfWatermark: true,
     zipEnabled: false,
+    membersLimit: 5,
+    auditRetentionDays: 30,
+    emailBranding: "powered_by",
+    storageLimitGb: 1,
   },
   starter: {
     code: "starter",
-    requestsIncluded: 200,
+    priceMonthly: 4900,
+    priceYearly: 49900,
+    requestsIncluded: -1,
     hardCap: false,
-    rolloverMaxAvailable: 400,
-    rolloverExpiryDays: 60,
-    overageCentsPerRequest: 25, // $0.25
+    rolloverMaxAvailable: -1,
+    rolloverExpiryDays: 0,
+    overageCentsPerRequest: null,
     proSoftCapRequests: null,
-    pdfIncluded: 50,
+    pdfIncluded: 25,
     pdfHardCap: true,
     pdfWatermark: false,
-    zipEnabled: true,
+    zipEnabled: false,
+    membersLimit: 15,
+    auditRetentionDays: 90,
+    emailBranding: "powered_by",
+    storageLimitGb: 20,
   },
   pro: {
     code: "pro",
-    requestsIncluded: 2000,
+    priceMonthly: 9900,
+    priceYearly: 100900,
+    requestsIncluded: -1,
     hardCap: false,
-    rolloverMaxAvailable: 2000,
-    rolloverExpiryDays: 60,
-    overageCentsPerRequest: null,
-    proSoftCapRequests: 2000,
-    pdfIncluded: -1,
-    pdfHardCap: false,
-    pdfWatermark: false,
-    zipEnabled: true,
-  },
-  enterprise: {
-    code: "enterprise",
-    requestsIncluded: 4000,
-    hardCap: true,
-    rolloverMaxAvailable: 4000,
+    rolloverMaxAvailable: -1,
     rolloverExpiryDays: 0,
     overageCentsPerRequest: null,
     proSoftCapRequests: null,
@@ -76,18 +75,39 @@ export const PLAN_CATALOG: Record<ServerPlanCode, PlanCatalogEntry> = {
     pdfHardCap: false,
     pdfWatermark: false,
     zipEnabled: true,
+    membersLimit: 80,
+    auditRetentionDays: 365,
+    emailBranding: "removed",
+    storageLimitGb: 100,
+  },
+  scale: {
+    code: "scale",
+    priceMonthly: 24900,
+    priceYearly: 202900,
+    requestsIncluded: -1,
+    hardCap: false,
+    rolloverMaxAvailable: -1,
+    rolloverExpiryDays: 0,
+    overageCentsPerRequest: null,
+    proSoftCapRequests: null,
+    pdfIncluded: -1,
+    pdfHardCap: false,
+    pdfWatermark: false,
+    zipEnabled: true,
+    membersLimit: -1,
+    auditRetentionDays: 1095,
+    emailBranding: "removed",
+    storageLimitGb: 500,
   },
 };
 
-export function getPlanCatalogEntry(
-  code: string
-): PlanCatalogEntry | undefined {
+export function getPlanCatalogEntry(code: string): PlanCatalogEntry | undefined {
   const normalized = code?.toLowerCase();
   if (
     normalized === "free" ||
     normalized === "starter" ||
     normalized === "pro" ||
-    normalized === "enterprise"
+    normalized === "scale"
   ) {
     return PLAN_CATALOG[normalized as ServerPlanCode];
   }

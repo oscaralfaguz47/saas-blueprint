@@ -2,6 +2,7 @@ import "server-only";
 
 import { prisma } from "@/server/db";
 import type { SubscriptionStatus } from "@prisma/client";
+import type { BillingInterval } from "./provider-types";
 
 const BLOCKED_STATUSES: SubscriptionStatus[] = ["SUSPENDED", "CANCELED"];
 
@@ -16,6 +17,8 @@ export type EffectiveSubscription = {
   graceUntil: Date | null;
   cancelAtPeriodEnd: boolean;
   pendingPlanCode: string | null;
+  /** Target billing cadence when a paid downgrade is scheduled (monthly | annual). */
+  pendingBillingInterval: "monthly" | "annual" | null;
   /** none | downgrade_end_of_period | cancel_to_free_end_of_period */
   pendingChangeType: string | null;
   entitlementEffectiveUntil: Date | null;
@@ -24,6 +27,7 @@ export type EffectiveSubscription = {
   pastDueSince: Date | null;
   /** If true, operations should be blocked (UPGRADE_REQUIRED). */
   isBlocked: boolean;
+  billingInterval: BillingInterval;
 };
 
 /**
@@ -49,12 +53,14 @@ export async function resolveEffectiveSubscription(
       graceUntil: true,
       cancelAtPeriodEnd: true,
       pendingPlanCode: true,
+      pendingBillingInterval: true,
       currentEntitlementPlanCode: true,
       entitlementEffectiveUntil: true,
       pendingChangeType: true,
       paymentStatus: true,
       graceEndsAt: true,
       pastDueSince: true,
+      billingInterval: true,
       plan: { select: { code: true } },
     },
   });
@@ -87,11 +93,16 @@ export async function resolveEffectiveSubscription(
     graceUntil: sub.graceUntil,
     cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
     pendingPlanCode: sub.pendingPlanCode,
+    pendingBillingInterval:
+      sub.pendingBillingInterval === "annual" || sub.pendingBillingInterval === "monthly"
+        ? sub.pendingBillingInterval
+        : null,
     pendingChangeType: sub.pendingChangeType ?? null,
     entitlementEffectiveUntil: sub.entitlementEffectiveUntil ?? null,
     paymentStatus: sub.paymentStatus ?? null,
     graceEndsAt: sub.graceEndsAt ?? null,
     pastDueSince: sub.pastDueSince ?? null,
     isBlocked,
+    billingInterval: (sub.billingInterval === "annual" ? "annual" : "monthly") as BillingInterval,
   };
 }

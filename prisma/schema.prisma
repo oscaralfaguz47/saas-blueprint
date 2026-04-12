@@ -674,6 +674,10 @@ model Subscription {
   currentPeriodEnd   DateTime?
   graceUntil         DateTime?
   cancelAtPeriodEnd  Boolean   @default(false)
+  /** monthly | annual — the billing cadence for this subscription. */
+  billingInterval    String?   @db.VarChar(10) // "monthly" | "annual"
+  /** Target billing interval for a pending paid downgrade (monthly | annual). Applied at period end in Paddle. */
+  pendingBillingInterval String? @db.VarChar(10)
   /** Target plan when cancelAtPeriodEnd is true; applied at period end by period-close/cron. */
   pendingPlanCode    String?   @db.VarChar(50)
   /** Set when we called Paddle on downgrade with prorated_next_billing_period; period-close then only updates DB. */

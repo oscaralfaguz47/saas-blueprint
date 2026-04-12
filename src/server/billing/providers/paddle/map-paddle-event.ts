@@ -13,23 +13,29 @@ const PLAN_TIER_ORDER: Record<PaddlePlanCode, number> = {
   free: 0,
   starter: 1,
   pro: 2,
-  enterprise: 3,
+  scale: 3,
 };
 
-/** Resolve planCode from Paddle price_id (fallback when custom_data missing). EPIC 5: enterprise. */
+/** Resolve planCode from Paddle price_id (fallback when custom_data missing). */
 export function getPlanCodeFromPriceId(priceId: string | null | undefined): PaddlePlanCode | null {
   if (!priceId || typeof priceId !== "string") return null;
   const starter = env.PADDLE_PRICE_ID_STARTER;
   const pro = env.PADDLE_PRICE_ID_PRO;
-  const enterprise = env.PADDLE_PRICE_ID_ENTERPRISE;
+  const scale = env.PADDLE_PRICE_ID_SCALE;
   if (starter && priceId === starter) return "starter";
   if (pro && priceId === pro) return "pro";
-  if (enterprise && priceId === enterprise) return "enterprise";
+  if (scale && priceId === scale) return "scale";
+  const starterA = env.PADDLE_PRICE_ID_STARTER_ANNUAL;
+  const proA = env.PADDLE_PRICE_ID_PRO_ANNUAL;
+  const scaleA = env.PADDLE_PRICE_ID_SCALE_ANNUAL;
+  if (starterA && priceId === starterA) return "starter";
+  if (proA && priceId === proA) return "pro";
+  if (scaleA && priceId === scaleA) return "scale";
   return null;
 }
 
 /**
- * From subscription items, return the highest-tier plan code (starter < pro < enterprise).
+ * From subscription items, return the highest-tier plan code (starter < pro < scale).
  * Used when a subscription has multiple items (e.g. duplicate from second checkout) so we show the effective plan.
  * Supports both item.price_id (API) and item.price.id (webhook payload).
  */
@@ -50,6 +56,18 @@ export function getHighestPlanCodeFromItems(
     }
   }
   return highest;
+}
+
+/**
+ * Detect billing interval from Paddle subscription billing_cycle interval.
+ * Paddle returns billing_cycle: { interval: "month" | "year", frequency: number }
+ * Returns "annual" only when interval === "year". Defaults to "monthly".
+ */
+export function getBillingIntervalFromPaddle(
+  billingCycle: { interval: string; frequency: number } | null | undefined
+): "monthly" | "annual" {
+  if (!billingCycle) return "monthly";
+  return billingCycle.interval === "year" ? "annual" : "monthly";
 }
 
 /** Configurable grace period (days) when status is past_due. */

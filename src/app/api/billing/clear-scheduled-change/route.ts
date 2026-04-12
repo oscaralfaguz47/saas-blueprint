@@ -8,9 +8,10 @@ import { writeAuditLog } from "@/server/services/audit";
 import { prisma } from "@/server/db";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 
-const PAID_PLANS = ["starter", "pro", "enterprise"] as const;
-function isPaidPlan(code: string): code is "starter" | "pro" | "enterprise" {
-  return PAID_PLANS.includes(code as (typeof PAID_PLANS)[number]);
+const PAID_PLANS = ["starter", "pro", "scale", "enterprise"] as const;
+function isPaidPlan(code: string): boolean {
+  const c = code.toLowerCase();
+  return (PAID_PLANS as readonly string[]).includes(c);
 }
 
 /**
@@ -45,6 +46,7 @@ export const POST = withErrorHandler(async (req: Request) => {
       cancelAtPeriodEnd: true,
       pendingPlanCode: true,
       currentEntitlementPlanCode: true,
+      billingInterval: true,
       plan: { select: { code: true } },
     },
   });
@@ -79,12 +81,18 @@ export const POST = withErrorHandler(async (req: Request) => {
   // Update Paddle subscription items to the current (kept) plan so Paddle shows and bills the correct plan.
   // Without this, Paddle may still have the downgrade target (e.g. Pro) as the current price after we clear scheduled_change.
   if (isPaidPlan(currentCode)) {
+    const paddleTarget: "starter" | "pro" | "scale" =
+      currentCode === "enterprise" ? "scale" : (currentCode as "starter" | "pro" | "scale");
+    const billingInterval =
+      subscription.billingInterval === "annual" ? "annual" : "monthly";
     const updateResult = await updateSubscriptionPrice({
       providerSubscriptionId: subscription.providerSubscriptionId,
-      targetPlanCode: currentCode,
+      targetPlanCode: paddleTarget,
+      billingInterval,
       effective: "next_period",
       clearScheduledCancel: false,
       tenantId,
+      currentBillingInterval: billingInterval,
     });
     if (!updateResult.ok) {
       return ApiErrors.VALIDATION_ERROR(
@@ -104,6 +112,7 @@ export const POST = withErrorHandler(async (req: Request) => {
       ...(currentPlan ? { planId: currentPlan.id } : {}),
       cancelAtPeriodEnd: false,
       pendingPlanCode: null,
+      pendingBillingInterval: null,
       pendingChangeType: null,
       pendingEffectiveAt: null,
       entitlementEffectiveUntil: null,

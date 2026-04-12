@@ -1,17 +1,17 @@
 import "server-only";
 
-/**
- * Provider-neutral billing types. Provider-specific logic lives in checkout/webhook epics.
- * Billing core never trusts provider webhook state; effective plan from Subscription + Plan.
- */
 export type BillingProvider = "paddle" | "stripe" | "manual";
 
-/** Plan code canonical set (J1 Workspace Billing Core; EPIC 5 adds enterprise). */
-export type PlanCode = "free" | "starter" | "pro" | "enterprise";
+/** Canonical plan codes. */
+export type PlanCode = "free" | "starter" | "pro" | "scale";
 
-/** Parsed limits for requests meter from Plan.featuresJson. */
+/** Email branding behavior on outgoing emails. */
+export type EmailBranding = "powered_by" | "removed";
+
+export type BillingInterval = "monthly" | "annual";
+
 export type RequestsLimits = {
-  included: number;
+  included: number; // -1 = unlimited
   hardCap: boolean;
   rolloverMonths: number;
   maxAvailable: number;
@@ -19,19 +19,16 @@ export type RequestsLimits = {
   overageCapCents: number | null;
 };
 
-/** Parsed limits for PDF exports from Plan.featuresJson. */
 export type PdfLimits = {
   included: number; // -1 = unlimited
   hardCap: boolean;
   watermark: boolean;
 };
 
-/** Parsed limits for ZIP exports (boolean = feature on/off). */
 export type ZipLimits = {
   enabled: boolean;
 };
 
-/** Full plan features shape from featuresJson. */
 export type PlanFeatures = {
   requests: RequestsLimits;
   pdf: PdfLimits;
@@ -39,5 +36,13 @@ export type PlanFeatures = {
   search: boolean;
   manualReminders: boolean;
   paymentStatus: boolean;
-  auditLog: "basic" | "full" | number; // number = days for starter
+  auditLog: "basic" | "full" | number;
+  /** Maximum internal workspace members. -1 = unlimited. */
+  membersLimit: number;
+  /** Audit log retention in days. */
+  auditRetentionDays: number;
+  /** Email branding behavior. */
+  emailBranding: EmailBranding;
+  /** Storage limit in GB. */
+  storageLimitGb: number;
 };

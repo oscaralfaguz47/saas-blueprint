@@ -45,11 +45,14 @@ function clearPaddleCheckoutOverlayStyles() {
 
 type BillingSummary = {
   planCode: string;
+  billingInterval?: "monthly" | "annual";
   subscriptionStatus: string;
   periodStart: string;
   periodEnd: string;
   cancelAtPeriodEnd?: boolean;
   pendingPlanCode?: string | null;
+  /** Target cadence when a paid downgrade is scheduled (monthly | annual). */
+  pendingBillingInterval?: "monthly" | "annual" | null;
   pendingChangeType?: string | null;
   entitlementEffectiveUntil?: string | null;
   paymentStatus?: string | null;
@@ -73,8 +76,42 @@ const PLAN_LABELS: Record<string, string> = {
   free: "Free",
   starter: "Starter",
   pro: "Pro",
-  enterprise: "Enterprise",
+  scale: "Scale",
 };
+
+/** Legacy DB / Paddle code; treated as scale in UI and API targets. */
+const LEGACY_TOP_TIER_PLAN_CODE = "enterprise";
+
+function normalizePlanCodeKey(code: string): string {
+  const c = code.toLowerCase();
+  return c === LEGACY_TOP_TIER_PLAN_CODE ? "scale" : c;
+}
+
+function isPaidPlanCodeKey(code: string): boolean {
+  const n = normalizePlanCodeKey(code);
+  return n === "starter" || n === "pro" || n === "scale";
+}
+
+function toPlanCodeFromNormalized(code: string): PlanCode {
+  const n = normalizePlanCodeKey(code);
+  if (n === "free" || n === "starter" || n === "pro" || n === "scale") {
+    return n;
+  }
+  return "free";
+}
+
+function planCodeFromSessionStorage(raw: string | null): PlanCode | null {
+  if (!raw) return null;
+  const n = normalizePlanCodeKey(raw);
+  if (n === "starter" || n === "pro" || n === "scale") return n;
+  return null;
+}
+
+function planLabelFromCode(code: string | null | undefined): string {
+  if (code == null || code === "") return "";
+  const n = normalizePlanCodeKey(code);
+  return PLAN_LABELS[n] ?? code;
+}
 
 type BillingTransactionItem = {
   id: string;
@@ -104,6 +141,7 @@ type ChangePlanPreview = {
   currency: string;
   nextPriceCents: number | null;
   requiresCheckout: boolean;
+  billingInterval?: "monthly" | "annual";
 };
 
 const CARD_BRAND_LABELS: Record<string, string> = {
@@ -259,9 +297,10 @@ function useBillingState(summary: BillingSummary | null) {
   const status = summary.subscriptionStatus.toUpperCase();
   const now = new Date();
   const graceUntil = summary.graceUntil ? new Date(summary.graceUntil) : null;
+  const pc = summary.planCode.toLowerCase();
   return {
-    currentPlan: (summary.planCode.toLowerCase() as PlanCode) || "free",
-    hasPaidPlan: ["starter", "pro", "enterprise"].includes(summary.planCode),
+    currentPlan: toPlanCodeFromNormalized(pc),
+    hasPaidPlan: isPaidPlanCodeKey(pc),
     isCancelingAtPeriodEnd: Boolean(summary.cancelAtPeriodEnd),
     isPastDue: status === "PAST_DUE",
     isInGrace: Boolean(graceUntil && now < graceUntil),
@@ -453,6 +492,9 @@ export function WorkspaceBillingTab() {
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [paymentMethodUpdateLoading, setPaymentMethodUpdateLoading] = useState(false);
   const [changePlanOpen, setChangePlanOpen] = useState(false);
+  const [changePlanBillingCycle, setChangePlanBillingCycle] = useState<"monthly" | "annual">(
+    "monthly",
+  );
   const [confirmPlanOpen, setConfirmPlanOpen] = useState(false);
   const [changePlanPreview, setChangePlanPreview] = useState<ChangePlanPreview | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<{
@@ -520,6 +562,9 @@ export function WorkspaceBillingTab() {
       : null;
 
   const billingState = useBillingState(summary);
+  /** Latest interval for post-checkout retry upgrade (effect may run before summary is loaded). */
+  const summaryBillingIntervalRef = useRef<"monthly" | "annual" | undefined>(undefined);
+  summaryBillingIntervalRef.current = summary?.billingInterval;
   const billingParam = searchParams.get("billing");
 
   const fetchSummary = useCallback(
@@ -864,9 +909,7 @@ export function WorkspaceBillingTab() {
 
   const shouldShowPaymentMethod =
     summary &&
-    (summary.planCode === "starter" ||
-      summary.planCode === "pro" ||
-      summary.planCode === "enterprise" ||
+    (isPaidPlanCodeKey(summary.planCode) ||
       summary.subscriptionStatus.toUpperCase() === "PAST_DUE" ||
       summary.subscriptionStatus.toUpperCase() === "SUSPENDED");
 
@@ -896,8 +939,8 @@ export function WorkspaceBillingTab() {
     const retryPlan = ((): PlanCode | null => {
       try {
         const stored = sessionStorage.getItem("billing:retryUpgradePlan");
-        if (stored === "starter" || stored === "pro" || stored === "enterprise")
-          return stored as PlanCode;
+        const fromSession = planCodeFromSessionStorage(stored);
+        if (fromSession) return fromSession;
       } catch {
         // ignore
       }
@@ -911,7 +954,11 @@ export function WorkspaceBillingTab() {
           const res = await apiFetch("/api/billing/change-plan", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ targetPlanCode: retryPlan, effective: "immediate" }),
+            body: JSON.stringify({
+              targetPlanCode: retryPlan,
+              effective: "immediate",
+              billingInterval: summaryBillingIntervalRef.current ?? "monthly",
+            }),
             showToastOnError: true,
           });
           try {
@@ -946,7 +993,8 @@ export function WorkspaceBillingTab() {
     const expectedPlan = (): PlanCode | null => {
       try {
         const prev = sessionStorage.getItem("billing:postCheckoutPlan");
-        if (prev === "starter" || prev === "pro") return prev;
+        const fromSession = planCodeFromSessionStorage(prev);
+        if (fromSession) return fromSession;
       } catch {
         // ignore
       }
@@ -956,15 +1004,14 @@ export function WorkspaceBillingTab() {
 
     const isResolved = (data: BillingSummary | null): boolean => {
       if (!data) return false;
-      const plan = (data.planCode.toLowerCase() || "free") as PlanCode;
+      const planStr = data.planCode.toLowerCase() || "free";
       const status = data.subscriptionStatus.toUpperCase();
-      if (targetPlan && plan === targetPlan && status === "ACTIVE") return true;
-      if (
-        !targetPlan &&
-        (plan === "starter" || plan === "pro" || plan === "enterprise") &&
-        status === "ACTIVE"
-      )
+      if (targetPlan && status === "ACTIVE" && normalizePlanCodeKey(planStr) === targetPlan) {
         return true;
+      }
+      if (!targetPlan && isPaidPlanCodeKey(planStr) && status === "ACTIVE") {
+        return true;
+      }
       return false;
     };
 
@@ -992,7 +1039,7 @@ export function WorkspaceBillingTab() {
       pollAttemptsRef.current += 1;
       if (data && isResolved(data)) {
         setPostCheckoutState("resolved");
-        const planLabel = PLAN_LABELS[data.planCode] ?? data.planCode;
+        const planLabel = planLabelFromCode(data.planCode);
         toastRef.current.addToast("success", `Plan updated to ${planLabel}.`);
         try {
           sessionStorage.removeItem("billing:postCheckoutPlan");
@@ -1020,11 +1067,12 @@ export function WorkspaceBillingTab() {
   // When summary already shows paid+active while polling (e.g. webhook beat us), transition to resolved so the banner hides
   useEffect(() => {
     if (billingParam !== "updated" || postCheckoutState !== "polling" || !summary) return;
-    const plan = (summary.planCode?.toLowerCase() || "free") as PlanCode;
+    const planStr = summary.planCode?.toLowerCase() || "free";
     const status = summary.subscriptionStatus?.toUpperCase() ?? "";
-    if ((plan === "starter" || plan === "pro" || plan === "enterprise") && status === "ACTIVE") {
+    const paidActive = isPaidPlanCodeKey(planStr) && status === "ACTIVE";
+    if (paidActive) {
       setPostCheckoutState("resolved");
-      const planLabel = PLAN_LABELS[summary.planCode] ?? summary.planCode;
+      const planLabel = planLabelFromCode(summary.planCode);
       toastRef.current.addToast("success", `Plan updated to ${planLabel}.`);
       try {
         sessionStorage.removeItem("billing:postCheckoutPlan");
@@ -1037,8 +1085,11 @@ export function WorkspaceBillingTab() {
   }, [billingParam, postCheckoutState, summary, router]);
 
   const handleOpenChangePlan = useCallback(() => {
+    if (summary?.billingInterval) {
+      setChangePlanBillingCycle(summary.billingInterval);
+    }
     setChangePlanOpen(true);
-  }, []);
+  }, [summary?.billingInterval]);
 
   const handleChangePaymentMethod = useCallback(async () => {
     setPaymentMethodUpdateLoading(true);
@@ -1122,7 +1173,7 @@ export function WorkspaceBillingTab() {
         setConfirmTarget({ plan, direction: "upgrade" });
         try {
           const res = await apiFetch(
-            `/api/billing/change-plan/preview?targetPlanCode=${encodeURIComponent(plan.code)}`,
+            `/api/billing/change-plan/preview?targetPlanCode=${encodeURIComponent(plan.code)}&billingInterval=${encodeURIComponent(changePlanBillingCycle)}`,
             { showToastOnError: false },
           );
           if (!res.ok) {
@@ -1144,7 +1195,7 @@ export function WorkspaceBillingTab() {
         setConfirmPlanOpen(true);
       }
     },
-    [billingState.currentPlan, apiFetch, toast],
+    [billingState.currentPlan, apiFetch, toast, changePlanBillingCycle],
   );
 
   const handleConfirmUpgrade = useCallback(async () => {
@@ -1157,12 +1208,22 @@ export function WorkspaceBillingTab() {
         body: JSON.stringify({
           targetPlanCode: confirmTarget.plan.code,
           effective: "immediate",
+          billingInterval: changePlanBillingCycle,
         }),
         showToastOnError: true,
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const details = (json as { details?: { code?: string } })?.details;
+        const errorMessage =
+          (json as { error?: { message?: string } })?.error?.message ?? "";
+        if (errorMessage.includes("Annual billing is not yet configured")) {
+          toast.addToast(
+            "error",
+            "Annual billing is not yet available for this plan. Please select monthly billing or contact support.",
+          );
+          return;
+        }
+        const details = (json as { error?: { details?: { code?: string } } })?.error?.details;
         if (details?.code === "PAYMENT_DECLINED") {
           try {
             sessionStorage.setItem("billing:retryUpgradePlan", confirmTarget.plan.code);
@@ -1233,7 +1294,7 @@ export function WorkspaceBillingTab() {
     } finally {
       setCheckoutLoading(false);
     }
-  }, [confirmTarget, apiFetch, toast, fetchSummary, session?.user?.email]);
+  }, [confirmTarget, apiFetch, toast, fetchSummary, session?.user?.email, changePlanBillingCycle]);
 
   const handleConfirmDowngrade = useCallback(async () => {
     if (!confirmTarget || confirmTarget.direction !== "downgrade") return;
@@ -1246,6 +1307,7 @@ export function WorkspaceBillingTab() {
         body: JSON.stringify({
           targetPlanCode: confirmTarget.plan.code,
           effective,
+          billingInterval: changePlanBillingCycle,
         }),
         showToastOnError: true,
       });
@@ -1260,7 +1322,7 @@ export function WorkspaceBillingTab() {
     } finally {
       setScheduleLoading(false);
     }
-  }, [confirmTarget, apiFetch, toast, fetchSummary]);
+  }, [confirmTarget, apiFetch, toast, fetchSummary, changePlanBillingCycle]);
 
   const closeConfirm = useCallback(() => {
     setConfirmPlanOpen(false);
@@ -1378,7 +1440,7 @@ export function WorkspaceBillingTab() {
 
   const allowance = summary.included + summary.rolloverAvailable;
   const usagePct = allowance > 0 ? Math.min(100, (summary.used / allowance) * 100) : 0;
-  const planLabel = PLAN_LABELS[summary.planCode] ?? summary.planCode;
+  const planLabel = planLabelFromCode(summary.planCode);
   const primaryCtaLabel =
     billingState.isPastDue || billingState.isSuspended ? "Update payment method" : "Change plan";
   const showChangePlan = !billingState.isPastDue && !billingState.isSuspended;
@@ -1396,16 +1458,31 @@ export function WorkspaceBillingTab() {
     summary?.pendingPlanCode &&
     summary.pendingPlanCode !== "free";
 
+  const isAnnualSub = summary?.billingInterval === "annual";
+
   let nextInvoicePlanLabel = planLabel;
-  let nextInvoicePlanCents = currentPlanItem?.priceMonthlyCents ?? 0;
+  let nextInvoicePlanCents = isAnnualSub
+    ? (currentPlanItem?.priceYearlyCents ?? currentPlanItem?.priceMonthlyCents ?? 0)
+    : (currentPlanItem?.priceMonthlyCents ?? 0);
+
   if (isScheduledCancelToFree) {
     nextInvoicePlanLabel = "Free";
     nextInvoicePlanCents = 0;
   } else if (isScheduledDowngradeToPaid && summary?.pendingPlanCode) {
-    const targetPlanItem = IN_APP_PLAN_CATALOG.find((p) => p.code === summary.pendingPlanCode);
-    nextInvoicePlanLabel = PLAN_LABELS[summary.pendingPlanCode] ?? summary.pendingPlanCode;
-    nextInvoicePlanCents = targetPlanItem?.priceMonthlyCents ?? 0;
+    const pendingNorm = toPlanCodeFromNormalized(summary.pendingPlanCode);
+    const targetPlanItem = IN_APP_PLAN_CATALOG.find((p) => p.code === pendingNorm);
+    nextInvoicePlanLabel = planLabelFromCode(summary.pendingPlanCode);
+    // Target cadence only: pendingBillingInterval (e.g. Scale Annual → Starter Monthly must be monthly, not current annual).
+    const pendingIsAnnual = summary.pendingBillingInterval === "annual";
+    nextInvoicePlanCents = pendingIsAnnual
+      ? (targetPlanItem?.priceYearlyCents ?? targetPlanItem?.priceMonthlyCents ?? 0)
+      : (targetPlanItem?.priceMonthlyCents ?? 0);
   }
+
+  // Next invoice line item: use pending interval for scheduled paid downgrade, else current subscription interval.
+  const nextInvoiceIsAnnual = isScheduledDowngradeToPaid
+    ? summary?.pendingBillingInterval === "annual"
+    : isAnnualSub;
 
   const nextInvoiceOverageCents = isScheduledCancelToFree ? 0 : (summary?.overageEstimate ?? 0);
   const nextInvoiceTotalCents = nextInvoicePlanCents + nextInvoiceOverageCents;
@@ -1483,7 +1560,7 @@ export function WorkspaceBillingTab() {
         <Alert
           variant="info"
           title="Downgrade scheduled"
-          description={`Downgrade scheduled to ${PLAN_LABELS[summary.pendingPlanCode] ?? summary.pendingPlanCode} on ${formatDate(summary.entitlementEffectiveUntil ?? summary.periodEnd)}. You'll keep ${PLAN_LABELS[summary.planCode] ?? summary.planCode} until then.`}
+          description={`Downgrade scheduled to ${planLabelFromCode(summary.pendingPlanCode)} on ${formatDate(summary.entitlementEffectiveUntil ?? summary.periodEnd)}. You'll keep ${planLabelFromCode(summary.planCode)} until then.`}
         >
           <button
             type="button"
@@ -1497,7 +1574,7 @@ export function WorkspaceBillingTab() {
                 Updating…
               </>
             ) : (
-              `Cancel schedule downgrade and keep the ${PLAN_LABELS[summary.planCode] ?? summary.planCode} plan`
+              `Cancel schedule downgrade and keep the ${planLabelFromCode(summary.planCode)} plan`
             )}
           </button>
         </Alert>
@@ -1576,7 +1653,7 @@ export function WorkspaceBillingTab() {
       )}
 
       {/* Row 1: Plan & Subscription | Usage */}
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+      <div className={`grid grid-cols-1 gap-6 ${!billingState.hasPaidPlan ? "md:grid-cols-2" : ""}`}>
         {/* Plan & Subscription */}
         <CardRoot className="relative overflow-hidden border border-(--border-strong) bg-(--bg-surface-elev) shadow-sm">
           <CardHeader className="pb-4">
@@ -1609,21 +1686,28 @@ export function WorkspaceBillingTab() {
               currentPlanItem &&
               currentPlanItem.priceMonthlyCents > 0 && (
                 <p className="mt-2 text-base font-medium text-(--text-primary)">
-                  {formatPriceMonthly(currentPlanItem.priceMonthlyCents)} / month
+                  {summary.billingInterval === "annual" && currentPlanItem.priceYearlyCents > 0
+                    ? `${formatPriceExact(currentPlanItem.priceYearlyCents)} / year`
+                    : `${formatPriceMonthly(currentPlanItem.priceMonthlyCents)} / month`}
                 </p>
               )}
-            {nextChargeDate && billingState.hasPaidPlan && (
-              <p className="mt-1 text-sm text-(--text-muted)">Next charge · {nextChargeDate}</p>
+            {/* Only show request usage for Free plan — paid plans have unlimited requests */}
+            {!billingState.hasPaidPlan && (
+              <p className="mt-3 text-sm text-(--text-secondary)">
+                Usage this period · {summary.used} / {summary.included} requests
+              </p>
             )}
-            <p className="mt-3 text-sm text-(--text-secondary)">
-              Usage this period · {summary.used} / {allowance > 0 ? allowance : summary.included}{" "}
-              requests
-              {summary.rolloverAvailable > 0 ? ` (${summary.rolloverAvailable} rollover)` : ""}
-            </p>
+            {/* For paid plans: show a simple period note instead */}
+            {billingState.hasPaidPlan && nextChargeDate && (
+              <p className="mt-3 text-sm text-(--text-muted)">
+                {isAnnualSub
+                  ? `Annual plan · renews ${nextChargeDate}`
+                  : `Monthly plan · renews ${nextChargeDate}`}
+              </p>
+            )}
             {summary.pendingPlanCode && summary.pendingPlanCode !== "free" && (
               <p className="mt-2 text-xs text-(--text-muted)">
-                Scheduled to downgrade to{" "}
-                {PLAN_LABELS[summary.pendingPlanCode] ?? summary.pendingPlanCode} on{" "}
+                Scheduled to downgrade to {planLabelFromCode(summary.pendingPlanCode)} on{" "}
                 {formatDate(summary.periodEnd)}.
               </p>
             )}
@@ -1641,57 +1725,61 @@ export function WorkspaceBillingTab() {
           </CardFooter>
         </CardRoot>
 
-        {/* Usage */}
-        <CardRoot className="shadow-sm">
-          <CardHeader className="pb-3">
-            <p className="text-xs font-semibold tracking-wider text-(--text-muted) uppercase">Usage this month</p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <p className="text-sm font-medium text-(--text-secondary)">Requests used</p>
-              <p className="mt-1 text-3xl font-bold tracking-tight text-(--text-primary)">
-                {summary.used} / {allowance > 0 ? allowance : summary.included} requests
+        {/* Usage — only shown for Free plan (paid plans have unlimited requests) */}
+        {!billingState.hasPaidPlan && (
+          <CardRoot className="shadow-sm">
+            <CardHeader className="pb-3">
+              <p className="text-xs font-semibold tracking-wider text-(--text-muted) uppercase">
+                Usage this month
               </p>
-            </div>
-            <div
-              className="h-2.5 w-full overflow-hidden rounded-full bg-(--border-subtle)"
-              role="progressbar"
-              aria-valuenow={usagePct}
-              aria-valuemin={0}
-              aria-valuemax={100}
-            >
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <p className="text-sm font-medium text-(--text-secondary)">Requests used</p>
+                <p className="mt-1 text-3xl font-bold tracking-tight text-(--text-primary)">
+                  {summary.used} / {allowance > 0 ? allowance : summary.included} requests
+                </p>
+              </div>
               <div
-                className={`h-full rounded-full transition-[width] ${
-                  summary.threshold100
-                    ? "bg-(--destructive)"
-                    : summary.threshold80
-                      ? "bg-amber-500"
-                      : "bg-(--color-primary)"
-                }`}
-                style={{ width: `${usagePct}%` }}
-              />
-            </div>
-            {nextChargeDate && (
-              <p className="text-xs text-(--text-muted)">Resets {nextChargeDate}</p>
-            )}
-            {summary.threshold80 && !summary.threshold100 && (
-              <p className="text-xs text-amber-600 dark:text-amber-400">
-                You&apos;ve used 80% or more of your request allowance.
-              </p>
-            )}
-            {summary.threshold100 && (
-              <p className="text-xs text-(--destructive)">
-                You&apos;ve reached your request allowance for this period.
-              </p>
-            )}
-            {summary.overageEstimate > 0 && (
-              <p className="text-xs text-(--text-muted)">
-                Overage estimate: ${(summary.overageEstimate / 100).toFixed(2)}
-                {summary.overageCapReached && " (cap reached)"}
-              </p>
-            )}
-          </CardContent>
-        </CardRoot>
+                className="h-2.5 w-full overflow-hidden rounded-full bg-(--border-subtle)"
+                role="progressbar"
+                aria-valuenow={usagePct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              >
+                <div
+                  className={`h-full rounded-full transition-[width] ${
+                    summary.threshold100
+                      ? "bg-(--destructive)"
+                      : summary.threshold80
+                        ? "bg-amber-500"
+                        : "bg-(--color-primary)"
+                  }`}
+                  style={{ width: `${usagePct}%` }}
+                />
+              </div>
+              {nextChargeDate && (
+                <p className="text-xs text-(--text-muted)">Resets {nextChargeDate}</p>
+              )}
+              {summary.threshold80 && !summary.threshold100 && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  You&apos;ve used 80% or more of your request allowance.
+                </p>
+              )}
+              {summary.threshold100 && (
+                <p className="text-xs text-(--destructive)">
+                  You&apos;ve reached your request allowance for this period.
+                </p>
+              )}
+              {summary.overageEstimate > 0 && (
+                <p className="text-xs text-(--text-muted)">
+                  Overage estimate: ${(summary.overageEstimate / 100).toFixed(2)}
+                  {summary.overageCapReached && " (cap reached)"}
+                </p>
+              )}
+            </CardContent>
+          </CardRoot>
+        )}
       </div>
 
       {/* Row 2: Next Invoice | Payment Method — only when at least one is relevant */}
@@ -1720,7 +1808,10 @@ export function WorkspaceBillingTab() {
                   <>
                     <p className="text-sm font-medium text-(--text-primary)">{nextChargeDate}</p>
                     <p className="text-sm text-(--text-secondary)">
-                      {nextInvoicePlanLabel} plan · {formatPriceMonthly(nextInvoicePlanCents)}
+                      {nextInvoicePlanLabel} plan ·{" "}
+                      {nextInvoiceIsAnnual
+                        ? `${formatPriceExact(nextInvoicePlanCents)}/year`
+                        : formatPriceMonthly(nextInvoicePlanCents)}
                     </p>
                     {nextInvoiceOverageCents > 0 && (
                       <p className="text-sm text-(--text-secondary)">
@@ -2159,6 +2250,43 @@ export function WorkspaceBillingTab() {
             }
             contentClassName="max-w-6xl w-full"
           >
+            <div className="border-b border-(--border-subtle) px-4 py-4 sm:px-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-(--text-muted)">
+                  {changePlanBillingCycle === "monthly"
+                    ? "Cancel anytime. Changes apply immediately (upgrades) or at period end (downgrades)."
+                    : "Billed upfront for the full year. ~15% savings versus monthly. Downgrades take effect at renewal."}
+                </p>
+                <div
+                  className="inline-flex shrink-0 rounded-full border border-(--border-subtle) bg-(--bg-surface) p-0.5"
+                  role="group"
+                  aria-label="Display billing cycle"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setChangePlanBillingCycle("monthly")}
+                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                      changePlanBillingCycle === "monthly"
+                        ? "bg-(--color-primary) text-white"
+                        : "text-(--text-secondary) hover:text-(--text-primary)"
+                    }`}
+                  >
+                    Monthly
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setChangePlanBillingCycle("annual")}
+                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                      changePlanBillingCycle === "annual"
+                        ? "bg-(--color-primary) text-white"
+                        : "text-(--text-secondary) hover:text-(--text-primary)"
+                    }`}
+                  >
+                    Annual
+                  </button>
+                </div>
+              </div>
+            </div>
             {/* Plan cards: horizontal scroll only on small viewports; grid on md+ so no scroll on desktop */}
             <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
               <div className="overflow-x-auto px-4 pt-4 pb-2 sm:px-6 md:overflow-x-visible">
@@ -2195,7 +2323,19 @@ export function WorkspaceBillingTab() {
                       >
                         <div className="min-h-0 flex-1">
                           <div className="flex items-start justify-between gap-2">
-                            <h3 className="font-semibold text-(--text-primary)">{plan.name}</h3>
+                            <h3 className="flex flex-wrap items-center gap-1.5 font-semibold text-(--text-primary)">
+                              <span>{plan.name}</span>
+                              {isCurrent && summary?.billingInterval === "annual" && (
+                                <Badge variant="secondary" className="font-normal">
+                                  Annual
+                                </Badge>
+                              )}
+                              {isCurrent && summary?.billingInterval === "monthly" && (
+                                <Badge variant="secondary" className="font-normal">
+                                  Monthly
+                                </Badge>
+                              )}
+                            </h3>
                             <div className="flex flex-wrap items-center justify-end gap-1.5">
                               {isCurrent && <Badge variant="secondary">Current</Badge>}
                               {(isScheduled || isScheduledFree) && (
@@ -2205,11 +2345,33 @@ export function WorkspaceBillingTab() {
                                 !isCurrent &&
                                 !isScheduled &&
                                 !isScheduledFree && <Badge variant="secondary">Most popular</Badge>}
+                              {plan.code === "scale" && (
+                                <Badge variant="secondary" className="font-normal text-(--text-muted)">
+                                  Enterprise-grade
+                                </Badge>
+                              )}
                             </div>
                           </div>
-                          <p className="mt-1 text-lg font-medium text-(--text-primary)">
-                            {formatPriceMonthly(plan.priceMonthlyCents)}/month
-                          </p>
+                          {changePlanBillingCycle === "monthly" ? (
+                            <p className="mt-1 text-lg font-medium text-(--text-primary)">
+                              {formatPriceMonthly(plan.priceMonthlyCents)}
+                              {plan.priceMonthlyCents > 0 ? "/month" : ""}
+                            </p>
+                          ) : plan.priceYearlyCents > 0 ? (
+                            <div className="mt-1">
+                              <p className="text-lg font-medium text-(--text-primary)">
+                                {formatPriceExact(Math.round(plan.priceYearlyCents / 12))}/mo
+                              </p>
+                              <p className="text-xs text-(--text-muted)">
+                                {formatPriceExact(plan.priceYearlyCents)} billed annually
+                              </p>
+                            </div>
+                          ) : (
+                            <p className="mt-1 text-lg font-medium text-(--text-primary)">
+                              {formatPriceMonthly(plan.priceMonthlyCents)}
+                              {plan.priceMonthlyCents > 0 ? "/month" : ""}
+                            </p>
+                          )}
                           {isCurrent &&
                             (hasScheduledDowngrade || scheduledCancellation) &&
                             effectiveDate && (
@@ -2224,7 +2386,7 @@ export function WorkspaceBillingTab() {
                           )}
                           <p className="mt-2 text-xs text-(--text-muted)">{plan.bestFor}</p>
                           <ul className="mt-3 space-y-1.5 text-xs text-(--text-secondary)">
-                            {plan.includes.slice(0, 5).map((item, i) => (
+                            {plan.includes.slice(0, 3).map((item, i) => (
                               <li key={i} className="flex items-start gap-2">
                                 <span
                                   className="mt-0.5 shrink-0 text-(--color-primary)"
@@ -2357,27 +2519,56 @@ export function WorkspaceBillingTab() {
               {confirmTarget.direction === "upgrade" ? (
                 <>
                   <div className="space-y-3 text-sm">
+                    {(() => {
+                      const confirmBillingInterval =
+                        changePlanPreview?.billingInterval ?? changePlanBillingCycle;
+                      const isAnnualConfirm = confirmBillingInterval === "annual";
+                      return (
+                        <>
                     <div>
                       <p className="text-xs font-medium text-(--text-muted)">Current plan</p>
                       <p className="mt-0.5 font-medium text-(--text-primary)">
-                        {PLAN_LABELS[
-                          changePlanPreview?.currentPlanCode ?? summary?.planCode ?? "free"
-                        ] ??
-                          changePlanPreview?.currentPlanCode ??
-                          summary?.planCode ??
-                          "free"}
+                        {planLabelFromCode(
+                          changePlanPreview?.currentPlanCode ?? summary?.planCode ?? "free",
+                        )}
                       </p>
                     </div>
                     <div>
                       <p className="text-xs font-medium text-(--text-muted)">New plan</p>
                       <p className="mt-0.5 font-medium text-(--text-primary)">
                         {confirmTarget.plan.name}
-                        {changePlanPreview?.nextPriceCents != null && (
-                          <span className="font-normal text-(--text-secondary)">
-                            {" "}
-                            — {formatPriceMonthly(changePlanPreview.nextPriceCents)}/month
-                          </span>
-                        )}
+                        {changePlanPreview?.nextPriceCents != null &&
+                          (isAnnualConfirm ? (
+                            <>
+                              <span className="font-normal text-(--text-secondary)">
+                                {" "}
+                                — {formatPriceExact(changePlanPreview.nextPriceCents)}/year billed
+                                upfront
+                              </span>
+                              <span className="mt-1 block text-xs font-normal text-(--text-secondary)">
+                                {formatPriceExact(
+                                  Math.round(changePlanPreview.nextPriceCents / 12),
+                                )}
+                                /mo equivalent
+                              </span>
+                            </>
+                          ) : (
+                            <span className="font-normal text-(--text-secondary)">
+                              {" "}
+                              — {formatPriceMonthly(changePlanPreview.nextPriceCents)}/month
+                            </span>
+                          ))}
+                      </p>
+                      {isAnnualConfirm && (
+                        <p className="mt-2 text-xs text-(--text-muted)">
+                          Annual billing — billed upfront
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-(--text-muted)">Billing cycle</p>
+                      <p className="mt-0.5 font-medium text-(--text-primary)">
+                        {isAnnualConfirm ? "Annual (billed upfront)" : "Monthly"}
                       </p>
                     </div>
                     {changePlanPreview?.effectiveAt === "immediate" &&
@@ -2399,9 +2590,14 @@ export function WorkspaceBillingTab() {
                       {changePlanPreview?.requiresCheckout
                         ? "You'll enter your payment details in the next step."
                         : changePlanPreview?.effectiveAt === "immediate"
-                          ? "Billing cycle remains the same. Your plan will update after payment is confirmed."
+                          ? isAnnualConfirm
+                            ? "Annual billing — billed upfront. Your plan will update after payment is confirmed."
+                            : "Billing cycle remains the same. Your plan will update after payment is confirmed."
                           : "Your new amount will be charged at the end of the current billing cycle."}
                     </p>
+                        </>
+                      );
+                    })()}
                     {paymentMethod && !changePlanPreview?.requiresCheckout && (
                       <div>
                         <p className="text-xs font-medium text-(--text-muted)">Payment method</p>
@@ -2515,9 +2711,10 @@ export function WorkspaceBillingTab() {
                 Upgrade plan
               </p>
               <p className="mt-1.5 text-sm font-semibold text-(--text-primary)">
-                {PLAN_LABELS[paymentDeclinedPlanCode] ?? paymentDeclinedPlanCode} —{" "}
+                {planLabelFromCode(paymentDeclinedPlanCode)} —{" "}
                 {(() => {
-                  const plan = IN_APP_PLAN_CATALOG.find((p) => p.code === paymentDeclinedPlanCode);
+                  const code = toPlanCodeFromNormalized(paymentDeclinedPlanCode);
+                  const plan = IN_APP_PLAN_CATALOG.find((p) => p.code === code);
                   return plan ? formatPriceMonthly(plan.priceMonthlyCents) + "/month" : "";
                 })()}
               </p>

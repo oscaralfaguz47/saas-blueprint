@@ -10,11 +10,13 @@ import { resolveTenantPlan } from "./resolve-tenant-plan";
 
 export type UsageSummaryResult = {
   planCode: string;
+  billingInterval: "monthly" | "annual";
   subscriptionStatus: string;
   periodStart: Date;
   periodEnd: Date;
   cancelAtPeriodEnd: boolean;
   pendingPlanCode: string | null;
+  pendingBillingInterval: "monthly" | "annual" | null;
   pendingChangeType: string | null;
   entitlementEffectiveUntil: Date | null;
   paymentStatus: string | null;
@@ -82,17 +84,20 @@ export async function computeUsageSummary(
         (sum, lot) => sum + Math.max(0, lot.granted - lot.used),
         0
       );
-      rolloverAvailable = Math.min(fromLots, reqLimits.maxAvailable);
+      rolloverAvailable =
+        reqLimits.maxAvailable < 0
+          ? fromLots
+          : Math.min(fromLots, reqLimits.maxAvailable);
     } else {
       rolloverAvailable = billingState?.rolloverRequests ?? 0;
     }
   }
   const reqUsed =
     counters.find((c) => c.meter === "REQUESTS")?.usedCount ?? 0;
-  const reqOverageUnits = Math.max(
-    0,
-    reqUsed - reqIncluded - rolloverAvailable
-  );
+  const reqUnlimited = reqIncluded === -1;
+  const reqOverageUnits = reqUnlimited
+    ? 0
+    : Math.max(0, reqUsed - reqIncluded - rolloverAvailable);
   const reqOverageCents =
     reqLimits.overageCentsPerUnit != null
       ? Math.min(
@@ -112,20 +117,24 @@ export async function computeUsageSummary(
     counters.find((c) => c.meter === "ZIP_EXPORTS")?.usedCount ?? 0;
   const zipIncluded = resolved.features.zip.enabled ? 1 : 0;
 
-  const totalAllowance = reqIncluded + rolloverAvailable;
-  const threshold80 = totalAllowance > 0 && reqUsed >= totalAllowance * 0.8;
-  const threshold100 = totalAllowance > 0 && reqUsed >= totalAllowance;
+  const totalAllowance = reqUnlimited ? Number.MAX_SAFE_INTEGER : reqIncluded + rolloverAvailable;
+  const threshold80 =
+    !reqUnlimited && totalAllowance > 0 && reqUsed >= totalAllowance * 0.8;
+  const threshold100 =
+    !reqUnlimited && totalAllowance > 0 && reqUsed >= totalAllowance;
   const overageCapReached =
     reqLimits.overageCapCents != null &&
     reqOverageCents >= reqLimits.overageCapCents;
 
   return {
     planCode: resolved.planCode,
+    billingInterval: resolved.billingInterval,
     subscriptionStatus: resolved.subscriptionStatus,
     periodStart,
     periodEnd,
     cancelAtPeriodEnd: resolved.cancelAtPeriodEnd,
     pendingPlanCode: resolved.pendingPlanCode ?? null,
+    pendingBillingInterval: resolved.pendingBillingInterval ?? null,
     pendingChangeType: resolved.pendingChangeType ?? null,
     entitlementEffectiveUntil: resolved.entitlementEffectiveUntil ?? null,
     paymentStatus: resolved.paymentStatus ?? null,

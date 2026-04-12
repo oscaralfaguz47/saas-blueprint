@@ -89,7 +89,8 @@ export async function checkMeterLimit(params: {
   const usedAfter = usedBefore + delta;
 
   if (meter === "REQUESTS") {
-    if (usedAfter > totalAllowance && hardCap) {
+    // -1 = unlimited; never block
+    if (included !== -1 && usedAfter > totalAllowance && hardCap) {
       throw new UpgradeRequiredError(
         "Request limit reached for this period. Upgrade to add more."
       );
@@ -153,7 +154,8 @@ export async function tryConsumeMeter(
     const usedAfter = usedBefore + delta;
 
     if (meter === "REQUESTS") {
-      if (usedAfter > totalAllowance && hardCap) {
+      // -1 = unlimited; never block
+      if (included !== -1 && usedAfter > totalAllowance && hardCap) {
         throw new UpgradeRequiredError(
           "Request limit reached for this period. Upgrade to add more."
         );
@@ -174,7 +176,8 @@ export async function tryConsumeMeter(
       const rolloverNow = (await tx.tenantBillingState.findUnique({
         where: { tenantId_periodStart: { tenantId, periodStart } },
       }))?.rolloverRequests ?? 0;
-      const overageUnits = Math.max(0, used - included - rolloverNow);
+      const overageUnits =
+        included === -1 ? 0 : Math.max(0, used - included - rolloverNow);
       const overageCents =
         limits.overageCentsPerUnit != null
           ? Math.min(
@@ -227,6 +230,7 @@ export async function tryConsumeMeter(
 
     if (
       meter === "REQUESTS" &&
+      included !== -1 &&
       rolloverAvailable > 0 &&
       used > included
     ) {
@@ -240,7 +244,8 @@ export async function tryConsumeMeter(
       where: { tenantId_periodStart: { tenantId, periodStart } },
     });
     const rolloverNow = billingAfter?.rolloverRequests ?? 0;
-    const overageUnits = Math.max(0, used - included - rolloverNow);
+    const overageUnits =
+      included === -1 ? 0 : Math.max(0, used - included - rolloverNow);
     const overageCap = limits.overageCapCents ?? Number.POSITIVE_INFINITY;
     const overageEstimateCents =
       limits.overageCentsPerUnit != null

@@ -62,6 +62,7 @@ const PLAN_LABELS: Record<string, string> = {
   free: "Free",
   starter: "Starter",
   pro: "Pro",
+  scale: "Scale",
   enterprise: "Enterprise",
 };
 
@@ -207,8 +208,15 @@ function useBillingState(summary: BillingSummary | null) {
   const now = new Date();
   const graceUntil = summary.graceUntil ? new Date(summary.graceUntil) : null;
   return {
-    currentPlan: (summary.planCode.toLowerCase() as PlanCode) || "free",
-    hasPaidPlan: ["starter", "pro", "enterprise"].includes(summary.planCode),
+    currentPlan:
+      (() => {
+        const pc = summary.planCode.toLowerCase();
+        if (pc === "enterprise") return "scale";
+        return (pc as PlanCode) || "free";
+      })(),
+    hasPaidPlan: ["starter", "pro", "scale", "enterprise"].includes(
+      summary.planCode.toLowerCase()
+    ),
     isCancelingAtPeriodEnd: Boolean(summary.cancelAtPeriodEnd),
     isPastDue: status === "PAST_DUE",
     isInGrace: Boolean(graceUntil && now < graceUntil),
@@ -399,6 +407,7 @@ export function AdminWorkspaceBillingTab({ tenantId }: Props) {
     summary &&
     (summary.planCode === "starter" ||
       summary.planCode === "pro" ||
+      summary.planCode === "scale" ||
       summary.planCode === "enterprise" ||
       summary.subscriptionStatus.toUpperCase() === "PAST_DUE" ||
       summary.subscriptionStatus.toUpperCase() === "SUSPENDED");

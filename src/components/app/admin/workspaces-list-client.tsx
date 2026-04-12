@@ -19,6 +19,7 @@ const PLAN_LABELS: Record<string, string> = {
   free: "Free",
   starter: "Starter",
   pro: "Pro",
+  scale: "Scale",
   enterprise: "Enterprise",
 };
 
@@ -56,7 +57,7 @@ function StatusBadge({ status }: { status: string }) {
 
 function PlanBadge({ planCode, label }: { planCode: string; label: string }) {
   const styles =
-    planCode === "enterprise"
+    planCode === "scale" || planCode === "enterprise"
       ? "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400"
       : planCode === "pro"
         ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
@@ -130,7 +131,7 @@ const PLAN_OPTIONS = [
   { value: "free", label: "Free" },
   { value: "starter", label: "Starter" },
   { value: "pro", label: "Pro" },
-  { value: "enterprise", label: "Enterprise" },
+  { value: "scale", label: "Scale" },
 ];
 
 const PAGE_SIZE = 25;

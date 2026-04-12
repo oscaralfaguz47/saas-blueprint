@@ -15,8 +15,9 @@ import { type PlanCode, isUpgrade, isDowngrade } from "@/lib/billing/plan-catalo
 import { z } from "zod";
 
 const changePlanBodySchema = z.object({
-  targetPlanCode: z.enum(["free", "starter", "pro", "enterprise"]),
+  targetPlanCode: z.enum(["free", "starter", "pro", "scale"]),
   effective: z.enum(["immediate", "next_period"]).optional().default("next_period"),
+  billingInterval: z.enum(["monthly", "annual"]).optional().default("monthly"),
 });
 
 export const POST = withErrorHandler(async (req: Request) => {
@@ -38,6 +39,7 @@ export const POST = withErrorHandler(async (req: Request) => {
   const body = await parseBody(req, changePlanBodySchema);
   const targetCode = body.targetPlanCode;
   const effective = body.effective ?? "next_period";
+  const billingInterval = body.billingInterval ?? "monthly";
 
   const subscription = await prisma.subscription.findFirst({
     where: { tenantId, provider: "paddle" },
@@ -50,6 +52,7 @@ export const POST = withErrorHandler(async (req: Request) => {
       planId: true,
       currentPeriodEnd: true,
       currentEntitlementPlanCode: true,
+      billingInterval: true,
       plan: { select: { code: true } },
     },
   });
@@ -60,6 +63,8 @@ export const POST = withErrorHandler(async (req: Request) => {
     subscription?.plan?.code ??
     "free"
   ).toLowerCase();
+  const currentCodeForCatalog: PlanCode =
+    currentCode === "enterprise" ? "scale" : (currentCode as PlanCode);
 
   if (targetCode === "free") {
     if (!subscription) {
@@ -137,9 +142,10 @@ export const POST = withErrorHandler(async (req: Request) => {
     try {
       const result = await createCheckoutSession({
         tenantId,
-        planCode: targetCode as "starter" | "pro" | "enterprise",
+        planCode: targetCode as "starter" | "pro" | "scale",
         customerEmail,
         customerName: session.user.name ?? null,
+        billingInterval,
       });
       logCheckoutInitiated({ tenantId, planCode: targetCode });
       await writeAuditLog({
@@ -148,7 +154,7 @@ export const POST = withErrorHandler(async (req: Request) => {
         tenantId,
         action: "tenant.billing.checkout_initiated",
         targetType: "Subscription",
-        metadata: { planCode: targetCode },
+        metadata: { planCode: targetCode, billingInterval },
       });
       return apiSuccess({
         mode: "checkout" as const,
@@ -160,18 +166,21 @@ export const POST = withErrorHandler(async (req: Request) => {
       if (message.includes("Cannot checkout free plan")) {
         return ApiErrors.VALIDATION_ERROR("Free plan cannot be checked out.");
       }
+      if (message.includes("Annual billing is not yet configured")) {
+        return ApiErrors.VALIDATION_ERROR(message);
+      }
       throw err;
     }
   }
 
   if (
-    !isUpgrade(currentCode as PlanCode, targetCode) &&
-    !isDowngrade(currentCode as PlanCode, targetCode)
+    !isUpgrade(currentCodeForCatalog, targetCode) &&
+    !isDowngrade(currentCodeForCatalog, targetCode)
   ) {
     return apiSuccess({ mode: "update_subscription" as const, effective: "next_period" as const });
   }
 
-  const isUpgradeFlow = isUpgrade(currentCode as PlanCode, targetCode);
+  const isUpgradeFlow = isUpgrade(currentCodeForCatalog, targetCode);
   const isResumeFromCancellation =
     subscription.cancelAtPeriodEnd && subscription.pendingPlanCode === "free";
   const clearScheduledCancel =
@@ -184,7 +193,7 @@ export const POST = withErrorHandler(async (req: Request) => {
     if (isResumeFromCancellation) {
       // "Schedule instead" to a smaller plan = downgrade: keep current plan until period end.
       // "Resume" to same/larger plan = cancel the cancellation and use chosen plan immediately.
-      const scheduleInsteadDowngrade = isDowngrade(currentCode as PlanCode, targetCode);
+      const scheduleInsteadDowngrade = isDowngrade(currentCodeForCatalog, targetCode);
 
       // Two-step flow: Paddle forbids combining scheduled_change with items/proration in one PATCH.
       // Step 1: Clear only scheduled_change (no items, no proration).
@@ -197,10 +206,12 @@ export const POST = withErrorHandler(async (req: Request) => {
       // Step 2: Apply chosen plan in Paddle with do_not_bill (no proration/credits); next payment = new plan price.
       const updateResult = await updateSubscriptionPrice({
         providerSubscriptionId: subscription.providerSubscriptionId,
-        targetPlanCode: targetCode as "starter" | "pro" | "enterprise",
+        targetPlanCode: targetCode as "starter" | "pro" | "scale",
+        billingInterval,
         effective: "next_period",
         clearScheduledCancel: false,
         tenantId,
+        currentBillingInterval: subscription.billingInterval === "annual" ? "annual" : "monthly",
       });
       if (!updateResult.ok) {
         return ApiErrors.VALIDATION_ERROR(
@@ -221,6 +232,7 @@ export const POST = withErrorHandler(async (req: Request) => {
             pendingChangeType: "downgrade_end_of_period",
             pendingEffectiveAt: periodEnd,
             entitlementEffectiveUntil: periodEnd,
+            billingInterval,
           },
         });
       } else {
@@ -241,31 +253,21 @@ export const POST = withErrorHandler(async (req: Request) => {
               pendingChangeType: null,
               pendingEffectiveAt: null,
               entitlementEffectiveUntil: null,
+              billingInterval,
             },
           });
         }
       }
     } else {
-      // Paid→paid downgrade: apply new price in Paddle now with do_not_bill (no proration/credits).
-      // Next payment in Paddle = new plan price. We keep entitlements at current plan until period end in our DB.
-      const updateResult = await updateSubscriptionPrice({
-        providerSubscriptionId: subscription.providerSubscriptionId,
-        targetPlanCode: targetCode as "starter" | "pro" | "enterprise",
-        effective: "next_period",
-        clearScheduledCancel,
-        tenantId,
-      });
-      if (!updateResult.ok) {
-        return ApiErrors.VALIDATION_ERROR(
-          updateResult.error ?? "Failed to schedule downgrade. Try again or contact support."
-        );
-      }
+      // Paid→paid downgrade: DB-only at click time. Paddle is updated at period end by period-close.
+      // Do not call updateSubscriptionPrice here — that would switch the Paddle item to the new monthly
+      // price immediately and move next_billed_at to the next month instead of the annual period end.
       const periodEnd = subscription.currentPeriodEnd ?? undefined;
       await prisma.subscription.update({
         where: { id: subscription.id },
         data: {
           pendingPlanCode: targetCode,
-          downgradePaddleAppliedAt: new Date(),
+          pendingBillingInterval: billingInterval,
           billingPlanCode: targetCode,
           currentEntitlementPlanCode: currentCode,
           pendingChangeType: "downgrade_end_of_period",
@@ -288,7 +290,8 @@ export const POST = withErrorHandler(async (req: Request) => {
     }
     const updateResult = await updateSubscriptionPrice({
       providerSubscriptionId: subscription.providerSubscriptionId,
-      targetPlanCode: targetCode as "starter" | "pro" | "enterprise",
+      targetPlanCode: targetCode as "starter" | "pro" | "scale",
+      billingInterval,
       effective: "immediate",
       clearScheduledCancel: false,
       tenantId,
@@ -306,6 +309,14 @@ export const POST = withErrorHandler(async (req: Request) => {
       }
       return ApiErrors.VALIDATION_ERROR(err);
     }
+    // After successful immediate upgrade, persist billingInterval so UI is consistent before the webhook arrives
+    await prisma.subscription.update({
+      where: { id: subscription.id },
+      data: {
+        billingInterval,
+        billingPlanCode: targetCode,
+      },
+    });
   }
 
   await writeAuditLog({
@@ -319,6 +330,7 @@ export const POST = withErrorHandler(async (req: Request) => {
       targetPlanCode: targetCode,
       previousPlanCode: currentCode,
       effective: effectiveTiming,
+      billingInterval,
     },
   });
 

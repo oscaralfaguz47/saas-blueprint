@@ -22,7 +22,7 @@ function encodeCursor(createdAt: string, id: string): string {
 }
 
 function planFilterClause(
-  plan: "free" | "starter" | "pro" | "enterprise",
+  plan: "free" | "starter" | "pro" | "scale",
 ): Prisma.TenantWhereInput {
   if (plan === "free") {
     return {
@@ -45,16 +45,21 @@ function planFilterClause(
       ],
     };
   }
+  const matchCodes =
+    plan === "scale" ? (["scale", "enterprise"] as const) : ([plan] as const);
+
   return {
     subscriptions: {
       some: {
         provider: "paddle",
         OR: [
-          { currentEntitlementPlanCode: { equals: plan, mode: "insensitive" } },
-          {
+          ...matchCodes.map((c) => ({
+            currentEntitlementPlanCode: { equals: c, mode: "insensitive" as const },
+          })),
+          ...matchCodes.map((c) => ({
             currentEntitlementPlanCode: null,
-            plan: { code: { equals: plan, mode: "insensitive" } },
-          },
+            plan: { code: { equals: c, mode: "insensitive" as const } },
+          })),
         ],
       },
     },

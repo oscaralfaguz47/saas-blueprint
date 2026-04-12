@@ -55,8 +55,10 @@ export const POST = withErrorHandler(async (req: Request) => {
     const normalizeResult = await updateSubscriptionPrice({
       providerSubscriptionId: sub.providerSubscriptionId,
       targetPlanCode: resolved.planCode,
+      billingInterval: paddleSub.billingInterval,
       effective: "next_period",
       tenantId: sub.tenantId,
+      currentBillingInterval: paddleSub.billingInterval,
     });
     if (!normalizeResult.ok) {
       return apiSuccess({ ok: false, normalized: false, error: normalizeResult.error });
@@ -91,6 +93,7 @@ export const POST = withErrorHandler(async (req: Request) => {
       currentPeriodEnd,
       graceUntil,
       cancelAtPeriodEnd,
+      billingInterval: paddleSub.billingInterval,
     },
   });
 

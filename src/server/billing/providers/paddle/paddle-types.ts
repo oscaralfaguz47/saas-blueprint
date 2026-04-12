@@ -3,8 +3,8 @@ import "server-only";
 import { z } from "zod";
 import { cuidSchema } from "@/lib/validations/common";
 
-/** Canonical plan codes (webhook must never assign "free"; checkout never creates free). EPIC 5: enterprise. */
-export const PADDLE_PLAN_CODE = z.enum(["free", "starter", "pro", "enterprise"]);
+/** Canonical plan codes (webhook must never assign "free"; checkout never creates free). */
+export const PADDLE_PLAN_CODE = z.enum(["free", "starter", "pro", "scale"]);
 export type PaddlePlanCode = z.infer<typeof PADDLE_PLAN_CODE>;
 
 /** Allowlist of Paddle event types we process. Others are logged and ignored. */
@@ -48,6 +48,13 @@ export const paddleSubscriptionDataSchema = z.object({
   custom_data: z.record(z.string(), z.unknown()).nullable().optional(),
   items: z.array(subscriptionItemSchema).optional(),
   current_billing_period: paddleBillingPeriodSchema.nullable().optional(),
+  billing_cycle: z
+    .object({
+      interval: z.enum(["day", "week", "month", "year"]),
+      frequency: z.number(),
+    })
+    .nullable()
+    .optional(),
   scheduled_change: z
     .object({
       action: z.string().nullable().optional(),

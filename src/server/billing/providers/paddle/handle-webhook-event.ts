@@ -10,6 +10,7 @@ import {
 } from "./paddle-types";
 import {
   buildSanitizedPayload,
+  getBillingIntervalFromPaddle,
   getGraceUntilForPastDue,
   getHighestPlanCodeFromItems,
   getPlanCodeFromPriceId,
@@ -304,7 +305,7 @@ export function validateWebhookPayload(envelope: unknown): {
   eventId: string;
   eventType: string;
   subscriptionData: ReturnType<typeof parseSubscriptionData>;
-  metadata: { tenantId: string; planCode: "free" | "starter" | "pro" | "enterprise" } | null;
+  metadata: { tenantId: string; planCode: string } | null;
 } {
   const parsed = paddleWebhookEnvelopeSchema.safeParse(envelope);
   if (!parsed.success) {
@@ -458,7 +459,7 @@ export async function handleWebhookEvent(params: {
       if (planCode && planCode !== "free") {
         resolvedMetadata = {
           tenantId: existingBySub.tenantId,
-          planCode: planCode as "starter" | "pro" | "enterprise",
+          planCode,
         };
       }
     }
@@ -550,9 +551,11 @@ export async function handleWebhookEvent(params: {
   const graceUntil =
     status === "PAST_DUE" ? getGraceUntilForPastDue() : null;
 
-  const PLAN_TIER: Record<string, number> = { free: 0, starter: 1, pro: 2, enterprise: 3 };
+  const PLAN_TIER: Record<string, number> = { free: 0, starter: 1, pro: 2, scale: 3 };
   function planTier(code: string): number {
-    return PLAN_TIER[code?.toLowerCase()] ?? -1;
+    const c = code?.toLowerCase();
+    if (c === "enterprise") return PLAN_TIER.scale;
+    return PLAN_TIER[c] ?? -1;
   }
 
   const sanitizedPayload: BillingEventSanitizedPayload = buildSanitizedPayload({
@@ -667,15 +670,25 @@ export async function handleWebhookEvent(params: {
       entitlementCode = newBilling;
       billingCode = newBilling;
       // If Paddle no longer has a scheduled change (scheduled_change is null),
-      // clear any pending cancellation or downgrade we have stored.
-      // This handles the case where a user or admin reverts a scheduled cancellation
-      // from the Paddle dashboard ("Don't cancel subscription").
+      // clear stored pending *unless* we have an app-scheduled paid downgrade (DB-only; Paddle has no scheduled_change)
+      // or legacy paid downgrade (Paddle already updated at click; DB pending until period-close sync).
+      // Dashboard "Don't cancel subscription" still has scheduled_change in Paddle for cancel flows.
       const hasScheduledChangeinPaddle = !!(
         dataToUse.scheduled_change &&
         typeof dataToUse.scheduled_change === "object" &&
         dataToUse.scheduled_change.action
       );
-      if (!hasScheduledChangeinPaddle) {
+      const hasAppScheduledDowngrade =
+        existingSub?.pendingChangeType === "downgrade_end_of_period" &&
+        existingSub.pendingPlanCode != null &&
+        existingSub.pendingEffectiveAt != null &&
+        existingSub.downgradePaddleAppliedAt == null;
+      const hasLegacyScheduledDowngrade =
+        existingSub?.pendingChangeType === "downgrade_end_of_period" &&
+        existingSub.pendingPlanCode != null &&
+        existingSub.downgradePaddleAppliedAt != null;
+
+      if (!hasScheduledChangeinPaddle && !hasAppScheduledDowngrade && !hasLegacyScheduledDowngrade) {
         pendingChangeType = null;
         pendingPlanCode = null;
         pendingEffectiveAt = null;
@@ -734,14 +747,18 @@ export async function handleWebhookEvent(params: {
             lastPaymentFailureMessage: null as string | null,
           };
 
+    // Only write period when Paddle sent both bounds; omitting avoids nulling DB when webhook
+    // omits current_billing_period (subscription.updated can be partial vs GET subscription).
     const baseData = {
       providerCustomerId: dataToUse.customer_id,
       providerSubscriptionId,
       status,
-      currentPeriodStart,
-      currentPeriodEnd,
+      ...(currentPeriodStart != null && currentPeriodEnd != null
+        ? { currentPeriodStart, currentPeriodEnd }
+        : {}),
       graceUntil,
       cancelAtPeriodEnd,
+      billingInterval: getBillingIntervalFromPaddle(dataToUse.billing_cycle ?? undefined),
       planId: entitlementPlan.id,
       billingPlanCode: billingCode,
       currentEntitlementPlanCode: entitlementCode,

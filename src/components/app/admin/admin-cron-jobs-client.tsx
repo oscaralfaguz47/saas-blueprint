@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Spinner } from "@/components/ui/spinner";
 
-type JobId = "billing-period-close" | "billing-starter-overage" | "background-jobs";
+type JobId = "billing-period-close" | "background-jobs";
 
 type JobDefinition = {
   id: JobId;
@@ -21,14 +21,6 @@ const JOBS: JobDefinition[] = [
       "Closes expired billing periods, creates rollover lots, and applies pending plan changes (downgrades to free, paid downgrades at period end).",
     endpoint: "/api/internal/cron/billing/period-close",
     schedule: "Daily at 1:00 AM UTC",
-  },
-  {
-    id: "billing-starter-overage",
-    label: "Starter overage scheduling",
-    description:
-      "For Starter tenants nearing period end, computes overage units and schedules a Paddle one-time charge for the next billing period.",
-    endpoint: "/api/internal/cron/billing/starter-overage",
-    schedule: "Every 30 minutes",
   },
   {
     id: "background-jobs",
@@ -60,29 +52,6 @@ export function AdminCronJobsClient() {
       JobState
     >
   );
-
-  const [debugTenantId, setDebugTenantId] = useState("");
-  const [debugResult, setDebugResult] = useState<unknown | null>(null);
-  const [debugLoading, setDebugLoading] = useState(false);
-
-  const runDebug = async () => {
-    if (!debugTenantId.trim()) return;
-    setDebugLoading(true);
-    setDebugResult(null);
-    try {
-      const res = await fetch("/api/admin/cron/billing-starter-overage/force-run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tenantId: debugTenantId.trim() }),
-      });
-      const json = await res.json();
-      setDebugResult(json);
-    } catch (e) {
-      setDebugResult({ error: e instanceof Error ? e.message : "Unknown error" });
-    } finally {
-      setDebugLoading(false);
-    }
-  };
 
   const runJob = async (jobId: JobId) => {
     setJobStates((prev) => ({
@@ -194,36 +163,6 @@ export function AdminCronJobsClient() {
                   <pre className="overflow-x-auto whitespace-pre-wrap break-all text-xs text-(--text-secondary)">
                     {JSON.stringify(lastRun.result, null, 2)}
                   </pre>
-                </div>
-              )}
-
-              {job.id === "billing-starter-overage" && (
-                <div className="mt-4 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) p-4">
-                  <p className="mb-2 text-xs font-medium text-(--text-muted)">
-                    Debug overage calculation for a specific tenant
-                  </p>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={debugTenantId}
-                      onChange={(e) => setDebugTenantId(e.target.value)}
-                      placeholder="Tenant ID"
-                      className="flex-1 rounded-md border border-(--border-subtle) bg-(--bg-surface) px-3 py-1.5 font-mono text-xs text-(--text-primary)"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void runDebug()}
-                      disabled={debugLoading || !debugTenantId.trim()}
-                      className="inline-flex h-8 items-center justify-center rounded-md border border-(--border-subtle) px-3 text-xs font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
-                    >
-                      {debugLoading ? "..." : "Debug"}
-                    </button>
-                  </div>
-                  {debugResult != null ? (
-                    <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all text-xs text-(--text-secondary)">
-                      {JSON.stringify(debugResult, null, 2)}
-                    </pre>
-                  ) : null}
                 </div>
               )}
             </div>

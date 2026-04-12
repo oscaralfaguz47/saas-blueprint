@@ -6,7 +6,7 @@ import { requireAdminAuth } from "@/server/security/admin-route-auth";
 import { env } from "@/lib/env";
 import { apiSuccess, apiError, withErrorHandler } from "@/lib/api-response";
 
-const DEFINED_JOBS = ["billing-period-close", "billing-starter-overage", "background-jobs"] as const;
+const DEFINED_JOBS = ["billing-period-close", "background-jobs"] as const;
 type JobId = (typeof DEFINED_JOBS)[number];
 
 function isValidJobId(id: string): id is JobId {
@@ -34,7 +34,6 @@ export const POST = withErrorHandler(
 
     const cronEndpoints: Record<JobId, string> = {
       "billing-period-close": `${baseUrl}/api/internal/cron/billing/period-close`,
-      "billing-starter-overage": `${baseUrl}/api/internal/cron/billing/starter-overage`,
       "background-jobs": `${baseUrl}/api/internal/cron/jobs`,
     };
 

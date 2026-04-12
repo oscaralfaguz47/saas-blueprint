@@ -24,6 +24,10 @@ export function getPeriodEndForDate(date: Date): Date {
 
 /**
  * EPIC 5: Billing period for tenant. Paid = subscription currentPeriodStart/End; Free = calendar month UTC.
+ *
+ * For paid Paddle periods, use subscription anchors whenever we are still on or before
+ * `currentPeriodEnd` (including before `currentPeriodStart` during renewal alignment).
+ * After `currentPeriodEnd`, fall back to calendar month until webhooks refresh the window.
  */
 export async function getBillingPeriodForTenant(
   tenantId: string,
@@ -41,7 +45,7 @@ export async function getBillingPeriodForTenant(
   ) {
     const start = new Date(effective.currentPeriodStart);
     const end = new Date(effective.currentPeriodEnd);
-    if (atDate >= start && atDate <= end) {
+    if (atDate <= end) {
       return { periodStart: start, periodEnd: end };
     }
   }
@@ -67,7 +71,17 @@ export async function getOrCreateBillingState(
     },
   });
 
-  if (existing) return existing;
+  if (existing) {
+    if (existing.periodEnd.getTime() !== periodEnd.getTime()) {
+      return prisma.tenantBillingState.update({
+        where: {
+          tenantId_periodStart: { tenantId, periodStart },
+        },
+        data: { periodEnd },
+      });
+    }
+    return existing;
+  }
 
   // Resolve plan code for the new billing state row. We already loaded effective above;
   // pass it through so resolveTenantPlan does not query the subscription again (cold path).

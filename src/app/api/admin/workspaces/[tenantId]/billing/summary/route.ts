@@ -37,6 +37,7 @@ export const GET = withErrorHandler(
     const reqMeters = summary.meters.requests;
     return apiSuccess({
       planCode: summary.planCode,
+      billingInterval: summary.billingInterval,
       subscriptionStatus: summary.subscriptionStatus,
       periodStart: summary.periodStart.toISOString(),
       periodEnd: summary.periodEnd.toISOString(),
