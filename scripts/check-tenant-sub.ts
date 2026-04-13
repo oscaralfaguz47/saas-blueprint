@@ -2,7 +2,7 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 async function main() {
-  const TENANT_ID = "cmnv6id1z00947klkftk7o4wr";
+  const TENANT_ID = "cmnxntciw005c7kxcz1n162y7";
 
   const sub = await prisma.subscription.findFirst({
     where: { tenantId: TENANT_ID, provider: "paddle" },

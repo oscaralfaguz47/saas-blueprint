@@ -1328,6 +1328,7 @@ export function WorkspaceBillingTab() {
     setConfirmPlanOpen(false);
     setConfirmTarget(null);
     setChangePlanPreview(null);
+    setChangePlanOpen(true);
   }, []);
 
   const closePaymentDeclinedModal = useCallback(() => {
