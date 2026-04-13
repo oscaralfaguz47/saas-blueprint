@@ -4,6 +4,7 @@ import { authOptions } from "@/server/auth-options";
 import { requireAdminAuth } from "@/server/security/admin-route-auth";
 import { checkAdminWorkspacesListLimit } from "@/server/security/admin-rate-limit";
 import { prisma } from "@/server/db";
+import { getPresignedGetUrl } from "@/server/services/r2-logo";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { adminWorkspacesListQuerySchema } from "@/lib/validations/admin";
 
@@ -149,6 +150,7 @@ export const GET = withErrorHandler(async (req: Request) => {
       slug: true,
       status: true,
       createdAt: true,
+      logoObjectKey: true,
       subscriptions: {
         where: { provider: "paddle" },
         orderBy: { currentPeriodEnd: "desc" },
@@ -159,7 +161,35 @@ export const GET = withErrorHandler(async (req: Request) => {
           pendingChangeType: true,
           entitlementEffectiveUntil: true,
           cancelAtPeriodEnd: true,
-          plan: { select: { code: true } },
+          billingInterval: true,
+          currentPeriodStart: true,
+          currentPeriodEnd: true,
+          plan: { select: { code: true, priceMonthly: true, priceYearly: true } },
+        },
+      },
+      _count: {
+        select: {
+          memberships: { where: { status: "ACTIVE" } },
+        },
+      },
+      memberships: {
+        where: {
+          status: "ACTIVE",
+          roles: {
+            some: {
+              role: { name: "Primary Owner" },
+            },
+          },
+        },
+        take: 1,
+        select: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
         },
       },
     },
@@ -173,6 +203,19 @@ export const GET = withErrorHandler(async (req: Request) => {
   const nextCursor =
     hasMore && last ? encodeCursor(last.createdAt.toISOString(), last.id) : null;
 
+  const logoUrls = await Promise.all(
+    slice.map(async (t) => {
+      if (!t.logoObjectKey) return { id: t.id, logoUrl: null };
+      try {
+        const url = await getPresignedGetUrl(t.logoObjectKey);
+        return { id: t.id, logoUrl: url };
+      } catch {
+        return { id: t.id, logoUrl: null };
+      }
+    }),
+  );
+  const logoUrlMap = new Map(logoUrls.map((l) => [l.id, l.logoUrl]));
+
   const items = slice.map((t) => {
     const sub = t.subscriptions?.[0] ?? null;
     const planCode = (
@@ -183,6 +226,28 @@ export const GET = withErrorHandler(async (req: Request) => {
     const pendingPlanCode = sub?.pendingPlanCode?.toLowerCase() ?? null;
     const pendingChangeType = sub?.pendingChangeType ?? null;
     const entitlementEffectiveUntil = sub?.entitlementEffectiveUntil?.toISOString() ?? null;
+    const rawInterval = sub?.billingInterval?.toLowerCase() ?? null;
+    const billingInterval =
+      rawInterval === "monthly" || rawInterval === "annual" ? rawInterval : null;
+
+    const billingPeriodStart = sub?.currentPeriodStart?.toISOString() ?? null;
+    const billingPeriodEnd = sub?.currentPeriodEnd?.toISOString() ?? null;
+
+    const planPriceCents =
+      billingInterval === "annual"
+        ? (sub?.plan?.priceYearly ?? sub?.plan?.priceMonthly ?? null)
+        : (sub?.plan?.priceMonthly ?? null);
+
+    const activeMemberCount = t._count?.memberships ?? 0;
+
+    const primaryOwnerMembership = t.memberships?.[0] ?? null;
+    const primaryOwner = primaryOwnerMembership?.user
+      ? {
+          id: primaryOwnerMembership.user.id,
+          name: primaryOwnerMembership.user.name ?? null,
+          email: primaryOwnerMembership.user.email ?? null,
+        }
+      : null;
 
     return {
       id: t.id,
@@ -190,10 +255,17 @@ export const GET = withErrorHandler(async (req: Request) => {
       slug: t.slug,
       status: t.status,
       createdAt: t.createdAt.toISOString(),
+      logoUrl: logoUrlMap.get(t.id) ?? null,
       planCode,
       pendingPlanCode,
       pendingChangeType,
       entitlementEffectiveUntil,
+      billingInterval,
+      billingPeriodStart,
+      billingPeriodEnd,
+      planPriceCents,
+      activeMemberCount,
+      primaryOwner,
     };
   });
 

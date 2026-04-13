@@ -35,6 +35,79 @@ function formatShortDate(iso: string): string {
   }
 }
 
+function formatPrice(cents: number | null, interval: "monthly" | "annual" | null): string {
+  if (cents === null || cents === 0) return "$0";
+  const dollars = cents / 100;
+  const formatted =
+    dollars % 1 === 0 ? `$${dollars.toFixed(0)}` : `$${dollars.toFixed(2)}`;
+  if (interval === "annual") return `${formatted}/yr`;
+  if (interval === "monthly") return `${formatted}/mo`;
+  return formatted;
+}
+
+function formatBillingPeriod(start: string | null, end: string | null): string {
+  if (!start || !end) return "—";
+  try {
+    const s = new Date(start).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+    const e = new Date(end).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+    return `${s} – ${e}`;
+  } catch {
+    return "—";
+  }
+}
+
+function WorkspaceLogo({
+  logoUrl,
+  name,
+}: {
+  logoUrl: string | null;
+  name: string;
+}) {
+  const initials = name
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+  if (!logoUrl) {
+    return (
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-(--bg-surface-elev) border border-(--border-subtle) text-xs font-semibold text-(--text-muted)">
+        {initials || "—"}
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative h-8 w-8 shrink-0">
+      <img
+        src={logoUrl}
+        alt={name}
+        className="h-8 w-8 rounded-md object-cover border border-(--border-subtle)"
+        onError={(e) => {
+          e.currentTarget.style.display = "none";
+          const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+          if (fallback) fallback.style.display = "flex";
+        }}
+      />
+      <div
+        className="hidden h-8 w-8 items-center justify-center rounded-md bg-(--bg-surface-elev) border border-(--border-subtle) text-xs font-semibold text-(--text-muted)"
+        aria-hidden
+      >
+        {initials || "—"}
+      </div>
+    </div>
+  );
+}
+
 function StatusBadge({ status }: { status: string }) {
   const s = status.toUpperCase();
   const styles =
@@ -77,11 +150,15 @@ function PlanCell({
   pendingPlanCode,
   pendingChangeType,
   entitlementEffectiveUntil,
+  billingInterval,
+  planPriceCents,
 }: {
   planCode: string;
   pendingPlanCode: string | null;
   pendingChangeType: string | null;
   entitlementEffectiveUntil: string | null;
+  billingInterval: "monthly" | "annual" | null;
+  planPriceCents: number | null;
 }) {
   const label = PLAN_LABELS[planCode] ?? planCode;
   const pendingLabel = pendingPlanCode ? (PLAN_LABELS[pendingPlanCode] ?? pendingPlanCode) : null;
@@ -91,14 +168,22 @@ function PlanCell({
 
   return (
     <div className="space-y-0.5">
-      <PlanBadge planCode={planCode} label={label} />
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <PlanBadge planCode={planCode} label={label} />
+        {billingInterval && planCode !== "free" && (
+          <span className="text-xs text-(--text-muted) capitalize">{billingInterval}</span>
+        )}
+      </div>
+      {planPriceCents !== null && planCode !== "free" && (
+        <p className="text-xs text-(--text-muted)">
+          {formatPrice(planPriceCents, billingInterval)}
+        </p>
+      )}
       {pendingChangeType === "cancel_to_free_end_of_period" && effectiveDate && (
         <p className="text-xs text-(--text-muted)">→ Free on {effectiveDate}</p>
       )}
       {pendingChangeType === "downgrade_end_of_period" && pendingLabel && effectiveDate && (
-        <p className="text-xs text-(--text-muted)">
-          → {pendingLabel} on {effectiveDate}
-        </p>
+        <p className="text-xs text-(--text-muted)">→ {pendingLabel} on {effectiveDate}</p>
       )}
     </div>
   );
@@ -110,10 +195,17 @@ type WorkspaceItem = {
   slug: string;
   status: string;
   createdAt: string;
+  logoUrl: string | null;
   planCode: string;
   pendingPlanCode: string | null;
   pendingChangeType: string | null;
   entitlementEffectiveUntil: string | null;
+  billingInterval: "monthly" | "annual" | null;
+  billingPeriodStart: string | null;
+  billingPeriodEnd: string | null;
+  planPriceCents: number | null;
+  activeMemberCount: number;
+  primaryOwner: { id: string; name: string | null; email: string | null } | null;
 };
 
 type UserOption = { id: string; name?: string; email?: string };
@@ -422,22 +514,31 @@ export function WorkspacesListClient() {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>Slug</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead>Current Plan</TableHead>
+                <TableHead>Billing Period</TableHead>
+                <TableHead>Members</TableHead>
+                <TableHead>Primary Owner</TableHead>
                 <TableHead className="w-[120px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {items.map((t) => (
                 <TableRow key={t.id}>
-                  <TableCell className="font-medium">{t.name}</TableCell>
-                  <TableCell className="text-(--text-muted)">{t.slug}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2.5">
+                      <WorkspaceLogo logoUrl={t.logoUrl} name={t.name} />
+                      <div className="min-w-0">
+                        <p className="font-medium text-(--text-primary) truncate">{t.name}</p>
+                        <p className="text-xs text-(--text-muted) truncate">{t.slug}</p>
+                      </div>
+                    </div>
+                  </TableCell>
                   <TableCell>
                     <StatusBadge status={t.status} />
                   </TableCell>
-                  <TableCell className="text-(--text-muted)">
+                  <TableCell className="text-(--text-muted) text-sm">
                     {new Date(t.createdAt).toLocaleDateString()}
                   </TableCell>
                   <TableCell>
@@ -446,7 +547,36 @@ export function WorkspacesListClient() {
                       pendingPlanCode={t.pendingPlanCode}
                       pendingChangeType={t.pendingChangeType}
                       entitlementEffectiveUntil={t.entitlementEffectiveUntil}
+                      billingInterval={t.billingInterval}
+                      planPriceCents={t.planPriceCents}
                     />
+                  </TableCell>
+                  <TableCell className="text-xs text-(--text-muted)">
+                    {formatBillingPeriod(t.billingPeriodStart, t.billingPeriodEnd)}
+                  </TableCell>
+                  <TableCell className="text-sm text-(--text-secondary)">
+                    {t.activeMemberCount}
+                  </TableCell>
+                  <TableCell>
+                    {t.primaryOwner ? (
+                      <div className="min-w-0">
+                        {t.primaryOwner.name && (
+                          <p className="text-sm text-(--text-primary) truncate max-w-[160px]">
+                            {t.primaryOwner.name}
+                          </p>
+                        )}
+                        {t.primaryOwner.email && (
+                          <p className="text-xs text-(--text-muted) truncate max-w-[160px]">
+                            {t.primaryOwner.email}
+                          </p>
+                        )}
+                        {!t.primaryOwner.name && !t.primaryOwner.email && (
+                          <span className="text-xs text-(--text-muted)">—</span>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-(--text-muted)">—</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Link
