@@ -133,6 +133,9 @@ function isPublicPath(pathname: string) {
   // Paddle webhook: no session; verified by Paddle-Signature in the route handler
   if (pathname === "/api/billing/paddle/webhook") return true;
 
+  // Versioned external APIs (e.g. approval links — token auth inside route)
+  if (pathname.startsWith("/api/v1/external/")) return true;
+
   // External public approval pages
   if (pathname.startsWith("/r/")) return true;
 

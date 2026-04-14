@@ -63,6 +63,7 @@ export default function AppSidebar({
   const [tenants, setTenants] = useState<TenantItem[]>([]);
   const [tenantsLoading, setTenantsLoading] = useState(false);
   const [switchingId, setSwitchingId] = useState<string | null>(null);
+  const [inboxCount, setInboxCount] = useState(0);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
   // Read initial value from localStorage via useSyncExternalStore (no setState in effect; avoids cascading-renders lint).
@@ -122,6 +123,25 @@ export default function AppSidebar({
       controller.abort();
     };
   }, [isMobile, open, apiFetch, tenants.length]);
+
+  useEffect(() => {
+    const sidebarVisible = !isMobile || open;
+    if (!sidebarVisible) return;
+    const controller = new AbortController();
+    void apiFetch("/api/records?tab=inbox&limit=1", {
+      showToastOnError: false,
+      signal: controller.signal,
+    })
+      .then((r) => (controller.signal.aborted ? null : r.json()))
+      .then((json: { data?: { records?: unknown[] } } | null) => {
+        if (json && !controller.signal.aborted) {
+          const hasItems = (json.data?.records?.length ?? 0) > 0;
+          setInboxCount(hasItems ? 1 : 0);
+        }
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [isMobile, open, apiFetch]);
 
   const refetchTenants = useCallback(() => {
     lastFetchAttemptRef.current = Date.now();
@@ -262,7 +282,16 @@ export default function AppSidebar({
           className={`flex items-center rounded-lg py-2.5 text-sm font-medium transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} ${requestsActive ? `${activeBg} text-(--text-primary)` : `text-(--text-secondary) ${hoverBg} hover:text-(--text-primary)`}`}
         >
           <IconFileText size={18} className="shrink-0" />
-          {showLabels ? <span>Requests</span> : null}
+          {showLabels ? (
+            <span className="flex flex-1 items-center justify-between gap-2">
+              <span>Requests</span>
+              {inboxCount > 0 && (
+                <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-(--color-primary) px-1 text-[10px] font-semibold text-white">
+                  {inboxCount}
+                </span>
+              )}
+            </span>
+          ) : null}
         </Link>
         {canAccessPlatformAdmin ? (
           <Link

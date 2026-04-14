@@ -106,11 +106,13 @@ enum BillingSupportRequestStatus {
 }
 
 enum RecordStatus {
+  OPEN
   DRAFT
   PENDING_APPROVAL
   APPROVED
   REJECTED
   NO_RESPONSE
+  CLOSED
 }
 
 enum ApprovalRequestStatus {
@@ -120,6 +122,94 @@ enum ApprovalRequestStatus {
   EXPIRED
   REVOKED
   NO_RESPONSE
+}
+
+enum RecordEventType {
+  RECORD_CREATED
+  RECORD_CLOSED
+  APPROVAL_REQUESTED
+  APPROVAL_APPROVED
+  APPROVAL_REJECTED
+  APPROVAL_LINK_OPENED
+  EVIDENCE_FILE_ADDED
+  EVIDENCE_FILE_REMOVED
+  EVIDENCE_LINK_ADDED
+  EVIDENCE_LINK_REMOVED
+  COMMENT_ADDED
+  USER_MENTIONED
+  RECORD_SHARED
+  RECORD_LINKED
+  RECORD_UNLINKED
+  PAYMENT_STATUS_SET
+  PAYMENT_EVIDENCE_ADDED
+  PAYMENT_EVIDENCE_REMOVED
+  REMINDER_SENT
+  EXPORT_PDF_GENERATED
+  EXPORT_BUNDLE_GENERATED
+}
+
+enum RecordParticipantType {
+  INTERNAL
+  EXTERNAL
+}
+
+enum RecordParticipantRole {
+  APPROVER
+  VIEWER
+}
+
+enum RecordParticipantStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum RecordAccessType {
+  VIEW
+  EDIT
+}
+
+enum RecordAccessReason {
+  MANUAL_SHARE
+  MENTION_AUTO_SHARE
+}
+
+enum RecordCommentScope {
+  GENERAL
+  APPROVAL
+  PAYMENT
+}
+
+enum RecordCommentAuthorType {
+  INTERNAL
+  EXTERNAL
+}
+
+enum RecordLinkType {
+  FULFILLS
+  RELATED
+}
+
+enum RecordEvidenceType {
+  FILE
+  LINK
+}
+
+enum RecordPaymentStatus {
+  NOT_PAID
+  PENDING
+  PAID
+}
+
+enum RecordPaymentEvidenceType {
+  FILE
+  LINK
+  TEXT
+}
+
+enum RecordExportType {
+  PDF_APPROVAL_PACKET
+  ZIP_AUDIT_BUNDLE
 }
 
 enum KbArticleType {
@@ -238,6 +328,24 @@ model User {
   ticketMessagesAuthored SupportTicketMessage[]         @relation("MessageAuthor")
   notifications         UserNotification[]
   aiChatSessions         AiChatSession[]
+
+  recordEventActors            RecordEvent[]            @relation("RecordEventActor")
+  recordParticipations         RecordParticipant[]      @relation("RecordParticipantUser")
+  recordParticipationsCreated  RecordParticipant[]      @relation("RecordParticipantCreatedBy")
+  recordAccessEntries          RecordAccess[]           @relation("RecordAccessUser")
+  recordAccessGranted          RecordAccess[]           @relation("RecordAccessGrantedBy")
+  recordCommentAuthors         RecordComment[]          @relation("RecordCommentAuthor")
+  recordCommentMentions        RecordCommentMention[]   @relation("RecordCommentMentionedUser")
+  recordLinkCreated            RecordLink[]             @relation("RecordLinkCreatedBy")
+  recordLinkRemoved            RecordLink[]             @relation("RecordLinkRemovedBy")
+  recordsClosedBy              Record[]                 @relation("RecordsClosedByUser")
+  recordEvidenceCreated        RecordEvidence[]         @relation("RecordEvidenceCreatedBy")
+  recordEvidenceDeleted        RecordEvidence[]         @relation("RecordEvidenceDeletedBy")
+  recordPaymentSetBy           RecordPayment[]         @relation("RecordPaymentSetBy")
+  recordPaymentEvidenceCreated RecordPaymentEvidence[]  @relation("RecordPaymentEvidenceCreatedBy")
+  recordPaymentEvidenceRemoved RecordPaymentEvidence[]  @relation("RecordPaymentEvidenceRemovedBy")
+  recordReminderLogsSent       RecordReminderLog[]     @relation("RecordReminderLogSentBy")
+  recordExportsCreated         RecordExport[]           @relation("RecordExportCreatedBy")
 
   @@index([identityProvider, identityId])
 }
@@ -379,6 +487,18 @@ model Tenant {
   supportTickets            SupportTicket[]
   backgroundJobs            BackgroundJob[]
   knowledgeBaseSearchLogs   KnowledgeBaseSearchLog[]
+
+  recordEvents              RecordEvent[]              @relation("TenantRecordEvents")
+  recordParticipants        RecordParticipant[]        @relation("TenantRecordParticipants")
+  recordAccess              RecordAccess[]             @relation("TenantRecordAccess")
+  recordComments            RecordComment[]            @relation("TenantRecordComments")
+  recordCommentMentions     RecordCommentMention[]     @relation("TenantRecordCommentMentions")
+  recordLinks               RecordLink[]               @relation("TenantRecordLinks")
+  recordEvidence            RecordEvidence[]           @relation("TenantRecordEvidence")
+  recordPayments            RecordPayment[]            @relation("TenantRecordPayments")
+  recordPaymentEvidence     RecordPaymentEvidence[]    @relation("TenantRecordPaymentEvidence")
+  recordReminderLogs        RecordReminderLog[]        @relation("TenantRecordReminderLogs")
+  recordExports             RecordExport[]             @relation("TenantRecordExports")
 
   @@index([status])
   @@index([createdByUserId])
@@ -1121,7 +1241,7 @@ model Record {
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   createdByUserId String
-    createdByUser   User @relation("RecordsCreatedByUser", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  createdByUser   User @relation("RecordsCreatedByUser", fields: [createdByUserId], references: [id], onDelete: Restrict)
 
 
   title       String @db.VarChar(160)
@@ -1137,20 +1257,37 @@ model Record {
   visibility RecordVisibility @default(WORKSPACE)
   isSensitive Boolean @default(false)
 
-  status RecordStatus @default(DRAFT)
+  status RecordStatus @default(OPEN)
 
   submitCount Int @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  attachments     RecordAttachment[]
-  evidenceLinks   RecordEvidenceLink[]
+  closedAt       DateTime? @db.Timestamptz(6)
+  closedByUserId String?
+  closedByUser   User?     @relation("RecordsClosedByUser", fields: [closedByUserId], references: [id], onDelete: SetNull)
+
+  attachments      RecordAttachment[]
+  evidenceLinks    RecordEvidenceLink[]
   approvalRequests ApprovalRequest[]
+
+  events       RecordEvent[]
+  participants RecordParticipant[]
+  access       RecordAccess[]
+  comments     RecordComment[]
+  links        RecordLink[]         @relation("RecordLinkFrom")
+  linksTo      RecordLink[]         @relation("RecordLinkTo")
+  evidence     RecordEvidence[]     @relation("RecordEvidenceItems")
+  payment      RecordPayment?
+  reminderLogs RecordReminderLog[]
+  exports      RecordExport[]
 
   @@index([tenantId, createdAt])
   @@index([tenantId, status])
   @@index([tenantId, type])
+  @@index([tenantId, createdByUserId, createdAt])
+  @@index([tenantId, closedAt])
 }
 
 model RecordAttachment {
@@ -1229,6 +1366,298 @@ model ApprovalAction {
   createdAt DateTime @default(now())
 
   @@index([approvalRequestId, createdAt])
+}
+
+model RecordEvent {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation("TenantRecordEvents", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  recordId String
+  record   Record @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  eventType   RecordEventType
+  actorUserId String?
+  actorUser   User?   @relation("RecordEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  actorEmail  String? @db.VarChar(191)
+
+  metadata   Json?
+  occurredAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([tenantId, recordId, occurredAt])
+  @@index([tenantId, occurredAt])
+}
+
+model RecordParticipant {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation("TenantRecordParticipants", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  recordId String
+  record   Record @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  participantType RecordParticipantType
+  participantRole RecordParticipantRole @default(APPROVER)
+
+  userId String?
+  user   User?   @relation("RecordParticipantUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  email String? @db.VarChar(191)
+  name  String? @db.VarChar(120)
+
+  tokenHash  String?   @unique @db.VarChar(64)
+  expiresAt  DateTime? @db.Timestamptz(6)
+  revokedAt  DateTime? @db.Timestamptz(6)
+  lastUsedAt DateTime? @db.Timestamptz(6)
+
+  status          RecordParticipantStatus @default(PENDING)
+  respondedAt     DateTime?               @db.Timestamptz(6)
+  responseReason  String?               @db.VarChar(2000)
+
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  createdByUserId String?
+  createdByUser   User?    @relation("RecordParticipantCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([recordId, userId, participantRole])
+  @@index([tenantId, recordId, createdAt])
+  @@index([tenantId, userId, status, createdAt])
+  @@index([tenantId, email])
+}
+
+model RecordAccess {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation("TenantRecordAccess", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  recordId String
+  record   Record @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation("RecordAccessUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  accessType RecordAccessType   @default(VIEW)
+  reason     RecordAccessReason @default(MANUAL_SHARE)
+
+  grantedByUserId String?
+  grantedByUser   User?   @relation("RecordAccessGrantedBy", fields: [grantedByUserId], references: [id], onDelete: SetNull)
+
+  grantedBySystem Boolean @default(false)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([recordId, userId])
+  @@index([tenantId, userId])
+  @@index([tenantId, recordId])
+}
+
+model RecordComment {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation("TenantRecordComments", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  recordId String
+  record   Record @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  authorType     RecordCommentAuthorType
+  authorUserId   String?
+  authorUser     User?   @relation("RecordCommentAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+  authorEmail    String? @db.VarChar(191)
+
+  commentScope RecordCommentScope @default(GENERAL)
+  content      String             @db.VarChar(5000)
+  isCritical   Boolean            @default(false)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  mentions RecordCommentMention[]
+
+  @@index([tenantId, recordId, createdAt])
+  @@index([tenantId, recordId, commentScope])
+  @@index([tenantId, recordId, isCritical])
+}
+
+model RecordCommentMention {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation("TenantRecordCommentMentions", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  recordId  String
+  commentId String
+  comment   RecordComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  mentionedUserId String
+  mentionedUser   User   @relation("RecordCommentMentionedUser", fields: [mentionedUserId], references: [id], onDelete: Cascade)
+
+  isRead Boolean   @default(false)
+  readAt DateTime? @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([commentId, mentionedUserId])
+  @@index([tenantId, mentionedUserId, isRead])
+  @@index([tenantId, recordId])
+}
+
+model RecordLink {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation("TenantRecordLinks", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  linkType     RecordLinkType
+  fromRecordId String
+  fromRecord   Record @relation("RecordLinkFrom", fields: [fromRecordId], references: [id], onDelete: Cascade)
+  toRecordId   String
+  toRecord     Record @relation("RecordLinkTo", fields: [toRecordId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  createdByUserId String?
+  createdByUser   User?    @relation("RecordLinkCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  removedAt       DateTime? @db.Timestamptz(6)
+  removedByUserId String?
+  removedByUser   User?     @relation("RecordLinkRemovedBy", fields: [removedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, linkType, fromRecordId, toRecordId])
+  @@index([tenantId, fromRecordId])
+  @@index([tenantId, toRecordId])
+  @@index([tenantId, createdAt])
+}
+
+model RecordEvidence {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation("TenantRecordEvidence", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  recordId String
+  record   Record @relation("RecordEvidenceItems", fields: [recordId], references: [id], onDelete: Cascade)
+
+  evidenceType RecordEvidenceType
+
+  label String? @db.VarChar(255)
+
+  url String? @db.VarChar(2048)
+
+  storageProvider String? @db.VarChar(30)
+  objectKey       String? @db.VarChar(512)
+  fileName        String? @db.VarChar(255)
+  mimeType        String? @db.VarChar(120)
+  sizeBytes       Int?
+  sha256          String? @db.VarChar(64)
+
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  createdByUserId String?
+  createdByUser   User?    @relation("RecordEvidenceCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  deletedAt       DateTime? @db.Timestamptz(6)
+  deletedByUserId String?
+  deletedByUser   User?     @relation("RecordEvidenceDeletedBy", fields: [deletedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, recordId, createdAt])
+  @@index([tenantId, recordId, evidenceType])
+  @@index([tenantId, objectKey])
+}
+
+model RecordPayment {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation("TenantRecordPayments", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  recordId String @unique
+  record   Record @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  status        RecordPaymentStatus @default(NOT_PAID)
+  setAt         DateTime            @default(now()) @db.Timestamptz(6)
+  setByUserId   String?
+  setByUser     User?               @relation("RecordPaymentSetBy", fields: [setByUserId], references: [id], onDelete: SetNull)
+
+  metadata Json?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  evidence RecordPaymentEvidence[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, recordId])
+}
+
+model RecordPaymentEvidence {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation("TenantRecordPaymentEvidence", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  recordId  String
+  paymentId String
+  payment   RecordPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  evidenceType RecordPaymentEvidenceType
+
+  label       String? @db.VarChar(255)
+  contentText String? @db.VarChar(5000)
+  url         String? @db.VarChar(2048)
+
+  storageProvider String? @db.VarChar(30)
+  objectKey       String? @db.VarChar(512)
+  fileName        String? @db.VarChar(255)
+  mimeType        String? @db.VarChar(120)
+  sizeBytes       Int?
+  sha256          String? @db.VarChar(64)
+
+  versionNumber Int @default(1)
+
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  createdByUserId String?
+  createdByUser   User?    @relation("RecordPaymentEvidenceCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  removedAt       DateTime? @db.Timestamptz(6)
+  removedByUserId String?
+  removedByUser   User?     @relation("RecordPaymentEvidenceRemovedBy", fields: [removedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, recordId, createdAt])
+  @@index([tenantId, paymentId, removedAt])
+}
+
+model RecordReminderLog {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation("TenantRecordReminderLogs", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  recordId String
+  record   Record @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  sentAt           DateTime @default(now()) @db.Timestamptz(6)
+  sentByUserId     String?
+  sentByUser       User?    @relation("RecordReminderLogSentBy", fields: [sentByUserId], references: [id], onDelete: SetNull)
+  recipientsCount  Int      @default(0)
+
+  metadata Json?
+
+  @@index([tenantId, recordId, sentAt])
+}
+
+model RecordExport {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation("TenantRecordExports", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  recordId String
+  record   Record @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  exportType RecordExportType
+
+  storageProvider String @db.VarChar(30)
+  objectKey       String @db.VarChar(512)
+  fileName        String @db.VarChar(255)
+  sizeBytes       Int?
+  sha256          String? @db.VarChar(64)
+
+  watermarkApplied Boolean @default(false)
+
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  createdByUserId String?
+  createdByUser   User?    @relation("RecordExportCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, recordId, exportType, createdAt])
 }
 
 

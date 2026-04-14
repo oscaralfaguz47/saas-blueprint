@@ -1,16 +1,24 @@
+import "server-only";
+
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { hasTenantPermission } from "./tenant-authorization";
 
 /**
- * Validates request-level access rules.
- * 
- * A user can access a request if any of the following are true:
+ * C1 — Central access check for all record (request) operations.
+ *
+ * A user can access a record if ANY of the following is true:
  * 1. They are the creator
- * 2. They are an explicit internal participant (e.g. assigned approver by email)
- * 3. The request visibility is WORKSPACE
- * 4. They have the "tenant.requests.read_all" permission
- * 
- * @returns boolean indication of access
+ * 2. They are an active internal participant (RecordParticipant, any role)
+ * 3. They have an explicit RecordAccess entry
+ * 4. They have permission tenant.requests.read_all
+ *
+ * Note: visibility=WORKSPACE is kept for backward compat with existing records
+ * that were created before RecordAccess was introduced. New sharing uses
+ * RecordAccess exclusively.
+ *
+ * Always returns false (not throws) — callers decide 403 vs 404.
+ * Always tenant-scoped — never trust recordId alone.
  */
 export async function canAccessRequest({
   tenantId,
@@ -21,20 +29,20 @@ export async function canAccessRequest({
   userId: string;
   requestId: string;
 }): Promise<boolean> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { email: true },
-  });
-  if (!user?.email) return false;
-
-  const record = await prisma.record.findUnique({
+  const record = await prisma.record.findFirst({
     where: { id: requestId, tenantId },
     select: {
       createdByUserId: true,
       visibility: true,
-      approvalRequests: {
+      participants: {
+        where: { userId, participantType: "INTERNAL" },
         select: { id: true },
-        where: { approverEmail: user.email },
+        take: 1,
+      },
+      access: {
+        where: { userId },
+        select: { id: true },
+        take: 1,
       },
     },
   });
@@ -44,20 +52,60 @@ export async function canAccessRequest({
   // 1. Creator
   if (record.createdByUserId === userId) return true;
 
-  // 2. Internal participant (approver by email)
-  if (record.approvalRequests.length > 0) return true;
+  // 2. Internal participant (RecordParticipant — new model)
+  if (record.participants.length > 0) return true;
 
-  // 3. Workspace visibility
+  // 3. Explicit share (RecordAccess)
+  if (record.access.length > 0) return true;
+
+  // 4. Backward compat: WORKSPACE visibility (existing records pre-C1)
   if (record.visibility === "WORKSPACE") return true;
 
-  // 4. read_all permission fallback
+  // 5. read_all permission
   const canReadAll = await hasTenantPermission({
     userId,
     tenantId,
     permission: "tenant.requests.read_all",
   });
-  
   if (canReadAll) return true;
 
   return false;
+}
+
+/**
+ * Lightweight list-query filter for tenant-scoped record queries.
+ * Returns a Prisma WHERE fragment that enforces C1 access rules at query level.
+ * Use this inside findMany — never fetch all and filter in memory.
+ *
+ * Usage:
+ *   const filter = buildRecordAccessFilter({ tenantId, userId, canReadAll });
+ *   prisma.record.findMany({ where: { tenantId, ...filter } })
+ */
+export function buildRecordAccessFilter({
+  tenantId: _tenantId,
+  userId,
+  canReadAll,
+}: {
+  tenantId: string;
+  userId: string;
+  canReadAll: boolean;
+}): Prisma.RecordWhereInput {
+  if (canReadAll) return {};
+
+  return {
+    OR: [
+      { createdByUserId: userId },
+      {
+        participants: {
+          some: { userId, participantType: "INTERNAL" },
+        },
+      },
+      {
+        access: {
+          some: { userId },
+        },
+      },
+      { visibility: "WORKSPACE" },
+    ],
+  };
 }
