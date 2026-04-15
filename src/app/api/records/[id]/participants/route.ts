@@ -8,7 +8,18 @@ import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { canAccessRequest } from "@/server/security/request-authorization";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
+import { env } from "@/lib/env";
+import { sendEmail } from "@/server/services/invitation-email";
 import { z } from "zod";
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
 const paramsSchema = z.object({ id: z.string().cuid() });
 
@@ -199,6 +210,44 @@ export const POST = withErrorHandler(async (
 
     return p;
   });
+
+  if (participantRole === "APPROVER") {
+    const [targetUser, recordForEmail] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: targetUserId },
+        select: { email: true, name: true },
+      }),
+      prisma.record.findUnique({
+        where: { id: recordId },
+        select: { title: true, recordKey: true },
+      }),
+    ]);
+
+    if (targetUser?.email) {
+      const appUrl = (env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "");
+      const requestLink = appUrl
+        ? `${appUrl}/app/requests/${recordId}`
+        : `/app/requests/${recordId}`;
+      const requestLabel =
+        recordForEmail?.recordKey ?? recordForEmail?.title ?? "a financial request";
+      const userName = targetUser.name ?? targetUser.email;
+
+      try {
+        await sendEmail({
+          to: targetUser.email,
+          subject: `Your approval is needed: ${requestLabel}`,
+          html: `
+        <p>Hello ${escapeHtml(userName)},</p>
+        <p>You have been assigned as an approver for <strong>${escapeHtml(requestLabel)}</strong>.</p>
+        <p><a href="${requestLink}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">View and approve request</a></p>
+        <p style="color:#6b7280;font-size:12px;">You can approve or reject the request after signing in to your account.</p>
+      `,
+        });
+      } catch (emailErr) {
+        console.error("[internal-approver] failed to send notification email:", emailErr);
+      }
+    }
+  }
 
   return apiSuccess(participant, 201);
 });

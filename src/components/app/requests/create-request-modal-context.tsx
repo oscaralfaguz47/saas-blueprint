@@ -4,7 +4,10 @@ import { createContext, useCallback, useContext, useState } from "react";
 import { CreateRequestModal } from "./create-request-modal";
 
 type ContextValue = {
-  openCreateRequestModal: (opts?: { sourceRecordId?: string }) => void;
+  openCreateRequestModal: (opts?: {
+    sourceRecordId?: string;
+    workspaceCurrency?: string;
+  }) => void;
 };
 
 const Context = createContext<ContextValue | null>(null);
@@ -16,10 +19,12 @@ export function CreateRequestModalProvider({
 }) {
   const [open, setOpen] = useState(false);
   const [sourceRecordId, setSourceRecordId] = useState<string | undefined>();
+  const [workspaceCurrency, setWorkspaceCurrency] = useState<string>("USD");
 
   const openCreateRequestModal = useCallback(
-    (opts?: { sourceRecordId?: string }) => {
+    (opts?: { sourceRecordId?: string; workspaceCurrency?: string }) => {
       setSourceRecordId(opts?.sourceRecordId);
+      setWorkspaceCurrency(opts?.workspaceCurrency ?? "USD");
       setOpen(true);
     },
     []
@@ -28,6 +33,7 @@ export function CreateRequestModalProvider({
   const handleClose = useCallback(() => {
     setOpen(false);
     setSourceRecordId(undefined);
+    setWorkspaceCurrency("USD");
   }, []);
 
   return (
@@ -37,6 +43,7 @@ export function CreateRequestModalProvider({
         open={open}
         onClose={handleClose}
         sourceRecordId={sourceRecordId}
+        workspaceCurrency={workspaceCurrency}
       />
     </Context.Provider>
   );

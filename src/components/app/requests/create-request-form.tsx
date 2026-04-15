@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useRouter } from "next/navigation";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { useToast } from "@/components/ui/toast";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/spinner";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Badge } from "@/components/ui/badge";
 import { CardRoot, CardHeader, CardContent, CardFooter } from "@/components/ui/card";
 import { RECORD_CATEGORY_CONFIG } from "@/lib/record-category-config";
@@ -16,15 +17,9 @@ import {
   RECORD_TYPE_LABELS,
   formatAmount,
 } from "@/lib/record-utils";
+import { CURRENCY_OPTIONS } from "@/lib/currencies";
 import type { RecordType } from "@/types/records";
-import {
-  IconBilling,
-  IconFileText,
-  IconDollarSign,
-  IconClock,
-  IconAlertCircle,
-  IconWorkspace,
-} from "@/components/ui/icons";
+import { IconBilling, IconFileText, IconDollarSign, IconClock, IconAlertCircle, IconWorkspace } from "@/components/ui/icons";
 
 const FINANCE_CATEGORIES: RecordType[] = [
   "BUDGET_REQUEST",
@@ -37,8 +32,6 @@ const FINANCE_CATEGORIES: RecordType[] = [
   "OTHER_FINANCIAL_REQUEST",
 ];
 
-const LEGACY_CATEGORIES: RecordType[] = ["SCOPE_CHANGE", "DECISION", "BUDGET"];
-
 const CATEGORY_DESCRIPTIONS: Record<string, string> = {
   BUDGET_REQUEST: "Request funding for a new budget item",
   SPEND_APPROVAL: "Get approval for a specific spend",
@@ -48,9 +41,6 @@ const CATEGORY_DESCRIPTIONS: Record<string, string> = {
   CONTRACT_SCOPE_CHANGE: "Amendment to a contract or scope with budget impact",
   FORECAST_ADJUSTMENT: "Adjust financial forecast or allocation",
   OTHER_FINANCIAL_REQUEST: "Any other financial request",
-  BUDGET: "Budget request",
-  SCOPE_CHANGE: "Scope change",
-  DECISION: "Decision request",
 };
 
 function selectCategoryAndScrollToTitle(
@@ -120,13 +110,13 @@ type FormDataState = {
 
 type FieldErrors = Partial<Record<string, string>>;
 
-function initialForm(): FormDataState {
+function initialForm(workspaceCurrency?: string): FormDataState {
   return {
     category: "",
     title: "",
     priority: "MEDIUM",
     amount: "",
-    currency: "USD",
+    currency: workspaceCurrency ?? "USD",
     neededByDate: "",
     description: "",
     businessJustification: "",
@@ -144,10 +134,14 @@ function initialForm(): FormDataState {
   };
 }
 
-function toIsoDate(d: string): string | undefined {
-  const t = d.trim();
-  if (!t) return undefined;
-  return `${t}T12:00:00.000Z`;
+function toIsoDate(val: string): string | null {
+  const t = val.trim();
+  if (!t) return null;
+  const d = new Date(`${t}T12:00:00.000Z`);
+  if (isNaN(d.getTime())) return null;
+  const year = d.getUTCFullYear();
+  if (year < 2020 || year > 2099) return null;
+  return d.toISOString();
 }
 
 type ApiErrorBody = {
@@ -164,15 +158,23 @@ function isUpgradeRequired(data: ApiErrorBody): boolean {
 
 export type FinanceRequestWizardProps = {
   variant: "page" | "modal";
+  workspaceCurrency?: string;
+  onStepChange?: (step: 1 | 2 | 3) => void;
   onSubmitSuccess: (payload: CreateSuccessPayload) => void;
 };
 
-export function FinanceRequestWizard({ variant, onSubmitSuccess }: FinanceRequestWizardProps) {
+export function FinanceRequestWizard({
+  variant,
+  workspaceCurrency,
+  onStepChange,
+  onSubmitSuccess,
+}: FinanceRequestWizardProps) {
   const apiFetch = useApiFetch();
   const toast = useToast();
+  const topRef = useRef<HTMLDivElement>(null);
   const titleFieldRef = useRef<HTMLDivElement>(null);
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
-  const [form, setForm] = useState<FormDataState>(initialForm);
+  const [form, setForm] = useState<FormDataState>(() => initialForm(workspaceCurrency));
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
@@ -212,6 +214,13 @@ export function FinanceRequestWizard({ variant, onSubmitSuccess }: FinanceReques
     if (c?.requiresNeededByDate && !form.neededByDate.trim()) {
       e.neededByDate = "Needed-by date is required for this category.";
     }
+    if (form.neededByDate.trim()) {
+      const parsed = new Date(`${form.neededByDate.trim()}T12:00:00.000Z`);
+      const year = parsed.getUTCFullYear();
+      if (isNaN(parsed.getTime()) || year < 2020 || year > 2099) {
+        e.neededByDate = "Please enter a valid date.";
+      }
+    }
     return e;
   }, [form]);
 
@@ -236,6 +245,18 @@ export function FinanceRequestWizard({ variant, onSubmitSuccess }: FinanceReques
     return e;
   }, [form]);
 
+  function scrollWizardToTop() {
+    setTimeout(() => {
+      const root = topRef.current;
+      const scrollParent = root?.closest(".overflow-y-auto") as HTMLElement | null;
+      if (scrollParent) {
+        scrollParent.scrollTo({ top: 0, behavior: "auto" });
+      } else {
+        root?.scrollIntoView({ behavior: "auto", block: "start" });
+      }
+    }, 0);
+  }
+
   function goNext() {
     if (currentStep === 1) {
       const e = validateStep1();
@@ -245,6 +266,7 @@ export function FinanceRequestWizard({ variant, onSubmitSuccess }: FinanceReques
       }
       setErrors({});
       setCurrentStep(2);
+      scrollWizardToTop();
       return;
     }
     if (currentStep === 2) {
@@ -255,13 +277,23 @@ export function FinanceRequestWizard({ variant, onSubmitSuccess }: FinanceReques
       }
       setErrors({});
       setCurrentStep(3);
+      scrollWizardToTop();
     }
   }
 
   function goBack() {
-    if (currentStep === 2) setCurrentStep(1);
-    else if (currentStep === 3) setCurrentStep(2);
+    if (currentStep === 2) {
+      setCurrentStep(1);
+      scrollWizardToTop();
+    } else if (currentStep === 3) {
+      setCurrentStep(2);
+      scrollWizardToTop();
+    }
   }
+
+  useEffect(() => {
+    onStepChange?.(currentStep);
+  }, [currentStep, onStepChange]);
 
   const reviewMissing = useMemo(() => {
     const miss: string[] = [];
@@ -326,6 +358,12 @@ export function FinanceRequestWizard({ variant, onSubmitSuccess }: FinanceReques
     if (form.departmentName.trim()) body.departmentName = form.departmentName.trim();
     if (form.costCenterCode.trim()) body.costCenterCode = form.costCenterCode.trim();
     const nd = toIsoDate(form.neededByDate);
+    if (form.neededByDate.trim() && !nd) {
+      setGlobalError("Please enter a valid needed-by date.");
+      setSavingDraft(false);
+      setSubmitting(false);
+      return;
+    }
     if (nd) body.neededByDate = nd;
     body.hasPolicyException =
       form.category === "FINANCIAL_EXCEPTION" || form.hasPolicyException;
@@ -401,33 +439,15 @@ export function FinanceRequestWizard({ variant, onSubmitSuccess }: FinanceReques
     }
   }
 
-  const stepLabels = ["Category & basics", "Financial details", "Review"];
   const isLoading = submitting || savingDraft;
 
   const inner = (
-    <div className="space-y-6">
+    <div ref={topRef} className="space-y-6">
       {globalError && (
         <div className="rounded-lg border border-(--color-danger-soft) bg-(--color-danger-soft) px-4 py-3 text-sm text-(--color-danger)">
           {globalError}
         </div>
       )}
-
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs font-medium text-(--text-muted)">
-          Step {currentStep} of 3 — {stepLabels[currentStep - 1]}
-        </p>
-        <div className="flex gap-1.5">
-          {([1, 2, 3] as const).map((s) => (
-            <div
-              key={s}
-              className={[
-                "h-2 flex-1 rounded-full sm:w-16 sm:flex-none",
-                s <= currentStep ? "bg-(--color-primary)" : "bg-(--border-subtle)",
-              ].join(" ")}
-            />
-          ))}
-        </div>
-      </div>
 
       {currentStep === 1 && (
         <div className="space-y-6">
@@ -435,7 +455,7 @@ export function FinanceRequestWizard({ variant, onSubmitSuccess }: FinanceReques
             <p className="mb-2 text-sm font-medium text-(--text-primary)">
               Request category <span className="text-(--color-danger)">*</span>
             </p>
-            <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3">
               {FINANCE_CATEGORIES.map((cat) => (
                 <button
                   key={cat}
@@ -443,7 +463,7 @@ export function FinanceRequestWizard({ variant, onSubmitSuccess }: FinanceReques
                   disabled={isLoading}
                   onClick={() => selectCategoryAndScrollToTitle(setField, titleFieldRef, cat)}
                   className={[
-                    "flex gap-3 rounded-xl border p-3 text-left transition-colors",
+                    "min-h-[auto] flex cursor-pointer gap-3 rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed",
                     form.category === cat
                       ? "border-(--color-primary) bg-(--color-primary-soft)"
                       : "border-(--border-subtle) bg-(--bg-surface-elev) hover:bg-(--bg-surface-hover)",
@@ -456,33 +476,6 @@ export function FinanceRequestWizard({ variant, onSubmitSuccess }: FinanceReques
                     </span>
                     <span className="mt-0.5 block text-xs text-(--text-muted)">
                       {CATEGORY_DESCRIPTIONS[cat]}
-                    </span>
-                  </span>
-                </button>
-              ))}
-            </div>
-            <p className="mt-4 text-xs font-medium text-(--text-muted)">Other (legacy)</p>
-            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
-              {LEGACY_CATEGORIES.map((cat) => (
-                <button
-                  key={cat}
-                  type="button"
-                  disabled={isLoading}
-                  onClick={() => selectCategoryAndScrollToTitle(setField, titleFieldRef, cat)}
-                  className={[
-                    "flex gap-2 rounded-lg border p-2 text-left transition-colors",
-                    form.category === cat
-                      ? "border-(--color-primary) bg-(--color-primary-soft)"
-                      : "border-(--border-subtle) bg-(--bg-surface-elev) hover:bg-(--bg-surface-hover)",
-                  ].join(" ")}
-                >
-                  <CategoryIcon type={cat} size={16} />
-                  <span className="min-w-0">
-                    <span className="block text-[11px] font-medium text-(--text-secondary)">
-                      {RECORD_TYPE_LABELS[cat]}
-                    </span>
-                    <span className="mt-0.5 block text-[10px] text-(--text-muted)">
-                      {CATEGORY_DESCRIPTIONS[cat]} <span className="opacity-80">(legacy)</span>
                     </span>
                   </span>
                 </button>
@@ -527,7 +520,7 @@ export function FinanceRequestWizard({ variant, onSubmitSuccess }: FinanceReques
                   disabled={isLoading}
                   onClick={() => setField("priority", p)}
                   className={[
-                    "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
+                    "cursor-pointer rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed",
                     form.priority === p
                       ? "border-(--color-primary) bg-(--color-primary-soft) text-(--color-primary)"
                       : "border-(--border-subtle) bg-(--bg-surface-elev) text-(--text-secondary) hover:bg-(--bg-surface-hover)",
@@ -571,13 +564,12 @@ export function FinanceRequestWizard({ variant, onSubmitSuccess }: FinanceReques
                     <span className="text-(--color-danger)"> *</span>
                   )}
                 </label>
-                <Input
+                <SearchableSelect
+                  options={CURRENCY_OPTIONS}
                   value={form.currency}
-                  onChange={(e) => setField("currency", e.target.value.toUpperCase())}
-                  placeholder="USD"
-                  maxLength={3}
+                  onChange={(val) => setField("currency", val)}
+                  placeholder="Select currency..."
                   disabled={isLoading}
-                  className={errors.currency ? "border-(--color-danger)" : ""}
                 />
                 {errors.currency && (
                   <p className="text-xs text-(--color-danger)">{errors.currency}</p>
@@ -600,6 +592,8 @@ export function FinanceRequestWizard({ variant, onSubmitSuccess }: FinanceReques
               value={form.neededByDate}
               onChange={(e) => setField("neededByDate", e.target.value)}
               disabled={isLoading}
+              min={new Date().toISOString().split("T")[0]}
+              max="2099-12-31"
               className={errors.neededByDate ? "border-(--color-danger)" : ""}
             />
             {errors.neededByDate && (
@@ -784,7 +778,7 @@ export function FinanceRequestWizard({ variant, onSubmitSuccess }: FinanceReques
                   checked={form.hasPolicyException}
                   onChange={(e) => setField("hasPolicyException", e.target.checked)}
                   disabled={isLoading}
-                  className="h-4 w-4 rounded border-(--border-subtle)"
+                  className="h-4 w-4 cursor-pointer rounded border-(--border-subtle) disabled:cursor-not-allowed"
                 />
                 This request requires a policy exception
               </label>
@@ -817,7 +811,7 @@ export function FinanceRequestWizard({ variant, onSubmitSuccess }: FinanceReques
                 checked={form.isRecurring}
                 onChange={(e) => setField("isRecurring", e.target.checked)}
                 disabled={isLoading}
-                className="h-4 w-4 rounded border-(--border-subtle)"
+                className="h-4 w-4 cursor-pointer rounded border-(--border-subtle) disabled:cursor-not-allowed"
               />
               This is a recurring request
             </label>
@@ -889,7 +883,7 @@ export function FinanceRequestWizard({ variant, onSubmitSuccess }: FinanceReques
               type="button"
               onClick={goBack}
               disabled={isLoading}
-              className="inline-flex h-9 items-center rounded-lg border border-(--border-subtle) px-4 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:opacity-60"
+              className="inline-flex h-9 cursor-pointer items-center rounded-lg border border-(--border-subtle) px-4 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:cursor-not-allowed disabled:opacity-60"
             >
               Back
             </button>
@@ -899,7 +893,7 @@ export function FinanceRequestWizard({ variant, onSubmitSuccess }: FinanceReques
               type="button"
               onClick={() => window.history.back()}
               disabled={isLoading}
-              className="inline-flex h-9 items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:opacity-60"
+              className="inline-flex h-9 cursor-pointer items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:cursor-not-allowed disabled:opacity-60"
             >
               Cancel
             </button>
@@ -911,7 +905,7 @@ export function FinanceRequestWizard({ variant, onSubmitSuccess }: FinanceReques
               type="button"
               onClick={goNext}
               disabled={isLoading}
-              className="inline-flex h-9 items-center rounded-lg bg-(--color-primary) px-5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-(--color-primary-hover) disabled:opacity-60"
+              className="inline-flex h-9 cursor-pointer items-center rounded-lg bg-(--color-primary) px-5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
             >
               Next
             </button>
@@ -921,7 +915,7 @@ export function FinanceRequestWizard({ variant, onSubmitSuccess }: FinanceReques
                 type="button"
                 onClick={() => void submit("DRAFT")}
                 disabled={isLoading || !form.title.trim()}
-                className="inline-flex h-9 items-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:opacity-60"
+                className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {savingDraft && <Spinner size="sm" />}
                 {savingDraft ? "Saving…" : "Save as draft"}
@@ -930,7 +924,7 @@ export function FinanceRequestWizard({ variant, onSubmitSuccess }: FinanceReques
                 type="button"
                 onClick={() => void submit("OPEN")}
                 disabled={isLoading || !canSubmitOpen}
-                className="inline-flex h-9 items-center gap-2 rounded-lg bg-(--color-primary) px-5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-(--color-primary-hover) disabled:opacity-60"
+                className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {submitting && <Spinner size="sm" />}
                 {submitting ? "Creating…" : "Create financial request"}

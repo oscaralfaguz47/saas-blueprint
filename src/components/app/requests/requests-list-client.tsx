@@ -140,6 +140,7 @@ const BASE_TAB_SPECS: TabSpec[] = [
 type Props = {
   canCreate: boolean;
   canReadAll: boolean;
+  workspaceCurrency?: string;
 };
 
 function getApiTab(ui: UiTab): ApiTab {
@@ -255,7 +256,7 @@ function NeededByLine({ neededByDate }: { neededByDate: string | null | undefine
   );
 }
 
-export function RequestsListClient({ canCreate, canReadAll }: Props) {
+export function RequestsListClient({ canCreate, canReadAll, workspaceCurrency }: Props) {
   const { openCreateRequestModal } = useCreateRequestModal();
   const router = useRouter();
   const apiFetch = useApiFetch();
@@ -351,8 +352,10 @@ export function RequestsListClient({ canCreate, canReadAll }: Props) {
         if (f.priority) params.set("priority", f.priority);
         if (f.overdueOnly) params.set("overdue", "true");
         if (f.policyExceptionOnly) params.set("hasPolicyException", "true");
-        if (f.amountMin) params.set("amountMin", f.amountMin);
-        if (f.amountMax) params.set("amountMax", f.amountMax);
+        const minAmt = f.amountMin === "" ? NaN : Number(f.amountMin);
+        if (Number.isFinite(minAmt) && minAmt > 0) params.set("amountMin", String(minAmt));
+        const maxAmt = f.amountMax === "" ? NaN : Number(f.amountMax);
+        if (Number.isFinite(maxAmt) && maxAmt > 0) params.set("amountMax", String(maxAmt));
         if (f.currency) params.set("currency", f.currency);
         if (f.neededByFrom) params.set("neededByFrom", dateStartIso(f.neededByFrom));
         if (f.neededByTo) params.set("neededByTo", dateEndIso(f.neededByTo));
@@ -437,7 +440,9 @@ export function RequestsListClient({ canCreate, canReadAll }: Props) {
         {canCreate && (
           <button
             type="button"
-            onClick={() => openCreateRequestModal()}
+            onClick={() =>
+              openCreateRequestModal({ workspaceCurrency: workspaceCurrency ?? "USD" })
+            }
             className="inline-flex h-9 items-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-(--color-primary-hover)"
           >
             <IconPlus size={16} />
@@ -468,7 +473,11 @@ export function RequestsListClient({ canCreate, canReadAll }: Props) {
               tone={
                 displaySummary && displaySummary.pendingMyApprovalCount > 0 ? "warning" : "neutral"
               }
-              onClick={() => setTab("inbox")}
+              onClick={() => {
+                setFilters(EMPTY_FILTERS);
+                setTab("inbox");
+                setShowFilters(false);
+              }}
             />
             <MetricCard
               label="Total open value"
@@ -486,8 +495,9 @@ export function RequestsListClient({ canCreate, canReadAll }: Props) {
               icon={<IconAlertCircle size={18} className="text-(--text-muted)" />}
               tone={displaySummary && displaySummary.overdueCount > 0 ? "destructive" : "neutral"}
               onClick={() => {
-                setFilters((prev) => ({ ...prev, overdueOnly: true }));
+                setFilters({ ...EMPTY_FILTERS, overdueOnly: true });
                 setShowFilters(true);
+                setTab(canReadAll ? "all" : "my");
               }}
             />
             <MetricCard
@@ -498,8 +508,9 @@ export function RequestsListClient({ canCreate, canReadAll }: Props) {
                 displaySummary && displaySummary.hasPolicyExceptionCount > 0 ? "warning" : "neutral"
               }
               onClick={() => {
-                setFilters((prev) => ({ ...prev, policyExceptionOnly: true }));
+                setFilters({ ...EMPTY_FILTERS, policyExceptionOnly: true });
                 setShowFilters(true);
+                setTab(canReadAll ? "all" : "my");
               }}
             />
           </>
@@ -596,7 +607,14 @@ export function RequestsListClient({ canCreate, canReadAll }: Props) {
                 isFilteredOrSearch={isFilteredOrSearch}
                 onNavigate={(id) => router.push(`/app/requests/${id}`)}
                 onClearFilters={clearAllFiltersAndSearch}
-                onNewRequest={canCreate ? () => openCreateRequestModal() : undefined}
+                onNewRequest={
+                  canCreate
+                    ? () =>
+                        openCreateRequestModal({
+                          workspaceCurrency: workspaceCurrency ?? "USD",
+                        })
+                    : undefined
+                }
               />
             </TabsContent>
           ))}

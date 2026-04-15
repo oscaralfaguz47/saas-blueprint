@@ -156,7 +156,7 @@ export const GET = withErrorHandler(async (req: Request) => {
         comments: {
           some: {
             mentions: {
-              some: { mentionedUserId: userId, isRead: false },
+              some: { mentionedUserId: userId },
             },
           },
         },
@@ -174,13 +174,29 @@ export const GET = withErrorHandler(async (req: Request) => {
   const recordTypeFilter = q.category ?? q.type;
   if (recordTypeFilter) filters.push({ type: recordTypeFilter });
   if (q.priority) filters.push({ priority: q.priority });
-  if (q.overdue === "true") filters.push({ overdue: true });
+  // Align with /api/records/summary: overdue = open-ish records with neededByDate in the past
+  // (not the denormalized `overdue` flag alone — it can drift from neededByDate).
+  if (q.overdue === "true") {
+    filters.push({
+      status: { notIn: ["CLOSED", "APPROVED", "REJECTED", "CANCELED"] },
+      neededByDate: { lt: new Date() },
+    });
+  }
   if (q.overdue === "false") filters.push({ overdue: false });
-  if (q.hasPolicyException === "true") filters.push({ hasPolicyException: true });
+  if (q.hasPolicyException === "true") {
+    filters.push({
+      hasPolicyException: true,
+      status: { notIn: ["CLOSED", "CANCELED"] },
+    });
+  }
   if (q.hasPolicyException === "false") filters.push({ hasPolicyException: false });
   if (q.neededByFrom) filters.push({ neededByDate: { gte: new Date(q.neededByFrom) } });
   if (q.neededByTo) filters.push({ neededByDate: { lte: new Date(q.neededByTo) } });
-  if (q.currency) filters.push({ currency: q.currency });
+  if (q.currency) {
+    filters.push({
+      OR: [{ currency: q.currency }, { currencyCode: q.currency }],
+    });
+  }
   if (q.search) {
     filters.push({
       OR: [
@@ -189,8 +205,16 @@ export const GET = withErrorHandler(async (req: Request) => {
       ],
     });
   }
-  if (q.amountMin != null) filters.push({ amount: { gte: q.amountMin } });
-  if (q.amountMax != null) filters.push({ amount: { lte: q.amountMax } });
+  if (q.amountMin != null && q.amountMin > 0) {
+    filters.push({
+      OR: [{ amount: { gte: q.amountMin } }, { requestedAmount: { gte: q.amountMin } }],
+    });
+  }
+  if (q.amountMax != null && q.amountMax > 0) {
+    filters.push({
+      OR: [{ amount: { lte: q.amountMax } }, { requestedAmount: { lte: q.amountMax } }],
+    });
+  }
   if (q.dateFrom) filters.push({ createdAt: { gte: new Date(q.dateFrom) } });
   if (q.dateTo) filters.push({ createdAt: { lte: new Date(q.dateTo) } });
   if (q.paymentStatus) {

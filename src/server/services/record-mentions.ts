@@ -42,19 +42,19 @@ export async function processMentions({
       tenantId,
       status: "ACTIVE",
       user: {
-        AND: [
-          { name: { not: null } },
-          {
-            OR: handles.map((h) => ({
-              name: { contains: h, mode: "insensitive" as const },
-            })),
-          },
+        OR: [
+          ...handles.map((h) => ({
+            name: { contains: h, mode: "insensitive" as const },
+          })),
+          ...handles.map((h) => ({
+            email: { equals: h, mode: "insensitive" as const },
+          })),
         ],
       },
     },
     select: {
       userId: true,
-      user: { select: { name: true } },
+      user: { select: { name: true, email: true } },
     },
   });
 

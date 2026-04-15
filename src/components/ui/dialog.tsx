@@ -9,6 +9,11 @@ type DialogProps = {
   /** Title (string or ReactNode for e.g. icon + text) */
   title: React.ReactNode;
   children: React.ReactNode;
+  /**
+   * Renders between the title row and the scrollable body (not scrolled).
+   * Use for step indicators or secondary chrome that must stay visible.
+   */
+  headerExtra?: React.ReactNode;
   /** Optional description for a11y */
   description?: string;
   /** When true, Escape, overlay click, and X do not close the dialog */
@@ -23,6 +28,7 @@ export function Dialog({
   open,
   onClose,
   title,
+  headerExtra,
   description,
   closeDisabled,
   allowOverlayClose = true,
@@ -106,12 +112,17 @@ export function Dialog({
             type="button"
             onClick={canCloseByEscOrX ? onClose : undefined}
             disabled={!canCloseByEscOrX}
-            className="shrink-0 touch-manipulation rounded-md p-2 text-(--text-muted) hover:bg-(--bg-surface-hover) hover:text-(--text-primary) disabled:pointer-events-none disabled:opacity-50 sm:p-1.5"
+            className="shrink-0 cursor-pointer touch-manipulation rounded-md p-2 text-(--text-muted) hover:bg-(--bg-surface-hover) hover:text-(--text-primary) disabled:pointer-events-none disabled:opacity-50 sm:p-1.5"
             aria-label="Close"
           >
             <IconX size={18} />
           </button>
         </div>
+        {headerExtra ? (
+          <div className="shrink-0 border-b border-(--border-subtle) bg-(--bg-surface) px-4 pb-3 pt-1 sm:px-6">
+            {headerExtra}
+          </div>
+        ) : null}
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6">
           {children}
         </div>

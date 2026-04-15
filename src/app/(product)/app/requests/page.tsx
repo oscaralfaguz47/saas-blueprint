@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/server/auth-options";
+import { prisma } from "@/server/db";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { getTenantPermissions } from "@/server/security/tenant-authorization";
 import { Container } from "@/components/ui/container";
@@ -24,11 +25,19 @@ export default async function RequestsListPage() {
 
   const canCreate = permissions.includes("tenant.requests.create");
   const canReadAll = permissions.includes("tenant.requests.read_all");
+  const tenantCurrency = await prisma.tenant.findUnique({
+    where: { id: membership.tenant.id },
+    select: { currency: true },
+  });
 
   return (
     <Container>
       <Suspense fallback={<RequestsListSkeleton />}>
-        <RequestsListClient canCreate={canCreate} canReadAll={canReadAll} />
+        <RequestsListClient
+          canCreate={canCreate}
+          canReadAll={canReadAll}
+          workspaceCurrency={tenantCurrency?.currency ?? "USD"}
+        />
       </Suspense>
     </Container>
   );

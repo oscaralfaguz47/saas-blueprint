@@ -8,8 +8,19 @@ import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { canAccessRequest } from "@/server/security/request-authorization";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
+import { env } from "@/lib/env";
+import { sendEmail } from "@/server/services/invitation-email";
 import { z } from "zod";
 import { randomBytes, createHash } from "crypto";
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
 const paramsSchema = z.object({ id: z.string().cuid() });
 
@@ -133,6 +144,35 @@ export const POST = withErrorHandler(async (
 
     return p;
   });
+
+  const appUrl = (env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "");
+  const approvalLink = appUrl
+    ? `${appUrl}/api/v1/external/approvals/${plainToken}`
+    : `/api/v1/external/approvals/${plainToken}`;
+
+  const recordForEmail = await prisma.record.findUnique({
+    where: { id: recordId },
+    select: { title: true, recordKey: true },
+  });
+
+  const requestLabel =
+    recordForEmail?.recordKey ?? recordForEmail?.title ?? "a financial request";
+
+  try {
+    await sendEmail({
+      to: email,
+      subject: `Your approval is requested: ${requestLabel}`,
+      html: `
+      <p>Hello${name ? ` ${escapeHtml(name)}` : ""},</p>
+      <p>You have been requested to review and approve <strong>${escapeHtml(requestLabel)}</strong>.</p>
+      <p><a href="${approvalLink}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">Review and approve</a></p>
+      <p>This link expires on ${(participant.expiresAt ?? expiresAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}.</p>
+      <p style="color:#6b7280;font-size:12px;">If you were not expecting this request, you can safely ignore this email.</p>
+    `,
+    });
+  } catch (emailErr) {
+    console.error("[external-approver] failed to send approval email:", emailErr);
+  }
 
   return apiSuccess(
     {
