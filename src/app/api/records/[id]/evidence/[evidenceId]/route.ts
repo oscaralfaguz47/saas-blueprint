@@ -7,12 +7,67 @@ import { requireFullSession } from "@/server/require-full-session";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { canAccessRequest } from "@/server/security/request-authorization";
+import { getPresignedGetUrlProfilePhoto } from "@/server/services/r2-profile-photo";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { z } from "zod";
 
 const paramsSchema = z.object({
   id: z.string().cuid(),
   evidenceId: z.string().cuid(),
+});
+
+/**
+ * GET /api/records/[id]/evidence/[evidenceId]
+ * Presigned download URL for FILE evidence. Requires C1 access.
+ */
+export const GET = withErrorHandler(async (
+  _req: Request,
+  context: { params: Promise<{ id: string; evidenceId: string }> }
+) => {
+  const session = await getServerSession(authOptions);
+  const mfaError = await requireFullSession(session);
+  if (mfaError) return mfaError;
+  if (!session?.user) return ApiErrors.UNAUTHENTICATED();
+
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { isPlatformBlocked: true },
+  });
+  if (!user || user.isPlatformBlocked) return ApiErrors.FORBIDDEN();
+
+  const membership = await getDefaultTenantForUser(session.user.id);
+  if (!membership?.tenant) return ApiErrors.NO_TENANT();
+  const tenantId = membership.tenant.id;
+
+  const parseResult = paramsSchema.safeParse(await context.params);
+  if (!parseResult.success) return ApiErrors.VALIDATION_ERROR("Invalid id");
+  const { id: recordId, evidenceId } = parseResult.data;
+
+  const hasAccess = await canAccessRequest({
+    tenantId,
+    userId: session.user.id,
+    requestId: recordId,
+  });
+  if (!hasAccess) return ApiErrors.NOT_FOUND("Record");
+
+  const evidence = await prisma.recordEvidence.findFirst({
+    where: { id: evidenceId, recordId, tenantId, deletedAt: null },
+    select: { id: true, evidenceType: true, objectKey: true, fileName: true },
+  });
+  if (!evidence) return ApiErrors.NOT_FOUND("Evidence");
+  if (evidence.evidenceType !== "FILE" || !evidence.objectKey) {
+    return ApiErrors.VALIDATION_ERROR("This evidence is not a downloadable file.");
+  }
+
+  const downloadUrl = await getPresignedGetUrlProfilePhoto(evidence.objectKey);
+  if (!downloadUrl) {
+    return ApiErrors.INTERNAL_ERROR("Download is temporarily unavailable.");
+  }
+
+  return apiSuccess({
+    downloadUrl,
+    fileName: evidence.fileName ?? "file",
+  });
 });
 
 /**

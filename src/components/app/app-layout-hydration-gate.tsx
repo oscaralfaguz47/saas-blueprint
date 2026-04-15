@@ -1,6 +1,7 @@
 "use client";
 
 import { CreateWorkspaceModalProvider } from "@/components/app/workspace/create-workspace-modal-context";
+import { CreateRequestModalProvider } from "@/components/app/requests/create-request-modal-context";
 import { TenantPermissionsProvider } from "@/components/app/tenant-permissions-context";
 import { WorkspaceReadyNotifier } from "@/components/app/workspace-ready-notifier";
 import AppLayoutClient from "@/components/app/app-layout-client";
@@ -62,14 +63,16 @@ export function AppLayoutHydrationGate({
         )}
         <TenantPermissionsProvider>
           <CreateWorkspaceModalProvider>
-            <AppLayoutClient
-              user={user}
-              workspace={workspace}
-              pendingInvitationsCount={pendingInvitationsCount}
-              canAccessPlatformAdmin={canAccessPlatformAdmin}
-            >
-              {children}
-            </AppLayoutClient>
+            <CreateRequestModalProvider>
+              <AppLayoutClient
+                user={user}
+                workspace={workspace}
+                pendingInvitationsCount={pendingInvitationsCount}
+                canAccessPlatformAdmin={canAccessPlatformAdmin}
+              >
+                {children}
+              </AppLayoutClient>
+            </CreateRequestModalProvider>
           </CreateWorkspaceModalProvider>
         </TenantPermissionsProvider>
       </ThemeProvider>

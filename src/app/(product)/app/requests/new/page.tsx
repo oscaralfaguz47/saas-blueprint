@@ -1,12 +1,9 @@
-import { Suspense } from "react";
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/server/auth-options";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { hasTenantPermission } from "@/server/security/tenant-authorization";
-import { Container } from "@/components/ui/container";
-import { Skeleton } from "@/components/ui/skeleton";
-import { CreateRequestForm } from "@/components/app/requests/create-request-form";
+import { NewRequestOpenModalClient } from "@/components/app/requests/new-request-open-modal-client";
 
 export const dynamic = "force-dynamic";
 
@@ -24,11 +21,5 @@ export default async function NewRequestPage() {
   });
   if (!canCreate) redirect("/app/requests");
 
-  return (
-    <Container className="!max-w-2xl">
-      <Suspense fallback={<Skeleton className="h-96 w-full rounded-xl" />}>
-        <CreateRequestForm />
-      </Suspense>
-    </Container>
-  );
+  return <NewRequestOpenModalClient />;
 }

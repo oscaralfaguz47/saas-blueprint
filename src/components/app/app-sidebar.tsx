@@ -17,6 +17,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { useCreateWorkspaceModal } from "@/components/app/workspace/create-workspace-modal-context";
+import { useCreateRequestModal } from "@/components/app/requests/create-request-modal-context";
 import { useTenantPermissions } from "@/components/app/tenant-permissions-context";
 
 type TenantItem = {
@@ -54,7 +55,9 @@ export default function AppSidebar({
   const router = useRouter();
   const apiFetch = useApiFetch();
   const { openCreateWorkspaceModal } = useCreateWorkspaceModal();
+  const { openCreateRequestModal } = useCreateRequestModal();
   const { hasAny } = useTenantPermissions();
+  const canCreateRequests = hasAny(["tenant.requests.create"]);
   const canAccessWorkspaceSettings = hasAny([
     "tenant.settings.manage",
     "tenant.users.read",
@@ -293,6 +296,20 @@ export default function AppSidebar({
             </span>
           ) : null}
         </Link>
+        {canCreateRequests ? (
+          <button
+            type="button"
+            onClick={() => {
+              openCreateRequestModal();
+              if (isMobile) onClose();
+            }}
+            title="New request"
+            className={`flex w-full items-center rounded-lg py-2.5 text-sm font-medium text-(--color-primary) transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} hover:bg-(--color-primary-soft)`}
+          >
+            <IconPlus size={18} className="shrink-0" />
+            {showLabels ? <span>New request</span> : null}
+          </button>
+        ) : null}
         {canAccessPlatformAdmin ? (
           <Link
             href="/admin/workspaces"

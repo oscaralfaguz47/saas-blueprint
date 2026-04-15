@@ -85,6 +85,8 @@ export type RecordEventItem = {
   eventType: string;
   actorUserId: string | null;
   actorEmail: string | null;
+  actorName: string | null;
+  actorDisplayEmail: string | null;
   metadata: Record<string, unknown> | null;
   occurredAt: string;
 };

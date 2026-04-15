@@ -24,6 +24,7 @@ import {
   RECORD_STATUS_LABELS,
 } from "@/lib/record-utils";
 import type { RecordListItem } from "@/types/records";
+import { useCreateRequestModal } from "./create-request-modal-context";
 
 const TABS = [
   { value: "my", label: "My Requests" },
@@ -85,6 +86,7 @@ function normalizeListItem(raw: RecordListItem & { amount?: unknown }): RecordLi
 }
 
 export function RequestsListClient({ canCreate, canReadAll }: Props) {
+  const { openCreateRequestModal } = useCreateRequestModal();
   const router = useRouter();
   const apiFetch = useApiFetch();
 
@@ -193,7 +195,7 @@ export function RequestsListClient({ canCreate, canReadAll }: Props) {
         {canCreate && (
           <button
             type="button"
-            onClick={() => router.push("/app/requests/new")}
+            onClick={() => openCreateRequestModal()}
             className="inline-flex h-9 items-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-(--color-primary-hover)"
           >
             <IconPlus size={16} />

@@ -34,7 +34,7 @@ const confirmSchema = z.object({
     .min(1)
     .max(120)
     .refine((v) => ALLOWED_MIME_TYPES.includes(v), "File type not allowed"),
-  sizeBytes: z.number().int().min(1).max(25 * 1024 * 1024),
+  sizeBytes: z.number().int().min(0).max(25 * 1024 * 1024),
   label: z.string().max(255).trim().optional(),
   sha256: z.string().length(64).optional(),
 });

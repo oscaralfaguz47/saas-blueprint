@@ -26,8 +26,9 @@ export const createRecordSchema = z.object({
     .string()
     .regex(/^[A-Z]{3}$/, "Currency must be a valid ISO 4217 code (e.g. USD)")
     .optional(),
-  visibility: z.enum(["WORKSPACE", "RESTRICTED"]).default("WORKSPACE"),
+   visibility: z.enum(["WORKSPACE", "RESTRICTED"]).default("WORKSPACE"),
   isSensitive: z.boolean().default(false),
+  status: z.enum(["OPEN", "DRAFT"]).default("OPEN"),
 });
 
 export type CreateRecordInput = z.infer<typeof createRecordSchema>;

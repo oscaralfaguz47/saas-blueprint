@@ -2,22 +2,23 @@ import "server-only";
 
 import { prisma } from "@/server/db";
 
-/** @mentions: @handle at word boundary (avoid matching email local-parts). */
-const MENTION_REGEX = /(?<![^\s,([])@([a-zA-Z0-9._-]+)/g;
+/** @mentions: @handle at word boundary; handle may include spaces (display names). */
+const MENTION_REGEX = /(?<![^\s,([])@([^@\n]+)(?=\s|$)/g;
 
 function parseMentionHandles(content: string): string[] {
   const handles = new Set<string>();
   let match: RegExpExecArray | null;
   MENTION_REGEX.lastIndex = 0;
   while ((match = MENTION_REGEX.exec(content)) !== null) {
-    if (match[1]) handles.add(match[1].toLowerCase());
+    const h = match[1]?.trim();
+    if (h && h.length > 0) handles.add(h.toLowerCase());
   }
   return Array.from(handles);
 }
 
 /**
  * F3 — Process @mentions in a comment (after commit).
- * Resolves handles to active tenant members by display name (case-insensitive exact match).
+ * Resolves handles to active tenant members by display name (case-insensitive contains match).
  * Invalid handles are ignored. Never escalates beyond VIEW auto-share.
  */
 export async function processMentions({
@@ -45,7 +46,7 @@ export async function processMentions({
           { name: { not: null } },
           {
             OR: handles.map((h) => ({
-              name: { equals: h, mode: "insensitive" as const },
+              name: { contains: h, mode: "insensitive" as const },
             })),
           },
         ],

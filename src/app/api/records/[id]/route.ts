@@ -6,10 +6,17 @@ import { prisma } from "@/server/db";
 import { requireFullSession } from "@/server/require-full-session";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { canAccessRequest } from "@/server/security/request-authorization";
-import { ApiErrors, apiError, apiSuccess, withErrorHandler } from "@/lib/api-response";
+import { checkMeterLimit, tryConsumeMeter } from "@/server/billing/try-consume-meter";
+import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().cuid() });
+
+const patchSchema = z.object({
+  title: z.string().min(1).max(160).trim().optional(),
+  description: z.string().max(5000).trim().optional(),
+  status: z.enum(["OPEN"]).optional(),
+});
 
 function commentIdFromEventMetadata(meta: unknown): string | undefined {
   if (meta && typeof meta === "object" && !Array.isArray(meta) && "commentId" in meta) {
@@ -116,6 +123,9 @@ export const GET = withErrorHandler(async (
         actorEmail: true,
         metadata: true,
         occurredAt: true,
+        actorUser: {
+          select: { name: true, email: true },
+        },
       },
     }),
 
@@ -195,7 +205,11 @@ export const GET = withErrorHandler(async (
     record,
     evidence,
     participants,
-    timeline: events,
+    timeline: events.map(({ actorUser, ...e }) => ({
+      ...e,
+      actorName: actorUser?.name ?? null,
+      actorDisplayEmail: actorUser?.email ?? e.actorEmail ?? null,
+    })),
     comments: commentDetails,
     links,
     payment: payment ?? null,
@@ -205,10 +219,11 @@ export const GET = withErrorHandler(async (
 
 /**
  * PATCH /api/records/[id]
- * Stub for future field updates — closed records cannot be modified.
+ * Update record fields. Only the creator may update; drafts support title/description;
+ * DRAFT → OPEN ("Submit") consumes one request against plan limits.
  */
 export const PATCH = withErrorHandler(async (
-  _req: Request,
+  req: Request,
   context: { params: Promise<{ id: string }> }
 ) => {
   const session = await getServerSession(authOptions);
@@ -216,11 +231,11 @@ export const PATCH = withErrorHandler(async (
   if (mfaError) return mfaError;
   if (!session?.user) return ApiErrors.UNAUTHENTICATED();
 
-  const patchActor = await prisma.user.findUnique({
+  const user = await prisma.user.findUnique({
     where: { id: session.user.id },
     select: { isPlatformBlocked: true },
   });
-  if (!patchActor || patchActor.isPlatformBlocked) return ApiErrors.FORBIDDEN();
+  if (!user || user.isPlatformBlocked) return ApiErrors.FORBIDDEN();
 
   const membership = await getDefaultTenantForUser(session.user.id);
   if (!membership?.tenant) return ApiErrors.NO_TENANT();
@@ -239,17 +254,99 @@ export const PATCH = withErrorHandler(async (
 
   const record = await prisma.record.findFirst({
     where: { id: recordId, tenantId },
-    select: { status: true },
+    select: { status: true, createdByUserId: true },
   });
   if (!record) return ApiErrors.NOT_FOUND("Record");
 
+  if (record.createdByUserId !== session.user.id) return ApiErrors.FORBIDDEN();
   if (record.status === "CLOSED") {
-    return ApiErrors.CONFLICT("This record is closed and cannot be modified.");
+    return ApiErrors.CONFLICT("Cannot update a closed record.");
   }
 
-  return apiError(
-    "NOT_IMPLEMENTED",
-    501,
-    "Record field updates are not implemented yet."
-  );
+  const rawBody = await req.json().catch(() => null);
+  if (!rawBody || typeof rawBody !== "object") {
+    return ApiErrors.VALIDATION_ERROR("Invalid request body");
+  }
+  const bodyResult = patchSchema.safeParse(rawBody);
+  if (!bodyResult.success) {
+    return ApiErrors.VALIDATION_ERROR("Validation failed", bodyResult.error.flatten());
+  }
+  const body = bodyResult.data;
+
+  const hasFieldUpdates =
+    body.title !== undefined ||
+    body.description !== undefined ||
+    body.status !== undefined;
+  if (!hasFieldUpdates) {
+    return ApiErrors.VALIDATION_ERROR("No fields to update");
+  }
+
+  if (
+    (body.title !== undefined || body.description !== undefined) &&
+    record.status !== "DRAFT"
+  ) {
+    return ApiErrors.CONFLICT("Only draft requests can be edited.");
+  }
+
+  const isSubmitting = body.status === "OPEN" && record.status === "DRAFT";
+
+  if (isSubmitting) {
+    await checkMeterLimit({
+      tenantId,
+      meter: "REQUESTS",
+      delta: 1,
+    });
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const r = await tx.record.update({
+      where: { id: recordId, tenantId },
+      data: {
+        ...(body.title ? { title: body.title } : {}),
+        ...(body.description !== undefined ? { description: body.description } : {}),
+        ...(body.status ? { status: body.status } : {}),
+      },
+      select: { id: true, title: true, status: true },
+    });
+
+    if (isSubmitting) {
+      await tx.recordEvent.create({
+        data: {
+          tenantId,
+          recordId,
+          eventType: "RECORD_CREATED",
+          actorUserId: session.user.id,
+          metadata: { submittedFromDraft: true },
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          actorUserId: session.user.id,
+          actorContext: "TENANT",
+          tenantId,
+          action: "record.submitted",
+          targetType: "Record",
+          targetId: recordId,
+          metadata: { previousStatus: "DRAFT", newStatus: "OPEN" },
+        },
+      });
+    }
+
+    return r;
+  });
+
+  if (isSubmitting) {
+    await tryConsumeMeter({
+      tenantId,
+      meter: "REQUESTS",
+      delta: 1,
+      idempotencyKey: `record.submitted.${recordId}`,
+      sourceType: "record.submitted",
+      sourceId: recordId,
+      actorUserId: session.user.id,
+    });
+  }
+
+  return apiSuccess(updated);
 });

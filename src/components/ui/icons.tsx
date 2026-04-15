@@ -255,3 +255,39 @@ export function IconDollarSign(props: IconProps) {
 export function IconClose(props: IconProps) {
   return <IconX {...props} />;
 }
+
+export function IconUpload(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="17 8 12 3 7 8" />
+      <line x1="12" y1="3" x2="12" y2="15" />
+    </BaseIcon>
+  );
+}
+
+export function IconPaperclip(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+    </BaseIcon>
+  );
+}
+
+export function IconAtSign(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94" />
+    </BaseIcon>
+  );
+}
+
+export function IconSend(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="m22 2-7 20-4-9-9-4Z" />
+      <path d="M22 2 11 13" />
+    </BaseIcon>
+  );
+}

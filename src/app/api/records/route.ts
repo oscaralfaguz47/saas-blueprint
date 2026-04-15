@@ -282,12 +282,16 @@ export const POST = withErrorHandler(async (req: Request) => {
   // 6. Validate body
   const body = await parseBody(req, createRecordSchema);
 
-  // 7. Plan limit check (read-only, throws UpgradeRequiredError if over limit)
-  await checkMeterLimit({
-    tenantId,
-    meter: "REQUESTS",
-    delta: 1,
-  });
+  const initialStatus = body.status ?? "OPEN";
+
+  // 7. Plan limit check — only OPEN creates count against the requests meter
+  if (initialStatus === "OPEN") {
+    await checkMeterLimit({
+      tenantId,
+      meter: "REQUESTS",
+      delta: 1,
+    });
+  }
 
   // 8. Create record + emit event + audit log in one transaction
   const created = await prisma.$transaction(async (tx) => {
@@ -304,7 +308,7 @@ export const POST = withErrorHandler(async (req: Request) => {
         currency: body.currency ?? null,
         visibility: body.visibility,
         isSensitive: body.isSensitive,
-        status: "OPEN",
+        status: initialStatus,
       },
       select: { id: true, title: true, type: true, status: true, createdAt: true },
     });
@@ -342,18 +346,20 @@ export const POST = withErrorHandler(async (req: Request) => {
     });
 
     return record;
-  });
+   });
 
-  // 9. Increment usage counter only after successful transaction
-  await tryConsumeMeter({
-    tenantId,
-    meter: "REQUESTS",
-    delta: 1,
-    idempotencyKey: `record.created.${created.id}`,
-    sourceType: "record.created",
-    sourceId: created.id,
-    actorUserId: session.user.id,
-  });
+  // 9. Increment usage counter only for OPEN creates (after successful transaction)
+  if (initialStatus === "OPEN") {
+    await tryConsumeMeter({
+      tenantId,
+      meter: "REQUESTS",
+      delta: 1,
+      idempotencyKey: `record.created.${created.id}`,
+      sourceType: "record.created",
+      sourceId: created.id,
+      actorUserId: session.user.id,
+    });
+  }
 
   return apiSuccess(
     {

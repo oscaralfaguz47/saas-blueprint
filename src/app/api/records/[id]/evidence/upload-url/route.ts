@@ -42,7 +42,7 @@ const uploadUrlSchema = z.object({
   sizeBytes: z
     .number()
     .int()
-    .min(1)
+    .min(0)
     .max(MAX_FILE_SIZE_BYTES, "File exceeds maximum size of 25 MB"),
 });
 

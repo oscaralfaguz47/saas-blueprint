@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { useToast } from "@/components/ui/toast";
@@ -16,6 +16,7 @@ import {
   IconLink,
   IconAlertCircle,
   IconPlus,
+  IconUpload,
 } from "@/components/ui/icons";
 import { AssignApproverModal } from "./assign-approver-modal";
 import { RejectApprovalModal } from "./reject-approval-modal";
@@ -220,6 +221,9 @@ export function RequestDetailClient({ recordId, currentUserId, permissions }: Pr
               {closing ? "Closing…" : "Close request"}
             </button>
           )}
+          {record.status === "DRAFT" && record.createdByUserId === currentUserId && (
+            <SubmitDraftButton recordId={recordId} onSuccess={load} />
+          )}
           {canExport && (
             <button
               type="button"
@@ -262,8 +266,8 @@ export function RequestDetailClient({ recordId, currentUserId, permissions }: Pr
           </CardRoot>
 
           <div>
-            <EvidenceSection evidence={evidence} isClosed={isClosed} />
-            <AddEvidenceLinkSection
+            <EvidenceSection evidence={evidence} isClosed={isClosed} recordId={recordId} />
+            <AddEvidenceSection
               recordId={recordId}
               isClosed={isClosed}
               canAdd={canAddEvidence}
@@ -357,12 +361,67 @@ function DetailField({ label, value }: { label: string; value: string }) {
   );
 }
 
+function DownloadEvidenceButton({
+  evidenceId,
+  recordId,
+  fileName,
+}: {
+  evidenceId: string;
+  recordId: string;
+  fileName: string | null;
+}) {
+  const apiFetch = useApiFetch();
+  const toast = useToast();
+  const [loading, setLoading] = useState(false);
+
+  async function handleDownload() {
+    setLoading(true);
+    try {
+      const res = await apiFetch(`/api/records/${recordId}/evidence/${evidenceId}`, {
+        showToastOnError: false,
+      });
+      if (!res.ok) {
+        toast.addToast("error", "Failed to get download link.");
+        return;
+      }
+      const json = (await res.json()) as {
+        data: { downloadUrl: string; fileName: string | null };
+      };
+      const a = document.createElement("a");
+      a.href = json.data.downloadUrl;
+      a.download = json.data.fileName ?? fileName ?? "file";
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch {
+      toast.addToast("error", "Download failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void handleDownload()}
+      disabled={loading}
+      className="ml-auto shrink-0 rounded px-2 py-1 text-xs text-(--color-primary) transition-opacity hover:underline disabled:opacity-50"
+    >
+      {loading ? "…" : "Download"}
+    </button>
+  );
+}
+
 function EvidenceSection({
   evidence,
   isClosed,
+  recordId,
 }: {
   evidence: RecordEvidenceItem[];
   isClosed: boolean;
+  recordId: string;
 }) {
   if (evidence.length === 0 && isClosed) return null;
   return (
@@ -410,6 +469,13 @@ function EvidenceSection({
                     {ev.sizeBytes != null && ` · ${(ev.sizeBytes / 1024).toFixed(0)} KB`}
                   </span>
                 </div>
+                {ev.evidenceType === "FILE" && (
+                  <DownloadEvidenceButton
+                    evidenceId={ev.id}
+                    recordId={recordId}
+                    fileName={ev.fileName}
+                  />
+                )}
               </li>
             ))}
           </ul>
@@ -719,6 +785,20 @@ function TimelineSection({
                         ].join(" ")}
                       >
                         {RECORD_EVENT_LABELS[ev.eventType] ?? ev.eventType}
+                        {ev.eventType === "EVIDENCE_FILE_ADDED" &&
+                        ev.metadata?.fileName != null &&
+                        ev.metadata.fileName !== "" ? (
+                          <span className="ml-1 font-normal text-(--text-muted)">
+                            — {String(ev.metadata.fileName)}
+                          </span>
+                        ) : null}
+                        {ev.eventType === "EVIDENCE_LINK_ADDED" &&
+                        ev.metadata?.label != null &&
+                        ev.metadata.label !== "" ? (
+                          <span className="ml-1 font-normal text-(--text-muted)">
+                            — {String(ev.metadata.label)}
+                          </span>
+                        ) : null}
                       </span>
                       {comment?.isCritical && (
                         <span className="flex items-center gap-1 text-xs text-(--color-danger)">
@@ -728,6 +808,11 @@ function TimelineSection({
                       )}
                       <span className="text-xs text-(--text-muted)">{formatDate(ev.occurredAt)}</span>
                     </div>
+                    {(ev.actorName || ev.actorDisplayEmail) && (
+                      <p className="mt-0.5 text-xs text-(--text-muted)">
+                        by {ev.actorName ?? ev.actorDisplayEmail}
+                      </p>
+                    )}
                     {comment && (
                       <p className="mt-1 whitespace-pre-wrap text-sm text-(--text-secondary)">
                         {comment.content}
@@ -744,6 +829,55 @@ function TimelineSection({
   );
 }
 
+function SubmitDraftButton({
+  recordId,
+  onSuccess,
+}: {
+  recordId: string;
+  onSuccess: () => void | Promise<void>;
+}) {
+  const apiFetch = useApiFetch();
+  const toast = useToast();
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit() {
+    setSubmitting(true);
+    try {
+      const res = await apiFetch(`/api/records/${recordId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "OPEN" }),
+        showToastOnError: false,
+      });
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as {
+          error?: { message?: string };
+        };
+        toast.addToast("error", json.error?.message ?? "Failed to submit.");
+        return;
+      }
+      toast.addToast("success", "Request submitted.");
+      await onSuccess();
+    } catch {
+      toast.addToast("error", "Network error.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void handleSubmit()}
+      disabled={submitting}
+      className="inline-flex h-9 items-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-(--color-primary-hover) disabled:opacity-60"
+    >
+      {submitting && <Spinner size="sm" />}
+      {submitting ? "Submitting…" : "Submit request"}
+    </button>
+  );
+}
+
 function CommentSection({
   recordId,
   isClosed,
@@ -757,9 +891,67 @@ function CommentSection({
 }) {
   const apiFetch = useApiFetch();
   const toast = useToast();
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
   const [content, setContent] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mentionSearch, setMentionSearch] = useState<string | null>(null);
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionUsers, setMentionUsers] = useState<
+    { user: { id: string; name: string | null; email: string | null } }[]
+  >([]);
+
+  useEffect(() => {
+    if (!mentionOpen) return;
+    apiFetch("/api/tenant/users?context=assignment", { showToastOnError: false })
+      .then((r) => r.json())
+      .then(
+        (json: {
+          data?: {
+            users?: { user: { id: string; name: string | null; email: string | null } }[];
+          };
+        }) => {
+          setMentionUsers(json.data?.users ?? []);
+        }
+      )
+      .catch(() => {});
+  }, [mentionOpen, apiFetch]);
+
+  const filteredMentions = mentionUsers.filter((u) => {
+    if (!mentionSearch) return true;
+    const q = mentionSearch.toLowerCase();
+    return (
+      u.user.name?.toLowerCase().includes(q) ||
+      (u.user.email?.toLowerCase().includes(q) ?? false)
+    );
+  });
+
+  function handleContentChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const val = e.target.value;
+    setContent(val);
+    const cursor = e.target.selectionStart ?? val.length;
+    const before = val.slice(0, cursor);
+    const match = before.match(/@([a-zA-Z0-9._\-\s]*)$/);
+    if (match) {
+      setMentionSearch(match[1]);
+      setMentionOpen(true);
+    } else {
+      setMentionOpen(false);
+      setMentionSearch(null);
+    }
+  }
+
+  function insertMention(user: { name: string | null; email: string | null }) {
+    const handle = user.name ?? user.email ?? "user";
+    const cursor = textareaRef.current?.selectionStart ?? content.length;
+    const before = content.slice(0, cursor).replace(/@([a-zA-Z0-9._\-\s]*)$/, `@${handle} `);
+    const after = content.slice(cursor);
+    setContent(before + after);
+    setMentionOpen(false);
+    setMentionSearch(null);
+    setTimeout(() => textareaRef.current?.focus(), 0);
+  }
 
   if (!canComment || isClosed) return null;
 
@@ -800,15 +992,46 @@ function CommentSection({
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-3">
           {error && <p className="text-xs text-(--color-danger)">{error}</p>}
-          <Textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder="Write a comment…"
-            rows={3}
-            maxLength={5000}
-            disabled={submitting}
-          />
-          <div className="flex justify-end">
+          <div className="relative">
+            <Textarea
+              ref={textareaRef}
+              value={content}
+              onChange={handleContentChange}
+              placeholder="Write a comment… Use @ to mention someone"
+              rows={3}
+              maxLength={5000}
+              disabled={submitting}
+            />
+            {mentionOpen && filteredMentions.length > 0 && (
+              <div className="absolute bottom-full left-0 z-20 mb-1 max-h-48 w-full overflow-y-auto rounded-lg border border-(--border-subtle) bg-(--bg-surface) shadow-lg">
+                {filteredMentions.slice(0, 8).map((u) => (
+                  <button
+                    key={u.user.id}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      insertMention(u.user);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-(--bg-surface-elev)"
+                  >
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-(--bg-surface-elev) text-xs font-semibold text-(--text-muted) uppercase">
+                      {(u.user.name ?? u.user.email ?? "?")[0]}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm text-(--text-primary)">
+                        {u.user.name ?? u.user.email}
+                      </p>
+                      {u.user.name && u.user.email && (
+                        <p className="truncate text-xs text-(--text-muted)">{u.user.email}</p>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-(--text-muted)">Use @ to mention a team member</p>
             <button
               type="submit"
               disabled={submitting || !content.trim()}
@@ -824,7 +1047,7 @@ function CommentSection({
   );
 }
 
-function AddEvidenceLinkSection({
+function AddEvidenceSection({
   recordId,
   isClosed,
   canAdd,
@@ -837,15 +1060,135 @@ function AddEvidenceLinkSection({
 }) {
   const apiFetch = useApiFetch();
   const toast = useToast();
-  const [open, setOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [mode, setMode] = useState<"idle" | "link" | "uploading">("idle");
   const [label, setLabel] = useState("");
   const [url, setUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   if (!canAdd || isClosed) return null;
 
-  async function handleSubmit(e: React.FormEvent) {
+  function resolveMimeType(file: File): string {
+    if (file.type) return file.type;
+    const lower = file.name.toLowerCase();
+    if (lower.endsWith(".pdf")) return "application/pdf";
+    if (lower.endsWith(".png")) return "image/png";
+    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+    if (lower.endsWith(".gif")) return "image/gif";
+    if (lower.endsWith(".webp")) return "image/webp";
+    if (lower.endsWith(".txt")) return "text/plain";
+    if (lower.endsWith(".csv")) return "text/csv";
+    if (lower.endsWith(".doc")) return "application/msword";
+    if (lower.endsWith(".docx")) {
+      return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    }
+    if (lower.endsWith(".xls")) return "application/vnd.ms-excel";
+    if (lower.endsWith(".xlsx")) {
+      return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    }
+    return "image/png";
+  }
+
+  async function uploadFile(file: File) {
+    setMode("uploading");
+    setUploadProgress("Preparing upload…");
+    setError(null);
+    try {
+      const mimeType = resolveMimeType(file);
+      const urlRes = await apiFetch(`/api/records/${recordId}/evidence/upload-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: file.name,
+          mimeType,
+          sizeBytes: Math.max(file.size, 0),
+        }),
+        showToastOnError: false,
+      });
+      if (!urlRes.ok) {
+        const json = (await urlRes.json().catch(() => ({}))) as {
+          error?: { message?: string };
+        };
+        setError(json.error?.message ?? "Failed to prepare upload.");
+        setMode("idle");
+        return;
+      }
+      const urlJson = (await urlRes.json()) as {
+        data: { uploadUrl: string; objectKey: string };
+      };
+      const { uploadUrl, objectKey } = urlJson.data;
+
+      setUploadProgress("Uploading…");
+      const uploadRes = await fetch(uploadUrl, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": mimeType },
+      });
+      if (!uploadRes.ok) {
+        setError("Upload failed. Please try again.");
+        setMode("idle");
+        return;
+      }
+
+      setUploadProgress("Saving…");
+      const confirmRes = await apiFetch(`/api/records/${recordId}/evidence/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          objectKey,
+          fileName: file.name,
+          mimeType,
+          sizeBytes: Math.max(file.size, 0),
+          label: file.name,
+        }),
+        showToastOnError: false,
+      });
+      if (!confirmRes.ok) {
+        const json = (await confirmRes.json().catch(() => ({}))) as {
+          error?: { message?: string };
+        };
+        setError(json.error?.message ?? "Failed to save.");
+        setMode("idle");
+        return;
+      }
+      toast.addToast("success", "File uploaded.");
+      setMode("idle");
+      await onRefresh();
+    } catch {
+      setError("Upload failed.");
+      setMode("idle");
+    } finally {
+      setUploadProgress(null);
+    }
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) void uploadFile(file);
+    e.target.value = "";
+  }
+
+  useEffect(() => {
+    function handlePaste(e: ClipboardEvent) {
+      if (mode === "uploading" || !canAdd || isClosed) return;
+      const imageItem = Array.from(e.clipboardData?.items ?? []).find((item) =>
+        item.type.startsWith("image/")
+      );
+      if (!imageItem) return;
+      const file = imageItem.getAsFile();
+      if (!file) return;
+      void uploadFile(
+        new File([file], `screenshot-${Date.now()}.png`, { type: "image/png" })
+      );
+    }
+    document.addEventListener("paste", handlePaste);
+    return () => document.removeEventListener("paste", handlePaste);
+  }, [mode, canAdd, isClosed]);
+
+  async function handleAddLink(e: React.FormEvent) {
     e.preventDefault();
     if (!label.trim() || !url.trim()) return;
     setSubmitting(true);
@@ -870,8 +1213,8 @@ function AddEvidenceLinkSection({
       }
       setLabel("");
       setUrl("");
-      setOpen(false);
-      toast.addToast("success", "Evidence link added.");
+      setMode("idle");
+      toast.addToast("success", "Link added.");
       await onRefresh();
     } catch {
       setError("Network error.");
@@ -881,22 +1224,21 @@ function AddEvidenceLinkSection({
   }
 
   return (
-    <div className="mt-2">
-      {!open ? (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--text-primary)"
-        >
-          <IconPlus size={13} />
-          Add link
-        </button>
-      ) : (
+    <div className="mt-2 space-y-2">
+      {error && <p className="text-xs text-(--color-danger)">{error}</p>}
+
+      {mode === "uploading" && (
+        <div className="flex items-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 py-2 text-sm text-(--text-muted)">
+          <Spinner size="sm" />
+          {uploadProgress ?? "Uploading…"}
+        </div>
+      )}
+
+      {mode === "link" && (
         <form
-          onSubmit={handleSubmit}
+          onSubmit={handleAddLink}
           className="space-y-3 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) p-4"
         >
-          {error && <p className="text-xs text-(--color-danger)">{error}</p>}
           <div className="space-y-1.5">
             <label className="block text-xs font-medium text-(--text-primary)">
               Label <span className="text-(--color-danger)">*</span>
@@ -929,22 +1271,63 @@ function AddEvidenceLinkSection({
               className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-(--color-primary) px-3 text-xs font-medium text-white transition-colors hover:bg-(--color-primary-hover) disabled:opacity-60"
             >
               {submitting && <Spinner size="sm" />}
-              {submitting ? "Adding…" : "Add"}
+              Add
             </button>
             <button
               type="button"
               onClick={() => {
-                setOpen(false);
+                setMode("idle");
                 setError(null);
               }}
-              disabled={submitting}
-              className="inline-flex h-8 items-center rounded-lg border border-(--border-subtle) px-3 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:opacity-60"
+              className="inline-flex h-8 items-center rounded-lg border border-(--border-subtle) px-3 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)"
             >
               Cancel
             </button>
           </div>
         </form>
       )}
+
+      {mode === "idle" && (
+        <div
+          className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-(--border-subtle) bg-(--bg-surface-elev) px-4 py-5 text-center transition-colors hover:border-(--color-primary) hover:bg-(--color-primary-soft)"
+          onClick={() => fileInputRef.current?.click()}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault();
+            const f = e.dataTransfer.files[0];
+            if (f) void uploadFile(f);
+          }}
+        >
+          <IconUpload size={18} className="text-(--text-muted)" />
+          <div>
+            <p className="text-sm font-medium text-(--text-primary)">
+              Drop files here, click to upload, or paste (Ctrl/Cmd+V)
+            </p>
+            <p className="mt-0.5 text-xs text-(--text-muted)">
+              Images, PDF, Word, Excel, CSV · Max 25 MB
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setMode("link");
+            }}
+            className="inline-flex h-7 items-center gap-1 rounded border border-(--border-subtle) bg-(--bg-surface) px-2.5 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)"
+          >
+            <IconPlus size={11} />
+            Add link instead
+          </button>
+        </div>
+      )}
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+        onChange={handleFileChange}
+      />
     </div>
   );
 }
