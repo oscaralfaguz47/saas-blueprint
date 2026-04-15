@@ -71,9 +71,19 @@ enum SessionAuthLevel {
 }
 
 enum RecordType {
+  // Legacy (keep for backward compatibility)
   SCOPE_CHANGE
   DECISION
   BUDGET
+  // New finance-first categories
+  BUDGET_REQUEST
+  SPEND_APPROVAL
+  VENDOR_PAYMENT_REQUEST
+  REIMBURSEMENT
+  FINANCIAL_EXCEPTION
+  CONTRACT_SCOPE_CHANGE
+  FORECAST_ADJUSTMENT
+  OTHER_FINANCIAL_REQUEST
 }
 
 enum RecordVisibility {
@@ -106,6 +116,7 @@ enum BillingSupportRequestStatus {
 }
 
 enum RecordStatus {
+  // Existing
   OPEN
   DRAFT
   PENDING_APPROVAL
@@ -113,6 +124,10 @@ enum RecordStatus {
   REJECTED
   NO_RESPONSE
   CLOSED
+  // New
+  IN_REVIEW
+  AWAITING_INFO
+  CANCELED
 }
 
 enum ApprovalRequestStatus {
@@ -178,6 +193,7 @@ enum RecordCommentScope {
   GENERAL
   APPROVAL
   PAYMENT
+  INTERNAL
 }
 
 enum RecordCommentAuthorType {
@@ -186,8 +202,72 @@ enum RecordCommentAuthorType {
 }
 
 enum RecordLinkType {
+  // Existing
   FULFILLS
   RELATED
+  // New semantic types
+  BLOCKED_BY
+  DUPLICATE_OF
+  CHILD_OF
+  PARENT_OF
+  AMENDS
+  SUPERSEDES
+  FUNDED_BY
+  TRIGGERED_BY
+}
+
+enum RecordPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum RecordBudgetImpactType {
+  NEW_SPEND
+  BUDGET_REALLOCATION
+  OVER_BUDGET
+  NO_BUDGET_IMPACT
+  UNKNOWN
+}
+
+enum RecordRiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum RecordCloseReason {
+  APPROVED_AND_COMPLETED
+  REJECTED
+  WITHDRAWN_BY_REQUESTER
+  DUPLICATE
+  SUPERSEDED
+  NO_ACTION_REQUIRED
+  PAID_OR_SETTLED
+  CANCELED
+  OTHER
+}
+
+enum RecordEvidenceCategory {
+  INVOICE
+  QUOTE
+  RECEIPT
+  CONTRACT
+  STATEMENT_OF_WORK
+  APPROVAL_MEMO
+  SUPPORTING_SPREADSHEET
+  SCREENSHOT
+  OTHER
+}
+
+enum RecordApprovalStatus {
+  NOT_STARTED
+  NO_APPROVERS_ASSIGNED
+  WAITING_FOR_APPROVAL
+  FULLY_APPROVED
+  APPROVAL_REJECTED
+  APPROVAL_EXPIRED
 }
 
 enum RecordEvidenceType {
@@ -1268,6 +1348,58 @@ model Record {
   closedByUserId String?
   closedByUser   User?     @relation("RecordsClosedByUser", fields: [closedByUserId], references: [id], onDelete: SetNull)
 
+  // Human-readable key (e.g. REQ-2026-000124) — backfilled via migration
+  recordKey String? @db.VarChar(30)
+
+  // Finance fields
+  requestedAmount   Decimal?               @db.Decimal(14, 2)
+  approvedAmount    Decimal?               @db.Decimal(14, 2)
+  currencyCode      String?                @db.VarChar(10)
+  amountIsEstimated Boolean                @default(false)
+  isRecurring       Boolean                @default(false)
+  recurrenceNotes   String?                @db.VarChar(500)
+  budgetImpactType  RecordBudgetImpactType?
+  taxAmount         Decimal?               @db.Decimal(14, 2)
+  taxIncluded       Boolean?
+
+  // Counterparty
+  vendorName        String? @db.VarChar(160)
+  payeeName         String? @db.VarChar(160)
+  invoiceNumber     String? @db.VarChar(100)
+  contractReference String? @db.VarChar(100)
+  purchaseOrderRef  String? @db.VarChar(100)
+
+  // Context / classification
+  priority              RecordPriority @default(MEDIUM)
+  businessJustification String?        @db.VarChar(2000)
+  departmentName        String?        @db.VarChar(120)
+  costCenterCode        String?        @db.VarChar(60)
+
+  // Timing
+  neededByDate    DateTime? @db.Timestamptz(6)
+  submittedAt     DateTime? @db.Timestamptz(6)
+  approvedAt      DateTime? @db.Timestamptz(6)
+  firstResponseAt DateTime? @db.Timestamptz(6)
+
+  // Governance / risk flags
+  hasPolicyException      Boolean          @default(false)
+  policyExceptionReason   String?          @db.VarChar(1000)
+  isOverBudget            Boolean          @default(false)
+  missingRequiredEvidence Boolean          @default(false)
+  possibleDuplicate       Boolean          @default(false)
+  riskLevel               RecordRiskLevel?
+  requiresFinanceReview   Boolean          @default(false)
+
+  // Close reason (for richer close flow)
+  closeReason      RecordCloseReason?
+  closeReasonNotes String?          @db.VarChar(1000)
+
+  // Approval summary (denormalized for list performance)
+  approvalStatus RecordApprovalStatus @default(NOT_STARTED)
+
+  // SLA / aging (derived, updated by server)
+  overdue Boolean @default(false)
+
   attachments      RecordAttachment[]
   evidenceLinks    RecordEvidenceLink[]
   approvalRequests ApprovalRequest[]
@@ -1288,6 +1420,11 @@ model Record {
   @@index([tenantId, type])
   @@index([tenantId, createdByUserId, createdAt])
   @@index([tenantId, closedAt])
+  @@index([tenantId, priority])
+  @@index([tenantId, neededByDate])
+  @@index([tenantId, overdue])
+  @@index([tenantId, approvalStatus])
+  @@index([recordKey])
 }
 
 model RecordAttachment {
@@ -1543,6 +1680,9 @@ model RecordEvidence {
   mimeType        String? @db.VarChar(120)
   sizeBytes       Int?
   sha256          String? @db.VarChar(64)
+
+  evidenceCategory RecordEvidenceCategory?
+  isRequired       Boolean               @default(false)
 
   createdAt       DateTime @default(now()) @db.Timestamptz(6)
   createdByUserId String?

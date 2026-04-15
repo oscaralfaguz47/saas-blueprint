@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { authOptions } from "@/server/auth-options";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { getTenantPermissions } from "@/server/security/tenant-authorization";
+import { prisma } from "@/server/db";
 import { Container } from "@/components/ui/container";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RequestDetailClient } from "@/components/app/requests/request-detail-client";
@@ -33,12 +34,19 @@ export default async function RequestDetailPage({
     tenantId: membership.tenant.id,
   });
 
+  const currentUser = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { name: true, email: true },
+  });
+
   return (
     <Container>
       <Suspense fallback={<RequestDetailSkeleton />}>
         <RequestDetailClient
           recordId={id}
           currentUserId={session.user.id}
+          currentUserName={currentUser?.name ?? null}
+          currentUserEmail={currentUser?.email ?? null}
           permissions={permissions}
         />
       </Suspense>

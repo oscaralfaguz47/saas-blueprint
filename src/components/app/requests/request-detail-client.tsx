@@ -32,10 +32,17 @@ import {
   RECORD_EVENT_LABELS,
   PAYMENT_STATUS_LABELS,
   PAYMENT_STATUS_BADGE,
+  RECORD_PRIORITY_BADGE,
+  RECORD_PRIORITY_LABELS,
+  RECORD_APPROVAL_STATUS_LABELS,
+  RECORD_CLOSE_REASON_LABELS,
+  RECORD_LINK_TYPE_LABELS,
+  RECORD_BUDGET_IMPACT_LABELS,
   type BadgeVariant,
 } from "@/lib/record-utils";
+import { RECORD_CATEGORY_CONFIG } from "@/lib/record-category-config";
 import type {
-  RecordDetail,
+  RecordDetailExtended,
   RecordDetailResponse,
   RecordParticipant,
   RecordEvidenceItem,
@@ -49,25 +56,48 @@ import type {
 type Props = {
   recordId: string;
   currentUserId: string;
+  currentUserName?: string | null;
+  currentUserEmail?: string | null;
   permissions: string[];
 };
 
+function numFromUnknown(raw: unknown): number | null {
+  if (raw == null || raw === "") return null;
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
 function normalizeDetailData(
-  raw: RecordDetailResponse["data"] & { record: RecordDetail & { amount?: unknown } }
-): RecordDetailResponse["data"] {
-  const amountRaw = raw.record.amount as unknown;
-  let amount: number | null = null;
-  if (amountRaw != null && amountRaw !== "") {
-    const n = typeof amountRaw === "number" ? amountRaw : Number(amountRaw);
-    amount = Number.isFinite(n) ? n : null;
+  raw: RecordDetailResponse["data"] & {
+    record: RecordDetailExtended & {
+      amount?: unknown;
+      requestedAmount?: unknown;
+      approvedAmount?: unknown;
+      taxAmount?: unknown;
+    };
   }
+): RecordDetailResponse["data"] {
+  const r = raw.record;
   return {
     ...raw,
-    record: { ...raw.record, amount },
+    record: {
+      ...r,
+      amount: numFromUnknown(r.amount),
+      requestedAmount: numFromUnknown(r.requestedAmount),
+      approvedAmount: numFromUnknown(r.approvedAmount),
+      taxAmount: numFromUnknown(r.taxAmount),
+    },
   };
 }
 
-export function RequestDetailClient({ recordId, currentUserId, permissions }: Props) {
+export function RequestDetailClient({
+  recordId,
+  currentUserId,
+  currentUserName = null,
+  currentUserEmail = null,
+  permissions,
+}: Props) {
   const apiFetch = useApiFetch();
   const toast = useToast();
 
@@ -79,6 +109,9 @@ export function RequestDetailClient({ recordId, currentUserId, permissions }: Pr
   const [assignExternalOpen, setAssignExternalOpen] = useState(false);
   const [setPaymentOpen, setSetPaymentOpen] = useState(false);
   const [linkRecordOpen, setLinkRecordOpen] = useState(false);
+  const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+  const [closeReason, setCloseReason] = useState<string>("APPROVED_AND_COMPLETED");
+  const [closeNotes, setCloseNotes] = useState("");
 
   const canClose = permissions.includes("tenant.requests.close");
   const canComment = permissions.includes("tenant.requests.comment");
@@ -106,7 +139,14 @@ export function RequestDetailClient({ recordId, currentUserId, permissions }: Pr
         return;
       }
       const json = (await res.json()) as RecordDetailResponse & {
-        data: RecordDetailResponse["data"] & { record: RecordDetail & { amount?: unknown } };
+        data: RecordDetailResponse["data"] & {
+          record: RecordDetailExtended & {
+            amount?: unknown;
+            requestedAmount?: unknown;
+            approvedAmount?: unknown;
+            taxAmount?: unknown;
+          };
+        };
       };
       setData(normalizeDetailData(json.data));
     } catch {
@@ -120,12 +160,17 @@ export function RequestDetailClient({ recordId, currentUserId, permissions }: Pr
     void load();
   }, [load]);
 
-  async function handleClose() {
+  async function handleCloseRequest() {
     if (!data || closing) return;
     setClosing(true);
     try {
       const res = await apiFetch(`/api/records/${recordId}/close`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          closeReason,
+          closeReasonNotes: closeNotes.trim() || undefined,
+        }),
         showToastOnError: false,
       });
       if (!res.ok) {
@@ -136,6 +181,8 @@ export function RequestDetailClient({ recordId, currentUserId, permissions }: Pr
         return;
       }
       toast.addToast("success", "Request closed.");
+      setCloseDialogOpen(false);
+      setCloseNotes("");
       await load();
     } catch {
       toast.addToast("error", "Network error. Please try again.");
@@ -180,7 +227,57 @@ export function RequestDetailClient({ recordId, currentUserId, permissions }: Pr
 
   const { record, evidence, participants, timeline, comments, links, payment, missingProof } =
     data;
-  const isClosed = record.status === "CLOSED";
+  const rec = record as RecordDetailExtended;
+  const isClosed = rec.status === "CLOSED";
+  const catConfig = RECORD_CATEGORY_CONFIG[rec.type];
+  const approverParticipants = participants.filter((p) => p.participantRole === "APPROVER");
+  const showSubmitForApproval =
+    rec.status === "OPEN" &&
+    approverParticipants.length === 0 &&
+    canAssignInternal &&
+    !isClosed;
+  const createdByLabel =
+    rec.createdByUserId === currentUserId
+      ? currentUserName || currentUserEmail || "You"
+      : "Teammate";
+  const neededByPast =
+    rec.neededByDate &&
+    !isClosed &&
+    new Date(rec.neededByDate).getTime() < new Date().setHours(0, 0, 0, 0);
+  const closeReasonOptions = (
+    catConfig?.defaultCloseReasons?.length
+      ? catConfig.defaultCloseReasons
+      : (Object.keys(RECORD_CLOSE_REASON_LABELS) as string[])
+  ).map((k) => ({ value: k, label: RECORD_CLOSE_REASON_LABELS[k] ?? k }));
+
+  const requiredOk = (() => {
+    if (!catConfig) return true;
+    for (const f of catConfig.requiredFields) {
+      if (f === "title" && !rec.title?.trim()) return false;
+      if (f === "requestedAmount" && rec.requestedAmount == null) return false;
+      if (f === "currencyCode" && !rec.currencyCode?.trim() && rec.requestedAmount != null)
+        return false;
+      if (f === "businessJustification" && !rec.businessJustification?.trim()) return false;
+      if (f === "vendorName" && !rec.vendorName?.trim()) return false;
+      if (f === "payeeName" && !rec.payeeName?.trim()) return false;
+      if (f === "neededByDate" && !rec.neededByDate) return false;
+      if (f === "policyExceptionReason" && !rec.policyExceptionReason?.trim()) return false;
+    }
+    return true;
+  })();
+
+  const healthWarnings =
+    (requiredOk ? 0 : 1) +
+    (evidence.length === 0 ? 1 : 0) +
+    (approverParticipants.length === 0 ? 1 : 0) +
+    (rec.hasPolicyException ? 1 : 0) +
+    (rec.possibleDuplicate ? 1 : 0) +
+    (rec.overdue ? 1 : 0) +
+    (rec.isOverBudget ? 1 : 0) +
+    (rec.status === "AWAITING_INFO" ? 1 : 0);
+
+  const healthSummary =
+    healthWarnings === 0 ? "All clear" : healthWarnings <= 2 ? "Needs attention" : "Action required";
 
   return (
     <div className="space-y-6">
@@ -192,80 +289,295 @@ export function RequestDetailClient({ recordId, currentUserId, permissions }: Pr
         Back to requests
       </Link>
 
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0 flex-1 space-y-1.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant={RECORD_STATUS_BADGE[record.status]}>
-              {RECORD_STATUS_LABELS[record.status]}
-            </Badge>
-            <span className="rounded border border-(--border-subtle) bg-(--bg-surface-elev) px-1.5 py-0.5 text-xs text-(--text-muted)">
-              {RECORD_TYPE_LABELS[record.type]}
+      <header className="space-y-4 rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev) p-4 sm:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-semibold text-(--text-primary)">
+            {rec.recordKey ?? `#${rec.id.slice(0, 8)}`}
+          </span>
+          <Badge variant={RECORD_STATUS_BADGE[rec.status]}>
+            {RECORD_STATUS_LABELS[rec.status]}
+          </Badge>
+          <Badge variant="secondary">{RECORD_TYPE_LABELS[rec.type]}</Badge>
+          <Badge variant={RECORD_PRIORITY_BADGE[rec.priority] ?? "secondary"}>
+            {RECORD_PRIORITY_LABELS[rec.priority] ?? rec.priority}
+          </Badge>
+          {rec.overdue && (
+            <Badge variant="destructive">Overdue</Badge>
+          )}
+        </div>
+        <h1 className="break-words text-2xl font-semibold tracking-tight text-(--text-primary)">
+          {rec.title}
+        </h1>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-(--text-muted)">
+          <span>
+            Created {formatDate(rec.createdAt)} by {createdByLabel}
+          </span>
+          {rec.neededByDate && (
+            <span className={neededByPast ? "font-medium text-(--color-warning)" : ""}>
+              Needed by: {formatDate(rec.neededByDate)}
+              {neededByPast ? " · URGENT" : ""}
             </span>
-          </div>
-          <h1 className="break-words text-xl font-semibold text-(--text-primary)">{record.title}</h1>
-          <p className="text-sm text-(--text-muted)">
-            Created {formatDate(record.createdAt)}
-            {record.closedAt ? ` · Closed ${formatDate(record.closedAt)}` : ""}
-          </p>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          {(rec.requestedAmount != null || rec.amount != null) && (
+            <span className="font-medium text-(--text-primary)">
+              {formatAmount(
+                rec.requestedAmount ?? rec.amount,
+                rec.currencyCode ?? rec.currency
+              )}
+            </span>
+          )}
+          <span className="text-(--text-secondary)">
+            Approval: {RECORD_APPROVAL_STATUS_LABELS[rec.approvalStatus] ?? rec.approvalStatus}
+          </span>
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          {canClose && !isClosed && (
+        <div className="flex flex-wrap gap-2 border-t border-(--border-subtle) pt-4">
+          {showSubmitForApproval && (
             <button
               type="button"
-              onClick={() => void handleClose()}
-              disabled={closing}
-              className="inline-flex h-9 items-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--text-primary) disabled:opacity-60"
+              onClick={() => setAssignApproverOpen(true)}
+              className="inline-flex h-9 items-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white shadow-sm hover:bg-(--color-primary-hover)"
             >
-              {closing && <Spinner size="sm" />}
-              {closing ? "Closing…" : "Close request"}
+              Submit for approval
             </button>
           )}
-          {record.status === "DRAFT" && record.createdByUserId === currentUserId && (
-            <SubmitDraftButton recordId={recordId} onSuccess={load} />
+          {canAddEvidence && !isClosed && (
+            <a
+              href="#section-evidence"
+              className="inline-flex h-9 items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm text-(--text-secondary) hover:bg-(--bg-surface-hover)"
+            >
+              Add evidence
+            </a>
+          )}
+          {canAssignInternal && !isClosed && (
+            <button
+              type="button"
+              onClick={() => setAssignApproverOpen(true)}
+              className="inline-flex h-9 items-center rounded-lg border border-(--border-subtle) px-4 text-sm text-(--text-secondary) hover:bg-(--bg-surface-hover)"
+            >
+              Assign approver
+            </button>
           )}
           {canExport && (
             <button
               type="button"
               onClick={() => void handleExportPdf()}
-              className="inline-flex h-9 items-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-(--color-primary-hover)"
+              className="inline-flex h-9 items-center rounded-lg border border-(--border-subtle) px-4 text-sm text-(--text-secondary) hover:bg-(--bg-surface-hover)"
             >
               Export PDF
             </button>
           )}
+          {canClose && !isClosed && (
+            <button
+              type="button"
+              onClick={() => {
+                setCloseReason(closeReasonOptions[0]?.value ?? "APPROVED_AND_COMPLETED");
+                setCloseDialogOpen(true);
+              }}
+              className="inline-flex h-9 items-center rounded-lg border border-(--border-subtle) px-4 text-sm text-(--text-secondary) hover:bg-(--bg-surface-hover)"
+            >
+              Close request
+            </button>
+          )}
+          {record.status === "DRAFT" && record.createdByUserId === currentUserId && (
+            <SubmitDraftButton recordId={recordId} onSuccess={load} />
+          )}
+          {rec.status === "OPEN" && rec.createdByUserId === currentUserId && !isClosed && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCloseReason("CANCELED");
+                  setCloseDialogOpen(true);
+                }}
+                className="inline-flex h-9 items-center rounded-lg px-3 text-sm text-(--text-muted) hover:text-(--text-secondary)"
+              >
+                Cancel request
+              </button>
+            )}
         </div>
-      </div>
+
+        {closeDialogOpen && (
+          <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface) p-4">
+            <p className="mb-3 text-sm font-medium text-(--text-primary)">Close request</p>
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-(--text-muted)">
+                  Reason for closing
+                </label>
+                <select
+                  value={closeReason}
+                  onChange={(e) => setCloseReason(e.target.value)}
+                  className="h-10 w-full max-w-md rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 text-sm text-(--text-primary)"
+                >
+                  {closeReasonOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-(--text-muted)">
+                  Additional notes (optional)
+                </label>
+                <Textarea
+                  value={closeNotes}
+                  onChange={(e) => setCloseNotes(e.target.value)}
+                  maxLength={1000}
+                  rows={3}
+                  placeholder="Optional context for the audit log…"
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleCloseRequest()}
+                  disabled={closing}
+                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white disabled:opacity-60"
+                >
+                  {closing && <Spinner size="sm" />}
+                  Close request
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCloseDialogOpen(false)}
+                  disabled={closing}
+                  className="inline-flex h-9 items-center rounded-lg border px-4 text-sm text-(--text-secondary)"
+                >
+                  Keep open
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </header>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          <CardRoot>
-            <CardHeader>
-              <h2 className="text-sm font-semibold text-(--text-primary)">Details</h2>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {record.description && (
+          <div id="section-overview-meta">
+            <CardRoot>
+              <CardHeader>
+                <h2 className="text-sm font-semibold text-(--text-primary)">Overview</h2>
+              </CardHeader>
+              <CardContent className="space-y-4">
+              {rec.description && (
                 <div>
                   <p className="mb-1 text-xs font-medium tracking-wide text-(--text-muted) uppercase">
                     Description
                   </p>
                   <p className="whitespace-pre-wrap text-sm text-(--text-secondary)">
-                    {record.description}
+                    {rec.description}
                   </p>
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-                {record.amount != null && (
-                  <DetailField label="Amount" value={formatAmount(record.amount, record.currency)} />
+              {rec.businessJustification && (
+                <div>
+                  <p className="mb-1 text-xs font-medium tracking-wide text-(--text-muted) uppercase">
+                    Business justification
+                  </p>
+                  <p className="whitespace-pre-wrap text-sm text-(--text-secondary)">
+                    {rec.businessJustification}
+                  </p>
+                </div>
+              )}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <DetailField label="Category" value={RECORD_CATEGORY_CONFIG[rec.type]?.label ?? RECORD_TYPE_LABELS[rec.type]} />
+                {rec.neededByDate && (
+                  <DetailField label="Needed by" value={formatDate(rec.neededByDate)} />
                 )}
-                {record.clientName && <DetailField label="Client" value={record.clientName} />}
-                {record.clientEmail && (
-                  <DetailField label="Client email" value={record.clientEmail} />
+                {rec.departmentName && (
+                  <DetailField label="Department" value={rec.departmentName} />
                 )}
+                {rec.costCenterCode && <DetailField label="Cost center" value={rec.costCenterCode} />}
+                {rec.vendorName && (
+                  <DetailField label="Vendor / Supplier" value={rec.vendorName} />
+                )}
+                {rec.payeeName && (
+                  <DetailField label="Payee / Beneficiary" value={rec.payeeName} />
+                )}
+                {rec.invoiceNumber && (
+                  <DetailField label="Invoice number" value={rec.invoiceNumber} />
+                )}
+                {(rec.contractReference || rec.purchaseOrderRef) && (
+                  <DetailField
+                    label="Contract / PO reference"
+                    value={[rec.contractReference, rec.purchaseOrderRef].filter(Boolean).join(" · ")}
+                  />
+                )}
+                {rec.clientName && <DetailField label="Client" value={rec.clientName} />}
+                {rec.clientEmail && <DetailField label="Client email" value={rec.clientEmail} />}
               </div>
-            </CardContent>
-          </CardRoot>
+              {rec.hasPolicyException && (
+                <div className="rounded-lg border border-(--color-warning-soft) bg-(--color-warning-soft) px-3 py-2 text-sm text-(--color-warning)">
+                  <span className="font-medium">Policy exception</span>
+                  {rec.policyExceptionReason && (
+                    <p className="mt-1 text-xs text-(--text-secondary)">{rec.policyExceptionReason}</p>
+                  )}
+                </div>
+              )}
+              {rec.isRecurring &&
+                rec.requestedAmount == null &&
+                rec.approvedAmount == null && (
+                  <Badge variant="secondary">Recurring</Badge>
+                )}
+              </CardContent>
+            </CardRoot>
+          </div>
 
-          <div>
+          {(rec.requestedAmount != null || rec.approvedAmount != null) && (
+            <CardRoot>
+              <CardHeader>
+                <h2 className="text-sm font-semibold text-(--text-primary)">Financial details</h2>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <div>
+                    <p className="text-xs font-medium text-(--text-muted)">Requested amount</p>
+                    <p
+                      className={`mt-1 text-xl font-semibold tabular-nums ${
+                        rec.requestedAmount != null ? "text-(--text-primary)" : "text-(--text-muted)"
+                      }`}
+                    >
+                      {rec.requestedAmount != null
+                        ? formatAmount(rec.requestedAmount, rec.currencyCode ?? rec.currency)
+                        : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-(--text-muted)">Approved amount</p>
+                    <p
+                      className={`mt-1 text-xl font-semibold tabular-nums ${
+                        rec.approvedAmount != null ? "text-(--text-primary)" : "text-(--text-muted)"
+                      }`}
+                    >
+                      {rec.approvedAmount != null
+                        ? formatAmount(rec.approvedAmount, rec.currencyCode ?? rec.currency)
+                        : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-(--text-muted)">Currency</p>
+                    <p className="mt-1 text-xl font-semibold text-(--text-primary)">
+                      {rec.currencyCode ?? rec.currency ?? "—"}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {rec.amountIsEstimated && <Badge variant="warning">Amount estimated</Badge>}
+                  {rec.budgetImpactType != null && (
+                    <Badge variant="secondary">
+                      {RECORD_BUDGET_IMPACT_LABELS[rec.budgetImpactType] ?? rec.budgetImpactType}
+                    </Badge>
+                  )}
+                  {rec.isRecurring && <Badge variant="secondary">Recurring</Badge>}
+                </div>
+              </CardContent>
+            </CardRoot>
+          )}
+
+          <div id="section-evidence">
             <EvidenceSection evidence={evidence} isClosed={isClosed} recordId={recordId} />
             <AddEvidenceSection
               recordId={recordId}
@@ -275,37 +587,97 @@ export function RequestDetailClient({ recordId, currentUserId, permissions }: Pr
             />
           </div>
 
-          <ParticipantsSection
-            participants={participants}
-            recordId={recordId}
-            isClosed={isClosed}
-            currentUserId={currentUserId}
-            canAssignInternal={canAssignInternal}
-            canAssignExternal={canAssignExternal}
-            canRemind={canRemind}
-            onRefresh={load}
-            onOpenAssignInternal={() => setAssignApproverOpen(true)}
-            onOpenAssignExternal={() => setAssignExternalOpen(true)}
-          />
-
-          <TimelineSection timeline={timeline} comments={comments} />
-
           <CommentSection
             recordId={recordId}
             isClosed={isClosed}
             canComment={canComment}
             onRefresh={load}
           />
+
+          <TimelineSection timeline={timeline} comments={comments} />
         </div>
 
         <div className="space-y-6">
-          <LinkedSection
-            links={links}
-            currentRecordId={recordId}
-            canLink={canLink}
-            isClosed={isClosed}
-            onOpenLink={() => setLinkRecordOpen(true)}
-          />
+          <div id="section-approvers">
+            <ParticipantsSection
+              participants={participants}
+              recordId={recordId}
+              isClosed={isClosed}
+              currentUserId={currentUserId}
+              canAssignInternal={canAssignInternal}
+              canAssignExternal={canAssignExternal}
+              canRemind={canRemind}
+              onRefresh={load}
+              onOpenAssignInternal={() => setAssignApproverOpen(true)}
+              onOpenAssignExternal={() => setAssignExternalOpen(true)}
+            />
+          </div>
+
+          <div id="section-links">
+            <LinkedSection
+              links={links}
+              currentRecordId={recordId}
+              canLink={canLink}
+              isClosed={isClosed}
+              onOpenLink={() => setLinkRecordOpen(true)}
+            />
+          </div>
+
+          <CardRoot>
+            <CardHeader>
+              <h2 className="text-sm font-semibold text-(--text-primary)">Request health</h2>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <p className="text-xs font-medium text-(--text-muted)">{healthSummary}</p>
+              <ul className="space-y-1.5 text-xs">
+                <li className={requiredOk ? "text-(--color-success)" : "text-(--color-warning)"}>
+                  {requiredOk ? "✅ Required fields complete" : "⚠ Missing required fields"}
+                </li>
+                <li className={evidence.length > 0 ? "text-(--color-success)" : "text-(--color-warning)"}>
+                  {evidence.length > 0
+                    ? "✅ Evidence attached"
+                    : "⚠ No supporting evidence has been added yet"}
+                </li>
+                <li
+                  className={
+                    approverParticipants.length > 0 ? "text-(--color-success)" : "text-(--color-warning)"
+                  }
+                >
+                  {approverParticipants.length > 0
+                    ? "✅ Approvers assigned"
+                    : "⚠ No approvers assigned yet"}
+                </li>
+                {rec.hasPolicyException && (
+                  <li className="text-(--color-warning)">⚠ Policy exception flagged</li>
+                )}
+                {rec.possibleDuplicate && (
+                  <li className="text-(--color-warning)">⚠ Possible duplicate</li>
+                )}
+                {rec.overdue && <li className="text-(--color-warning)">⚠ Overdue</li>}
+                {rec.isOverBudget && <li className="text-(--color-warning)">⚠ Over budget</li>}
+                {rec.status === "AWAITING_INFO" && (
+                  <li className="text-(--color-warning)">⚠ Awaiting info</li>
+                )}
+              </ul>
+              <div className="flex flex-wrap gap-2 pt-2">
+                {!requiredOk && (
+                  <a href="#section-overview-meta" className="text-xs text-(--color-primary) hover:underline">
+                    Review overview
+                  </a>
+                )}
+                {evidence.length === 0 && (
+                  <a href="#section-evidence" className="text-xs text-(--color-primary) hover:underline">
+                    Add evidence
+                  </a>
+                )}
+                {approverParticipants.length === 0 && (
+                  <a href="#section-approvers" className="text-xs text-(--color-primary) hover:underline">
+                    Assign approvers
+                  </a>
+                )}
+              </div>
+            </CardContent>
+          </CardRoot>
 
           {record.type === "BUDGET" && (
             <PaymentSection
@@ -436,7 +808,7 @@ function EvidenceSection({
       </CardHeader>
       <CardContent>
         {evidence.length === 0 ? (
-          <p className="text-sm text-(--text-muted)">No evidence attached.</p>
+          <p className="text-sm text-(--text-muted)">No supporting evidence has been added yet.</p>
         ) : (
           <ul className="space-y-2">
             {evidence.map((ev) => (
@@ -518,6 +890,8 @@ function ParticipantsSection({
 
   const approvers = participants.filter((p) => p.participantRole === "APPROVER");
   const hasPendingApprovers = approvers.some((p) => p.status === "PENDING");
+  const blockingApproverId =
+    approvers.find((p) => p.status === "PENDING")?.id ?? null;
 
   const statusBadge: Record<ParticipantStatus, BadgeVariant> = {
     PENDING: "warning",
@@ -585,7 +959,7 @@ function ParticipantsSection({
       <CardHeader>
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-(--text-primary)">
-            Approvals
+            Approval workflow
             {approvers.length > 0 && (
               <span className="ml-1.5 font-normal text-(--text-muted)">
                 ({approvers.length})
@@ -631,7 +1005,33 @@ function ParticipantsSection({
       </CardHeader>
       <CardContent>
         {approvers.length === 0 ? (
-          <p className="text-sm text-(--text-muted)">No approvers assigned.</p>
+          <div className="space-y-3">
+            <p className="text-sm text-(--text-muted)">
+              This request has not been routed for approval yet.
+            </p>
+            {!isClosed && (canAssignInternal || canAssignExternal) && (
+              <div className="flex flex-wrap gap-2">
+                {canAssignInternal && (
+                  <button
+                    type="button"
+                    onClick={onOpenAssignInternal}
+                    className="inline-flex h-8 items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 text-xs font-medium text-(--text-secondary) hover:bg-(--bg-surface-hover)"
+                  >
+                    Add internal approver
+                  </button>
+                )}
+                {canAssignExternal && (
+                  <button
+                    type="button"
+                    onClick={onOpenAssignExternal}
+                    className="inline-flex h-8 items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 text-xs font-medium text-(--text-secondary) hover:bg-(--bg-surface-hover)"
+                  >
+                    Add external approver
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         ) : (
           <ul className="space-y-3">
             {approvers.map((p) => {
@@ -639,19 +1039,35 @@ function ParticipantsSection({
                 p.participantType === "INTERNAL" &&
                 p.userId != null &&
                 p.userId === currentUserId;
+              const isBlocking = p.id === blockingApproverId;
               return (
                 <li
                   key={p.id}
-                  className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 py-2.5"
+                  className={[
+                    "relative flex flex-wrap items-start justify-between gap-3 rounded-lg border bg-(--bg-surface-elev) px-3 py-2.5",
+                    isBlocking
+                      ? "border-(--color-primary) ring-1 ring-(--color-primary-soft)"
+                      : "border-(--border-subtle)",
+                  ].join(" ")}
                 >
-                  <div className="min-w-0">
+                  {isBlocking && (
+                    <span className="absolute -left-1 top-2 h-[calc(100%-16px)] w-1 rounded-full bg-(--color-primary)" />
+                  )}
+                  <div className="min-w-0 pl-1">
                     <p className="text-sm font-medium text-(--text-primary)">
                       {p.participantType === "INTERNAL"
                         ? (p.name ?? p.userId ?? "Internal user")
                         : (p.email ?? "External approver")}
                     </p>
-                    <p className="text-xs text-(--text-muted)">
-                      {p.participantType === "EXTERNAL" ? "External" : "Internal"} ·{" "}
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                      <Badge variant="secondary" className="text-[10px]">
+                        {p.participantType === "EXTERNAL" ? "External" : "Internal"}
+                      </Badge>
+                      <Badge variant="secondary" className="text-[10px]">
+                        {p.participantRole === "APPROVER" ? "Approver" : "Viewer"}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-(--text-muted)">
                       {p.respondedAt
                         ? `Responded ${formatDate(p.respondedAt)}`
                         : "Awaiting response"}
@@ -759,7 +1175,7 @@ function TimelineSection({
       </CardHeader>
       <CardContent>
         {sortedEvents.length === 0 ? (
-          <p className="text-sm text-(--text-muted)">No activity yet.</p>
+          <p className="text-sm text-(--text-muted)">No activity recorded yet.</p>
         ) : (
           <ol className="space-y-4">
             {sortedEvents.map((ev) => {
@@ -1369,26 +1785,29 @@ function LinkedSection({
       </CardHeader>
       <CardContent>
         {links.length === 0 ? (
-          <p className="text-sm text-(--text-muted)">No linked requests.</p>
+          <p className="text-sm text-(--text-muted)">No related requests have been linked yet.</p>
         ) : (
           <ul className="space-y-2">
             {links.map((l) => {
               const otherId = l.fromRecordId === currentRecordId ? l.toRecordId : l.fromRecordId;
-              const direction =
-                l.linkType === "FULFILLS"
-                  ? l.fromRecordId === currentRecordId
-                    ? "Fulfills"
-                    : "Fulfilled by"
-                  : "Related";
+              const typeLabel = RECORD_LINK_TYPE_LABELS[l.linkType] ?? l.linkType;
+              const fromHere = l.fromRecordId === currentRecordId;
+              const directionText = fromHere
+                ? `This request → ${typeLabel} →`
+                : `→ ${typeLabel} → this request`;
               return (
                 <li key={l.id}>
                   <Link
                     href={`/app/requests/${otherId}`}
-                    className="flex items-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 py-2 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--text-primary)"
+                    className="flex flex-col gap-0.5 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 py-2 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--text-primary)"
                   >
-                    <IconLink size={13} className="shrink-0 text-(--text-muted)" />
-                    <span className="shrink-0 text-xs text-(--text-muted)">{direction}</span>
-                    <span className="truncate text-xs text-(--text-primary)">{otherId}</span>
+                    <span className="flex items-center gap-2">
+                      <IconLink size={13} className="shrink-0 text-(--text-muted)" />
+                      <span className="text-xs text-(--text-muted)">{directionText}</span>
+                    </span>
+                    <span className="truncate pl-5 font-mono text-xs text-(--color-primary)">
+                      {otherId}
+                    </span>
                   </Link>
                 </li>
               );
@@ -1462,7 +1881,7 @@ function PaymentSection({
             )}
           </>
         ) : (
-          <p className="text-sm text-(--text-muted)">No payment record.</p>
+          <p className="text-sm text-(--text-muted)">No payment information recorded.</p>
         )}
       </CardContent>
     </CardRoot>

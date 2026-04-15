@@ -41,14 +41,19 @@ function RequestsListSkeleton() {
         <Skeleton className="h-7 w-32" />
         <Skeleton className="h-9 w-36" />
       </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {[1, 2, 3, 4, 5].map((i) => (
+          <Skeleton key={i} className="h-24 w-full rounded-xl" />
+        ))}
+      </div>
       <div className="flex gap-1.5">
         {[1, 2, 3, 4].map((i) => (
-          <Skeleton key={i} className="h-11 w-24" />
+          <Skeleton key={i} className="h-9 w-28" />
         ))}
       </div>
       <div className="space-y-2">
         {[1, 2, 3, 4, 5].map((i) => (
-          <Skeleton key={i} className="h-16 w-full rounded-lg" />
+          <Skeleton key={i} className="h-20 w-full rounded-lg" />
         ))}
       </div>
     </div>

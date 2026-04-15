@@ -4,45 +4,30 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/spinner";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { useToast } from "@/components/ui/toast";
-import { CURRENCY_OPTIONS } from "@/lib/currencies";
-import { IconUpload, IconPlus, IconChevronRight } from "@/components/ui/icons";
+import {
+  IconUpload,
+  IconPlus,
+  IconChevronRight,
+  IconCheck,
+} from "@/components/ui/icons";
+import { Badge } from "@/components/ui/badge";
 import { LinkRecordModal } from "./link-record-modal";
+import {
+  FinanceRequestWizard,
+  type CreateSuccessPayload,
+} from "./create-request-form";
+import {
+  RECORD_STATUS_BADGE,
+  RECORD_STATUS_LABELS,
+  RECORD_TYPE_LABELS,
+  formatAmount,
+} from "@/lib/record-utils";
+import type { RecordType } from "@/types/records";
 
-const RECORD_TYPES = [
-  {
-    value: "SCOPE_CHANGE" as const,
-    label: "Scope Change",
-    desc: "Changes to project scope or requirements",
-    showAmount: false,
-  },
-  {
-    value: "DECISION" as const,
-    label: "Decision",
-    desc: "Key decisions that need approval",
-    showAmount: false,
-  },
-  {
-    value: "BUDGET" as const,
-    label: "Budget",
-    desc: "Financial requests requiring sign-off",
-    showAmount: true,
-  },
-];
-
-type RecordTypeValue = "SCOPE_CHANGE" | "DECISION" | "BUDGET";
-type FormState = {
-  title: string;
-  type: RecordTypeValue;
-  description: string;
-  amount: string;
-  currency: string;
-};
-type FieldError = Partial<Record<keyof FormState, string>>;
 type WorkspaceUser = { user: { id: string; name: string | null; email: string | null } };
 
 function resolveMimeType(file: File): string {
@@ -66,35 +51,21 @@ function resolveMimeType(file: File): string {
   return "image/png";
 }
 
-export function CreateRequestModal({
-  open,
-  onClose,
-  sourceRecordId: _sourceRecordId,
-}: {
+type Props = {
   open: boolean;
   onClose: () => void;
   sourceRecordId?: string;
-}) {
-  void _sourceRecordId;
+};
+
+export function CreateRequestModal({ open, onClose, sourceRecordId }: Props) {
   const router = useRouter();
   const apiFetch = useApiFetch();
   const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [form, setForm] = useState<FormState>({
-    title: "",
-    type: "SCOPE_CHANGE",
-    description: "",
-    amount: "",
-    currency: "",
-  });
-  const [errors, setErrors] = useState<FieldError>({});
-  const [submitting, setSubmitting] = useState(false);
-  const [savingDraft, setSavingDraft] = useState(false);
-  const [globalError, setGlobalError] = useState<string | null>(null);
-
-  const [createdRecordId, setCreatedRecordId] = useState<string | null>(null);
-  const [createdTitle, setCreatedTitle] = useState("");
+  const [wizardMount, setWizardMount] = useState(0);
+  const [successPayload, setSuccessPayload] = useState<CreateSuccessPayload | null>(null);
+  const [linkingSource, setLinkingSource] = useState(false);
 
   const [uploadMode, setUploadMode] = useState<"idle" | "link" | "uploading">("idle");
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
@@ -114,6 +85,8 @@ export function CreateRequestModal({
   const [approverCount, setApproverCount] = useState(0);
   const [approverError, setApproverError] = useState<string | null>(null);
 
+  const createdRecordId = successPayload?.id ?? null;
+
   useEffect(() => {
     if (!open) return;
     apiFetch("/api/tenant", { showToastOnError: false })
@@ -124,9 +97,8 @@ export function CreateRequestModal({
         }) => {
           const def = json.data?.tenants?.find((t) => t.isDefaultTenant);
           if (def?.currency) {
-            setForm((prev) =>
-              prev.currency ? prev : { ...prev, currency: def.currency ?? "" }
-            );
+            /* default currency applied inside wizard on first mount */
+            void def.currency;
           }
         }
       )
@@ -135,11 +107,7 @@ export function CreateRequestModal({
 
   useEffect(() => {
     if (!open) {
-      setForm({ title: "", type: "SCOPE_CHANGE", description: "", amount: "", currency: "" });
-      setErrors({});
-      setGlobalError(null);
-      setCreatedRecordId(null);
-      setCreatedTitle("");
+      setSuccessPayload(null);
       setUploadMode("idle");
       setUploadError(null);
       setEvidenceCount(0);
@@ -149,6 +117,9 @@ export function CreateRequestModal({
       setLinkRecordOpen(false);
       setLinkLabel("");
       setLinkUrl("");
+      setLinkingSource(false);
+    } else {
+      setWizardMount((k) => k + 1);
     }
   }, [open]);
 
@@ -164,87 +135,27 @@ export function CreateRequestModal({
       .finally(() => setApproverLoading(false));
   }, [approverOpen, approverUsers.length, apiFetch]);
 
-  function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
-    setForm((prev) => ({ ...prev, [key]: value }));
-    setErrors((prev) => ({ ...prev, [key]: undefined }));
-    setGlobalError(null);
-  }
-
-  function validate(): FieldError {
-    const e: FieldError = {};
-    if (!form.title.trim()) e.title = "Title is required.";
-    if (form.title.trim().length > 160) e.title = "Title must be 160 characters or less.";
-    const t = RECORD_TYPES.find((x) => x.value === form.type);
-    if (t?.showAmount && form.amount && isNaN(Number(form.amount)))
-      e.amount = "Amount must be a number.";
-    if (t?.showAmount && form.amount && Number(form.amount) < 0)
-      e.amount = "Amount must be zero or positive.";
-    return e;
-  }
-
-  async function submit(status: "OPEN" | "DRAFT") {
-    const fieldErrors = validate();
-    if (Object.keys(fieldErrors).length > 0) {
-      setErrors(fieldErrors);
-      return;
-    }
-    if (status === "DRAFT") setSavingDraft(true);
-    else setSubmitting(true);
-    setGlobalError(null);
-
-    const t = RECORD_TYPES.find((x) => x.value === form.type);
-    const body: Record<string, unknown> = {
-      title: form.title.trim(),
-      type: form.type,
-      status,
-    };
-    if (form.description.trim()) body.description = form.description.trim();
-    if (t?.showAmount && form.amount) body.amount = Number(form.amount);
-    if (t?.showAmount && form.currency) body.currency = form.currency;
-
-    try {
-      const res = await apiFetch("/api/records", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        showToastOnError: false,
-      });
-      const payload = (await res.json().catch(() => ({}))) as {
-        data?: { id: string; title: string };
-        error?: { code?: string; message?: string; details?: { code?: string } };
-      };
-      if (res.status === 403 && payload.error?.details?.code === "UPGRADE_REQUIRED") {
-        setGlobalError("You've reached your plan's request limit. Upgrade to create more.");
-        return;
+  async function handleWizardSuccess(payload: CreateSuccessPayload) {
+    if (sourceRecordId && sourceRecordId !== payload.id) {
+      setLinkingSource(true);
+      try {
+        const res = await apiFetch(`/api/records/${sourceRecordId}/links`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ toRecordId: payload.id, linkType: "RELATED" }),
+          showToastOnError: false,
+        });
+        if (!res.ok) {
+          const j = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+          toast.addToast("error", j.error?.message ?? "Could not link to source request.");
+        }
+      } catch {
+        toast.addToast("error", "Could not link to source request.");
+      } finally {
+        setLinkingSource(false);
       }
-      if (!res.ok) {
-        setGlobalError(payload.error?.message ?? "Something went wrong.");
-        return;
-      }
-      const id = payload.data?.id;
-      if (!id) {
-        setGlobalError("Something went wrong.");
-        return;
-      }
-
-      setCreatedRecordId(id);
-      setCreatedTitle(form.title.trim());
-      toast.addToast("success", status === "DRAFT" ? "Draft saved." : "Request created.");
-    } catch {
-      setGlobalError("Network error. Please try again.");
-    } finally {
-      setSavingDraft(false);
-      setSubmitting(false);
     }
-  }
-
-  function handleDone() {
-    if (!createdRecordId) {
-      onClose();
-      return;
-    }
-    onClose();
-    router.push(`/app/requests/${createdRecordId}`);
+    setSuccessPayload(payload);
   }
 
   async function uploadFile(file: File) {
@@ -403,134 +314,176 @@ export function CreateRequestModal({
     }
     document.addEventListener("paste", handlePaste);
     return () => document.removeEventListener("paste", handlePaste);
-  }, [createdRecordId, uploadMode]); // eslint-disable-line react-hooks/exhaustive-deps -- uploadFile closes over latest state
+  }, [createdRecordId, uploadMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const selectedType = RECORD_TYPES.find((t) => t.value === form.type);
-  const isLoading = submitting || savingDraft;
-  const step = createdRecordId ? 2 : 1;
+  function handleViewRequest(hash?: string) {
+    if (!createdRecordId) return;
+    onClose();
+    router.push(`/app/requests/${createdRecordId}${hash ? `#${hash}` : ""}`);
+  }
 
-  if (step === 2 && createdRecordId) {
+  function handleCreateAnother() {
+    setSuccessPayload(null);
+    setWizardMount((k) => k + 1);
+    setEvidenceCount(0);
+    setApproverCount(0);
+    setUploadMode("idle");
+    setUploadError(null);
+  }
+
+  const isLoading = linkingSource;
+
+  if (successPayload && createdRecordId) {
+    const st = successPayload.status;
     return (
       <>
         <Dialog
           open={open}
           onClose={onClose}
           title="Request created"
-          description={`"${createdTitle}" was created. Optionally add evidence and approvers before finishing.`}
+          description="Your request is ready. Complete the checklist or view it now."
           contentClassName="max-w-2xl"
         >
           <div className="space-y-6">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-(--text-primary)">
-                  Evidence
-                  {evidenceCount > 0 && (
-                    <span className="ml-1.5 font-normal text-(--text-muted)">
-                      ({evidenceCount})
-                    </span>
-                  )}
-                </h3>
+            <div className="flex flex-col items-center text-center">
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-(--color-success-soft) text-(--color-success)">
+                <IconCheck size={24} strokeWidth={2} />
               </div>
+              <h3 className="text-lg font-semibold text-(--text-primary)">Request created</h3>
+              <p className="mt-1 text-sm text-(--text-muted)">
+                {successPayload.recordKey ?? successPayload.title}
+              </p>
+              <div className="mt-3 flex flex-wrap justify-center gap-2">
+                <Badge variant="secondary">{RECORD_TYPE_LABELS[successPayload.type as RecordType]}</Badge>
+                <Badge variant={RECORD_STATUS_BADGE[st]}>
+                  {RECORD_STATUS_LABELS[st]}
+                </Badge>
+              </div>
+              {successPayload.requestedAmount != null && (
+                <p className="mt-2 text-sm font-medium text-(--text-primary)">
+                  {formatAmount(
+                    successPayload.requestedAmount,
+                    successPayload.currencyCode
+                  )}
+                </p>
+              )}
+            </div>
 
+            <div>
+              <p className="mb-2 text-sm font-semibold text-(--text-primary)">
+                Next steps
+              </p>
+              <ul className="space-y-2">
+                <li>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      document.getElementById("modal-post-create-evidence")?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "start",
+                      })
+                    }
+                    className="flex w-full items-start gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 py-2.5 text-left text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)"
+                  >
+                    <span className="text-(--text-muted)">{evidenceCount > 0 ? "✅" : "☐"}</span>
+                    <span>
+                      Add supporting evidence
+                      {evidenceCount > 0 && (
+                        <span className="ml-1 text-xs text-(--color-success)">(added)</span>
+                      )}
+                    </span>
+                  </button>
+                </li>
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => setApproverOpen(true)}
+                    className="flex w-full items-start gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 py-2.5 text-left text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)"
+                  >
+                    <span className="text-(--text-muted)">{approverCount > 0 ? "✅" : "☐"}</span>
+                    <span>Assign approvers</span>
+                  </button>
+                </li>
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => setLinkRecordOpen(true)}
+                    className="flex w-full items-start gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 py-2.5 text-left text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)"
+                  >
+                    <span className="text-(--text-muted)">☐</span>
+                    <span>Link related requests (optional)</span>
+                  </button>
+                </li>
+              </ul>
+            </div>
+
+            <div
+              id="modal-post-create-evidence"
+              className="space-y-3 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) p-3"
+            >
+              <p className="text-xs font-medium text-(--text-muted)">Add evidence now (optional)</p>
               {uploadError && <p className="text-xs text-(--color-danger)">{uploadError}</p>}
-
               {uploadMode === "uploading" && (
-                <div className="flex items-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 py-2 text-sm text-(--text-muted)">
+                <div className="flex items-center gap-2 text-sm text-(--text-muted)">
                   <Spinner size="sm" />
                   {uploadProgress ?? "Uploading…"}
                 </div>
               )}
-
               {uploadMode === "link" && (
-                <form
-                  onSubmit={handleAddLink}
-                  className="space-y-3 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) p-3"
-                >
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="block text-xs font-medium text-(--text-primary)">
-                        Label *
-                      </label>
-                      <Input
-                        value={linkLabel}
-                        onChange={(e) => setLinkLabel(e.target.value)}
-                        placeholder="Invoice #1234"
-                        maxLength={255}
-                        disabled={linkSubmitting}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="block text-xs font-medium text-(--text-primary)">
-                        URL *
-                      </label>
-                      <Input
-                        type="url"
-                        value={linkUrl}
-                        onChange={(e) => setLinkUrl(e.target.value)}
-                        placeholder="https://…"
-                        maxLength={2048}
-                        disabled={linkSubmitting}
-                      />
-                    </div>
+                <form onSubmit={handleAddLink} className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      value={linkLabel}
+                      onChange={(e) => setLinkLabel(e.target.value)}
+                      placeholder="Label"
+                      disabled={linkSubmitting}
+                    />
+                    <Input
+                      type="url"
+                      value={linkUrl}
+                      onChange={(e) => setLinkUrl(e.target.value)}
+                      placeholder="URL"
+                      disabled={linkSubmitting}
+                    />
                   </div>
                   <div className="flex gap-2">
                     <button
                       type="submit"
-                      disabled={linkSubmitting || !linkLabel.trim() || !linkUrl.trim()}
-                      className="inline-flex h-8 items-center gap-1 rounded-lg bg-(--color-primary) px-3 text-xs font-medium text-white transition-colors hover:bg-(--color-primary-hover) disabled:opacity-60"
+                      disabled={linkSubmitting}
+                      className="h-8 rounded bg-(--color-primary) px-3 text-xs text-white"
                     >
-                      {linkSubmitting && <Spinner size="sm" />}
-                      Add
+                      Add link
                     </button>
                     <button
                       type="button"
                       onClick={() => setUploadMode("idle")}
-                      className="inline-flex h-8 items-center rounded-lg border border-(--border-subtle) px-3 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)"
+                      className="h-8 rounded border px-3 text-xs"
                     >
                       Cancel
                     </button>
                   </div>
                 </form>
               )}
-
               {uploadMode === "idle" && (
-                <div
-                  className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-(--border-subtle) bg-(--bg-surface-elev) px-4 py-6 text-center transition-colors hover:border-(--color-primary) hover:bg-(--color-primary-soft)"
-                  onClick={() => fileInputRef.current?.click()}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const f = e.dataTransfer.files[0];
-                    if (f) void uploadFile(f);
-                  }}
-                >
-                  <IconUpload size={20} className="text-(--text-muted)" />
-                  <div>
-                    <p className="text-sm font-medium text-(--text-primary)">
-                      Drop files here or click to upload
-                    </p>
-                    <p className="mt-0.5 text-xs text-(--text-muted)">
-                      Images, PDF, Word, Excel, CSV · Max 25 MB · You can also paste a screenshot
-                      (Ctrl/Cmd+V)
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-(--text-muted)">or</span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setUploadMode("link");
-                      }}
-                      className="inline-flex h-7 items-center gap-1 rounded border border-(--border-subtle) bg-(--bg-surface) px-2.5 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)"
-                    >
-                      <IconPlus size={11} />
-                      Add link
-                    </button>
-                  </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="inline-flex h-8 items-center gap-1 rounded border px-3 text-xs"
+                  >
+                    <IconUpload size={14} />
+                    Upload file
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUploadMode("link")}
+                    className="inline-flex h-8 items-center gap-1 rounded border px-3 text-xs"
+                  >
+                    <IconPlus size={12} />
+                    Link URL
+                  </button>
                 </div>
               )}
-
               <input
                 ref={fileInputRef}
                 type="file"
@@ -544,35 +497,27 @@ export function CreateRequestModal({
               />
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-2">
               <button
                 type="button"
                 onClick={() => setApproverOpen((o) => !o)}
                 className="flex w-full items-center justify-between text-sm font-semibold text-(--text-primary)"
               >
-                <span>
-                  Approvers
-                  {approverCount > 0 && (
-                    <span className="ml-1.5 font-normal text-(--text-muted)">
-                      ({approverCount})
-                    </span>
-                  )}
-                </span>
+                <span>Assign approver from here</span>
                 <IconChevronRight
                   size={14}
                   className={`text-(--text-muted) transition-transform ${approverOpen ? "rotate-90" : ""}`}
                 />
               </button>
-
               {approverOpen && (
-                <div className="space-y-2">
+                <div className="space-y-2 rounded border border-(--border-subtle) p-3">
                   {approverError && (
                     <p className="text-xs text-(--color-danger)">{approverError}</p>
                   )}
                   {approverLoading ? (
                     <div className="flex items-center gap-2 text-sm text-(--text-muted)">
                       <Spinner size="sm" />
-                      Loading team members…
+                      Loading…
                     </div>
                   ) : (
                     <div className="flex gap-2">
@@ -593,39 +538,29 @@ export function CreateRequestModal({
                         type="button"
                         onClick={() => void handleAssignApprover()}
                         disabled={approverSubmitting || !approverSelectedId}
-                        className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white transition-colors hover:bg-(--color-primary-hover) disabled:opacity-60"
+                        className="inline-flex h-10 items-center gap-1 rounded-lg bg-(--color-primary) px-3 text-sm text-white disabled:opacity-60"
                       >
                         {approverSubmitting ? <Spinner size="sm" /> : <IconPlus size={14} />}
                         Assign
                       </button>
                     </div>
                   )}
-                  {approverCount > 0 && (
-                    <p className="text-xs text-(--color-success)">
-                      {approverCount} approver{approverCount > 1 ? "s" : ""} assigned
-                    </p>
-                  )}
                 </div>
               )}
             </div>
 
-            <div className="space-y-2">
-              <h3 className="text-sm font-semibold text-(--text-primary)">Linked requests</h3>
+            <div className="flex flex-col gap-2 border-t border-(--border-subtle) pt-4 sm:flex-row sm:justify-between">
               <button
                 type="button"
-                onClick={() => setLinkRecordOpen(true)}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)"
+                onClick={handleCreateAnother}
+                className="inline-flex h-9 items-center justify-center rounded-lg border px-4 text-sm text-(--text-secondary)"
               >
-                <IconPlus size={14} />
-                Link to existing request
+                Create another
               </button>
-            </div>
-
-            <div className="flex justify-end gap-2 border-t border-(--border-subtle) pt-4">
               <button
                 type="button"
-                onClick={handleDone}
-                className="inline-flex h-9 items-center gap-2 rounded-lg bg-(--color-primary) px-5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-(--color-primary-hover)"
+                onClick={() => handleViewRequest()}
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-(--color-primary) px-5 text-sm font-medium text-white"
               >
                 View request
                 <IconChevronRight size={14} />
@@ -650,153 +585,22 @@ export function CreateRequestModal({
     <Dialog
       open={open}
       onClose={isLoading ? () => {} : onClose}
-      title="New Request"
-      description="Fill in the details to create a new request."
+      title="New financial request"
+      description="Step 1 of 3 — Category & basics · Details · Review"
       contentClassName="max-w-2xl"
       closeDisabled={isLoading}
     >
-      <div className="space-y-5">
-        {globalError && (
-          <div className="rounded-lg border border-(--color-danger-soft) bg-(--color-danger-soft) px-4 py-3 text-sm text-(--color-danger)">
-            {globalError}
-          </div>
-        )}
-
-        <div className="space-y-1.5">
-          <label className="block text-sm font-medium text-(--text-primary)">
-            Title <span className="text-(--color-danger)">*</span>
-          </label>
-          <Input
-            value={form.title}
-            onChange={(e) => setField("title", e.target.value)}
-            placeholder="e.g. Q2 budget approval"
-            maxLength={160}
-            disabled={isLoading}
-            className={errors.title ? "border-(--color-danger)" : ""}
-          />
-          <div className="flex justify-between">
-            {errors.title ? (
-              <p className="text-xs text-(--color-danger)">{errors.title}</p>
-            ) : (
-              <span />
-            )}
-            <p className="text-xs text-(--text-muted)">{form.title.length}/160</p>
-          </div>
+      {linkingSource && (
+        <div className="mb-4 flex items-center gap-2 text-sm text-(--text-muted)">
+          <Spinner size="sm" />
+          Linking to source request…
         </div>
-
-        <div className="space-y-1.5">
-          <label className="block text-sm font-medium text-(--text-primary)">
-            Type <span className="text-(--color-danger)">*</span>
-          </label>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            {RECORD_TYPES.map((t) => (
-              <button
-                key={t.value}
-                type="button"
-                onClick={() => setField("type", t.value)}
-                disabled={isLoading}
-                className={[
-                  "rounded-lg border p-3 text-left transition-colors",
-                  form.type === t.value
-                    ? "border-(--color-primary) bg-(--color-primary-soft)"
-                    : "border-(--border-subtle) bg-(--bg-surface-elev) hover:bg-(--bg-surface-hover)",
-                ].join(" ")}
-              >
-                <p
-                  className={[
-                    "text-sm font-medium",
-                    form.type === t.value
-                      ? "text-(--color-primary)"
-                      : "text-(--text-primary)",
-                  ].join(" ")}
-                >
-                  {t.label}
-                </p>
-                <p className="mt-0.5 text-xs text-(--text-muted)">{t.desc}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="block text-sm font-medium text-(--text-primary)">
-            Description <span className="font-normal text-(--text-muted)">(optional)</span>
-          </label>
-          <Textarea
-            value={form.description}
-            onChange={(e) => setField("description", e.target.value)}
-            placeholder="Provide additional context…"
-            rows={3}
-            maxLength={5000}
-            disabled={isLoading}
-          />
-        </div>
-
-        {selectedType?.showAmount && (
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-(--text-primary)">
-                Amount <span className="font-normal text-(--text-muted)">(optional)</span>
-              </label>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.amount}
-                onChange={(e) => setField("amount", e.target.value)}
-                placeholder="0.00"
-                disabled={isLoading}
-                className={errors.amount ? "border-(--color-danger)" : ""}
-              />
-              {errors.amount && (
-                <p className="text-xs text-(--color-danger)">{errors.amount}</p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-(--text-primary)">
-                Currency <span className="font-normal text-(--text-muted)">(optional)</span>
-              </label>
-              <SearchableSelect
-                options={CURRENCY_OPTIONS}
-                value={form.currency}
-                onChange={(v) => setField("currency", v)}
-                placeholder="Search currency…"
-              />
-            </div>
-          </div>
-        )}
-
-        <div className="flex items-center justify-between gap-3 border-t border-(--border-subtle) pt-4">
-          <button
-            type="button"
-            onClick={() => void submit("DRAFT")}
-            disabled={isLoading || !form.title.trim()}
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:opacity-60"
-          >
-            {savingDraft && <Spinner size="sm" />}
-            {savingDraft ? "Saving…" : "Save as draft"}
-          </button>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isLoading}
-              className="inline-flex h-9 items-center rounded-lg border border-(--border-subtle) px-4 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:opacity-60"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => void submit("OPEN")}
-              disabled={isLoading || !form.title.trim()}
-              className="inline-flex h-9 items-center gap-2 rounded-lg bg-(--color-primary) px-5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-(--color-primary-hover) disabled:opacity-60"
-            >
-              {submitting && <Spinner size="sm" />}
-              {submitting ? "Creating…" : "Create request"}
-            </button>
-          </div>
-        </div>
-      </div>
+      )}
+      <FinanceRequestWizard
+        key={wizardMount}
+        variant="modal"
+        onSubmitSuccess={handleWizardSuccess}
+      />
     </Dialog>
   );
 }

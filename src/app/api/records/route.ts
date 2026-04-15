@@ -12,14 +12,60 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { parseBody, createRecordSchema } from "@/lib/validations";
 
+const RECORD_TYPES_FOR_FILTER = [
+  "SCOPE_CHANGE",
+  "DECISION",
+  "BUDGET",
+  "BUDGET_REQUEST",
+  "SPEND_APPROVAL",
+  "VENDOR_PAYMENT_REQUEST",
+  "REIMBURSEMENT",
+  "FINANCIAL_EXCEPTION",
+  "CONTRACT_SCOPE_CHANGE",
+  "FORECAST_ADJUSTMENT",
+  "OTHER_FINANCIAL_REQUEST",
+] as const;
+
+function prismaDecimalToNumber(value: unknown): number | null {
+  if (value == null) return null;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "object" && value !== null && "toNumber" in value) {
+    try {
+      const n = (value as { toNumber: () => number }).toNumber();
+      return Number.isFinite(n) ? n : null;
+    } catch {
+      return null;
+    }
+  }
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 // ─── C2/C3 list query ─────────────────────────────────────────────────────────
 
 const listQuerySchema = z.object({
   tab: z.enum(["my", "shared", "inbox", "mentioned", "all"]).default("my"),
   status: z
-    .enum(["OPEN", "CLOSED", "DRAFT", "PENDING_APPROVAL", "APPROVED", "REJECTED", "NO_RESPONSE"])
+    .enum([
+      "OPEN",
+      "CLOSED",
+      "DRAFT",
+      "PENDING_APPROVAL",
+      "APPROVED",
+      "REJECTED",
+      "NO_RESPONSE",
+      "IN_REVIEW",
+      "AWAITING_INFO",
+      "CANCELED",
+    ])
     .optional(),
-  type: z.enum(["SCOPE_CHANGE", "DECISION", "BUDGET"]).optional(),
+  type: z.enum(RECORD_TYPES_FOR_FILTER).optional(),
+  category: z.enum(RECORD_TYPES_FOR_FILTER).optional(),
+  priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]).optional(),
+  overdue: z.enum(["true", "false"]).optional(),
+  hasPolicyException: z.enum(["true", "false"]).optional(),
+  neededByFrom: z.string().datetime().optional(),
+  neededByTo: z.string().datetime().optional(),
   search: z.string().max(200).trim().optional(),
   currency: z.string().regex(/^[A-Z]{3}$/).optional(),
   amountMin: z.coerce.number().min(0).optional(),
@@ -31,7 +77,16 @@ const listQuerySchema = z.object({
   dateTo: z.string().datetime().optional(),
   cursor: z.string().cuid().optional(),
   limit: z.coerce.number().int().min(1).max(50).default(25),
-  sort: z.enum(["newest", "amount_desc"]).default("newest"),
+  sort: z
+    .enum([
+      "newest",
+      "oldest",
+      "amount_desc",
+      "amount_asc",
+      "needed_by_asc",
+      "updated_desc",
+    ])
+    .default("newest"),
 });
 
 // ─── GET /api/records ────────────────────────────────────────────────────────
@@ -116,7 +171,15 @@ export const GET = withErrorHandler(async (req: Request) => {
 
   const filters: Prisma.RecordWhereInput[] = [];
   if (q.status) filters.push({ status: q.status });
-  if (q.type) filters.push({ type: q.type });
+  const recordTypeFilter = q.category ?? q.type;
+  if (recordTypeFilter) filters.push({ type: recordTypeFilter });
+  if (q.priority) filters.push({ priority: q.priority });
+  if (q.overdue === "true") filters.push({ overdue: true });
+  if (q.overdue === "false") filters.push({ overdue: false });
+  if (q.hasPolicyException === "true") filters.push({ hasPolicyException: true });
+  if (q.hasPolicyException === "false") filters.push({ hasPolicyException: false });
+  if (q.neededByFrom) filters.push({ neededByDate: { gte: new Date(q.neededByFrom) } });
+  if (q.neededByTo) filters.push({ neededByDate: { lte: new Date(q.neededByTo) } });
   if (q.currency) filters.push({ currency: q.currency });
   if (q.search) {
     filters.push({
@@ -157,10 +220,23 @@ export const GET = withErrorHandler(async (req: Request) => {
   const accessFilter: Prisma.RecordWhereInput =
     q.tab === "all" ? {} : buildRecordAccessFilter({ tenantId, userId, canReadAll });
 
-  const orderBy: Prisma.RecordOrderByWithRelationInput[] =
-    q.sort === "amount_desc"
-      ? [{ amount: "desc" }, { id: "desc" }]
-      : [{ createdAt: "desc" }, { id: "desc" }];
+  const orderBy: Prisma.RecordOrderByWithRelationInput[] = (() => {
+    switch (q.sort) {
+      case "oldest":
+        return [{ createdAt: "asc" }, { id: "asc" }];
+      case "amount_desc":
+        return [{ amount: "desc" }, { id: "desc" }];
+      case "amount_asc":
+        return [{ amount: "asc" }, { id: "asc" }];
+      case "needed_by_asc":
+        return [{ neededByDate: "asc" }, { id: "asc" }];
+      case "updated_desc":
+        return [{ updatedAt: "desc" }, { id: "desc" }];
+      case "newest":
+      default:
+        return [{ createdAt: "desc" }, { id: "desc" }];
+    }
+  })();
 
   const listWhere: Prisma.RecordWhereInput = {
     tenantId,
@@ -178,6 +254,14 @@ export const GET = withErrorHandler(async (req: Request) => {
     currency: true,
     createdByUserId: true,
     createdAt: true,
+    priority: true,
+    neededByDate: true,
+    requestedAmount: true,
+    currencyCode: true,
+    approvalStatus: true,
+    overdue: true,
+    hasPolicyException: true,
+    recordKey: true,
   } as const;
 
   const records = q.cursor
@@ -231,6 +315,10 @@ export const GET = withErrorHandler(async (req: Request) => {
 
   const result = page.map((r) => ({
     ...r,
+    amount: prismaDecimalToNumber(r.amount),
+    requestedAmount: prismaDecimalToNumber(r.requestedAmount),
+    neededByDate: r.neededByDate ? r.neededByDate.toISOString() : null,
+    createdAt: r.createdAt.toISOString(),
     hasCriticalComment: criticalSet.has(r.id),
     hasUnreadMention: unreadMentionSet.has(r.id),
   }));
@@ -294,6 +382,10 @@ export const POST = withErrorHandler(async (req: Request) => {
   }
 
   // 8. Create record + emit event + audit log in one transaction
+  const legacyAmount =
+    body.amount != null ? body.amount : body.requestedAmount != null ? body.requestedAmount : null;
+  const legacyCurrency = body.currency ?? body.currencyCode ?? null;
+
   const created = await prisma.$transaction(async (tx) => {
     const record = await tx.record.create({
       data: {
@@ -304,13 +396,65 @@ export const POST = withErrorHandler(async (req: Request) => {
         description: body.description ?? null,
         clientName: body.clientName ?? null,
         clientEmail: body.clientEmail ?? null,
-        amount: body.amount != null ? body.amount : null,
-        currency: body.currency ?? null,
+        amount: legacyAmount,
+        currency: legacyCurrency,
         visibility: body.visibility,
         isSensitive: body.isSensitive,
         status: initialStatus,
+        requestedAmount: body.requestedAmount != null ? body.requestedAmount : null,
+        currencyCode: body.currencyCode ?? body.currency ?? null,
+        businessJustification: body.businessJustification ?? null,
+        vendorName: body.vendorName ?? null,
+        payeeName: body.payeeName ?? null,
+        invoiceNumber: body.invoiceNumber ?? null,
+        contractReference: body.contractReference ?? null,
+        purchaseOrderRef: body.purchaseOrderRef ?? null,
+        priority: body.priority ?? "MEDIUM",
+        departmentName: body.departmentName ?? null,
+        costCenterCode: body.costCenterCode ?? null,
+        neededByDate: body.neededByDate ? new Date(body.neededByDate) : null,
+        hasPolicyException: body.hasPolicyException ?? false,
+        policyExceptionReason: body.policyExceptionReason ?? null,
+        isRecurring: body.isRecurring ?? false,
+        recurrenceNotes: body.recurrenceNotes ?? null,
+        amountIsEstimated: body.amountIsEstimated ?? false,
+        budgetImpactType: body.budgetImpactType ?? null,
       },
-      select: { id: true, title: true, type: true, status: true, createdAt: true },
+      select: {
+        id: true,
+        title: true,
+        type: true,
+        status: true,
+        createdAt: true,
+        priority: true,
+        requestedAmount: true,
+        currencyCode: true,
+        neededByDate: true,
+      },
+    });
+
+    const seqCount = await tx.record.count({
+      where: { tenantId },
+    });
+    const year = new Date().getFullYear();
+    const seq = String(seqCount).padStart(6, "0");
+    const recordKey = `REQ-${year}-${seq}`;
+
+    const updatedRecord = await tx.record.update({
+      where: { id: record.id },
+      data: { recordKey },
+      select: {
+        id: true,
+        title: true,
+        type: true,
+        status: true,
+        createdAt: true,
+        priority: true,
+        requestedAmount: true,
+        currencyCode: true,
+        neededByDate: true,
+        recordKey: true,
+      },
     });
 
     await tx.recordEvent.create({
@@ -322,8 +466,10 @@ export const POST = withErrorHandler(async (req: Request) => {
         metadata: {
           title: record.title,
           type: record.type,
+          priority: body.priority,
           ...(body.amount != null ? { amount: body.amount } : {}),
           ...(body.currency ? { currency: body.currency } : {}),
+          ...(body.requestedAmount != null ? { requestedAmount: body.requestedAmount } : {}),
         },
       },
     });
@@ -339,14 +485,16 @@ export const POST = withErrorHandler(async (req: Request) => {
         metadata: {
           title: record.title,
           recordType: record.type,
+          priority: body.priority,
           ...(body.amount != null ? { amount: body.amount } : {}),
           ...(body.currency ? { currency: body.currency } : {}),
+          ...(body.requestedAmount != null ? { requestedAmount: body.requestedAmount } : {}),
         },
       },
     });
 
-    return record;
-   });
+    return updatedRecord;
+  });
 
   // 9. Increment usage counter only for OPEN creates (after successful transaction)
   if (initialStatus === "OPEN") {
@@ -368,6 +516,11 @@ export const POST = withErrorHandler(async (req: Request) => {
       type: created.type,
       status: created.status,
       createdAt: created.createdAt,
+      priority: created.priority,
+      requestedAmount: prismaDecimalToNumber(created.requestedAmount),
+      currencyCode: created.currencyCode,
+      neededByDate: created.neededByDate ? created.neededByDate.toISOString() : null,
+      recordKey: created.recordKey,
     },
     201
   );

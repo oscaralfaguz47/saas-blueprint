@@ -12,6 +12,23 @@ import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().cuid() });
 
+const closeBodySchema = z.object({
+  closeReason: z
+    .enum([
+      "APPROVED_AND_COMPLETED",
+      "REJECTED",
+      "WITHDRAWN_BY_REQUESTER",
+      "DUPLICATE",
+      "SUPERSEDED",
+      "NO_ACTION_REQUIRED",
+      "PAID_OR_SETTLED",
+      "CANCELED",
+      "OTHER",
+    ])
+    .optional(),
+  closeReasonNotes: z.string().max(1000).trim().optional(),
+});
+
 /**
  * POST /api/records/[id]/close
  * B3 — Close a record (OPEN → CLOSED).
@@ -24,7 +41,7 @@ const paramsSchema = z.object({ id: z.string().cuid() });
  * Other statuses: 409 conflict.
  */
 export const POST = withErrorHandler(async (
-  _req: Request,
+  req: Request,
   context: { params: Promise<{ id: string }> }
 ) => {
   const session = await getServerSession(authOptions);
@@ -76,6 +93,25 @@ export const POST = withErrorHandler(async (
     );
   }
 
+  const contentType = req.headers.get("content-type") ?? "";
+  let closeBody: z.infer<typeof closeBodySchema> = {};
+  if (contentType.toLowerCase().includes("application/json")) {
+    const text = await req.text();
+    if (text.trim()) {
+      let json: unknown;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        return ApiErrors.VALIDATION_ERROR("Invalid request body format");
+      }
+      const parsed = closeBodySchema.safeParse(json);
+      if (!parsed.success) {
+        return ApiErrors.VALIDATION_ERROR("Validation failed", parsed.error.flatten());
+      }
+      closeBody = parsed.data;
+    }
+  }
+
   const closedAt = new Date();
 
   const updated = await prisma.$transaction(async (tx) => {
@@ -85,6 +121,10 @@ export const POST = withErrorHandler(async (
         status: "CLOSED",
         closedAt,
         closedByUserId: session.user.id,
+        ...(closeBody.closeReason != null ? { closeReason: closeBody.closeReason } : {}),
+        ...(closeBody.closeReasonNotes != null
+          ? { closeReasonNotes: closeBody.closeReasonNotes }
+          : {}),
       },
     });
 
@@ -99,6 +139,10 @@ export const POST = withErrorHandler(async (
         metadata: {
           previousStatus: "OPEN",
           newStatus: "CLOSED",
+          ...(closeBody.closeReason != null ? { closeReason: closeBody.closeReason } : {}),
+          ...(closeBody.closeReasonNotes != null
+            ? { closeReasonNotes: closeBody.closeReasonNotes }
+            : {}),
         },
       },
     });
@@ -115,6 +159,10 @@ export const POST = withErrorHandler(async (
           previousStatus: "OPEN",
           newStatus: "CLOSED",
           closedByUserId: session.user.id,
+          ...(closeBody.closeReason != null ? { closeReason: closeBody.closeReason } : {}),
+          ...(closeBody.closeReasonNotes != null
+            ? { closeReasonNotes: closeBody.closeReasonNotes }
+            : {}),
         },
       },
     });

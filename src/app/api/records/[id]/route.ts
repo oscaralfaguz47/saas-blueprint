@@ -12,6 +12,26 @@ import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().cuid() });
 
+function prismaDecimalToNumber(value: unknown): number | null {
+  if (value == null) return null;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "object" && value !== null && "toNumber" in value) {
+    try {
+      const n = (value as { toNumber: () => number }).toNumber();
+      return Number.isFinite(n) ? n : null;
+    } catch {
+      return null;
+    }
+  }
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function dateToIso(value: Date | null | undefined): string | null {
+  if (value == null) return null;
+  return value instanceof Date ? value.toISOString() : null;
+}
+
 const patchSchema = z.object({
   title: z.string().min(1).max(160).trim().optional(),
   description: z.string().max(5000).trim().optional(),
@@ -74,6 +94,40 @@ export const GET = withErrorHandler(async (
         createdByUserId: true,
         createdAt: true,
         updatedAt: true,
+        recordKey: true,
+        requestedAmount: true,
+        approvedAmount: true,
+        currencyCode: true,
+        amountIsEstimated: true,
+        isRecurring: true,
+        recurrenceNotes: true,
+        budgetImpactType: true,
+        taxAmount: true,
+        taxIncluded: true,
+        vendorName: true,
+        payeeName: true,
+        invoiceNumber: true,
+        contractReference: true,
+        purchaseOrderRef: true,
+        priority: true,
+        businessJustification: true,
+        departmentName: true,
+        costCenterCode: true,
+        neededByDate: true,
+        submittedAt: true,
+        approvedAt: true,
+        firstResponseAt: true,
+        hasPolicyException: true,
+        policyExceptionReason: true,
+        isOverBudget: true,
+        missingRequiredEvidence: true,
+        possibleDuplicate: true,
+        riskLevel: true,
+        requiresFinanceReview: true,
+        closeReason: true,
+        closeReasonNotes: true,
+        approvalStatus: true,
+        overdue: true,
       },
     }),
 
@@ -90,6 +144,8 @@ export const GET = withErrorHandler(async (
         sizeBytes: true,
         createdAt: true,
         createdByUserId: true,
+        evidenceCategory: true,
+        isRequired: true,
       },
     }),
 
@@ -142,6 +198,7 @@ export const GET = withErrorHandler(async (
         fromRecordId: true,
         toRecordId: true,
         createdAt: true,
+        createdByUserId: true,
       },
     }),
 
@@ -201,17 +258,83 @@ export const GET = withErrorHandler(async (
   const missingProof =
     payment?.status === "PAID" && (payment.evidence?.length ?? 0) === 0;
 
+  const r = record;
+  const normalizedRecord = {
+    id: r.id,
+    title: r.title,
+    type: r.type,
+    status: r.status,
+    description: r.description,
+    clientName: r.clientName,
+    clientEmail: r.clientEmail,
+    amount: prismaDecimalToNumber(r.amount),
+    currency: r.currency,
+    visibility: r.visibility,
+    isSensitive: r.isSensitive,
+    closedAt: dateToIso(r.closedAt),
+    closedByUserId: r.closedByUserId,
+    createdByUserId: r.createdByUserId,
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+    recordKey: r.recordKey,
+    requestedAmount: prismaDecimalToNumber(r.requestedAmount),
+    approvedAmount: prismaDecimalToNumber(r.approvedAmount),
+    currencyCode: r.currencyCode,
+    amountIsEstimated: r.amountIsEstimated,
+    isRecurring: r.isRecurring,
+    recurrenceNotes: r.recurrenceNotes,
+    budgetImpactType: r.budgetImpactType,
+    taxAmount: prismaDecimalToNumber(r.taxAmount),
+    taxIncluded: r.taxIncluded,
+    vendorName: r.vendorName,
+    payeeName: r.payeeName,
+    invoiceNumber: r.invoiceNumber,
+    contractReference: r.contractReference,
+    purchaseOrderRef: r.purchaseOrderRef,
+    priority: r.priority,
+    businessJustification: r.businessJustification,
+    departmentName: r.departmentName,
+    costCenterCode: r.costCenterCode,
+    neededByDate: dateToIso(r.neededByDate),
+    submittedAt: dateToIso(r.submittedAt),
+    approvedAt: dateToIso(r.approvedAt),
+    firstResponseAt: dateToIso(r.firstResponseAt),
+    hasPolicyException: r.hasPolicyException,
+    policyExceptionReason: r.policyExceptionReason,
+    isOverBudget: r.isOverBudget,
+    missingRequiredEvidence: r.missingRequiredEvidence,
+    possibleDuplicate: r.possibleDuplicate,
+    riskLevel: r.riskLevel,
+    requiresFinanceReview: r.requiresFinanceReview,
+    closeReason: r.closeReason,
+    closeReasonNotes: r.closeReasonNotes,
+    approvalStatus: r.approvalStatus,
+    overdue: r.overdue,
+  };
+
   return apiSuccess({
-    record,
-    evidence,
+    record: normalizedRecord,
+    evidence: evidence.map((e) => ({
+      ...e,
+      createdAt: e.createdAt.toISOString(),
+      evidenceCategory: e.evidenceCategory ?? null,
+      isRequired: e.isRequired,
+    })),
     participants,
     timeline: events.map(({ actorUser, ...e }) => ({
       ...e,
       actorName: actorUser?.name ?? null,
       actorDisplayEmail: actorUser?.email ?? e.actorEmail ?? null,
+      occurredAt: e.occurredAt.toISOString(),
     })),
-    comments: commentDetails,
-    links,
+    comments: commentDetails.map((c) => ({
+      ...c,
+      createdAt: c.createdAt.toISOString(),
+    })),
+    links: links.map((l) => ({
+      ...l,
+      createdAt: l.createdAt.toISOString(),
+    })),
     payment: payment ?? null,
     missingProof,
   });
