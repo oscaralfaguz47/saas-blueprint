@@ -390,6 +390,7 @@ model User {
 
   tenantInvitationsSent   TenantInvitation[] @relation("TenantInvitedByUser")
   tenantInvitationsRejected TenantInvitation[] @relation("TenantInvitationRejectedByUser")
+  vendorInvitationsSent   VendorInvitation[] @relation("VendorInvitedByUser")
   recordsCreated Record[] @relation("RecordsCreatedByUser")
   tenantsCreated Tenant[] @relation("TenantCreatedByUser")
   workspaceMemberSecurity WorkspaceMemberSecurity[] @relation("WorkspaceMemberSecurity")
@@ -854,6 +855,24 @@ model VendorUserRole {
 
   @@id([userId, roleId])
   @@index([roleId])
+}
+
+model VendorInvitation {
+  id              String    @id @default(cuid())
+  email           String    @db.VarChar(191)
+  roleName        String    @db.VarChar(80)
+  tokenHash       String    @unique @db.VarChar(191)
+  invitedByUserId String
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime  @default(now())
+
+  invitedBy User @relation("VendorInvitedByUser", fields: [invitedByUserId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([tokenHash])
+  @@index([expiresAt])
 }
 
 model Plan {

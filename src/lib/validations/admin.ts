@@ -30,3 +30,20 @@ export const adminBreakGlassReset2FABodySchema = z.object({
 export type AdminUsersSearchQuery = z.infer<typeof adminUsersSearchQuerySchema>;
 export type AdminWorkspacesListQuery = z.infer<typeof adminWorkspacesListQuerySchema>;
 export type AdminBreakGlassReset2FABody = z.infer<typeof adminBreakGlassReset2FABodySchema>;
+
+export const vendorInviteBodySchema = z.object({
+  email: z.string().email().max(191).transform((s) => s.trim().toLowerCase()),
+  roleName: z.enum(["PlatformAdmin", "SupportAdmin", "BillingOps", "ReadOnlySupport"]),
+});
+
+export const revokeVendorInvitationBodySchema = z.object({
+  invitationId: z.string().cuid(),
+});
+
+export const vendorInvitationAcceptBodySchema = z.object({
+  token: z.string().min(1),
+});
+
+export type VendorInviteBody = z.infer<typeof vendorInviteBodySchema>;
+export type RevokeVendorInvitationBody = z.infer<typeof revokeVendorInvitationBodySchema>;
+export type VendorInvitationAcceptBody = z.infer<typeof vendorInvitationAcceptBodySchema>;

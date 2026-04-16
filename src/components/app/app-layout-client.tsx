@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import AppHeader from "@/components/app/app-header";
 import AppSidebar from "@/components/app/app-sidebar";
+import { ChatWidgetRoot } from "@/components/help/chat-widget-root";
 
 type Workspace = {
   id: string;
@@ -63,6 +64,7 @@ export default function AppLayoutClient({
           </div>
         </main>
       </div>
+      <ChatWidgetRoot hasTenant={!!workspace} />
     </div>
   );
 }

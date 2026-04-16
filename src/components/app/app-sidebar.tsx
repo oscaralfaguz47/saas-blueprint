@@ -277,39 +277,43 @@ export default function AppSidebar({
 
       {/* Primary nav */}
       <nav className="flex flex-col gap-0.5 px-3 py-2">
-        <Link
-          href="/app/requests"
-          onClick={() => isMobile && onClose()}
-          aria-current={requestsActive ? "page" : undefined}
-          title="Requests"
-          className={`flex items-center rounded-lg py-2.5 text-sm font-medium transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} ${requestsActive ? `${activeBg} text-(--text-primary)` : `text-(--text-secondary) ${hoverBg} hover:text-(--text-primary)`}`}
-        >
-          <IconFileText size={18} className="shrink-0" />
-          {showLabels ? (
-            <span className="flex flex-1 items-center justify-between gap-2">
-              <span>Requests</span>
-              {inboxCount > 0 && (
-                <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-(--color-primary) px-1 text-[10px] font-semibold text-white">
-                  {inboxCount}
+        {tenants.length > 0 && (
+          <>
+            <Link
+              href="/app/requests"
+              onClick={() => isMobile && onClose()}
+              aria-current={requestsActive ? "page" : undefined}
+              title="Requests"
+              className={`flex items-center rounded-lg py-2.5 text-sm font-medium transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} ${requestsActive ? `${activeBg} text-(--text-primary)` : `text-(--text-secondary) ${hoverBg} hover:text-(--text-primary)`}`}
+            >
+              <IconFileText size={18} className="shrink-0" />
+              {showLabels ? (
+                <span className="flex flex-1 items-center justify-between gap-2">
+                  <span>Requests</span>
+                  {inboxCount > 0 && (
+                    <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-(--color-primary) px-1 text-[10px] font-semibold text-white">
+                      {inboxCount}
+                    </span>
+                  )}
                 </span>
-              )}
-            </span>
-          ) : null}
-        </Link>
-        {canCreateRequests ? (
-          <button
-            type="button"
-            onClick={() => {
-              openCreateRequestModal();
-              if (isMobile) onClose();
-            }}
-            title="New request"
-            className={`flex w-full items-center rounded-lg py-2.5 text-sm font-medium text-(--color-primary) transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} hover:bg-(--color-primary-soft)`}
-          >
-            <IconPlus size={18} className="shrink-0" />
-            {showLabels ? <span>New request</span> : null}
-          </button>
-        ) : null}
+              ) : null}
+            </Link>
+            {canCreateRequests ? (
+              <button
+                type="button"
+                onClick={() => {
+                  openCreateRequestModal();
+                  if (isMobile) onClose();
+                }}
+                title="New request"
+                className={`flex w-full items-center rounded-lg py-2.5 text-sm font-medium text-(--color-primary) transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} hover:bg-(--color-primary-soft)`}
+              >
+                <IconPlus size={18} className="shrink-0" />
+                {showLabels ? <span>New request</span> : null}
+              </button>
+            ) : null}
+          </>
+        )}
         {canAccessPlatformAdmin ? (
           <Link
             href="/admin/workspaces"
@@ -381,31 +385,33 @@ export default function AppSidebar({
           {showLabels ? <span>Create workspace</span> : null}
         </button>
 
-        {/* Workspace settings (RBAC) + Help (always): Help must stay outside the permission ternary. */}
-        <div className="mt-1 flex flex-col gap-0.5">
-          {canAccessWorkspaceSettings ? (
+        {/* Workspace settings (RBAC) + Help: only shown when user has at least one workspace */}
+        {tenants.length > 0 ? (
+          <div className="mt-1 flex flex-col gap-0.5">
+            {canAccessWorkspaceSettings ? (
+              <Link
+                href="/app/settings/workspace"
+                onClick={() => isMobile && onClose()}
+                aria-current={workspaceSettingsActive ? "page" : undefined}
+                title="Workspace settings"
+                className={`flex w-full items-center rounded-lg py-2.5 text-sm transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} ${workspaceSettingsActive ? `${activeBg} font-medium text-(--text-primary)` : `text-(--text-secondary) ${hoverBg} hover:text-(--text-primary)`}`}
+              >
+                <IconWorkspace size={18} className="shrink-0" />
+                {showLabels ? <span>Workspace settings</span> : null}
+              </Link>
+            ) : null}
             <Link
-              href="/app/settings/workspace"
+              href="/app/help/inbox"
               onClick={() => isMobile && onClose()}
-              aria-current={workspaceSettingsActive ? "page" : undefined}
-              title="Workspace settings"
-              className={`flex w-full items-center rounded-lg py-2.5 text-sm transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} ${workspaceSettingsActive ? `${activeBg} font-medium text-(--text-primary)` : `text-(--text-secondary) ${hoverBg} hover:text-(--text-primary)`}`}
+              aria-current={helpActive ? "page" : undefined}
+              title="Help & Support"
+              className={`flex w-full items-center rounded-lg py-2.5 text-sm transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} ${helpActive ? `${activeBg} font-medium text-(--text-primary)` : `text-(--text-secondary) ${hoverBg} hover:text-(--text-primary)`}`}
             >
-              <IconWorkspace size={18} className="shrink-0" />
-              {showLabels ? <span>Workspace settings</span> : null}
+              <IconHelpCircle size={18} className="shrink-0" />
+              {showLabels ? <span>Help &amp; Support</span> : null}
             </Link>
-          ) : null}
-          <Link
-            href="/app/help/inbox"
-            onClick={() => isMobile && onClose()}
-            aria-current={helpActive ? "page" : undefined}
-            title="Help & Support"
-            className={`flex w-full items-center rounded-lg py-2.5 text-sm transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} ${helpActive ? `${activeBg} font-medium text-(--text-primary)` : `text-(--text-secondary) ${hoverBg} hover:text-(--text-primary)`}`}
-          >
-            <IconHelpCircle size={18} className="shrink-0" />
-            {showLabels ? <span>Help &amp; Support</span> : null}
-          </Link>
-        </div>
+          </div>
+        ) : null}
       </div>
 
       {/* Collapse toggle — desktop only */}

@@ -301,14 +301,18 @@ export async function middleware(req: NextRequest) {
 
   // 4) Admin area allowlist gating by email
   if (isAdminPath(pathname)) {
-    const allowlist = normalizePlatformAllowlist();
-    const email = (token.email as string | undefined)?.toLowerCase();
-    const isAllowed = !!email && allowlist.includes(email);
+    // Invited vendor users may accept while authenticated but not yet on the platform allowlist.
+    const isVendorInviteAcceptApi = pathname === "/api/admin/vendor-invitations/accept";
+    if (!isVendorInviteAcceptApi) {
+      const allowlist = normalizePlatformAllowlist();
+      const email = (token.email as string | undefined)?.toLowerCase();
+      const isAllowed = !!email && allowlist.includes(email);
 
-    if (!isAllowed) {
-      const url = req.nextUrl.clone();
-      url.pathname = "/unauthorized";
-      return redirectWithCsp(req, url, nonce);
+      if (!isAllowed) {
+        const url = req.nextUrl.clone();
+        url.pathname = "/unauthorized";
+        return redirectWithCsp(req, url, nonce);
+      }
     }
   }
 

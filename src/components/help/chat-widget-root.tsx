@@ -1,26 +1,24 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-
 import { ChatWidget } from "@/components/help/chat-widget";
 
 /**
  * Renders the floating chat outside route layouts so `position: fixed` is not
  * affected by transformed ancestors (e.g. product shell).
  *
- * Hidden visually on platform admin routes (/admin/**) but kept mounted to
- * avoid stale pathname issues during navigation transitions in Next.js App Router.
- * Using display:none instead of conditional unmounting preserves the mounted
- * state across /admin <-> /app navigations.
+ * Hidden on platform admin routes (/admin/**).
+ * Hidden on workspace-less paths where no tenantId is available — prevents
+ * NO_TENANT errors when the user has no active workspace.
  */
-export function ChatWidgetRoot() {
+export function ChatWidgetRoot({ hasTenant }: { hasTenant: boolean }) {
   const pathname = usePathname() ?? "";
   const isAdmin = pathname.startsWith("/admin");
   const forcedSurface = pathname.startsWith("/app") ? "app" : "public";
 
-  return (
-    <div style={isAdmin ? { display: "none" } : undefined}>
-      <ChatWidget forcedSurface={forcedSurface} />
-    </div>
-  );
+  // Do not render app-surface chat when user has no active workspace
+  if (isAdmin) return null;
+  if (forcedSurface === "app" && !hasTenant) return null;
+
+  return <ChatWidget forcedSurface={forcedSurface} />;
 }

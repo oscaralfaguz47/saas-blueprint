@@ -73,9 +73,7 @@ export default function AppHeader({
                 {workspace.name}
               </span>
             </div>
-          ) : (
-            <span className="text-sm text-(--text-muted)">Workspace</span>
-          )}
+          ) : null}
         </div>
 
         {/* Right: Pending invitations badge + Notifications + User menu */}

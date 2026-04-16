@@ -30,22 +30,29 @@ export type MemberSecurityContext = {
  * Used for login/session: if true and totpEnabled is false, user must complete setup at /auth/setup-2fa.
  */
 export async function isMfaEnforcedForUser(userId: string): Promise<boolean> {
-  const row = await prisma.workspaceMemberSecurity.findFirst({
-    where: {
-      userId,
-      mfaEnforced: true,
-      tenant: {
-        memberships: {
-          some: {
-            userId,
-            status: "ACTIVE",
+  const [workspaceEnforced, userSecurityEnforced] = await Promise.all([
+    prisma.workspaceMemberSecurity.findFirst({
+      where: {
+        userId,
+        mfaEnforced: true,
+        tenant: {
+          memberships: {
+            some: {
+              userId,
+              status: "ACTIVE",
+            },
           },
         },
       },
-    },
-    select: { id: true },
-  });
-  return row != null;
+      select: { id: true },
+    }),
+    prisma.userSecurity.findUnique({
+      where: { userId },
+      select: { mfaEnforced: true },
+    }),
+  ]);
+
+  return workspaceEnforced != null || (userSecurityEnforced?.mfaEnforced ?? false);
 }
 
 /** Count ACTIVE memberships with Owner-level role (Primary Owner or Owner) in tenant. */

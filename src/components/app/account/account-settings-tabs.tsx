@@ -37,6 +37,7 @@ type Props = {
   authLevel: string;
   security: AccountSecurity;
   currentUserEmail: string | null;
+  vendorSetup2fa?: boolean;
 };
 
 export function AccountSettingsTabs({
@@ -45,12 +46,17 @@ export function AccountSettingsTabs({
   authLevel,
   security,
   currentUserEmail,
+  vendorSetup2fa = false,
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const tabFromUrl = (searchParams.get("tab") as AccountTab) || "profile";
-  const tabAllowed = ALL_TABS.some((t) => t.id === tabFromUrl);
-  const effectiveTab = tabAllowed ? tabFromUrl : "profile";
+  const [vendorSetupBannerDismissed, setVendorSetupBannerDismissed] = useState(false);
+
+  const rawTab = searchParams.get("tab") as AccountTab | null;
+  const tabIsValid = rawTab != null && ALL_TABS.some((t) => t.id === rawTab);
+  const defaultTab: AccountTab =
+    vendorSetup2fa && !security.totpEnabled ? "security" : "profile";
+  const effectiveTab: AccountTab = tabIsValid ? rawTab! : defaultTab;
 
   const [activeTab, setActiveTab] = useState<AccountTab>(effectiveTab);
 
@@ -58,13 +64,24 @@ export function AccountSettingsTabs({
     setActiveTab(effectiveTab);
   }, [effectiveTab]);
 
-  if (!tabAllowed) {
-    router.replace(`/app/account?tab=profile`);
-  }
+  useEffect(() => {
+    if (!tabIsValid && rawTab != null) {
+      const qs = vendorSetup2fa ? "tab=security&vendorSetup2fa=1" : "tab=profile";
+      router.replace(`/app/account?${qs}`);
+    }
+  }, [tabIsValid, rawTab, vendorSetup2fa, router]);
+
+  useEffect(() => {
+    if (!vendorSetup2fa || security.totpEnabled) return;
+    if (!searchParams.get("tab")) {
+      router.replace(`/app/account?tab=security&vendorSetup2fa=1`);
+    }
+  }, [vendorSetup2fa, security.totpEnabled, searchParams, router]);
 
   const handleTabChange = (value: string) => {
     setActiveTab(value as AccountTab);
-    router.push(`/app/account?tab=${value}`);
+    const vs = vendorSetup2fa ? "&vendorSetup2fa=1" : "";
+    router.push(`/app/account?tab=${value}${vs}`);
   };
 
   return (
@@ -83,6 +100,24 @@ export function AccountSettingsTabs({
           <ProfileTab profile={profile} />
         </TabsContent>
         <TabsContent value="security">
+          {vendorSetup2fa && !security.totpEnabled && !vendorSetupBannerDismissed && (
+            <div className="relative mb-4 rounded-lg border border-amber-400 bg-amber-400/15 p-4 pr-14">
+              <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                2FA required for Platform Admin access
+              </p>
+              <p className="mt-1 text-xs text-amber-700/80 dark:text-amber-300/80">
+                You have been granted platform admin access. Two-factor authentication is
+                required before you can access the admin area. Set it up below.
+              </p>
+              <button
+                type="button"
+                onClick={() => setVendorSetupBannerDismissed(true)}
+                className="absolute right-3 top-3 text-xs font-medium text-(--text-secondary) hover:text-(--text-primary)"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
           <SecurityTab
             security={security}
             linkedProviders={linkedProviders}

@@ -33,7 +33,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   // L1 / E6: 2FA challenge — require verification or setup before app access
   const needsMfa =
     session.user.authLevel === "PENDING_MFA" ||
-    (session.user.totpEnabled && !session.user.mfaVerified);
+    (session.user.totpEnabled && !session.user.mfaVerified) ||
+    (session.user.mfaEnforced && !session.user.totpEnabled);
 
   if (needsMfa) {
     const upgraded = await trySkipMfaWithRememberedDevice(session, await cookies());
