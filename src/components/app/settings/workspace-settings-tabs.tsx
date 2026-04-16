@@ -7,8 +7,14 @@ import { WorkspaceGeneralTab } from "./workspace-general-tab";
 import { WorkspaceMembersTab } from "./workspace-members-tab";
 import { WorkspaceInvitesTab } from "./workspace-invites-tab";
 import { WorkspaceBillingTab } from "./workspace-billing-tab";
+import { FinancialConfigTab } from "./financial-config-tab";
 
-export type WorkspaceSettingsTab = "general" | "members" | "invites" | "billing";
+export type WorkspaceSettingsTab =
+  | "general"
+  | "members"
+  | "invites"
+  | "billing"
+  | "financial-config";
 
 type Tenant = {
   id: string;
@@ -34,6 +40,11 @@ const ALL_TABS: { id: WorkspaceSettingsTab; label: string; permission: string }[
   { id: "members", label: "Members", permission: "tenant.users.read" },
   { id: "invites", label: "Invites", permission: "tenant.users.read" },
   { id: "billing", label: "Billing", permission: "tenant.billing.manage" },
+  {
+    id: "financial-config",
+    label: "Financial config",
+    permission: "tenant.financial_config.manage",
+  },
 ];
 
 export function WorkspaceSettingsTabs({
@@ -93,6 +104,13 @@ export function WorkspaceSettingsTabs({
         </TabsContent>
         <TabsContent value="billing">
           <WorkspaceBillingTab />
+        </TabsContent>
+        <TabsContent value="financial-config">
+          {permSet.has("tenant.financial_config.manage") && (
+            <FinancialConfigTab
+              canManage={permSet.has("tenant.financial_config.manage")}
+            />
+          )}
         </TabsContent>
       </Tabs>
     </div>

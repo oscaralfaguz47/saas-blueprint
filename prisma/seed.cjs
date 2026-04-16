@@ -49,6 +49,11 @@ const PERMISSIONS = [
   { code: "tenant.audit.read", scope: "TENANT", description: "View audit logs (AuditLog)" },
   { code: "tenant.billing.manage", scope: "TENANT", description: "Manage billing, plans, subscriptions" },
   { code: "tenant.settings.manage", scope: "TENANT", description: "Manage workspace settings" },
+  {
+    code: "tenant.financial_config.manage",
+    scope: "TENANT",
+    description: "Manage financial configuration (departments and cost centers)",
+  },
   { code: "tenant.roles.read", scope: "TENANT", description: "View roles and permissions" },
   { code: "tenant.roles.manage", scope: "TENANT", description: "Create/edit roles and assign permissions" },
   { code: "tenant.users.read", scope: "TENANT", description: "View workspace users" },

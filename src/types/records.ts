@@ -76,6 +76,33 @@ export type RecordLinkType =
   | "FUNDED_BY"
   | "TRIGGERED_BY";
 
+export type TenantDepartment = {
+  id: string;
+  tenantId: string;
+  name: string;
+  code: string | null;
+  description: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  createdByUserId: string | null;
+  updatedByUserId: string | null;
+};
+
+export type TenantCostCenter = {
+  id: string;
+  tenantId: string;
+  departmentId: string;
+  code: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  createdByUserId: string | null;
+  updatedByUserId: string | null;
+};
+
 export type RecordListItem = {
   id: string;
   title: string;
@@ -136,6 +163,15 @@ export type RecordDetailExtended = RecordDetail & {
   purchaseOrderRef: string | null;
   priority: RecordPriority;
   businessJustification: string | null;
+  departmentId: string | null;
+  costCenterId: string | null;
+  costCenter: {
+    id: string;
+    code: string;
+    name: string;
+    department: { id: string; name: string } | null;
+  } | null;
+  department: { id: string; name: string; code: string | null } | null;
   departmentName: string | null;
   costCenterCode: string | null;
   neededByDate: string | null;

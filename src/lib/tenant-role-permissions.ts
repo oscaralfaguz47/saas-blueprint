@@ -21,6 +21,7 @@ export const ROLE_PERMS: Record<TenantSystemRoleName, string[]> = {
     "tenant.audit.read",
     "tenant.billing.manage",
     "tenant.settings.manage",
+    "tenant.financial_config.manage",
     "tenant.roles.read",
     "tenant.roles.manage",
     "tenant.users.read",
@@ -47,6 +48,7 @@ export const ROLE_PERMS: Record<TenantSystemRoleName, string[]> = {
     "tenant.audit.read",
     "tenant.billing.manage",
     "tenant.settings.manage",
+    "tenant.financial_config.manage",
     "tenant.roles.read",
     "tenant.roles.manage",
     "tenant.users.read",
@@ -72,6 +74,7 @@ export const ROLE_PERMS: Record<TenantSystemRoleName, string[]> = {
   Admin: [
     "tenant.audit.read",
     "tenant.settings.manage",
+    "tenant.financial_config.manage",
     "tenant.roles.read",
     "tenant.roles.manage",
     "tenant.users.read",
@@ -97,6 +100,7 @@ export const ROLE_PERMS: Record<TenantSystemRoleName, string[]> = {
   Finance: [
     "tenant.audit.read",
     "tenant.settings.manage",
+    "tenant.financial_config.manage",
     "tenant.users.read",
     "tenant.users.invite",
     "tenant.users.manage",

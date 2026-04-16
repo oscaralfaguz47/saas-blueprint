@@ -228,6 +228,14 @@ export function RequestDetailClient({
   const { record, evidence, participants, timeline, comments, links, payment, missingProof } =
     data;
   const rec = record as RecordDetailExtended;
+  const costCenterDisplay = rec.costCenter
+    ? `${rec.costCenter.code} — ${rec.costCenter.name}`
+    : (rec.costCenterCode ?? null);
+  const departmentDisplay =
+    rec.costCenter?.department?.name ??
+    rec.department?.name ??
+    rec.departmentName ??
+    null;
   const isClosed = rec.status === "CLOSED";
   const catConfig = RECORD_CATEGORY_CONFIG[rec.type];
   const approverParticipants = participants.filter((p) => p.participantRole === "APPROVER");
@@ -487,10 +495,12 @@ export function RequestDetailClient({
                 {rec.neededByDate && (
                   <DetailField label="Needed by" value={formatDate(rec.neededByDate)} />
                 )}
-                {rec.departmentName && (
-                  <DetailField label="Department" value={rec.departmentName} />
+                {costCenterDisplay && (
+                  <DetailField label="Cost center" value={costCenterDisplay} />
                 )}
-                {rec.costCenterCode && <DetailField label="Cost center" value={rec.costCenterCode} />}
+                {departmentDisplay && (
+                  <DetailField label="Department" value={departmentDisplay} />
+                )}
                 {rec.vendorName && (
                   <DetailField label="Vendor / Supplier" value={rec.vendorName} />
                 )}

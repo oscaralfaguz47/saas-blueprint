@@ -396,6 +396,21 @@ export const POST = withErrorHandler(async (req: Request) => {
 
   const initialStatus = body.status ?? "OPEN";
 
+  let resolvedCostCenterId: string | null = null;
+  let resolvedDepartmentId: string | null = null;
+
+  if (body.costCenterId) {
+    const cc = await prisma.tenantCostCenter.findFirst({
+      where: { id: body.costCenterId, tenantId, isActive: true },
+      select: { id: true, departmentId: true },
+    });
+    if (!cc) {
+      return ApiErrors.VALIDATION_ERROR("Invalid cost center.");
+    }
+    resolvedCostCenterId = cc.id;
+    resolvedDepartmentId = cc.departmentId;
+  }
+
   // 7. Plan limit check — only OPEN creates count against the requests meter
   if (initialStatus === "OPEN") {
     await checkMeterLimit({
@@ -436,6 +451,8 @@ export const POST = withErrorHandler(async (req: Request) => {
         priority: body.priority ?? "MEDIUM",
         departmentName: body.departmentName ?? null,
         costCenterCode: body.costCenterCode ?? null,
+        costCenterId: resolvedCostCenterId,
+        departmentId: resolvedDepartmentId,
         neededByDate: body.neededByDate ? new Date(body.neededByDate) : null,
         hasPolicyException: body.hasPolicyException ?? false,
         policyExceptionReason: body.policyExceptionReason ?? null,
@@ -494,6 +511,8 @@ export const POST = withErrorHandler(async (req: Request) => {
           ...(body.amount != null ? { amount: body.amount } : {}),
           ...(body.currency ? { currency: body.currency } : {}),
           ...(body.requestedAmount != null ? { requestedAmount: body.requestedAmount } : {}),
+          ...(resolvedCostCenterId ? { costCenterId: resolvedCostCenterId } : {}),
+          ...(resolvedDepartmentId ? { departmentId: resolvedDepartmentId } : {}),
         },
       },
     });
@@ -513,6 +532,8 @@ export const POST = withErrorHandler(async (req: Request) => {
           ...(body.amount != null ? { amount: body.amount } : {}),
           ...(body.currency ? { currency: body.currency } : {}),
           ...(body.requestedAmount != null ? { requestedAmount: body.requestedAmount } : {}),
+          ...(resolvedCostCenterId ? { costCenterId: resolvedCostCenterId } : {}),
+          ...(resolvedDepartmentId ? { departmentId: resolvedDepartmentId } : {}),
         },
       },
     });

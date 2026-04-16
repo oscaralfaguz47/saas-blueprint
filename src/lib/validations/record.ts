@@ -45,6 +45,8 @@ export const createRecordSchema = z
     contractReference: z.string().max(100).trim().optional(),
     purchaseOrderRef: z.string().max(100).trim().optional(),
     priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]).default("MEDIUM"),
+    costCenterId: z.string().cuid().optional(),
+    departmentId: z.string().cuid().optional(),
     departmentName: z.string().max(120).trim().optional(),
     costCenterCode: z.string().max(60).trim().optional(),
     neededByDate: z.string().datetime().optional(),

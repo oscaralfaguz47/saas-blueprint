@@ -427,6 +427,11 @@ model User {
   recordReminderLogsSent       RecordReminderLog[]     @relation("RecordReminderLogSentBy")
   recordExportsCreated         RecordExport[]           @relation("RecordExportCreatedBy")
 
+  departmentsCreated TenantDepartment[] @relation("DepartmentCreatedBy")
+  departmentsUpdated TenantDepartment[] @relation("DepartmentUpdatedBy")
+  costCentersCreated TenantCostCenter[] @relation("CostCenterCreatedBy")
+  costCentersUpdated TenantCostCenter[] @relation("CostCenterUpdatedBy")
+
   @@index([identityProvider, identityId])
 }
 
@@ -538,6 +543,9 @@ model Tenant {
   invitations TenantInvitation[]
 
   records Record[]
+
+  departments TenantDepartment[] @relation("TenantDepartments")
+  costCenters TenantCostCenter[] @relation("TenantCostCenters")
 
   tenantRoles   TenantRole[]
   subscriptions Subscription[]
@@ -1314,6 +1322,58 @@ model TenantFeatureFlag {
   @@id([tenantId, featureFlagId])
 }
 
+model TenantDepartment {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation("TenantDepartments", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name        String  @db.VarChar(120)
+  code        String? @db.VarChar(40)
+  description String? @db.VarChar(500)
+  isActive    Boolean @default(true)
+
+  createdAt       DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(6)
+  createdByUserId String?
+  createdByUser   User?     @relation("DepartmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  updatedByUserId String?
+  updatedByUser   User?     @relation("DepartmentUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  costCenters TenantCostCenter[]
+  records     Record[]           @relation("RecordDepartment")
+
+  @@unique([tenantId, name])
+  @@index([tenantId, isActive])
+  @@index([tenantId, name])
+}
+
+model TenantCostCenter {
+  id           String           @id @default(cuid())
+  tenantId     String
+  tenant       Tenant           @relation("TenantCostCenters", fields: [tenantId], references: [id], onDelete: Cascade)
+  departmentId String
+  department   TenantDepartment @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+
+  code        String  @db.VarChar(40)
+  name        String  @db.VarChar(120)
+  description String? @db.VarChar(500)
+  isActive    Boolean @default(true)
+
+  createdAt       DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(6)
+  createdByUserId String?
+  createdByUser   User?     @relation("CostCenterCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  updatedByUserId String?
+  updatedByUser   User?     @relation("CostCenterUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  records Record[] @relation("RecordCostCenter")
+
+  @@unique([tenantId, code])
+  @@index([tenantId, departmentId, isActive])
+  @@index([tenantId, isActive])
+  @@index([tenantId, code])
+}
+
 model Record {
   id String @id @default(cuid())
 
@@ -1375,6 +1435,14 @@ model Record {
   departmentName        String?        @db.VarChar(120)
   costCenterCode        String?        @db.VarChar(60)
 
+  // Financial config references (controlled master data)
+  // departmentName and costCenterCode text fields are preserved for
+  // backward compat — new requests use these FK references instead
+  departmentId String?
+  department   TenantDepartment? @relation("RecordDepartment", fields: [departmentId], references: [id], onDelete: SetNull)
+  costCenterId String?
+  costCenter   TenantCostCenter? @relation("RecordCostCenter", fields: [costCenterId], references: [id], onDelete: SetNull)
+
   // Timing
   neededByDate    DateTime? @db.Timestamptz(6)
   submittedAt     DateTime? @db.Timestamptz(6)
@@ -1424,6 +1492,8 @@ model Record {
   @@index([tenantId, neededByDate])
   @@index([tenantId, overdue])
   @@index([tenantId, approvalStatus])
+  @@index([tenantId, departmentId])
+  @@index([tenantId, costCenterId])
   @@index([recordKey])
 }
 

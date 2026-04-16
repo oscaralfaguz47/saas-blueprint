@@ -100,8 +100,9 @@ type FormDataState = {
   invoiceNumber: string;
   contractReference: string;
   purchaseOrderRef: string;
+  costCenterId: string;
+  departmentId: string;
   departmentName: string;
-  costCenterCode: string;
   policyExceptionReason: string;
   hasPolicyException: boolean;
   isRecurring: boolean;
@@ -125,8 +126,9 @@ function initialForm(workspaceCurrency?: string): FormDataState {
     invoiceNumber: "",
     contractReference: "",
     purchaseOrderRef: "",
+    costCenterId: "",
+    departmentId: "",
     departmentName: "",
-    costCenterCode: "",
     policyExceptionReason: "",
     hasPolicyException: false,
     isRecurring: false,
@@ -179,8 +181,27 @@ export function FinanceRequestWizard({
   const [submitting, setSubmitting] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
+  const [costCenters, setCostCenters] = useState<
+    {
+      id: string;
+      code: string;
+      name: string;
+      departmentId: string;
+      department: { id: string; name: string } | null;
+    }[]
+  >([]);
+  const [loadingCostCenters, setLoadingCostCenters] = useState(false);
 
   const config = form.category ? RECORD_CATEGORY_CONFIG[form.category] : null;
+
+  const costCenterOptions = useMemo(
+    () =>
+      costCenters.map((cc) => ({
+        value: cc.id,
+        label: `${cc.code} — ${cc.name}`,
+      })),
+    [costCenters]
+  );
 
   const setField = useCallback(<K extends keyof FormDataState>(key: K, value: FormDataState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -295,6 +316,17 @@ export function FinanceRequestWizard({
     onStepChange?.(currentStep);
   }, [currentStep, onStepChange]);
 
+  useEffect(() => {
+    setLoadingCostCenters(true);
+    apiFetch("/api/tenant/cost-centers?activeOnly=true", { showToastOnError: false })
+      .then((r) => r.json())
+      .then((json: { data?: { costCenters?: typeof costCenters } }) => {
+        setCostCenters(json.data?.costCenters ?? []);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingCostCenters(false));
+  }, [apiFetch]);
+
   const reviewMissing = useMemo(() => {
     const miss: string[] = [];
     const c = form.category ? RECORD_CATEGORY_CONFIG[form.category] : null;
@@ -355,8 +387,9 @@ export function FinanceRequestWizard({
     if (form.invoiceNumber.trim()) body.invoiceNumber = form.invoiceNumber.trim();
     if (form.contractReference.trim()) body.contractReference = form.contractReference.trim();
     if (form.purchaseOrderRef.trim()) body.purchaseOrderRef = form.purchaseOrderRef.trim();
-    if (form.departmentName.trim()) body.departmentName = form.departmentName.trim();
-    if (form.costCenterCode.trim()) body.costCenterCode = form.costCenterCode.trim();
+    if (form.costCenterId) body.costCenterId = form.costCenterId;
+    if (form.departmentId) body.departmentId = form.departmentId;
+    if (form.departmentName) body.departmentName = form.departmentName;
     const nd = toIsoDate(form.neededByDate);
     if (form.neededByDate.trim() && !nd) {
       setGlobalError("Please enter a valid needed-by date.");
@@ -725,27 +758,61 @@ export function FinanceRequestWizard({
               </div>
             )}
 
-          {config.visibleFields.includes("departmentName") && (
-            <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-(--text-primary)">Department</label>
-              <Input
-                value={form.departmentName}
-                onChange={(e) => setField("departmentName", e.target.value)}
-                maxLength={120}
-                disabled={isLoading}
-              />
-            </div>
-          )}
+          {(config.visibleFields.includes("costCenterCode") ||
+            config.visibleFields.includes("departmentName")) && (
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="block text-sm font-medium text-(--text-primary)">
+                  Cost center
+                  <span className="ml-1 text-xs font-normal text-(--text-muted)">(optional)</span>
+                </label>
+                {loadingCostCenters ? (
+                  <div className="flex h-10 items-center gap-2 text-sm text-(--text-muted)">
+                    <Spinner size="sm" />
+                    Loading cost centers...
+                  </div>
+                ) : costCenterOptions.length === 0 ? (
+                  <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 py-2.5 text-sm text-(--text-muted)">
+                    No cost centers configured for this workspace yet.
+                  </div>
+                ) : (
+                  <SearchableSelect
+                    options={[{ value: "", label: "No cost center" }, ...costCenterOptions]}
+                    value={form.costCenterId}
+                    onChange={(val) => {
+                      const selected = costCenters.find((cc) => cc.id === val);
+                      setForm((f) => ({
+                        ...f,
+                        costCenterId: val,
+                        departmentId: selected?.departmentId ?? "",
+                        departmentName: selected?.department?.name ?? "",
+                      }));
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.costCenterId;
+                        delete next.departmentId;
+                        delete next.departmentName;
+                        return next;
+                      });
+                      setGlobalError(null);
+                    }}
+                    placeholder="Search by code or name..."
+                    disabled={isLoading}
+                  />
+                )}
+              </div>
 
-          {config.visibleFields.includes("costCenterCode") && (
-            <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-(--text-primary)">Cost center</label>
-              <Input
-                value={form.costCenterCode}
-                onChange={(e) => setField("costCenterCode", e.target.value)}
-                maxLength={60}
-                disabled={isLoading}
-              />
+              {form.departmentName && (
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-medium text-(--text-muted) uppercase tracking-wide">
+                    Department
+                  </label>
+                  <div className="flex items-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 py-2.5">
+                    <span className="text-sm text-(--text-primary)">{form.departmentName}</span>
+                    <span className="ml-auto text-xs text-(--text-muted)">Auto-filled</span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
