@@ -1,5 +1,6 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
@@ -7,34 +8,34 @@ import { requireFullSession } from "@/server/require-full-session";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { canAccessRequest } from "@/server/security/request-authorization";
+import {
+  getPresignedPutUrlRecordEvidence,
+  isR2Configured,
+} from "@/server/services/r2-profile-photo";
+import {
+  MAX_EVIDENCE_FILE_SIZE_BYTES,
+  isAllowedMimeType,
+} from "@/lib/evidence-config";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().cuid() });
 
-const addPaymentEvidenceSchema = z.discriminatedUnion("evidenceType", [
-  z.object({
-    evidenceType: z.literal("TEXT"),
-    label: z.string().max(255).trim().optional(),
-    contentText: z.string().min(1).max(5000).trim(),
-  }),
-  z.object({
-    evidenceType: z.literal("LINK"),
-    label: z.string().min(1).max(255).trim(),
-    url: z
-      .string()
-      .url()
-      .max(2048)
-      .refine(
-        (v) => v.startsWith("http://") || v.startsWith("https://"),
-        "Only http/https URLs allowed"
-      ),
-  }),
-]);
+const uploadUrlSchema = z.object({
+  fileName: z.string().min(1).max(255).trim(),
+  mimeType: z.string().refine(isAllowedMimeType, "File type not allowed"),
+  sizeBytes: z
+    .number()
+    .int()
+    .min(0)
+    .max(MAX_EVIDENCE_FILE_SIZE_BYTES, "File exceeds maximum size of 25 MB"),
+});
 
 /**
- * POST /api/records/[id]/payment/evidence
- * H2 — Append TEXT/LINK payment evidence with monotonic versionNumber (same transaction).
+ * POST /api/records/[id]/payment/evidence/upload-url
+ * Generate a presigned R2 upload URL for payment evidence FILE upload.
+ * Client uploads directly to R2, then calls /payment/evidence/confirm.
+ * Requires C1 access + tenant.payments.manage + record not CLOSED + has amount.
  */
 export const POST = withErrorHandler(async (
   req: Request,
@@ -81,100 +82,47 @@ export const POST = withErrorHandler(async (
   if (record.status === "CLOSED") {
     return ApiErrors.CONFLICT("Cannot add payment evidence to a closed record.");
   }
+
   const effectiveAmount =
     record.requestedAmount != null
       ? Number(record.requestedAmount)
       : record.amount != null
         ? Number(record.amount)
         : null;
-
   if (!effectiveAmount || effectiveAmount <= 0) {
     return ApiErrors.VALIDATION_ERROR(
       "Payment tracking is only available for requests with a requested amount."
     );
   }
 
+  if (!isR2Configured()) {
+    return ApiErrors.INTERNAL_ERROR("File storage is not configured.");
+  }
+
   const rawBody = await req.json().catch(() => null);
   if (!rawBody) return ApiErrors.VALIDATION_ERROR("Invalid request body");
-  const bodyResult = addPaymentEvidenceSchema.safeParse(rawBody);
+  const bodyResult = uploadUrlSchema.safeParse(rawBody);
   if (!bodyResult.success) {
     return ApiErrors.VALIDATION_ERROR("Validation failed", bodyResult.error.flatten());
   }
-  const body = bodyResult.data;
+  const { fileName, mimeType, sizeBytes } = bodyResult.data;
 
-  const evidence = await prisma.$transaction(async (tx) => {
-    let payment = await tx.recordPayment.findUnique({
-      where: { recordId },
-      select: { id: true },
-    });
-    if (!payment) {
-      payment = await tx.recordPayment.create({
-        data: {
-          tenantId,
-          recordId,
-          status: "NOT_PAID",
-          setAt: new Date(),
-          setByUserId: session.user.id,
-        },
-        select: { id: true },
-      });
-    }
+  const uniqueId = randomUUID();
+  const ext = fileName.includes(".") ? (fileName.split(".").pop() ?? "") : "";
+  const objectKey = `tenant/${tenantId}/records/${recordId}/payment-evidence/${uniqueId}${ext ? `.${ext}` : ""}`;
 
-    const agg = await tx.recordPaymentEvidence.aggregate({
-      where: { paymentId: payment.id },
-      _max: { versionNumber: true },
-    });
-    const versionNumber = (agg._max.versionNumber ?? 0) + 1;
-
-    const ev = await tx.recordPaymentEvidence.create({
-      data: {
-        tenantId,
-        recordId,
-        paymentId: payment.id,
-        evidenceType: body.evidenceType,
-        label: body.evidenceType === "TEXT" ? body.label ?? null : body.label,
-        contentText: body.evidenceType === "TEXT" ? body.contentText : null,
-        url: body.evidenceType === "LINK" ? body.url : null,
-        versionNumber,
-        createdByUserId: session.user.id,
-      },
-      select: {
-        id: true,
-        evidenceType: true,
-        label: true,
-        versionNumber: true,
-        createdAt: true,
-      },
-    });
-
-    await tx.recordEvent.create({
-      data: {
-        tenantId,
-        recordId,
-        eventType: "PAYMENT_EVIDENCE_ADDED",
-        actorUserId: session.user.id,
-        metadata: {
-          evidenceId: ev.id,
-          evidenceType: body.evidenceType,
-          versionNumber,
-        },
-      },
-    });
-
-    await tx.auditLog.create({
-      data: {
-        actorUserId: session.user.id,
-        actorContext: "TENANT",
-        tenantId,
-        action: "record.payment.evidence_added",
-        targetType: "RecordPaymentEvidence",
-        targetId: ev.id,
-        metadata: { recordId, evidenceType: body.evidenceType, versionNumber },
-      },
-    });
-
-    return ev;
+  const signed = await getPresignedPutUrlRecordEvidence({
+    objectKey,
+    contentType: mimeType,
+    contentLength: sizeBytes,
   });
+  if (!signed) {
+    return ApiErrors.INTERNAL_ERROR("Failed to generate upload URL.");
+  }
 
-  return apiSuccess(evidence, 201);
+  return apiSuccess({
+    uploadUrl: signed.uploadUrl,
+    objectKey: signed.objectKey,
+    expiresInSeconds: signed.expiresInSeconds,
+  });
 });

@@ -73,7 +73,7 @@ export const GET = withErrorHandler(async (
 /**
  * DELETE /api/records/[id]/evidence/[evidenceId]
  * D1/D2 — Soft-delete evidence (sets deletedAt, deletedByUserId).
- * Requires C1 access + tenant.evidence.add. Blocked if record is CLOSED.
+ * Requires C1 access + tenant.evidence.remove. Blocked if record is CLOSED.
  */
 export const DELETE = withErrorHandler(async (
   _req: Request,
@@ -105,12 +105,12 @@ export const DELETE = withErrorHandler(async (
   });
   if (!hasAccess) return ApiErrors.NOT_FOUND("Record");
 
-  const canMutateEvidence = await hasTenantPermission({
+  const canRemoveEvidence = await hasTenantPermission({
     userId: session.user.id,
     tenantId,
-    permission: "tenant.evidence.add",
+    permission: "tenant.evidence.remove",
   });
-  if (!canMutateEvidence) return ApiErrors.FORBIDDEN();
+  if (!canRemoveEvidence) return ApiErrors.FORBIDDEN();
 
   const record = await prisma.record.findFirst({
     where: { id: recordId, tenantId },
@@ -123,7 +123,12 @@ export const DELETE = withErrorHandler(async (
 
   const evidence = await prisma.recordEvidence.findFirst({
     where: { id: evidenceId, recordId, tenantId, deletedAt: null },
-    select: { id: true, evidenceType: true },
+    select: {
+      id: true,
+      evidenceType: true,
+      fileName: true,
+      label: true,
+    },
   });
   if (!evidence) return ApiErrors.NOT_FOUND("Evidence");
 
@@ -150,7 +155,12 @@ export const DELETE = withErrorHandler(async (
         recordId,
         eventType,
         actorUserId: session.user.id,
-        metadata: { evidenceId },
+        metadata: {
+          evidenceId,
+          evidenceType: evidence.evidenceType,
+          fileName: evidence.fileName ?? null,
+          label: evidence.label ?? null,
+        },
       },
     });
 
@@ -162,7 +172,12 @@ export const DELETE = withErrorHandler(async (
         action: "record.evidence.removed",
         targetType: "RecordEvidence",
         targetId: evidenceId,
-        metadata: { recordId, evidenceType: evidence.evidenceType },
+        metadata: {
+          recordId,
+          evidenceType: evidence.evidenceType,
+          fileName: evidence.fileName ?? null,
+          label: evidence.label ?? null,
+        },
       },
     });
 

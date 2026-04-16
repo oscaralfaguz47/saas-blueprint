@@ -7,24 +7,14 @@ import { requireFullSession } from "@/server/require-full-session";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { canAccessRequest } from "@/server/security/request-authorization";
+import {
+  MAX_EVIDENCE_FILE_SIZE_BYTES,
+  isAllowedMimeType,
+} from "@/lib/evidence-config";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().cuid() });
-
-const ALLOWED_MIME_TYPES = [
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/gif",
-  "application/pdf",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "text/plain",
-  "text/csv",
-];
 
 const confirmSchema = z.object({
   objectKey: z.string().min(1).max(512),
@@ -33,8 +23,8 @@ const confirmSchema = z.object({
     .string()
     .min(1)
     .max(120)
-    .refine((v) => ALLOWED_MIME_TYPES.includes(v), "File type not allowed"),
-  sizeBytes: z.number().int().min(0).max(25 * 1024 * 1024),
+    .refine(isAllowedMimeType, "File type not allowed"),
+  sizeBytes: z.number().int().min(0).max(MAX_EVIDENCE_FILE_SIZE_BYTES),
   label: z.string().max(255).trim().optional(),
   sha256: z.string().length(64).optional(),
 });

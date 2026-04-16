@@ -55,6 +55,12 @@ export const DELETE = withErrorHandler(async (
     permission: "tenant.payments.manage",
   });
   if (!canManage) return ApiErrors.FORBIDDEN();
+  const canRemove = await hasTenantPermission({
+    userId: session.user.id,
+    tenantId,
+    permission: "tenant.evidence.remove",
+  });
+  if (!canRemove) return ApiErrors.FORBIDDEN();
 
   const record = await prisma.record.findFirst({
     where: { id: recordId, tenantId },
@@ -67,7 +73,15 @@ export const DELETE = withErrorHandler(async (
 
   const evidence = await prisma.recordPaymentEvidence.findFirst({
     where: { id: evidenceId, recordId, tenantId, removedAt: null },
-    select: { id: true, evidenceType: true, versionNumber: true },
+    select: {
+      id: true,
+      evidenceType: true,
+      versionNumber: true,
+      fileName: true,
+      label: true,
+      url: true,
+      contentText: true,
+    },
   });
   if (!evidence) return ApiErrors.NOT_FOUND("Payment evidence");
 
@@ -90,6 +104,10 @@ export const DELETE = withErrorHandler(async (
           evidenceId,
           evidenceType: evidence.evidenceType,
           versionNumber: evidence.versionNumber,
+          fileName: evidence.fileName ?? null,
+          label: evidence.label ?? null,
+          url: evidence.url ?? null,
+          contentText: evidence.contentText ?? null,
         },
       },
     });
@@ -102,7 +120,15 @@ export const DELETE = withErrorHandler(async (
         action: "record.payment.evidence_removed",
         targetType: "RecordPaymentEvidence",
         targetId: evidenceId,
-        metadata: { recordId, evidenceType: evidence.evidenceType },
+        metadata: {
+          recordId,
+          evidenceType: evidence.evidenceType,
+          versionNumber: evidence.versionNumber,
+          fileName: evidence.fileName ?? null,
+          label: evidence.label ?? null,
+          url: evidence.url ?? null,
+          contentText: evidence.contentText ?? null,
+        },
       },
     });
 

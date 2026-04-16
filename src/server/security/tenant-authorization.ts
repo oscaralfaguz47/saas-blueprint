@@ -25,6 +25,7 @@ export type TenantPermission =
   | "tenant.requests.export"
   | "tenant.requests.comment"
   | "tenant.evidence.add"
+  | "tenant.evidence.remove"
   | "tenant.approvals.assign_internal"
   | "tenant.approvals.assign_external"
   | "tenant.approvals.remind"

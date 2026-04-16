@@ -7,34 +7,28 @@ import { requireFullSession } from "@/server/require-full-session";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { canAccessRequest } from "@/server/security/request-authorization";
+import {
+  MAX_EVIDENCE_FILE_SIZE_BYTES,
+  isAllowedMimeType,
+} from "@/lib/evidence-config";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().cuid() });
 
-const addPaymentEvidenceSchema = z.discriminatedUnion("evidenceType", [
-  z.object({
-    evidenceType: z.literal("TEXT"),
-    label: z.string().max(255).trim().optional(),
-    contentText: z.string().min(1).max(5000).trim(),
-  }),
-  z.object({
-    evidenceType: z.literal("LINK"),
-    label: z.string().min(1).max(255).trim(),
-    url: z
-      .string()
-      .url()
-      .max(2048)
-      .refine(
-        (v) => v.startsWith("http://") || v.startsWith("https://"),
-        "Only http/https URLs allowed"
-      ),
-  }),
-]);
+const confirmSchema = z.object({
+  objectKey: z.string().min(1).max(512),
+  fileName: z.string().min(1).max(255).trim(),
+  mimeType: z.string().refine(isAllowedMimeType, "File type not allowed"),
+  sizeBytes: z.number().int().min(0).max(MAX_EVIDENCE_FILE_SIZE_BYTES),
+  label: z.string().max(255).trim().optional(),
+});
 
 /**
- * POST /api/records/[id]/payment/evidence
- * H2 — Append TEXT/LINK payment evidence with monotonic versionNumber (same transaction).
+ * POST /api/records/[id]/payment/evidence/confirm
+ * Confirm a payment evidence FILE upload after direct R2 PUT.
+ * Validates objectKey prefix, then creates RecordPaymentEvidence
+ * with evidenceType=FILE and increments versionNumber atomically.
  */
 export const POST = withErrorHandler(async (
   req: Request,
@@ -81,13 +75,13 @@ export const POST = withErrorHandler(async (
   if (record.status === "CLOSED") {
     return ApiErrors.CONFLICT("Cannot add payment evidence to a closed record.");
   }
+
   const effectiveAmount =
     record.requestedAmount != null
       ? Number(record.requestedAmount)
       : record.amount != null
         ? Number(record.amount)
         : null;
-
   if (!effectiveAmount || effectiveAmount <= 0) {
     return ApiErrors.VALIDATION_ERROR(
       "Payment tracking is only available for requests with a requested amount."
@@ -96,11 +90,16 @@ export const POST = withErrorHandler(async (
 
   const rawBody = await req.json().catch(() => null);
   if (!rawBody) return ApiErrors.VALIDATION_ERROR("Invalid request body");
-  const bodyResult = addPaymentEvidenceSchema.safeParse(rawBody);
+  const bodyResult = confirmSchema.safeParse(rawBody);
   if (!bodyResult.success) {
     return ApiErrors.VALIDATION_ERROR("Validation failed", bodyResult.error.flatten());
   }
-  const body = bodyResult.data;
+  const { objectKey, fileName, mimeType, sizeBytes, label } = bodyResult.data;
+
+  const expectedPrefix = `tenant/${tenantId}/records/${recordId}/payment-evidence/`;
+  if (!objectKey.startsWith(expectedPrefix)) {
+    return ApiErrors.VALIDATION_ERROR("Invalid object key.");
+  }
 
   const evidence = await prisma.$transaction(async (tx) => {
     let payment = await tx.recordPayment.findUnique({
@@ -131,10 +130,13 @@ export const POST = withErrorHandler(async (
         tenantId,
         recordId,
         paymentId: payment.id,
-        evidenceType: body.evidenceType,
-        label: body.evidenceType === "TEXT" ? body.label ?? null : body.label,
-        contentText: body.evidenceType === "TEXT" ? body.contentText : null,
-        url: body.evidenceType === "LINK" ? body.url : null,
+        evidenceType: "FILE",
+        label: label ?? fileName,
+        storageProvider: "r2",
+        objectKey,
+        fileName,
+        mimeType,
+        sizeBytes,
         versionNumber,
         createdByUserId: session.user.id,
       },
@@ -142,6 +144,7 @@ export const POST = withErrorHandler(async (
         id: true,
         evidenceType: true,
         label: true,
+        fileName: true,
         versionNumber: true,
         createdAt: true,
       },
@@ -155,7 +158,8 @@ export const POST = withErrorHandler(async (
         actorUserId: session.user.id,
         metadata: {
           evidenceId: ev.id,
-          evidenceType: body.evidenceType,
+          evidenceType: "FILE",
+          fileName,
           versionNumber,
         },
       },
@@ -169,7 +173,7 @@ export const POST = withErrorHandler(async (
         action: "record.payment.evidence_added",
         targetType: "RecordPaymentEvidence",
         targetId: ev.id,
-        metadata: { recordId, evidenceType: body.evidenceType, versionNumber },
+        metadata: { recordId, evidenceType: "FILE", fileName, versionNumber },
       },
     });
 

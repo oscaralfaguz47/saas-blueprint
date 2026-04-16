@@ -12,38 +12,23 @@ import {
   getPresignedPutUrlRecordEvidence,
   isR2Configured,
 } from "@/server/services/r2-profile-photo";
+import {
+  MAX_EVIDENCE_FILE_SIZE_BYTES,
+  isAllowedMimeType,
+} from "@/lib/evidence-config";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().cuid() });
 
-const ALLOWED_MIME_TYPES = [
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/gif",
-  "application/pdf",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "text/plain",
-  "text/csv",
-];
-
-const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024;
-
 const uploadUrlSchema = z.object({
   fileName: z.string().min(1).max(255).trim(),
-  mimeType: z.string().refine(
-    (v) => ALLOWED_MIME_TYPES.includes(v),
-    "File type not allowed"
-  ),
+  mimeType: z.string().refine(isAllowedMimeType, "File type not allowed"),
   sizeBytes: z
     .number()
     .int()
     .min(0)
-    .max(MAX_FILE_SIZE_BYTES, "File exceeds maximum size of 25 MB"),
+    .max(MAX_EVIDENCE_FILE_SIZE_BYTES, "File exceeds maximum size of 25 MB"),
 });
 
 /**

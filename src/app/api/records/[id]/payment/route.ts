@@ -12,14 +12,38 @@ import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().cuid() });
 
-const PAYABLE_TYPES = ["BUDGET"] as const;
-
 const setPaymentStatusSchema = z.object({
   status: z.enum(["NOT_PAID", "PENDING", "PAID"]),
 });
 
-function isPayableType(type: string): boolean {
-  return (PAYABLE_TYPES as readonly string[]).includes(type);
+const recordAmountSelect = {
+  type: true,
+  status: true,
+  requestedAmount: true,
+  amount: true,
+} as const;
+
+function paymentNotAllowedForAmountResponse() {
+  return ApiErrors.VALIDATION_ERROR(
+    "Payment tracking is only available for requests with a requested amount."
+  );
+}
+
+function assertPositiveEffectiveAmount(record: {
+  requestedAmount: unknown;
+  amount: unknown;
+}) {
+  const effectiveAmount =
+    record.requestedAmount != null
+      ? Number(record.requestedAmount)
+      : record.amount != null
+        ? Number(record.amount)
+        : null;
+
+  if (!effectiveAmount || effectiveAmount <= 0) {
+    return paymentNotAllowedForAmountResponse();
+  }
+  return null;
 }
 
 /**
@@ -52,12 +76,11 @@ export const GET = withErrorHandler(async (
 
   const record = await prisma.record.findFirst({
     where: { id: recordId, tenantId },
-    select: { type: true },
+    select: recordAmountSelect,
   });
   if (!record) return ApiErrors.NOT_FOUND("Record");
-  if (!isPayableType(record.type)) {
-    return ApiErrors.VALIDATION_ERROR("Payment is not supported for this record type.");
-  }
+  const amountErr = assertPositiveEffectiveAmount(record);
+  if (amountErr) return amountErr;
 
   const payment = await prisma.recordPayment.findUnique({
     where: { recordId },
@@ -123,15 +146,14 @@ export const POST = withErrorHandler(async (
 
   const record = await prisma.record.findFirst({
     where: { id: recordId, tenantId },
-    select: { type: true, status: true },
+    select: recordAmountSelect,
   });
   if (!record) return ApiErrors.NOT_FOUND("Record");
   if (record.status === "CLOSED") {
     return ApiErrors.CONFLICT("Cannot change payment on a closed record.");
   }
-  if (!isPayableType(record.type)) {
-    return ApiErrors.VALIDATION_ERROR("Payment is not supported for this record type.");
-  }
+  const amountErr = assertPositiveEffectiveAmount(record);
+  if (amountErr) return amountErr;
 
   const rawBody = await req.json().catch(() => null);
   if (!rawBody) return ApiErrors.VALIDATION_ERROR("Invalid request body");

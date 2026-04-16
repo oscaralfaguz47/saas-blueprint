@@ -41,6 +41,7 @@ import {
   type BadgeVariant,
 } from "@/lib/record-utils";
 import { RECORD_CATEGORY_CONFIG } from "@/lib/record-category-config";
+import { resolveMimeType } from "@/lib/evidence-config";
 import type {
   RecordDetailExtended,
   RecordDetailResponse,
@@ -117,6 +118,7 @@ export function RequestDetailClient({
   const canComment = permissions.includes("tenant.requests.comment");
   const canExport = permissions.includes("tenant.requests.export");
   const canAddEvidence = permissions.includes("tenant.evidence.add");
+  const canRemoveEvidence = permissions.includes("tenant.evidence.remove");
   const canAssignInternal = permissions.includes("tenant.approvals.assign_internal");
   const canAssignExternal = permissions.includes("tenant.approvals.assign_external");
   const canRemind = permissions.includes("tenant.approvals.remind");
@@ -588,7 +590,13 @@ export function RequestDetailClient({
           )}
 
           <div id="section-evidence">
-            <EvidenceSection evidence={evidence} isClosed={isClosed} recordId={recordId} />
+            <EvidenceSection
+              evidence={evidence}
+              isClosed={isClosed}
+              recordId={recordId}
+              canRemoveEvidence={canRemoveEvidence}
+              onRefresh={load}
+            />
             <AddEvidenceSection
               recordId={recordId}
               isClosed={isClosed}
@@ -689,13 +697,16 @@ export function RequestDetailClient({
             </CardContent>
           </CardRoot>
 
-          {record.type === "BUDGET" && (
+          {record.requestedAmount != null && record.requestedAmount > 0 && (
             <PaymentSection
               payment={payment}
               missingProof={missingProof}
               canManage={canManagePayment}
+              canRemoveEvidence={canRemoveEvidence}
               isClosed={isClosed}
+              recordId={recordId}
               onOpenSetStatus={() => setSetPaymentOpen(true)}
+              onRefresh={load}
             />
           )}
         </div>
@@ -800,10 +811,14 @@ function EvidenceSection({
   evidence,
   isClosed,
   recordId,
+  canRemoveEvidence,
+  onRefresh,
 }: {
   evidence: RecordEvidenceItem[];
   isClosed: boolean;
   recordId: string;
+  canRemoveEvidence: boolean;
+  onRefresh: () => void | Promise<void>;
 }) {
   if (evidence.length === 0 && isClosed) return null;
   return (
@@ -858,12 +873,90 @@ function EvidenceSection({
                     fileName={ev.fileName}
                   />
                 )}
+                {canRemoveEvidence && !isClosed && (
+                  <RemoveEvidenceButton
+                    evidenceId={ev.id}
+                    recordId={recordId}
+                    onSuccess={onRefresh}
+                  />
+                )}
               </li>
             ))}
           </ul>
         )}
       </CardContent>
     </CardRoot>
+  );
+}
+
+function RemoveEvidenceButton({
+  evidenceId,
+  recordId,
+  onSuccess,
+}: {
+  evidenceId: string;
+  recordId: string;
+  onSuccess: () => void | Promise<void>;
+}) {
+  const apiFetch = useApiFetch();
+  const toast = useToast();
+  const [loading, setLoading] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+
+  if (!confirming) {
+    return (
+      <button
+        type="button"
+        onClick={() => setConfirming(true)}
+        className="shrink-0 rounded px-2 py-1 text-xs text-(--color-danger) opacity-60 transition-opacity hover:opacity-100"
+      >
+        Remove
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      <span className="text-xs text-(--text-muted)">Remove?</span>
+      <button
+        type="button"
+        onClick={async () => {
+          setLoading(true);
+          try {
+            const res = await apiFetch(`/api/records/${recordId}/evidence/${evidenceId}`, {
+              method: "DELETE",
+              showToastOnError: false,
+            });
+            if (!res.ok) {
+              const json = (await res.json().catch(() => ({}))) as {
+                error?: { message?: string };
+              };
+              toast.addToast("error", json.error?.message ?? "Failed to remove.");
+              setConfirming(false);
+              return;
+            }
+            toast.addToast("success", "Evidence removed.");
+            await onSuccess();
+          } catch {
+            toast.addToast("error", "Network error.");
+          } finally {
+            setLoading(false);
+            setConfirming(false);
+          }
+        }}
+        disabled={loading}
+        className="rounded px-1.5 py-0.5 text-xs font-medium text-(--color-danger) transition-opacity hover:opacity-80 disabled:opacity-50"
+      >
+        {loading ? "…" : "Yes"}
+      </button>
+      <button
+        type="button"
+        onClick={() => setConfirming(false)}
+        className="rounded px-1.5 py-0.5 text-xs text-(--text-muted) transition-opacity hover:opacity-80"
+      >
+        No
+      </button>
+    </div>
   );
 }
 
@@ -1225,6 +1318,25 @@ function TimelineSection({
                             — {String(ev.metadata.label)}
                           </span>
                         ) : null}
+                        {ev.eventType === "EVIDENCE_FILE_REMOVED" &&
+                        (ev.metadata?.fileName != null || ev.metadata?.label != null) ? (
+                          <span className="ml-1 font-normal text-(--text-muted)">
+                            — {String(ev.metadata?.fileName ?? ev.metadata?.label ?? "")}
+                          </span>
+                        ) : null}
+                        {ev.eventType === "EVIDENCE_LINK_REMOVED" &&
+                        ev.metadata?.label != null &&
+                        ev.metadata.label !== "" ? (
+                          <span className="ml-1 font-normal text-(--text-muted)">
+                            — {String(ev.metadata.label)}
+                          </span>
+                        ) : null}
+                        {ev.eventType === "PAYMENT_EVIDENCE_REMOVED" &&
+                        (ev.metadata?.fileName != null || ev.metadata?.label != null) ? (
+                          <span className="ml-1 font-normal text-(--text-muted)">
+                            — {String(ev.metadata?.fileName ?? ev.metadata?.label ?? "")}
+                          </span>
+                        ) : null}
                       </span>
                       {comment?.isCritical && (
                         <span className="flex items-center gap-1 text-xs text-(--color-danger)">
@@ -1496,27 +1608,6 @@ function AddEvidenceSection({
   const [error, setError] = useState<string | null>(null);
 
   if (!canAdd || isClosed) return null;
-
-  function resolveMimeType(file: File): string {
-    if (file.type) return file.type;
-    const lower = file.name.toLowerCase();
-    if (lower.endsWith(".pdf")) return "application/pdf";
-    if (lower.endsWith(".png")) return "image/png";
-    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
-    if (lower.endsWith(".gif")) return "image/gif";
-    if (lower.endsWith(".webp")) return "image/webp";
-    if (lower.endsWith(".txt")) return "text/plain";
-    if (lower.endsWith(".csv")) return "text/csv";
-    if (lower.endsWith(".doc")) return "application/msword";
-    if (lower.endsWith(".docx")) {
-      return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-    }
-    if (lower.endsWith(".xls")) return "application/vnd.ms-excel";
-    if (lower.endsWith(".xlsx")) {
-      return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-    }
-    return "image/png";
-  }
 
   async function uploadFile(file: File) {
     setMode("uploading");
@@ -1833,15 +1924,152 @@ function PaymentSection({
   payment,
   missingProof,
   canManage,
+  canRemoveEvidence,
   isClosed,
+  recordId,
   onOpenSetStatus,
+  onRefresh,
 }: {
   payment: RecordPaymentItem;
   missingProof: boolean;
   canManage: boolean;
+  canRemoveEvidence: boolean;
   isClosed: boolean;
+  recordId: string;
   onOpenSetStatus: () => void;
+  onRefresh: () => void | Promise<void>;
 }) {
+  const apiFetch = useApiFetch();
+  const toast = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [addMode, setAddMode] = useState<"idle" | "text" | "link">("idle");
+  const [noteContent, setNoteContent] = useState("");
+  const [noteLabel, setNoteLabel] = useState("");
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkLabel, setLinkLabel] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [addError, setAddError] = useState<string | null>(null);
+
+  function resetAddForm() {
+    setAddMode("idle");
+    setAddError(null);
+    setNoteContent("");
+    setNoteLabel("");
+    setLinkUrl("");
+    setLinkLabel("");
+  }
+
+  async function uploadFile(file: File) {
+    setSubmitting(true);
+    setUploadProgress("Preparing...");
+    setAddError(null);
+    try {
+      const mimeType = resolveMimeType(file);
+      const urlRes = await apiFetch(`/api/records/${recordId}/payment/evidence/upload-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: file.name,
+          mimeType,
+          sizeBytes: Math.max(file.size, 0),
+        }),
+        showToastOnError: false,
+      });
+      if (!urlRes.ok) {
+        const json = (await urlRes.json().catch(() => ({}))) as {
+          error?: { message?: string };
+        };
+        setAddError(json.error?.message ?? "Failed to prepare upload.");
+        return;
+      }
+      const urlJson = (await urlRes.json()) as {
+        data: { uploadUrl: string; objectKey: string };
+      };
+      const { uploadUrl, objectKey } = urlJson.data;
+
+      setUploadProgress("Uploading...");
+      const putRes = await fetch(uploadUrl, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": mimeType },
+      });
+      if (!putRes.ok) {
+        setAddError("Upload failed. Please try again.");
+        return;
+      }
+
+      setUploadProgress("Saving...");
+      const confirmRes = await apiFetch(`/api/records/${recordId}/payment/evidence/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          objectKey,
+          fileName: file.name,
+          mimeType,
+          sizeBytes: Math.max(file.size, 0),
+          label: file.name,
+        }),
+        showToastOnError: false,
+      });
+      if (!confirmRes.ok) {
+        const json = (await confirmRes.json().catch(() => ({}))) as {
+          error?: { message?: string };
+        };
+        setAddError(json.error?.message ?? "Failed to save.");
+        return;
+      }
+      toast.addToast("success", "File uploaded.");
+      await onRefresh();
+    } catch {
+      setAddError("Upload failed.");
+    } finally {
+      setSubmitting(false);
+      setUploadProgress(null);
+    }
+  }
+
+  async function handleAddEvidence(e: React.FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    setAddError(null);
+    try {
+      const body =
+        addMode === "text"
+          ? {
+              evidenceType: "TEXT" as const,
+              contentText: noteContent.trim(),
+              label: noteLabel.trim() || undefined,
+            }
+          : {
+              evidenceType: "LINK" as const,
+              url: linkUrl.trim(),
+              label: linkLabel.trim(),
+            };
+
+      const res = await apiFetch(`/api/records/${recordId}/payment/evidence`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        showToastOnError: false,
+      });
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as {
+          error?: { message?: string };
+        };
+        setAddError(json.error?.message ?? "Failed to add proof.");
+        return;
+      }
+      toast.addToast("success", "Payment proof added.");
+      resetAddForm();
+      await onRefresh();
+    } catch {
+      setAddError("Network error.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <CardRoot>
       <CardHeader>
@@ -1858,10 +2086,10 @@ function PaymentSection({
           )}
         </div>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-4">
         {payment ? (
           <>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Badge variant={PAYMENT_STATUS_BADGE[payment.status] ?? "secondary"}>
                 {PAYMENT_STATUS_LABELS[payment.status] ?? payment.status}
               </Badge>
@@ -1872,29 +2100,279 @@ function PaymentSection({
                 </span>
               )}
             </div>
+
             {payment.evidence.length > 0 && (
-              <div>
-                <p className="mb-1.5 text-xs font-medium text-(--text-muted)">
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-(--text-muted)">
                   Payment proof ({payment.evidence.length})
                 </p>
                 <ul className="space-y-1.5">
                   {payment.evidence.map((ev) => (
                     <li
                       key={ev.id}
-                      className="rounded border border-(--border-subtle) bg-(--bg-surface-elev) px-2.5 py-2 text-xs text-(--text-secondary)"
+                      className="flex items-center gap-2 rounded border border-(--border-subtle) bg-(--bg-surface-elev) px-2.5 py-2"
                     >
-                      {ev.label ?? `v${ev.versionNumber}`} · {formatDate(ev.createdAt)}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-medium text-(--text-primary)">
+                          {ev.label ?? `Proof v${ev.versionNumber}`}
+                        </p>
+                        <p className="text-xs text-(--text-muted)">
+                          {ev.evidenceType} · {formatDate(ev.createdAt)}
+                        </p>
+                      </div>
+                      {canRemoveEvidence && !isClosed && (
+                        <RemovePaymentEvidenceButton
+                          evidenceId={ev.id}
+                          recordId={recordId}
+                          onSuccess={onRefresh}
+                        />
+                      )}
                     </li>
                   ))}
                 </ul>
               </div>
             )}
+
+            {canManage && !isClosed && (
+              <div className="space-y-2">
+                {addMode === "idle" && addError && (
+                  <p className="text-xs text-(--color-danger)">{addError}</p>
+                )}
+
+                {submitting && uploadProgress && (
+                  <div className="flex items-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 py-2 text-xs text-(--text-muted)">
+                    <Spinner size="sm" />
+                    {uploadProgress}
+                  </div>
+                )}
+
+                {addMode === "idle" && (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={submitting}
+                      className="inline-flex h-7 items-center gap-1 rounded border border-(--border-subtle) bg-(--bg-surface-elev) px-2.5 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:opacity-50"
+                    >
+                      <IconUpload size={12} />
+                      Upload file
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAddMode("text")}
+                      disabled={submitting}
+                      className="inline-flex h-7 items-center gap-1 rounded border border-(--border-subtle) bg-(--bg-surface-elev) px-2.5 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:opacity-50"
+                    >
+                      + Add note
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAddMode("link")}
+                      disabled={submitting}
+                      className="inline-flex h-7 items-center gap-1 rounded border border-(--border-subtle) bg-(--bg-surface-elev) px-2.5 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:opacity-50"
+                    >
+                      + Add link
+                    </button>
+                  </div>
+                )}
+
+                {addMode !== "idle" && (
+                  <form
+                    onSubmit={handleAddEvidence}
+                    className="space-y-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) p-3"
+                  >
+                    {addError && (
+                      <p className="text-xs text-(--color-danger)">{addError}</p>
+                    )}
+
+                    {addMode === "text" && (
+                      <>
+                        <div className="space-y-1">
+                          <label className="block text-xs font-medium text-(--text-primary)">
+                            Note <span className="text-(--color-danger)">*</span>
+                          </label>
+                          <Textarea
+                            value={noteContent}
+                            onChange={(e) => setNoteContent(e.target.value)}
+                            placeholder="Payment confirmation details..."
+                            rows={3}
+                            maxLength={5000}
+                            disabled={submitting}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-xs font-medium text-(--text-primary)">
+                            Label{" "}
+                            <span className="font-normal text-(--text-muted)">(optional)</span>
+                          </label>
+                          <Input
+                            value={noteLabel}
+                            onChange={(e) => setNoteLabel(e.target.value)}
+                            placeholder="e.g. Wire transfer confirmed"
+                            maxLength={255}
+                            disabled={submitting}
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {addMode === "link" && (
+                      <>
+                        <div className="space-y-1">
+                          <label className="block text-xs font-medium text-(--text-primary)">
+                            Label <span className="text-(--color-danger)">*</span>
+                          </label>
+                          <Input
+                            value={linkLabel}
+                            onChange={(e) => setLinkLabel(e.target.value)}
+                            placeholder="e.g. Bank receipt"
+                            maxLength={255}
+                            disabled={submitting}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-xs font-medium text-(--text-primary)">
+                            URL <span className="text-(--color-danger)">*</span>
+                          </label>
+                          <Input
+                            type="url"
+                            value={linkUrl}
+                            onChange={(e) => setLinkUrl(e.target.value)}
+                            placeholder="https://..."
+                            maxLength={2048}
+                            disabled={submitting}
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="submit"
+                        disabled={
+                          submitting ||
+                          (addMode === "text" && !noteContent.trim()) ||
+                          (addMode === "link" && (!linkUrl.trim() || !linkLabel.trim()))
+                        }
+                        className="inline-flex h-7 items-center gap-1.5 rounded bg-(--color-primary) px-3 text-xs font-medium text-white disabled:opacity-60"
+                      >
+                        {submitting && <Spinner size="sm" />}
+                        {submitting ? "Saving..." : "Add proof"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={resetAddForm}
+                        className="inline-flex h-7 items-center rounded border border-(--border-subtle) px-3 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            )}
           </>
         ) : (
-          <p className="text-sm text-(--text-muted)">No payment information recorded.</p>
+          <div className="space-y-3">
+            <p className="text-sm text-(--text-muted)">No payment information recorded.</p>
+            {canManage && !isClosed && (
+              <button
+                type="button"
+                onClick={onOpenSetStatus}
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)"
+              >
+                Set payment status
+              </button>
+            )}
+          </div>
         )}
       </CardContent>
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void uploadFile(f);
+          e.target.value = "";
+        }}
+      />
     </CardRoot>
+  );
+}
+
+function RemovePaymentEvidenceButton({
+  evidenceId,
+  recordId,
+  onSuccess,
+}: {
+  evidenceId: string;
+  recordId: string;
+  onSuccess: () => void | Promise<void>;
+}) {
+  const apiFetch = useApiFetch();
+  const toast = useToast();
+  const [loading, setLoading] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+
+  if (!confirming) {
+    return (
+      <button
+        type="button"
+        onClick={() => setConfirming(true)}
+        className="shrink-0 rounded px-2 py-1 text-xs text-(--color-danger) opacity-60 transition-opacity hover:opacity-100"
+      >
+        Remove
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      <span className="text-xs text-(--text-muted)">Remove?</span>
+      <button
+        type="button"
+        onClick={async () => {
+          setLoading(true);
+          try {
+            const res = await apiFetch(
+              `/api/records/${recordId}/payment/evidence/${evidenceId}`,
+              {
+                method: "DELETE",
+                showToastOnError: false,
+              }
+            );
+            if (!res.ok) {
+              const json = (await res.json().catch(() => ({}))) as {
+                error?: { message?: string };
+              };
+              toast.addToast("error", json.error?.message ?? "Failed to remove.");
+              setConfirming(false);
+              return;
+            }
+            toast.addToast("success", "Proof removed.");
+            await onSuccess();
+          } catch {
+            toast.addToast("error", "Network error.");
+          } finally {
+            setLoading(false);
+            setConfirming(false);
+          }
+        }}
+        disabled={loading}
+        className="rounded px-1.5 py-0.5 text-xs font-medium text-(--color-danger) transition-opacity hover:opacity-80 disabled:opacity-50"
+      >
+        {loading ? "…" : "Yes"}
+      </button>
+      <button
+        type="button"
+        onClick={() => setConfirming(false)}
+        className="rounded px-1.5 py-0.5 text-xs text-(--text-muted) transition-opacity hover:opacity-80"
+      >
+        No
+      </button>
+    </div>
   );
 }
 

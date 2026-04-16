@@ -68,6 +68,11 @@ const PERMISSIONS = [
   { code: "tenant.requests.export", scope: "TENANT", description: "Export request packet (PDF) and/or bundle (ZIP)" },
   { code: "tenant.requests.comment", scope: "TENANT", description: "Add comments on requests" },
   { code: "tenant.evidence.add", scope: "TENANT", description: "Attach evidence (files and links)" },
+  {
+    code: "tenant.evidence.remove",
+    scope: "TENANT",
+    description: "Remove evidence from requests (Primary Owner, Owner, Admin only)",
+  },
   { code: "tenant.approvals.assign_internal", scope: "TENANT", description: "Assign internal approvers" },
   { code: "tenant.approvals.assign_external", scope: "TENANT", description: "Send external approvals via email/token" },
   { code: "tenant.approvals.remind", scope: "TENANT", description: "Send manual reminders to pending approvers" },
