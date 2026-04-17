@@ -385,7 +385,7 @@ async function ensurePlans() {
       name: "Scale",
       isActive: true,
       priceMonthly: 24900,
-      priceYearly: 202900,
+      priceYearly: 253900,
       featuresJson: {
         requests: { included: -1, hardCap: false, rolloverMonths: 0, maxAvailable: -1, overageCentsPerUnit: null, overageCapCents: null },
         pdf: { included: -1, hardCap: false, watermark: false },

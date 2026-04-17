@@ -87,8 +87,8 @@ export const IN_APP_PLAN_CATALOG: InAppPlanItem[] = [
     code: "scale",
     name: "Scale",
     priceMonthlyCents: 24900,
-    priceYearlyCents: 202900,
-    priceYearlyPerMonthCents: 16908,
+    priceYearlyCents: 253900,
+    priceYearlyPerMonthCents: 21158,
     bestFor: "Large teams with high volume and strict compliance needs.",
     includes: [
       "Unlimited internal members",

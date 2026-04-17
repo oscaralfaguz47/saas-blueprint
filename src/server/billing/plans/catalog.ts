@@ -83,7 +83,7 @@ export const PLAN_CATALOG: Record<ServerPlanCode, PlanCatalogEntry> = {
   scale: {
     code: "scale",
     priceMonthly: 24900,
-    priceYearly: 202900,
+    priceYearly: 253900,
     requestsIncluded: -1,
     hardCap: false,
     rolloverMaxAvailable: -1,

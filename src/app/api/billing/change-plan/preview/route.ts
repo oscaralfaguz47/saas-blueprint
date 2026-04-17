@@ -5,6 +5,7 @@ import { getCurrentTenantId, requireTenantPermission } from "@/server/billing/te
 import { prisma } from "@/server/db";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { type PlanCode, isUpgrade } from "@/lib/billing/plan-catalog";
+import { getPlanCatalogEntry } from "@/server/billing/plans/catalog";
 import { z } from "zod";
 
 const querySchema = z.object({
@@ -79,10 +80,11 @@ export const GET = withErrorHandler(async (req: Request) => {
     where: { code: targetPlanCode, isActive: true },
     select: { priceMonthly: true, priceYearly: true },
   });
+  const targetPlanCatalog = getPlanCatalogEntry(targetPlanCode);
   const nextPriceCents =
     billingInterval === "annual"
-      ? (targetPlan?.priceYearly ?? targetPlan?.priceMonthly ?? null)
-      : (targetPlan?.priceMonthly ?? null);
+      ? (targetPlanCatalog?.priceYearly ?? targetPlan?.priceYearly ?? targetPlan?.priceMonthly ?? null)
+      : (targetPlanCatalog?.priceMonthly ?? targetPlan?.priceMonthly ?? null);
 
   if (!subscription?.providerSubscriptionId) {
     return apiSuccess({
