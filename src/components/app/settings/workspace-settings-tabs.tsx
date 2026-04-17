@@ -100,7 +100,11 @@ export function WorkspaceSettingsTabs({
           />
         </TabsContent>
         <TabsContent value="invites">
-          <WorkspaceInvitesTab tenant={tenant} permissions={permissions} />
+          <WorkspaceInvitesTab
+            tenant={tenant}
+            permissions={permissions}
+            currentUserRole={currentUserRole}
+          />
         </TabsContent>
         <TabsContent value="billing">
           <WorkspaceBillingTab />

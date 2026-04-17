@@ -766,6 +766,9 @@ model TenantInvitation {
 
   acceptedAt DateTime?
 
+  /// Role to assign when the invite is accepted. Defaults to "Member" if null.
+  role String? @db.VarChar(50)
+
   /// A5: Set when user declines invite (in-app or via link)
   rejectedAt       DateTime?
   rejectedByUserId String?

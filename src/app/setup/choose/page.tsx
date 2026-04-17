@@ -12,7 +12,6 @@ export type PendingInvitationItem = {
   workspaceName: string;
   invitedByName: string | null;
   invitedByEmail: string | null;
-  /** A5: Role offered — TODO when invitation role is added in a future epic */
   roleOffered: string;
 };
 
@@ -41,6 +40,7 @@ export default async function SetupChoosePage() {
     },
     select: {
       id: true,
+      role: true,
       tenant: { select: { name: true } },
       invitedByUser: { select: { name: true, email: true } },
     },
@@ -52,7 +52,7 @@ export default async function SetupChoosePage() {
     workspaceName: inv.tenant.name,
     invitedByName: inv.invitedByUser?.name ?? null,
     invitedByEmail: inv.invitedByUser?.email ?? null,
-    roleOffered: "Member",
+    roleOffered: inv.role ?? "Member",
   }));
 
   return <SetupChooseClient invitations={items} />;

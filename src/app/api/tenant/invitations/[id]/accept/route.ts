@@ -37,6 +37,7 @@ export const POST = withErrorHandler(async (
       acceptedAt: true,
       revokedAt: true,
       expiresAt: true,
+      role: true,
     },
   });
 
@@ -133,17 +134,20 @@ export const POST = withErrorHandler(async (
         select: { id: true },
       });
 
-      const memberRole = await tx.tenantRole.findUnique({
-        where: { tenantId_name: { tenantId: invite.tenantId, name: "Member" } },
+      const assignedRoleName = invite.role ?? "Member";
+      const foundRole = await tx.tenantRole.findUnique({
+        where: {
+          tenantId_name: { tenantId: invite.tenantId, name: assignedRoleName },
+        },
         select: { id: true },
       });
       const role =
-        memberRole ??
+        foundRole ??
         (await tx.tenantRole.create({
           data: {
             tenantId: invite.tenantId,
-            name: "Member",
-            isSystem: true,
+            name: assignedRoleName,
+            isSystem: assignedRoleName === "Member",
           },
           select: { id: true },
         }));
@@ -188,6 +192,7 @@ export const POST = withErrorHandler(async (
       membershipCreated: result.membershipCreated,
       membershipId: result.membershipId,
       reenabled: result.reenabled,
+      role: invite.role ?? "Member",
     },
     ipAddress: getIp(req),
     userAgent: getUserAgent(req),

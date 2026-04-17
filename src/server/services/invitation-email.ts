@@ -13,8 +13,10 @@ export async function sendInvitationEmail(params: {
   invitedEmail: string;
   rawToken: string;
   baseUrl: string;
+  role?: string;
 }): Promise<void> {
   const { tenantName, invitedEmail, baseUrl } = params;
+  const appName = env.APP_NAME ?? "Relitrue";
   const inviteLink = `${baseUrl.replace(/\/$/, "")}/invite?token=${encodeURIComponent(params.rawToken)}`;
 
   const apiKey = env.RESEND_API_KEY;
@@ -35,12 +37,55 @@ export async function sendInvitationEmail(params: {
   const { error } = await resend.emails.send({
     from,
     to: invitedEmail,
-    subject: `You're invited to join ${tenantName}`,
-    html: `
-      <p>You've been invited to join the workspace <strong>${escapeHtml(tenantName)}</strong>.</p>
-      <p><a href="${inviteLink}">Accept invitation</a></p>
-      <p>This link expires in 7 days. If you didn't expect this invite, you can ignore this email.</p>
-    `,
+    subject: `You've been invited to join ${escapeHtml(tenantName)} on ${escapeHtml(appName)}`,
+    html: `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>You're invited to join ${escapeHtml(tenantName)}</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 16px;">
+    <tr><td align="center">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+
+        <tr><td style="padding:32px 40px 0;background:#09090b;text-align:center;">
+          <p style="margin:0;font-size:18px;font-weight:700;color:#ffffff;">${escapeHtml(appName)}</p>
+        </td></tr>
+
+        <tr><td style="padding:28px 40px 0;">
+          <p style="margin:0;font-size:15px;color:#3f3f46;">
+            You've been invited to join the workspace
+            <strong style="color:#09090b;">${escapeHtml(tenantName)}</strong>
+            as <strong style="color:#09090b;">${escapeHtml(params.role ?? "Member")}</strong>.
+          </p>
+          <p style="margin:12px 0 0;font-size:14px;color:#71717a;">
+            Click the button below to accept your invitation and get started.
+          </p>
+        </td></tr>
+
+        <tr><td style="padding:24px 40px 32px;text-align:center;">
+          <a href="${inviteLink}"
+             style="display:inline-block;background:#09090b;color:#ffffff;text-decoration:none;padding:12px 32px;border-radius:8px;font-size:14px;font-weight:600;">
+            Accept invitation
+          </a>
+          <p style="margin:16px 0 0;font-size:12px;color:#a1a1aa;">
+            This invitation expires in 7 days. If you didn't expect this, you can safely ignore this email.
+          </p>
+        </td></tr>
+
+        <tr><td style="padding:20px 40px;background:#fafafa;border-top:1px solid #e4e4e7;text-align:center;">
+          <p style="margin:0;font-size:12px;color:#a1a1aa;">
+            © ${escapeHtml(appName)}. All rights reserved.
+          </p>
+        </td></tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`,
   });
 
   if (error) {

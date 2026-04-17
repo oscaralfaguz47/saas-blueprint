@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import AppHeader from "@/components/app/app-header";
 import AppSidebar from "@/components/app/app-sidebar";
 import { ChatWidgetRoot } from "@/components/help/chat-widget-root";
@@ -18,7 +19,7 @@ type AppLayoutClientProps = {
     image: string | null;
   };
   workspace: Workspace | null;
-  /** A5: Pending workspace invitations for header badge */
+  /** A5: Pending workspace invitations for sidebar */
   pendingInvitationsCount?: number;
   /** Platform Admin: show sidebar entry when true */
   canAccessPlatformAdmin?: boolean;
@@ -32,8 +33,22 @@ export default function AppLayoutClient({
   canAccessPlatformAdmin = false,
   children,
 }: AppLayoutClientProps) {
+  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const lastRefreshRef = useRef<number>(Date.now());
+
+  useEffect(() => {
+    const handleFocus = () => {
+      const now = Date.now();
+      if (now - lastRefreshRef.current > 60_000) {
+        lastRefreshRef.current = now;
+        router.refresh();
+      }
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [router]);
 
   useEffect(() => {
     const m = window.matchMedia("(max-width: 767px)");
@@ -50,12 +65,12 @@ export default function AppLayoutClient({
         onClose={() => setSidebarOpen(false)}
         isMobile={isMobile}
         canAccessPlatformAdmin={canAccessPlatformAdmin}
+        pendingInvitationsCount={pendingInvitationsCount}
       />
       <div className="flex w-full min-w-0 flex-1 flex-col overflow-hidden">
         <AppHeader
           user={user}
           workspace={workspace}
-          pendingInvitationsCount={pendingInvitationsCount}
           onMenuClick={isMobile ? () => setSidebarOpen(true) : undefined}
         />
         <main className="min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto text-(--text-primary)">

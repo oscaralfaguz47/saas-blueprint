@@ -7,24 +7,79 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 
+const ROLE_RANK: Record<string, number> = {
+  "Primary Owner": 5,
+  Owner: 4,
+  Admin: 3,
+  Finance: 2,
+  Member: 1,
+};
+
+const ALL_ASSIGNABLE_ROLES = [
+  {
+    value: "Owner",
+    label: "Owner",
+    description: "Full workspace control",
+    dot: "#7c3aed", // purple
+  },
+  {
+    value: "Admin",
+    label: "Admin",
+    description: "Broad management, no billing ownership",
+    dot: "#2563eb", // blue
+  },
+  {
+    value: "Finance",
+    label: "Finance",
+    description: "Requests, approvals, payments",
+    dot: "#16a34a", // green
+  },
+  {
+    value: "Member",
+    label: "Member",
+    description: "Request creation and participation",
+    dot: "#71717a", // gray
+  },
+];
+
+function getAssignableRoles(currentUserRole: string) {
+  const rank = ROLE_RANK[currentUserRole] ?? 1;
+  return ALL_ASSIGNABLE_ROLES.filter((r) => (ROLE_RANK[r.value] ?? 0) < rank);
+}
+
 type Props = {
   open: boolean;
   onClose: () => void;
   workspaceName: string;
+  currentUserRole: string;
   onSuccess?: () => void;
 };
 
 type SubmitMode = "email" | "link";
 
-export function InviteMemberModal({ open, onClose, workspaceName, onSuccess }: Props) {
+export function InviteMemberModal({
+  open,
+  onClose,
+  workspaceName,
+  currentUserRole,
+  onSuccess,
+}: Props) {
   const router = useRouter();
   const apiFetch = useApiFetch();
   const [email, setEmail] = useState("");
+  const [role, setRole] = useState("Member");
   const [status, setStatus] = useState<"idle" | "submitting" | "error" | "linkReady">("idle");
   const [submittingMode, setSubmittingMode] = useState<SubmitMode | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  const assignableRoles = getAssignableRoles(currentUserRole);
+
+  // Ensure selected role is always valid for this user
+  const effectiveRole = assignableRoles.some((r) => r.value === role)
+    ? role
+    : (assignableRoles[assignableRoles.length - 1]?.value ?? "Member");
 
   const submit = async (mode: SubmitMode) => {
     const trimmed = email.trim().toLowerCase();
@@ -37,7 +92,11 @@ export function InviteMemberModal({ open, onClose, workspaceName, onSuccess }: P
       const res = await apiFetch("/api/tenant/invitations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: trimmed, sendEmail: mode === "email" }),
+        body: JSON.stringify({
+          email: trimmed,
+          sendEmail: mode === "email",
+          role: effectiveRole,
+        }),
         showToastOnError: false,
       });
       const data = (await res.json()) as {
@@ -63,6 +122,7 @@ export function InviteMemberModal({ open, onClose, workspaceName, onSuccess }: P
       setSubmittingMode(null);
       if (mode === "email") {
         setEmail("");
+        setRole("Member");
         setStatus("idle");
         onSuccess?.();
         router.refresh();
@@ -106,6 +166,7 @@ export function InviteMemberModal({ open, onClose, workspaceName, onSuccess }: P
   const handleClose = () => {
     if (status !== "submitting") {
       setEmail("");
+      setRole("Member");
       setError(null);
       setStatus("idle");
       setInviteUrl(null);
@@ -129,6 +190,8 @@ export function InviteMemberModal({ open, onClose, workspaceName, onSuccess }: P
           <p className="text-sm text-(--text-secondary)">
             Enter their email to send an invite, or generate a link to share (Slack, etc.).
           </p>
+
+          {/* Email field */}
           <div>
             <label
               htmlFor="invite-email"
@@ -147,6 +210,48 @@ export function InviteMemberModal({ open, onClose, workspaceName, onSuccess }: P
               className="mt-1.5"
             />
           </div>
+
+          {/* Role selector */}
+          {assignableRoles.length > 0 ? (
+            <div>
+              <label className="block text-sm font-medium text-(--text-primary)">Role</label>
+              <div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {assignableRoles.map((r) => (
+                  <button
+                    key={r.value}
+                    type="button"
+                    disabled={status === "submitting"}
+                    onClick={() => setRole(r.value)}
+                    className={`cursor-pointer flex flex-col items-start rounded-lg border px-3 py-2.5 text-left transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                      effectiveRole === r.value
+                        ? "border-(--color-primary) bg-(--color-primary)/5 ring-1 ring-(--color-primary)"
+                        : "border-(--border-subtle) bg-(--bg-surface) hover:border-(--border-default) hover:bg-(--bg-surface-elev)"
+                    }`}
+                  >
+                    <span className="flex w-full items-center gap-2">
+                      <span
+                        style={{ backgroundColor: r.dot }}
+                        className="mt-0.5 h-2 w-2 shrink-0 rounded-full"
+                      />
+                      <span
+                        className={`text-sm font-medium ${effectiveRole === r.value ? "text-(--color-primary)" : "text-(--text-primary)"}`}
+                      >
+                        {r.label}
+                      </span>
+                    </span>
+                    <span className="mt-0.5 pl-4 text-xs text-(--text-muted)">{r.description}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 py-2.5">
+              <p className="text-xs text-(--text-muted)">
+                You can only invite members. Role changes can be made after they join.
+              </p>
+            </div>
+          )}
+
           {error ? (
             <div
               role="alert"
@@ -155,6 +260,7 @@ export function InviteMemberModal({ open, onClose, workspaceName, onSuccess }: P
               {error}
             </div>
           ) : null}
+
           <div className="flex flex-wrap justify-end gap-2">
             <button
               type="button"
@@ -196,8 +302,10 @@ export function InviteMemberModal({ open, onClose, workspaceName, onSuccess }: P
       ) : (
         <div className="space-y-4">
           <p className="text-sm text-(--text-secondary)">
-            Share this link with <span className="font-medium text-(--text-primary)">{email}</span>.
-            It will expire in 7 days.
+            Share this link with{" "}
+            <span className="font-medium text-(--text-primary)">{email}</span>. It expires in 7
+            days. They will join as{" "}
+            <span className="font-medium text-(--text-primary)">{effectiveRole}</span>.
           </p>
           <div className="flex gap-2">
             <input
@@ -222,6 +330,7 @@ export function InviteMemberModal({ open, onClose, workspaceName, onSuccess }: P
                 setStatus("idle");
                 setInviteUrl(null);
                 setEmail("");
+                setRole("Member");
                 onSuccess?.();
                 router.refresh();
               }}

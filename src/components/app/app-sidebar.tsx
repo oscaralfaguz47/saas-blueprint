@@ -20,6 +20,14 @@ import { useCreateWorkspaceModal } from "@/components/app/workspace/create-works
 import { useCreateRequestModal } from "@/components/app/requests/create-request-modal-context";
 import { useTenantPermissions } from "@/components/app/tenant-permissions-context";
 
+function workspaceInitials(name: string): string {
+  const s = name.trim();
+  if (!s) return "WS";
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return s.slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 type TenantItem = {
   id: string;
   name: string;
@@ -35,6 +43,7 @@ type AppSidebarProps = {
   isMobile: boolean;
   /** When true, show Platform Admin link (vendor permission admin.tenants.read). */
   canAccessPlatformAdmin?: boolean;
+  pendingInvitationsCount?: number;
 };
 
 function isRequestsActive(pathname: string) {
@@ -50,6 +59,7 @@ export default function AppSidebar({
   onClose,
   isMobile,
   canAccessPlatformAdmin = false,
+  pendingInvitationsCount = 0,
 }: AppSidebarProps) {
   const pathname = usePathname() ?? "";
   const router = useRouter();
@@ -328,11 +338,19 @@ export default function AppSidebar({
         ) : null}
       </nav>
 
-      {/* Workspace section — separator, label, scrollable list */}
       <div className="mt-2 flex min-h-0 flex-1 flex-col border-t border-(--border-subtle) px-3 py-2">
         {showLabels ? (
-          <div className="px-1 pb-2 text-quiet-uppercase">
-            Workspace
+          <div className="flex items-center justify-between px-1 pb-2">
+            <span className="text-quiet-uppercase">Workspace</span>
+            {pendingInvitationsCount > 0 && (
+              <Link
+                href="/invitations"
+                onClick={() => isMobile && onClose()}
+                className="inline-flex items-center gap-1 rounded-full bg-(--color-primary)/10 px-2 py-0.5 text-[10px] font-semibold text-(--color-primary) hover:bg-(--color-primary)/20 transition-colors"
+              >
+                {pendingInvitationsCount} pending {pendingInvitationsCount === 1 ? "invite" : "invites"}
+              </Link>
+            )}
           </div>
         ) : null}
 
@@ -344,13 +362,18 @@ export default function AppSidebar({
                 <span>Loading…</span>
               </div>
             ) : (
-              <div className="max-h-40 min-h-0 overflow-y-auto">
+              <div className="max-h-40 min-h-0 overflow-y-auto space-y-0.5">
                 {tenants.map((t) => (
                   <div
                     key={t.id}
-                    className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 ${t.isDefaultTenant ? activeBg : ""}`}
+                    className={`flex items-center gap-2.5 rounded-lg px-2 py-2 ${t.isDefaultTenant ? activeBg : "hover:bg-(--nav-hover)"}`}
                   >
-                    <span className="min-w-0 truncate text-sm text-(--text-primary)">{t.name}</span>
+                    <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-(--border-subtle) bg-(--bg-surface-elev) text-[10px] font-bold text-(--text-primary) uppercase">
+                      {workspaceInitials(t.name)}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-sm text-(--text-primary)">
+                      {t.name}
+                    </span>
                     {t.isDefaultTenant ? (
                       <span className="shrink-0 rounded-full border border-(--border-subtle) bg-(--bg-surface-elev) px-1.5 py-0.5 text-[9px] font-medium text-(--text-muted) opacity-80 shadow-sm">
                         Current
@@ -360,9 +383,9 @@ export default function AppSidebar({
                         type="button"
                         onClick={() => handleSwitchTenant(t.id)}
                         disabled={switchingId !== null}
-                        className="shrink-0 text-xs font-medium text-(--text-muted) transition-colors duration-150 hover:text-(--color-primary) disabled:opacity-60"
+                        className="shrink-0 text-xs font-medium text-(--text-muted) transition-colors hover:text-(--color-primary) disabled:opacity-60"
                       >
-                        {switchingId === t.id ? <Spinner size="sm" /> : "Switch to"}
+                        {switchingId === t.id ? <Spinner size="sm" /> : "Switch"}
                       </button>
                     )}
                   </div>
@@ -385,7 +408,6 @@ export default function AppSidebar({
           {showLabels ? <span>Create workspace</span> : null}
         </button>
 
-        {/* Workspace settings (RBAC) + Help: only shown when user has at least one workspace */}
         {tenants.length > 0 ? (
           <div className="mt-1 flex flex-col gap-0.5">
             {canAccessWorkspaceSettings ? (
