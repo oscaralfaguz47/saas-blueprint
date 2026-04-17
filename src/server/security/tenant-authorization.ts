@@ -9,6 +9,7 @@ import { prisma } from "@/server/db";
 export type TenantPermission =
   | "tenant.audit.read"
   | "tenant.billing.manage"
+  | "tenant.financial_config.manage"
   | "tenant.settings.manage"
   | "tenant.roles.read"
   | "tenant.roles.manage"
@@ -24,6 +25,7 @@ export type TenantPermission =
   | "tenant.requests.export"
   | "tenant.requests.comment"
   | "tenant.evidence.add"
+  | "tenant.evidence.remove"
   | "tenant.approvals.assign_internal"
   | "tenant.approvals.assign_external"
   | "tenant.approvals.remind"

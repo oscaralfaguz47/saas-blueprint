@@ -11,6 +11,14 @@ import { getBaseUrlFromRequest } from "@/lib/request-utils";
 import { parseBody, createInvitationSchema } from "@/lib/validations";
 import crypto from "crypto";
 
+const ROLE_RANK: Record<string, number> = {
+  "Primary Owner": 5,
+  Owner: 4,
+  Admin: 3,
+  Finance: 2,
+  Member: 1,
+};
+
 function normalizeEmail(email: string): string {
   return email.toLowerCase().trim();
 }
@@ -89,6 +97,22 @@ export const POST = withErrorHandler(async (req: Request) => {
   if (!allowed) return ApiErrors.FORBIDDEN();
 
   const body = await parseBody(req, createInvitationSchema);
+  const requestedRole = body.role ?? "Member";
+
+  const inviterMembership = await prisma.tenantMembership.findUnique({
+    where: { tenantId_userId: { tenantId: tenant.id, userId: session.user.id } },
+    select: {
+      roles: { select: { role: { select: { name: true } } } },
+    },
+  });
+  const inviterRoleNames = inviterMembership?.roles.map((r) => r.role.name) ?? [];
+  const inviterMaxRank = Math.max(0, ...inviterRoleNames.map((n) => ROLE_RANK[n] ?? 0));
+  const requestedRank = ROLE_RANK[requestedRole] ?? 1;
+
+  if (requestedRank >= inviterMaxRank) {
+    return ApiErrors.FORBIDDEN();
+  }
+
   const emailNormalized = normalizeEmail(body.email);
 
   const existingUser = await prisma.user.findUnique({
@@ -133,12 +157,14 @@ export const POST = withErrorHandler(async (req: Request) => {
       tokenHash,
       expiresAt,
       invitedByUserId: session.user.id,
+      role: requestedRole,
     },
     select: {
       id: true,
       email: true,
       expiresAt: true,
       acceptedAt: true,
+      role: true,
     },
   });
 
@@ -149,7 +175,12 @@ export const POST = withErrorHandler(async (req: Request) => {
     action: "tenant.user.invited",
     targetType: "TenantInvitation",
     targetId: invite.id,
-    metadata: { email: invite.email, expiresAt: invite.expiresAt.toISOString(), sendEmail: body.sendEmail },
+    metadata: {
+      email: invite.email,
+      expiresAt: invite.expiresAt.toISOString(),
+      sendEmail: body.sendEmail,
+      role: requestedRole,
+    },
     ipAddress: getIp(req),
     userAgent: getUserAgent(req),
   });
@@ -163,6 +194,7 @@ export const POST = withErrorHandler(async (req: Request) => {
       invitedEmail: invite.email,
       rawToken,
       baseUrl,
+      role: requestedRole,
     });
   }
 

@@ -92,3 +92,77 @@ export async function deleteProfilePhotoObject(objectKey: string): Promise<void>
   if (!config || !client) return;
   await client.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: objectKey }));
 }
+
+const RECORD_EVIDENCE_PRESIGN_TTL_SEC = 300;
+
+/**
+ * Server-side object key for record file evidence (never trust client paths).
+ * Returns a stable upload-session segment for correlation before DB row exists.
+ */
+export function buildRecordEvidenceObjectKey(
+  tenantId: string,
+  recordId: string,
+  fileName: string
+): { objectKey: string; evidenceUploadId: string } {
+  const evidenceUploadId = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  const safe =
+    fileName.replace(/[/\\]/g, "").replace(/\.\./g, "_").trim().slice(0, 255) || "file";
+  const objectKey = `tenant/${tenantId}/records/${recordId}/evidence/${evidenceUploadId}/${safe}`;
+  return { objectKey, evidenceUploadId };
+}
+
+export async function getPresignedPutUrlRecordEvidence(params: {
+  objectKey: string;
+  contentType: string;
+  contentLength: number;
+}): Promise<{ uploadUrl: string; objectKey: string; expiresInSeconds: number } | null> {
+  const config = getR2Config();
+  const client = getClient();
+  if (!config || !client) return null;
+  const command = new PutObjectCommand({
+    Bucket: config.bucket,
+    Key: params.objectKey,
+    ContentType: params.contentType,
+    ContentLength: params.contentLength,
+  });
+  const uploadUrl = await getSignedUrl(client, command, {
+    expiresIn: RECORD_EVIDENCE_PRESIGN_TTL_SEC,
+  });
+  return {
+    uploadUrl,
+    objectKey: params.objectKey,
+    expiresInSeconds: RECORD_EVIDENCE_PRESIGN_TTL_SEC,
+  };
+}
+
+/** Prefix for record exports; `jobId` ties objects to a BackgroundJob for status polling. */
+export function buildRecordExportObjectPrefix(
+  tenantId: string,
+  recordId: string,
+  jobId: string
+): string {
+  return `tenant/${tenantId}/records/${recordId}/exports/${jobId}/`;
+}
+
+/** Server-side upload of export bytes (PDF/ZIP) to the tenant records prefix. */
+export async function uploadBufferToR2(params: {
+  objectKey: string;
+  body: Buffer;
+  contentType: string;
+}): Promise<void> {
+  const config = getR2Config();
+  const client = getClient();
+  if (!config || !client) {
+    throw new Error("r2_not_configured");
+  }
+  await client.send(
+    new PutObjectCommand({
+      Bucket: config.bucket,
+      Key: params.objectKey,
+      Body: params.body,
+      ContentType: params.contentType,
+    })
+  );
+}

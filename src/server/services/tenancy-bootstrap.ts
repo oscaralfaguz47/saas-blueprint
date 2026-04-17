@@ -1,7 +1,9 @@
 import "server-only";
 
 import { prisma } from "@/server/db";
+import { ensureTenantRolesAndPermissionsWithPrisma } from "@/lib/tenant-role-permissions";
 import { writeAuditLog } from "@/server/services/audit";
+import { seedFinancialConfigForTenant } from "@/server/services/financial-config-seed";
 import { nameFromSlug } from "@/lib/validations";
 import type { Prisma } from "@prisma/client";
 
@@ -174,6 +176,7 @@ export async function ensureDefaultTenantForUser(params: {
   await ensureTenantRolesAndPermissions({
     tenantId: result.tenant.id,
   });
+  await seedFinancialConfigForTenant(result.tenant.id);
 
   // Audit log outside tx (safe)
   await writeAuditLog({
@@ -255,6 +258,8 @@ export async function ensureDraftWorkspaceForUser(params: {
       where: { id: existingDraft.id },
       data: { isDefaultTenant: true },
     });
+    await ensureTenantRolesAndPermissions({ tenantId: existingDraft.tenantId });
+    await seedFinancialConfigForTenant(existingDraft.tenantId);
     return existingDraft as { id: string; tenantId: string; tenant: { id: string; name: string; slug: string; status: string } };
   }
 
@@ -348,6 +353,7 @@ export async function ensureDraftWorkspaceForUser(params: {
   });
 
   await ensureTenantRolesAndPermissions({ tenantId: result.tenant.id });
+  await seedFinancialConfigForTenant(result.tenant.id);
 
   await writeAuditLog({
     actorUserId: userId,
@@ -496,6 +502,7 @@ export async function createTenantForUser(params: {
     });
 
     await ensureTenantRolesAndPermissions({ tenantId: result.tenant.id });
+    await seedFinancialConfigForTenant(result.tenant.id);
 
     return result;
   } catch (err) {
@@ -504,8 +511,6 @@ export async function createTenantForUser(params: {
     throw err;
   }
 }
-
-import { ensureTenantRolesAndPermissionsWithPrisma } from "@/lib/tenant-role-permissions";
 
 /**
  * Ensure the minimal permission mapping exists for tenant roles (A2).

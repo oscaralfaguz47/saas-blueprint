@@ -15,12 +15,197 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 
+const PLAN_LABELS: Record<string, string> = {
+  free: "Free",
+  starter: "Starter",
+  pro: "Pro",
+  scale: "Scale",
+  enterprise: "Enterprise",
+};
+
+function formatShortDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function formatPrice(cents: number | null, interval: "monthly" | "annual" | null): string {
+  if (cents === null || cents === 0) return "$0";
+  const dollars = cents / 100;
+  const formatted =
+    dollars % 1 === 0 ? `$${dollars.toFixed(0)}` : `$${dollars.toFixed(2)}`;
+  if (interval === "annual") return `${formatted}/yr`;
+  if (interval === "monthly") return `${formatted}/mo`;
+  return formatted;
+}
+
+function formatBillingPeriod(start: string | null, end: string | null): string {
+  if (!start || !end) return "—";
+  try {
+    const s = new Date(start).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+    const e = new Date(end).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+    return `${s} – ${e}`;
+  } catch {
+    return "—";
+  }
+}
+
+function WorkspaceLogo({
+  logoUrl,
+  name,
+}: {
+  logoUrl: string | null;
+  name: string;
+}) {
+  const initials = name
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+  if (!logoUrl) {
+    return (
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-(--bg-surface-elev) border border-(--border-subtle) text-xs font-semibold text-(--text-muted)">
+        {initials || "—"}
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative h-8 w-8 shrink-0">
+      <img
+        src={logoUrl}
+        alt={name}
+        className="h-8 w-8 rounded-md object-cover border border-(--border-subtle)"
+        onError={(e) => {
+          e.currentTarget.style.display = "none";
+          const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+          if (fallback) fallback.style.display = "flex";
+        }}
+      />
+      <div
+        className="hidden h-8 w-8 items-center justify-center rounded-md bg-(--bg-surface-elev) border border-(--border-subtle) text-xs font-semibold text-(--text-muted)"
+        aria-hidden
+      >
+        {initials || "—"}
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const s = status.toUpperCase();
+  const styles =
+    s === "ACTIVE"
+      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400"
+      : s === "SUSPENDED"
+        ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
+        : s === "CLOSED"
+          ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
+          : s === "DRAFT"
+            ? "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+            : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400";
+
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${styles}`}>
+      {status}
+    </span>
+  );
+}
+
+function PlanBadge({ planCode, label }: { planCode: string; label: string }) {
+  const styles =
+    planCode === "scale" || planCode === "enterprise"
+      ? "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400"
+      : planCode === "pro"
+        ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
+        : planCode === "starter"
+          ? "bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-400"
+          : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"; // free
+
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${styles}`}>
+      {label}
+    </span>
+  );
+}
+
+function PlanCell({
+  planCode,
+  pendingPlanCode,
+  pendingChangeType,
+  entitlementEffectiveUntil,
+  billingInterval,
+  planPriceCents,
+}: {
+  planCode: string;
+  pendingPlanCode: string | null;
+  pendingChangeType: string | null;
+  entitlementEffectiveUntil: string | null;
+  billingInterval: "monthly" | "annual" | null;
+  planPriceCents: number | null;
+}) {
+  const label = PLAN_LABELS[planCode] ?? planCode;
+  const pendingLabel = pendingPlanCode ? (PLAN_LABELS[pendingPlanCode] ?? pendingPlanCode) : null;
+  const effectiveDate = entitlementEffectiveUntil
+    ? formatShortDate(entitlementEffectiveUntil)
+    : null;
+
+  return (
+    <div className="space-y-0.5">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <PlanBadge planCode={planCode} label={label} />
+        {billingInterval && planCode !== "free" && (
+          <span className="text-xs text-(--text-muted) capitalize">{billingInterval}</span>
+        )}
+      </div>
+      {planPriceCents !== null && planCode !== "free" && (
+        <p className="text-xs text-(--text-muted)">
+          {formatPrice(planPriceCents, billingInterval)}
+        </p>
+      )}
+      {pendingChangeType === "cancel_to_free_end_of_period" && effectiveDate && (
+        <p className="text-xs text-(--text-muted)">→ Free on {effectiveDate}</p>
+      )}
+      {pendingChangeType === "downgrade_end_of_period" && pendingLabel && effectiveDate && (
+        <p className="text-xs text-(--text-muted)">→ {pendingLabel} on {effectiveDate}</p>
+      )}
+    </div>
+  );
+}
+
 type WorkspaceItem = {
   id: string;
   name: string;
   slug: string;
   status: string;
   createdAt: string;
+  logoUrl: string | null;
+  planCode: string;
+  pendingPlanCode: string | null;
+  pendingChangeType: string | null;
+  entitlementEffectiveUntil: string | null;
+  billingInterval: "monthly" | "annual" | null;
+  billingPeriodStart: string | null;
+  billingPeriodEnd: string | null;
+  planPriceCents: number | null;
+  activeMemberCount: number;
+  primaryOwner: { id: string; name: string | null; email: string | null } | null;
 };
 
 type UserOption = { id: string; name?: string; email?: string };
@@ -31,6 +216,14 @@ const STATUS_OPTIONS = [
   { value: "DRAFT", label: "Draft" },
   { value: "SUSPENDED", label: "Suspended" },
   { value: "CLOSED", label: "Closed" },
+];
+
+const PLAN_OPTIONS = [
+  { value: "", label: "All plans" },
+  { value: "free", label: "Free" },
+  { value: "starter", label: "Starter" },
+  { value: "pro", label: "Pro" },
+  { value: "scale", label: "Scale" },
 ];
 
 const PAGE_SIZE = 25;
@@ -46,6 +239,7 @@ export function WorkspacesListClient() {
   const [q, setQ] = useState("");
   const [qSent, setQSent] = useState("");
   const [status, setStatus] = useState("");
+  const [plan, setPlan] = useState("");
   const [selectedUsers, setSelectedUsers] = useState<UserOption[]>([]);
   const [userSearch, setUserSearch] = useState("");
   const [userSearchResults, setUserSearchResults] = useState<UserOption[]>([]);
@@ -65,6 +259,7 @@ export function WorkspacesListClient() {
       if (cursor) params.set("cursor", cursor);
       if (qSent.trim()) params.set("q", qSent.trim());
       if (status) params.set("status", status);
+      if (plan) params.set("plan", plan);
       if (userIds.length) params.set("userIds", userIds.join(","));
       const res = await apiFetch(`/api/admin/workspaces?${params.toString()}`, {
         signal,
@@ -94,7 +289,7 @@ export function WorkspacesListClient() {
       setError(null);
       return next;
     },
-    [apiFetch, qSent, status, userIdsKey],
+    [apiFetch, qSent, status, plan, userIdsKey],
   );
 
   const searchUsers = useCallback(
@@ -164,7 +359,7 @@ export function WorkspacesListClient() {
       setError(err instanceof Error ? err.message : "Failed to load workspaces");
     });
     return () => controller.abort();
-  }, [qSent, status, userIdsKey, loadInitial]);
+  }, [qSent, status, plan, userIdsKey, loadInitial]);
 
   const loadMore = useCallback(() => {
     if (!nextCursor || loadingMoreRef.current) return;
@@ -205,6 +400,17 @@ export function WorkspacesListClient() {
         >
           {STATUS_OPTIONS.map((o) => (
             <option key={o.value || "all"} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={plan}
+          onChange={(e) => setPlan(e.target.value)}
+          className="rounded-md border border-(--border-subtle) bg-(--bg-main) px-3 py-2 text-sm text-(--text-primary)"
+        >
+          {PLAN_OPTIONS.map((o) => (
+            <option key={o.value || "all-plans"} value={o.value}>
               {o.label}
             </option>
           ))}
@@ -308,20 +514,69 @@ export function WorkspacesListClient() {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>Slug</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Created</TableHead>
+                <TableHead>Current Plan</TableHead>
+                <TableHead>Billing Period</TableHead>
+                <TableHead>Members</TableHead>
+                <TableHead>Primary Owner</TableHead>
                 <TableHead className="w-[120px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {items.map((t) => (
                 <TableRow key={t.id}>
-                  <TableCell className="font-medium">{t.name}</TableCell>
-                  <TableCell className="text-(--text-muted)">{t.slug}</TableCell>
-                  <TableCell>{t.status}</TableCell>
-                  <TableCell className="text-(--text-muted)">
+                  <TableCell>
+                    <div className="flex items-center gap-2.5">
+                      <WorkspaceLogo logoUrl={t.logoUrl} name={t.name} />
+                      <div className="min-w-0">
+                        <p className="font-medium text-(--text-primary) truncate">{t.name}</p>
+                        <p className="text-xs text-(--text-muted) truncate">{t.slug}</p>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge status={t.status} />
+                  </TableCell>
+                  <TableCell className="text-(--text-muted) text-sm">
                     {new Date(t.createdAt).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell>
+                    <PlanCell
+                      planCode={t.planCode}
+                      pendingPlanCode={t.pendingPlanCode}
+                      pendingChangeType={t.pendingChangeType}
+                      entitlementEffectiveUntil={t.entitlementEffectiveUntil}
+                      billingInterval={t.billingInterval}
+                      planPriceCents={t.planPriceCents}
+                    />
+                  </TableCell>
+                  <TableCell className="text-xs text-(--text-muted)">
+                    {formatBillingPeriod(t.billingPeriodStart, t.billingPeriodEnd)}
+                  </TableCell>
+                  <TableCell className="text-sm text-(--text-secondary)">
+                    {t.activeMemberCount}
+                  </TableCell>
+                  <TableCell>
+                    {t.primaryOwner ? (
+                      <div className="min-w-0">
+                        {t.primaryOwner.name && (
+                          <p className="text-sm text-(--text-primary) truncate max-w-[160px]">
+                            {t.primaryOwner.name}
+                          </p>
+                        )}
+                        {t.primaryOwner.email && (
+                          <p className="text-xs text-(--text-muted) truncate max-w-[160px]">
+                            {t.primaryOwner.email}
+                          </p>
+                        )}
+                        {!t.primaryOwner.name && !t.primaryOwner.email && (
+                          <span className="text-xs text-(--text-muted)">—</span>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-(--text-muted)">—</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Link

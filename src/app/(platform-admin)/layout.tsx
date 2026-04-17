@@ -34,7 +34,7 @@ export default async function PlatformAdminLayout({ children }: { children: Reac
     where: { userId: fullSession.user.id },
     select: { totpEnabled: true },
   });
-  if (!security?.totpEnabled) redirect("/unauthorized");
+  if (!security?.totpEnabled) redirect("/app/account?tab=security&vendorSetup2fa=1");
 
   const canAccess = await hasVendorPermission({
     userId: fullSession.user.id,
@@ -42,6 +42,43 @@ export default async function PlatformAdminLayout({ children }: { children: Reac
     permission: "admin.tenants.read",
   });
   if (!canAccess) redirect("/unauthorized");
+
+  const [
+    canViewSupport,
+    canViewKnowledgeBase,
+    canViewChat,
+    canViewCronJobs,
+    isPlatformAdmin,
+  ] = await Promise.all([
+    hasVendorPermission({
+      userId: fullSession.user.id,
+      legacyRole: user.role ?? undefined,
+      permission: "admin.support.read",
+    }),
+    hasVendorPermission({
+      userId: fullSession.user.id,
+      legacyRole: user.role ?? undefined,
+      permission: "admin.knowledge_base.read",
+    }),
+    hasVendorPermission({
+      userId: fullSession.user.id,
+      legacyRole: user.role ?? undefined,
+      permission: "admin.support.read",
+    }),
+    hasVendorPermission({
+      userId: fullSession.user.id,
+      legacyRole: user.role ?? undefined,
+      permission: "admin.tenants.read",
+    }),
+    prisma.vendorUserRole.findFirst({
+      where: {
+        userId: fullSession.user.id,
+        role: { name: "PlatformAdmin" },
+      },
+      select: { userId: true },
+    }),
+  ]);
+  const canManageAdminUsers = !!isPlatformAdmin;
 
   const appearanceMode = user.appearance ?? "SYSTEM";
   const initialTheme: "light" | "dark" | "system" =
@@ -67,7 +104,13 @@ export default async function PlatformAdminLayout({ children }: { children: Reac
       canAccessPlatformAdmin={true}
     >
       <div className="mx-auto w-full max-w-6xl px-4 py-6">
-        <AdminSubnav />
+        <AdminSubnav
+          canManageAdminUsers={canManageAdminUsers}
+          canViewSupport={canViewSupport}
+          canViewKnowledgeBase={canViewKnowledgeBase}
+          canViewChat={canViewChat}
+          canViewCronJobs={canViewCronJobs}
+        />
         {children}
       </div>
     </AppLayoutHydrationGate>

@@ -11,6 +11,12 @@ function normalizeAllowlist() {
     .filter(Boolean);
 }
 
+/** True if email is on BOOTSTRAP_ADMIN_EMAIL (comma-separated) allowlist. */
+export function isBootstrapAllowlistedEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return normalizeAllowlist().includes(email.trim().toLowerCase());
+}
+
 export async function ensureBootstrapPlatformOwner(params: {
   userId: string;
   email?: string | null;
@@ -18,8 +24,7 @@ export async function ensureBootstrapPlatformOwner(params: {
   const { userId, email } = params;
   if (!email) return;
 
-  const allowlist = normalizeAllowlist();
-  if (!allowlist.includes(email.toLowerCase())) return;
+  if (!isBootstrapAllowlistedEmail(email)) return;
 
   const platformAdminRole = await prisma.vendorRole.findUnique({
     where: { name: "PlatformAdmin" },
@@ -38,4 +43,49 @@ export async function ensureBootstrapPlatformOwner(params: {
     where: { id: userId },
     data: { role: "ADMIN" },
   });
+}
+
+/**
+ * Called after sign-in: if the signed-in user has pending VendorInvitation row(s)
+ * matching their email, activate them automatically.
+ */
+export async function activatePendingVendorInvitation(params: {
+  userId: string;
+  email?: string | null;
+}): Promise<void> {
+  const { userId, email } = params;
+  if (!email) return;
+
+  const now = new Date();
+  const invitations = await prisma.vendorInvitation.findMany({
+    where: {
+      email: email.trim().toLowerCase(),
+      acceptedAt: null,
+      revokedAt: null,
+      expiresAt: { gt: now },
+    },
+    select: { id: true, roleName: true },
+    orderBy: { createdAt: "asc" },
+  });
+  if (invitations.length === 0) return;
+
+  for (const invitation of invitations) {
+    const role = await prisma.vendorRole.findUnique({
+      where: { name: invitation.roleName },
+      select: { id: true },
+    });
+    if (!role) continue;
+
+    await prisma.$transaction([
+      prisma.vendorUserRole.upsert({
+        where: { userId_roleId: { userId, roleId: role.id } },
+        update: {},
+        create: { userId, roleId: role.id },
+      }),
+      prisma.vendorInvitation.update({
+        where: { id: invitation.id },
+        data: { acceptedAt: now },
+      }),
+    ]);
+  }
 }

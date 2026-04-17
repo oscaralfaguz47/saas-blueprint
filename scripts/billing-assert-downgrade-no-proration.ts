@@ -24,8 +24,8 @@ function getPriceId(planCode: string): string | null {
       ? "PADDLE_PRICE_ID_STARTER"
       : planCode === "pro"
         ? "PADDLE_PRICE_ID_PRO"
-        : planCode === "enterprise"
-          ? "PADDLE_PRICE_ID_ENTERPRISE"
+        : planCode === "scale"
+          ? "PADDLE_PRICE_ID_SCALE"
           : null;
   if (!envKey) return null;
   return process.env[envKey] ?? null;

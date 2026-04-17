@@ -3,16 +3,33 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const tabs = [
-  { href: "/admin/workspaces", label: "Workspaces" },
-  { href: "/admin/support", label: "Support" },
-  { href: "/admin/knowledge-base", label: "Knowledge Base" },
-  { href: "/admin/chat", label: "Chat History" },
-  { href: "/admin/cron-jobs", label: "Cron Jobs" },
-] as const;
+type AdminSubnavProps = {
+  canManageAdminUsers?: boolean;
+  canViewSupport?: boolean;
+  canViewKnowledgeBase?: boolean;
+  canViewChat?: boolean;
+  canViewCronJobs?: boolean;
+};
 
-export function AdminSubnav() {
+export function AdminSubnav({
+  canManageAdminUsers = false,
+  canViewSupport = false,
+  canViewKnowledgeBase = false,
+  canViewChat = false,
+  canViewCronJobs = false,
+}: AdminSubnavProps) {
   const pathname = usePathname() ?? "";
+
+  const allTabs = [
+    { href: "/admin/workspaces", label: "Workspaces", visible: true },
+    { href: "/admin/support", label: "Support", visible: canViewSupport },
+    { href: "/admin/knowledge-base", label: "Knowledge Base", visible: canViewKnowledgeBase },
+    { href: "/admin/chat", label: "Chat History", visible: canViewChat },
+    { href: "/admin/cron-jobs", label: "Cron Jobs", visible: canViewCronJobs },
+    { href: "/admin/vendor-users", label: "Admin Users", visible: canManageAdminUsers },
+  ];
+
+  const tabs = allTabs.filter((t) => t.visible);
 
   return (
     <nav
@@ -33,7 +50,7 @@ export function AdminSubnav() {
             className={[
               "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
               active
-                ? "bg-(--nav-active) text-(--text-primary) ring-1 ring-inset ring-(--color-primary-soft)/50"
+                ? "bg-(--nav-active) text-(--text-primary) ring-1 ring-inset ring-primary-soft/50"
                 : "text-(--text-secondary) hover:bg-(--nav-hover) hover:text-(--text-primary)",
             ].join(" ")}
           >

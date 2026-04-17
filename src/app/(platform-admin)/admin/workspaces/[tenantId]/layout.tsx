@@ -51,6 +51,7 @@ export default async function AdminWorkspaceTenantLayout({
     { href: base, label: "Members" },
     { href: `${base}/invites`, label: "Invites" },
     { href: `${base}/support`, label: "Support" },
+    { href: `${base}/billing`, label: "Billing" },
   ] as const;
 
   return (

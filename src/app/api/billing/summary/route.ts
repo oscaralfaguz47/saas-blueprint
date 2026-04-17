@@ -26,11 +26,13 @@ export const GET = withErrorHandler(async (req: Request) => {
   const reqMeters = summary.meters.requests;
   return apiSuccess({
     planCode: summary.planCode,
+    billingInterval: summary.billingInterval,
     subscriptionStatus: summary.subscriptionStatus,
     periodStart: summary.periodStart.toISOString(),
     periodEnd: summary.periodEnd.toISOString(),
     cancelAtPeriodEnd: summary.cancelAtPeriodEnd,
     pendingPlanCode: summary.pendingPlanCode ?? null,
+    pendingBillingInterval: summary.pendingBillingInterval ?? null,
     pendingChangeType: summary.pendingChangeType ?? null,
     entitlementEffectiveUntil: summary.entitlementEffectiveUntil?.toISOString() ?? null,
     paymentStatus: summary.paymentStatus ?? null,

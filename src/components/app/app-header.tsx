@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { NotificationsBell } from "@/components/app/notifications-bell";
 import UserMenu from "@/components/app/user-menu";
 import { IconMenu } from "@/components/ui/icons";
@@ -18,8 +17,6 @@ type AppHeaderProps = {
     image: string | null;
   };
   workspace: Workspace | null;
-  /** A5: Show "You have X pending workspace invitations" link to /invitations */
-  pendingInvitationsCount?: number;
   onMenuClick?: () => void;
 };
 
@@ -34,7 +31,6 @@ function workspaceInitials(name: string): string {
 export default function AppHeader({
   user,
   workspace,
-  pendingInvitationsCount = 0,
   onMenuClick,
 }: AppHeaderProps) {
   return (
@@ -73,21 +69,11 @@ export default function AppHeader({
                 {workspace.name}
               </span>
             </div>
-          ) : (
-            <span className="text-sm text-(--text-muted)">Workspace</span>
-          )}
+          ) : null}
         </div>
 
-        {/* Right: Pending invitations badge + Notifications + User menu */}
+        {/* Right: Notifications + User menu */}
         <div className="flex shrink-0 items-center gap-2">
-          {pendingInvitationsCount > 0 ? (
-            <Link
-              href="/invitations"
-              className="inline-flex items-center gap-1.5 rounded-md bg-(--color-primary-soft)/50 px-2 py-1 text-[11px] font-medium text-(--color-primary) ring-1 ring-inset ring-(--color-primary-soft) transition-colors hover:bg-(--color-primary-soft)"
-            >
-              {pendingInvitationsCount} {pendingInvitationsCount !== 1 ? "invitations" : "invitation"}
-            </Link>
-          ) : null}
           <NotificationsBell />
           <UserMenu user={user} />
         </div>

@@ -21,6 +21,7 @@ type PendingInvitationItem = {
   workspaceName: string;
   invitedAt: string;
   expiresAt: string;
+  role: string;
   invitedBy: { name: string | null; email: string | null } | null;
 };
 
@@ -75,6 +76,7 @@ export default async function InvitationsPage() {
             tenantId: true,
             createdAt: true,
             expiresAt: true,
+            role: true,
             tenant: { select: { name: true } },
             invitedByUser: { select: { name: true, email: true } },
           },
@@ -98,6 +100,7 @@ export default async function InvitationsPage() {
     workspaceName: inv.tenant.name,
     invitedAt: inv.createdAt.toISOString(),
     expiresAt: inv.expiresAt.toISOString(),
+    role: inv.role ?? "Member",
     invitedBy: inv.invitedByUser
       ? { name: inv.invitedByUser.name, email: inv.invitedByUser.email }
       : null,

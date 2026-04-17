@@ -17,7 +17,16 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { useCreateWorkspaceModal } from "@/components/app/workspace/create-workspace-modal-context";
+import { useCreateRequestModal } from "@/components/app/requests/create-request-modal-context";
 import { useTenantPermissions } from "@/components/app/tenant-permissions-context";
+
+function workspaceInitials(name: string): string {
+  const s = name.trim();
+  if (!s) return "WS";
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return s.slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
 
 type TenantItem = {
   id: string;
@@ -34,6 +43,7 @@ type AppSidebarProps = {
   isMobile: boolean;
   /** When true, show Platform Admin link (vendor permission admin.tenants.read). */
   canAccessPlatformAdmin?: boolean;
+  pendingInvitationsCount?: number;
 };
 
 function isRequestsActive(pathname: string) {
@@ -49,12 +59,15 @@ export default function AppSidebar({
   onClose,
   isMobile,
   canAccessPlatformAdmin = false,
+  pendingInvitationsCount = 0,
 }: AppSidebarProps) {
   const pathname = usePathname() ?? "";
   const router = useRouter();
   const apiFetch = useApiFetch();
   const { openCreateWorkspaceModal } = useCreateWorkspaceModal();
+  const { openCreateRequestModal } = useCreateRequestModal();
   const { hasAny } = useTenantPermissions();
+  const canCreateRequests = hasAny(["tenant.requests.create"]);
   const canAccessWorkspaceSettings = hasAny([
     "tenant.settings.manage",
     "tenant.users.read",
@@ -63,6 +76,7 @@ export default function AppSidebar({
   const [tenants, setTenants] = useState<TenantItem[]>([]);
   const [tenantsLoading, setTenantsLoading] = useState(false);
   const [switchingId, setSwitchingId] = useState<string | null>(null);
+  const [inboxCount, setInboxCount] = useState(0);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
   // Read initial value from localStorage via useSyncExternalStore (no setState in effect; avoids cascading-renders lint).
@@ -122,6 +136,25 @@ export default function AppSidebar({
       controller.abort();
     };
   }, [isMobile, open, apiFetch, tenants.length]);
+
+  useEffect(() => {
+    const sidebarVisible = !isMobile || open;
+    if (!sidebarVisible) return;
+    const controller = new AbortController();
+    void apiFetch("/api/records?tab=inbox&limit=1", {
+      showToastOnError: false,
+      signal: controller.signal,
+    })
+      .then((r) => (controller.signal.aborted ? null : r.json()))
+      .then((json: { data?: { records?: unknown[] } } | null) => {
+        if (json && !controller.signal.aborted) {
+          const hasItems = (json.data?.records?.length ?? 0) > 0;
+          setInboxCount(hasItems ? 1 : 0);
+        }
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [isMobile, open, apiFetch]);
 
   const refetchTenants = useCallback(() => {
     lastFetchAttemptRef.current = Date.now();
@@ -254,16 +287,43 @@ export default function AppSidebar({
 
       {/* Primary nav */}
       <nav className="flex flex-col gap-0.5 px-3 py-2">
-        <Link
-          href="/app/requests"
-          onClick={() => isMobile && onClose()}
-          aria-current={requestsActive ? "page" : undefined}
-          title="Requests"
-          className={`flex items-center rounded-lg py-2.5 text-sm font-medium transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} ${requestsActive ? `${activeBg} text-(--text-primary)` : `text-(--text-secondary) ${hoverBg} hover:text-(--text-primary)`}`}
-        >
-          <IconFileText size={18} className="shrink-0" />
-          {showLabels ? <span>Requests</span> : null}
-        </Link>
+        {tenants.length > 0 && (
+          <>
+            <Link
+              href="/app/requests"
+              onClick={() => isMobile && onClose()}
+              aria-current={requestsActive ? "page" : undefined}
+              title="Requests"
+              className={`flex items-center rounded-lg py-2.5 text-sm font-medium transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} ${requestsActive ? `${activeBg} text-(--text-primary)` : `text-(--text-secondary) ${hoverBg} hover:text-(--text-primary)`}`}
+            >
+              <IconFileText size={18} className="shrink-0" />
+              {showLabels ? (
+                <span className="flex flex-1 items-center justify-between gap-2">
+                  <span>Requests</span>
+                  {inboxCount > 0 && (
+                    <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-(--color-primary) px-1 text-[10px] font-semibold text-white">
+                      {inboxCount}
+                    </span>
+                  )}
+                </span>
+              ) : null}
+            </Link>
+            {canCreateRequests ? (
+              <button
+                type="button"
+                onClick={() => {
+                  openCreateRequestModal();
+                  if (isMobile) onClose();
+                }}
+                title="New request"
+                className={`flex w-full items-center rounded-lg py-2.5 text-sm font-medium text-(--color-primary) transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} hover:bg-(--color-primary-soft)`}
+              >
+                <IconPlus size={18} className="shrink-0" />
+                {showLabels ? <span>New request</span> : null}
+              </button>
+            ) : null}
+          </>
+        )}
         {canAccessPlatformAdmin ? (
           <Link
             href="/admin/workspaces"
@@ -278,11 +338,19 @@ export default function AppSidebar({
         ) : null}
       </nav>
 
-      {/* Workspace section — separator, label, scrollable list */}
       <div className="mt-2 flex min-h-0 flex-1 flex-col border-t border-(--border-subtle) px-3 py-2">
         {showLabels ? (
-          <div className="px-1 pb-2 text-quiet-uppercase">
-            Workspace
+          <div className="flex items-center justify-between px-1 pb-2">
+            <span className="text-quiet-uppercase">Workspace</span>
+            {pendingInvitationsCount > 0 && (
+              <Link
+                href="/invitations"
+                onClick={() => isMobile && onClose()}
+                className="inline-flex items-center gap-1 rounded-full bg-(--color-primary)/10 px-2 py-0.5 text-[10px] font-semibold text-(--color-primary) hover:bg-(--color-primary)/20 transition-colors"
+              >
+                {pendingInvitationsCount} pending {pendingInvitationsCount === 1 ? "invite" : "invites"}
+              </Link>
+            )}
           </div>
         ) : null}
 
@@ -294,13 +362,18 @@ export default function AppSidebar({
                 <span>Loading…</span>
               </div>
             ) : (
-              <div className="max-h-40 min-h-0 overflow-y-auto">
+              <div className="max-h-40 min-h-0 overflow-y-auto space-y-0.5">
                 {tenants.map((t) => (
                   <div
                     key={t.id}
-                    className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 ${t.isDefaultTenant ? activeBg : ""}`}
+                    className={`flex items-center gap-2.5 rounded-lg px-2 py-2 ${t.isDefaultTenant ? activeBg : "hover:bg-(--nav-hover)"}`}
                   >
-                    <span className="min-w-0 truncate text-sm text-(--text-primary)">{t.name}</span>
+                    <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-(--border-subtle) bg-(--bg-surface-elev) text-[10px] font-bold text-(--text-primary) uppercase">
+                      {workspaceInitials(t.name)}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-sm text-(--text-primary)">
+                      {t.name}
+                    </span>
                     {t.isDefaultTenant ? (
                       <span className="shrink-0 rounded-full border border-(--border-subtle) bg-(--bg-surface-elev) px-1.5 py-0.5 text-[9px] font-medium text-(--text-muted) opacity-80 shadow-sm">
                         Current
@@ -310,9 +383,9 @@ export default function AppSidebar({
                         type="button"
                         onClick={() => handleSwitchTenant(t.id)}
                         disabled={switchingId !== null}
-                        className="shrink-0 text-xs font-medium text-(--text-muted) transition-colors duration-150 hover:text-(--color-primary) disabled:opacity-60"
+                        className="shrink-0 text-xs font-medium text-(--text-muted) transition-colors hover:text-(--color-primary) disabled:opacity-60"
                       >
-                        {switchingId === t.id ? <Spinner size="sm" /> : "Switch to"}
+                        {switchingId === t.id ? <Spinner size="sm" /> : "Switch"}
                       </button>
                     )}
                   </div>
@@ -335,31 +408,32 @@ export default function AppSidebar({
           {showLabels ? <span>Create workspace</span> : null}
         </button>
 
-        {/* Workspace settings (RBAC) + Help (always): Help must stay outside the permission ternary. */}
-        <div className="mt-1 flex flex-col gap-0.5">
-          {canAccessWorkspaceSettings ? (
+        {tenants.length > 0 ? (
+          <div className="mt-1 flex flex-col gap-0.5">
+            {canAccessWorkspaceSettings ? (
+              <Link
+                href="/app/settings/workspace"
+                onClick={() => isMobile && onClose()}
+                aria-current={workspaceSettingsActive ? "page" : undefined}
+                title="Workspace settings"
+                className={`flex w-full items-center rounded-lg py-2.5 text-sm transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} ${workspaceSettingsActive ? `${activeBg} font-medium text-(--text-primary)` : `text-(--text-secondary) ${hoverBg} hover:text-(--text-primary)`}`}
+              >
+                <IconWorkspace size={18} className="shrink-0" />
+                {showLabels ? <span>Workspace settings</span> : null}
+              </Link>
+            ) : null}
             <Link
-              href="/app/settings/workspace"
+              href="/app/help/inbox"
               onClick={() => isMobile && onClose()}
-              aria-current={workspaceSettingsActive ? "page" : undefined}
-              title="Workspace settings"
-              className={`flex w-full items-center rounded-lg py-2.5 text-sm transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} ${workspaceSettingsActive ? `${activeBg} font-medium text-(--text-primary)` : `text-(--text-secondary) ${hoverBg} hover:text-(--text-primary)`}`}
+              aria-current={helpActive ? "page" : undefined}
+              title="Help & Support"
+              className={`flex w-full items-center rounded-lg py-2.5 text-sm transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} ${helpActive ? `${activeBg} font-medium text-(--text-primary)` : `text-(--text-secondary) ${hoverBg} hover:text-(--text-primary)`}`}
             >
-              <IconWorkspace size={18} className="shrink-0" />
-              {showLabels ? <span>Workspace settings</span> : null}
+              <IconHelpCircle size={18} className="shrink-0" />
+              {showLabels ? <span>Help &amp; Support</span> : null}
             </Link>
-          ) : null}
-          <Link
-            href="/app/help/inbox"
-            onClick={() => isMobile && onClose()}
-            aria-current={helpActive ? "page" : undefined}
-            title="Help & Support"
-            className={`flex w-full items-center rounded-lg py-2.5 text-sm transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} ${helpActive ? `${activeBg} font-medium text-(--text-primary)` : `text-(--text-secondary) ${hoverBg} hover:text-(--text-primary)`}`}
-          >
-            <IconHelpCircle size={18} className="shrink-0" />
-            {showLabels ? <span>Help &amp; Support</span> : null}
-          </Link>
-        </div>
+          </div>
+        ) : null}
       </div>
 
       {/* Collapse toggle — desktop only */}

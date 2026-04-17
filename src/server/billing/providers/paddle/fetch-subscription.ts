@@ -2,6 +2,7 @@ import "server-only";
 
 import { env } from "@/lib/env";
 import {
+  getBillingIntervalFromPaddle,
   getHighestPlanCodeFromItems,
   getPlanCodeFromPriceId,
   mapPaddleStatusToInternal,
@@ -9,6 +10,18 @@ import {
 } from "./map-paddle-event";
 import type { PaddleSubscriptionData } from "./paddle-types";
 import { paddleSubscriptionDataSchema } from "./paddle-types";
+
+/** Paddle subscription payload plus derived billing cadence (from billing_cycle or API). */
+export type FetchedPaddleSubscription = PaddleSubscriptionData & {
+  billingInterval: "monthly" | "annual";
+};
+
+function withBillingInterval(data: PaddleSubscriptionData): FetchedPaddleSubscription {
+  return {
+    ...data,
+    billingInterval: getBillingIntervalFromPaddle(data.billing_cycle ?? undefined),
+  };
+}
 
 const PADDLE_API_BASE =
   env.PADDLE_ENVIRONMENT === "production"
@@ -27,7 +40,7 @@ function getApiKey(): string {
  */
 export async function fetchPaddleSubscription(
   providerSubscriptionId: string
-): Promise<PaddleSubscriptionData | null> {
+): Promise<FetchedPaddleSubscription | null> {
   const res = await fetch(
     `${PADDLE_API_BASE}/subscriptions/${encodeURIComponent(providerSubscriptionId)}`,
     {
@@ -43,7 +56,7 @@ export async function fetchPaddleSubscription(
   }
   const json = (await res.json()) as { data?: unknown };
   const parsed = paddleSubscriptionDataSchema.safeParse(json?.data);
-  if (parsed.success) return parsed.data;
+  if (parsed.success) return withBillingInterval(parsed.data);
   // Lenient fallback: subscriptions with scheduled_change (e.g. cancel) may return a shape that fails
   // strict schema (e.g. current_billing_period or scheduled_change format). Build minimal object so
   // updateSubscriptionPrice can read items and proceed; Paddle accepts do_not_bill when clearing scheduled change.
@@ -61,7 +74,10 @@ export async function fetchPaddleSubscription(
       const currentBillingPeriod: { starts_at: string; ends_at: string } | null = hasPeriod
         ? { starts_at: period.starts_at as string, ends_at: period.ends_at as string }
         : null;
-      return {
+      const billingCycleRaw = raw.billing_cycle as
+        | PaddleSubscriptionData["billing_cycle"]
+        | undefined;
+      const minimal: PaddleSubscriptionData = {
         id: String(raw.id),
         status: String(raw.status ?? "active"),
         customer_id: String(raw.customer_id),
@@ -69,8 +85,10 @@ export async function fetchPaddleSubscription(
         items: raw.items as PaddleSubscriptionData["items"],
         custom_data: (raw.custom_data as PaddleSubscriptionData["custom_data"]) ?? null,
         current_billing_period: currentBillingPeriod,
+        billing_cycle: billingCycleRaw ?? null,
         scheduled_change: (raw.scheduled_change as PaddleSubscriptionData["scheduled_change"]) ?? null,
       };
+      return withBillingInterval(minimal);
     }
   }
   return null;
@@ -83,7 +101,7 @@ export async function fetchPaddleSubscription(
 export function resolvePlanFromPaddleSubscription(
   subscription: PaddleSubscriptionData,
   existingTenantId: string | null
-): { tenantId: string; planCode: "starter" | "pro" | "enterprise" } | null {
+): { tenantId: string; planCode: "starter" | "pro" | "scale" } | null {
   const metadata = parseMetadataFromCustomData(subscription.custom_data ?? undefined);
   const tenantId = metadata?.tenantId ?? existingTenantId;
   if (!tenantId) return null;

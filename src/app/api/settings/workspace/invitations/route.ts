@@ -217,6 +217,7 @@ export const GET = withErrorHandler(async (req: Request) => {
       expiresAt: true,
       acceptedAt: true,
       revokedAt: true,
+      role: true,
       invitedByUser: { select: { name: true, email: true } },
     },
     orderBy,
@@ -248,6 +249,7 @@ export const GET = withErrorHandler(async (req: Request) => {
     status: deriveInviteStatus(inv, now),
     invitedAt: inv.createdAt,
     expiresAt: inv.expiresAt,
+    role: inv.role ?? "Member",
     invitedBy: inv.invitedByUser
       ? {
           name: inv.invitedByUser.name,

@@ -4,6 +4,7 @@ import { prisma } from "@/server/db";
 import { sendEmail } from "@/server/services/invitation-email";
 import { indexKbArticle } from "@/server/knowledge-base/kb-indexer";
 import { JOB_TYPES } from "@/server/jobs/background-jobs";
+import { processRecordExportJob } from "@/server/record-export/record-export-jobs";
 import { env } from "@/lib/env";
 
 const MAX_BATCH = 15;
@@ -692,6 +693,11 @@ async function executeJob(job: {
 
   if (job.jobType === JOB_TYPES.NOTIFICATION_CLEANUP) {
     await runNotificationCleanup();
+    return;
+  }
+
+  if (job.jobType === JOB_TYPES.EXPORT_PDF || job.jobType === JOB_TYPES.EXPORT_ZIP_BUNDLE) {
+    await processRecordExportJob(job);
     return;
   }
 

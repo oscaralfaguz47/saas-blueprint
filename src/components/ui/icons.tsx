@@ -206,3 +206,96 @@ export function IconPencil(props: IconProps) {
     </BaseIcon>
   );
 }
+
+export function IconFilter(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />
+    </BaseIcon>
+  );
+}
+
+export function IconSearch(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.35-4.35" />
+    </BaseIcon>
+  );
+}
+
+export function IconLink(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+    </BaseIcon>
+  );
+}
+
+export function IconClock(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 6v6l4 2" />
+    </BaseIcon>
+  );
+}
+
+export function IconDollarSign(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M12 1v22" />
+      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+    </BaseIcon>
+  );
+}
+
+/** Alias for close / dismiss actions. */
+export function IconClose(props: IconProps) {
+  return <IconX {...props} />;
+}
+
+export function IconUpload(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="17 8 12 3 7 8" />
+      <line x1="12" y1="3" x2="12" y2="15" />
+    </BaseIcon>
+  );
+}
+
+export function IconPaperclip(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+    </BaseIcon>
+  );
+}
+
+export function IconAtSign(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94" />
+    </BaseIcon>
+  );
+}
+
+export function IconSend(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="m22 2-7 20-4-9-9-4Z" />
+      <path d="M22 2 11 13" />
+    </BaseIcon>
+  );
+}
+
+export function IconShield(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </BaseIcon>
+  );
+}

@@ -13,34 +13,56 @@ const PADDLE_API_BASE =
     ? "https://api.paddle.com"
     : "https://sandbox-api.paddle.com";
 
-const PADDLE_PRICE_IDS: Record<
-  "PADDLE_PRICE_ID_STARTER" | "PADDLE_PRICE_ID_PRO" | "PADDLE_PRICE_ID_ENTERPRISE",
-  string | undefined
-> = {
-  PADDLE_PRICE_ID_STARTER: env.PADDLE_PRICE_ID_STARTER,
-  PADDLE_PRICE_ID_PRO: env.PADDLE_PRICE_ID_PRO,
-  PADDLE_PRICE_ID_ENTERPRISE: env.PADDLE_PRICE_ID_ENTERPRISE,
-};
-
 function getApiKey(): string {
   const key = env.PADDLE_API_KEY;
   if (!key) throw new Error("PADDLE_API_KEY is not set");
   return key;
 }
 
-function getPriceId(planCode: PlanCode): string {
-  if (planCode === "free") throw new Error("Cannot checkout free plan");
-  const envKey =
-    planCode === "starter"
-      ? "PADDLE_PRICE_ID_STARTER"
-      : planCode === "pro"
-        ? "PADDLE_PRICE_ID_PRO"
-        : planCode === "enterprise"
-          ? "PADDLE_PRICE_ID_ENTERPRISE"
-          : "PADDLE_PRICE_ID_PRO";
-  const id = PADDLE_PRICE_IDS[envKey];
-  if (!id) throw new Error(`${envKey} is not set`);
-  return id;
+/**
+ * Fetch a single Paddle customer by ID and verify it belongs to this tenant.
+ * Returns the customer ID if it exists and belongs to tenantId, null otherwise.
+ */
+async function verifyPaddleCustomerBelongsToTenant(
+  customerId: string,
+  tenantId: string
+): Promise<{ id: string } | null> {
+  const res = await fetch(`${PADDLE_API_BASE}/customers/${encodeURIComponent(customerId)}`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${getApiKey()}` },
+    signal: paddleSignal(),
+  });
+  if (!res.ok) return null;
+  const json = (await res.json()) as {
+    data?: { id: string; custom_data?: Record<string, string> | null };
+  };
+  const customer = json?.data;
+  if (!customer?.id) return null;
+  const customerTenantId = customer.custom_data?.tenantId;
+  if (customerTenantId && customerTenantId !== tenantId) {
+    return null;
+  }
+  if (!customerTenantId) {
+    console.warn(
+      `[billing] Paddle customer ${customer.id} has no tenantId in custom_data — allowing reuse for tenant ${tenantId}`
+    );
+  }
+  return { id: customer.id };
+}
+
+function getPriceIdForPlan(
+  planCode: "starter" | "pro" | "scale",
+  billingInterval: "monthly" | "annual"
+): string | undefined {
+  if (billingInterval === "annual") {
+    if (planCode === "starter") return env.PADDLE_PRICE_ID_STARTER_ANNUAL;
+    if (planCode === "pro") return env.PADDLE_PRICE_ID_PRO_ANNUAL;
+    if (planCode === "scale") return env.PADDLE_PRICE_ID_SCALE_ANNUAL;
+  }
+  if (planCode === "starter") return env.PADDLE_PRICE_ID_STARTER;
+  if (planCode === "pro") return env.PADDLE_PRICE_ID_PRO;
+  if (planCode === "scale") return env.PADDLE_PRICE_ID_SCALE;
+  return undefined;
 }
 
 function getEnvironment(): "sandbox" | "production" {
@@ -48,12 +70,17 @@ function getEnvironment(): "sandbox" | "production" {
 }
 
 /**
- * List customers by exact email (GET /customers?email=...).
+ * Find a Paddle customer by email that belongs to this specific tenant.
+ * Fetches up to 10 results and verifies custom_data.tenantId to prevent cross-tenant reuse.
+ * Returns null if no customer is found for this tenant.
  */
-async function findPaddleCustomerByEmail(email: string): Promise<{ id: string } | null> {
+async function findPaddleCustomerForTenant(
+  email: string,
+  tenantId: string
+): Promise<{ id: string } | null> {
   const url = new URL(`${PADDLE_API_BASE}/customers`);
   url.searchParams.set("email", email);
-  url.searchParams.set("per_page", "1");
+  url.searchParams.set("per_page", "10");
   const res = await fetch(url.toString(), {
     method: "GET",
     headers: { Authorization: `Bearer ${getApiKey()}` },
@@ -63,9 +90,12 @@ async function findPaddleCustomerByEmail(email: string): Promise<{ id: string } 
     const err = await res.text();
     throw new Error(`Paddle List Customers failed: ${res.status} ${err}`);
   }
-  const json = (await res.json()) as { data?: Array<{ id: string }> };
-  const first = json?.data?.[0];
-  return first ? { id: first.id } : null;
+  const json = (await res.json()) as {
+    data?: Array<{ id: string; custom_data?: Record<string, string> | null }>;
+  };
+  const customers = json?.data ?? [];
+  const match = customers.find((c) => c.custom_data?.tenantId === tenantId);
+  return match ? { id: match.id } : null;
 }
 
 /**
@@ -90,8 +120,25 @@ async function createPaddleCustomer(params: {
     }),
   });
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Paddle Create Customer failed: ${res.status} ${err}`);
+    const errText = await res.text();
+    if (res.status === 409) {
+      let conflictingId: string | null = null;
+      try {
+        const errJson = JSON.parse(errText) as {
+          error?: { code?: string; detail?: string };
+        };
+        if (errJson?.error?.code === "customer_already_exists") {
+          const match = errJson.error.detail?.match(/customer of id (ctm_[a-z0-9]+)/);
+          conflictingId = match?.[1] ?? null;
+        }
+      } catch {
+        // ignore parse error
+      }
+      if (conflictingId) {
+        return { id: conflictingId };
+      }
+    }
+    throw new Error(`Paddle Create Customer failed: ${res.status} ${errText}`);
   }
   const json = (await res.json()) as { data: { id: string } };
   if (!json?.data?.id) throw new Error("Paddle Create Customer: missing data.id");
@@ -99,16 +146,57 @@ async function createPaddleCustomer(params: {
 }
 
 /**
- * Get existing Paddle customer by email, or create one.
+ * Get or create a Paddle customer for a specific tenant.
+ * Resolution order:
+ * 1. DB: use stored providerCustomerId if it exists and belongs to this tenant in Paddle
+ * 2. Paddle email search: find customer with matching custom_data.tenantId
+ * 3. Create a new Paddle customer with custom_data.tenantId set (or recover from Paddle 409 when email exists)
+ *
+ * Cross-tenant reuse is avoided except when Paddle returns 409 for an existing email (e.g. sandbox shared email).
  */
-async function getOrCreatePaddleCustomer(params: {
+async function getOrCreatePaddleCustomerForTenant(params: {
+  tenantId: string;
   email: string;
   name: string | null;
-  customData: Record<string, string>;
 }): Promise<{ id: string }> {
-  const existing = await findPaddleCustomerByEmail(params.email);
-  if (existing) return existing;
-  return createPaddleCustomer(params);
+  const existingSub = await prisma.subscription.findFirst({
+    where: { tenantId: params.tenantId, provider: "paddle" },
+    select: { providerCustomerId: true },
+    orderBy: { id: "desc" },
+  });
+
+  if (existingSub?.providerCustomerId) {
+    const verified = await verifyPaddleCustomerBelongsToTenant(
+      existingSub.providerCustomerId,
+      params.tenantId
+    );
+    if (verified) return verified;
+    console.warn(
+      `[billing] Paddle customer ${existingSub.providerCustomerId} does not belong to tenant ${params.tenantId}. Creating new customer.`
+    );
+    console.error("[security] billing.customer.cross_tenant_reuse_prevented", {
+      event: "billing.customer.cross_tenant_reuse_prevented",
+      tenantId: params.tenantId,
+      existingCustomerId: existingSub.providerCustomerId,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  const byEmail = await findPaddleCustomerForTenant(params.email, params.tenantId);
+  if (byEmail) return byEmail;
+
+  const newCustomer = await createPaddleCustomer({
+    email: params.email,
+    name: params.name,
+    customData: { tenantId: params.tenantId },
+  });
+
+  await prisma.subscription.updateMany({
+    where: { tenantId: params.tenantId, provider: "paddle", providerCustomerId: null },
+    data: { providerCustomerId: newCustomer.id },
+  });
+
+  return newCustomer;
 }
 
 /**
@@ -165,6 +253,7 @@ export type CreateCheckoutSessionParams = {
   planCode: PlanCode;
   customerEmail: string;
   customerName: string | null;
+  billingInterval: "monthly" | "annual";
 };
 
 export type CreateCheckoutSessionResult = {
@@ -186,11 +275,13 @@ export async function createCheckoutSession(
     throw new Error("Cannot checkout free plan");
   }
 
+  const paidPlan = params.planCode as "starter" | "pro" | "scale";
+
   const plan = await prisma.plan.findUnique({
-    where: { code: params.planCode, isActive: true },
+    where: { code: paidPlan, isActive: true },
     select: { id: true },
   });
-  if (!plan) throw new Error(`Plan not found: ${params.planCode}`);
+  if (!plan) throw new Error(`Plan not found: ${paidPlan}`);
 
   const existing = await prisma.subscription.findFirst({
     where: {
@@ -204,17 +295,26 @@ export async function createCheckoutSession(
     throw new Error("Already have an active subscription for this plan");
   }
 
-  const customer = await getOrCreatePaddleCustomer({
+  const customer = await getOrCreatePaddleCustomerForTenant({
+    tenantId: params.tenantId,
     email: params.customerEmail,
     name: params.customerName,
-    customData: { tenantId: params.tenantId },
   });
 
-  const priceId = getPriceId(params.planCode);
+  let priceId = getPriceIdForPlan(paidPlan, params.billingInterval);
+  if (!priceId && params.billingInterval === "annual") {
+    throw new Error(
+      `Annual billing is not yet configured for the ${paidPlan} plan. Please contact support or choose monthly billing.`
+    );
+  }
+  if (!priceId) {
+    throw new Error(`Cannot checkout: price ID not configured for plan ${paidPlan}`);
+  }
+
   const { transactionId, checkoutUrl } = await createPaddleTransaction({
     customerId: customer.id,
     priceId,
-    customData: { tenantId: params.tenantId, planCode: params.planCode },
+    customData: { tenantId: params.tenantId, planCode: paidPlan },
   });
 
   return {

@@ -59,11 +59,13 @@ const envSchema = z.object({
   PADDLE_GRACE_DAYS: z.coerce.number().int().positive().optional(),
   PADDLE_PRICE_ID_STARTER: z.string().optional(),
   PADDLE_PRICE_ID_PRO: z.string().optional(),
-  PADDLE_PRICE_ID_ENTERPRISE: z.string().optional(),
-  PADDLE_PRICE_ID_STARTER_OVERAGE_REQUEST: z.string().optional(),
+  PADDLE_PRICE_ID_SCALE: z.string().optional(),
+  PADDLE_PRICE_ID_STARTER_ANNUAL: z.string().optional(),
+  PADDLE_PRICE_ID_PRO_ANNUAL: z.string().optional(),
+  PADDLE_PRICE_ID_SCALE_ANNUAL: z.string().optional(),
 
   // ── Platform admin ──────────────────────────────────────────────────────
-  BOOTSTRAP_ADMIN_EMAIL: z.string().email().optional(),
+  BOOTSTRAP_ADMIN_EMAIL: z.string().optional(),
   /** Single address for sales inquiries from public /help/new (notifications). */
   PLATFORM_ADMIN_EMAIL: z.string().email().optional(),
   PLATFORM_ADMIN_EMAILS: z.string().optional(),

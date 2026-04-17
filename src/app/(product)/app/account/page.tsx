@@ -5,7 +5,15 @@ import { prisma } from "@/server/db";
 import { getPresignedGetUrlProfilePhoto, isR2Configured } from "@/server/services/r2-profile-photo";
 import { AccountSettingsTabs } from "@/components/app/account/account-settings-tabs";
 
-export default async function AccountPage() {
+type Props = {
+  searchParams?: Promise<{
+    tab?: string;
+    vendorSetup2fa?: string;
+    [key: string]: string | undefined;
+  }>;
+};
+
+export default async function AccountPage({ searchParams }: Props) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) redirect("/auth/sign-in");
 
@@ -23,6 +31,9 @@ export default async function AccountPage() {
     },
   });
   if (!user) redirect("/auth/sign-in");
+
+  const params = await searchParams;
+  const vendorSetup2fa = params?.vendorSetup2fa === "1";
 
   const [accounts, security] = await Promise.all([
     prisma.account.findMany({
@@ -76,6 +87,7 @@ export default async function AccountPage() {
       authLevel={authLevel}
       security={securityFlags}
       currentUserEmail={user.email ?? null}
+      vendorSetup2fa={vendorSetup2fa}
     />
   );
 }

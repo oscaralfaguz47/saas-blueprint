@@ -1,0 +1,2398 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useApiFetch } from "@/hooks/use-api-fetch";
+import { useToast } from "@/components/ui/toast";
+import { Badge } from "@/components/ui/badge";
+import { CardRoot, CardHeader, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  IconChevronLeft,
+  IconFileText,
+  IconLink,
+  IconAlertCircle,
+  IconPlus,
+  IconUpload,
+} from "@/components/ui/icons";
+import { AssignApproverModal } from "./assign-approver-modal";
+import { RejectApprovalModal } from "./reject-approval-modal";
+import { AssignExternalApproverModal } from "./assign-external-approver-modal";
+import { SetPaymentStatusModal } from "./set-payment-status-modal";
+import { LinkRecordModal } from "./link-record-modal";
+import {
+  formatAmount,
+  formatDate,
+  RECORD_TYPE_LABELS,
+  RECORD_STATUS_BADGE,
+  RECORD_STATUS_LABELS,
+  RECORD_EVENT_LABELS,
+  PAYMENT_STATUS_LABELS,
+  PAYMENT_STATUS_BADGE,
+  RECORD_PRIORITY_BADGE,
+  RECORD_PRIORITY_LABELS,
+  RECORD_APPROVAL_STATUS_LABELS,
+  RECORD_CLOSE_REASON_LABELS,
+  RECORD_LINK_TYPE_LABELS,
+  RECORD_BUDGET_IMPACT_LABELS,
+  type BadgeVariant,
+} from "@/lib/record-utils";
+import { RECORD_CATEGORY_CONFIG } from "@/lib/record-category-config";
+import { resolveMimeType } from "@/lib/evidence-config";
+import type {
+  RecordDetailExtended,
+  RecordDetailResponse,
+  RecordParticipant,
+  RecordEvidenceItem,
+  RecordEventItem,
+  RecordComment,
+  RecordLinkItem,
+  RecordPaymentItem,
+  ParticipantStatus,
+} from "@/types/records";
+
+type Props = {
+  recordId: string;
+  currentUserId: string;
+  currentUserName?: string | null;
+  currentUserEmail?: string | null;
+  permissions: string[];
+};
+
+function numFromUnknown(raw: unknown): number | null {
+  if (raw == null || raw === "") return null;
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeDetailData(
+  raw: RecordDetailResponse["data"] & {
+    record: RecordDetailExtended & {
+      amount?: unknown;
+      requestedAmount?: unknown;
+      approvedAmount?: unknown;
+      taxAmount?: unknown;
+    };
+  }
+): RecordDetailResponse["data"] {
+  const r = raw.record;
+  return {
+    ...raw,
+    record: {
+      ...r,
+      amount: numFromUnknown(r.amount),
+      requestedAmount: numFromUnknown(r.requestedAmount),
+      approvedAmount: numFromUnknown(r.approvedAmount),
+      taxAmount: numFromUnknown(r.taxAmount),
+    },
+  };
+}
+
+export function RequestDetailClient({
+  recordId,
+  currentUserId,
+  currentUserName = null,
+  currentUserEmail = null,
+  permissions,
+}: Props) {
+  const apiFetch = useApiFetch();
+  const toast = useToast();
+
+  const [data, setData] = useState<RecordDetailResponse["data"] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [closing, setClosing] = useState(false);
+  const [assignApproverOpen, setAssignApproverOpen] = useState(false);
+  const [assignExternalOpen, setAssignExternalOpen] = useState(false);
+  const [setPaymentOpen, setSetPaymentOpen] = useState(false);
+  const [linkRecordOpen, setLinkRecordOpen] = useState(false);
+  const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+  const [closeReason, setCloseReason] = useState<string>("APPROVED_AND_COMPLETED");
+  const [closeNotes, setCloseNotes] = useState("");
+
+  const canClose = permissions.includes("tenant.requests.close");
+  const canComment = permissions.includes("tenant.requests.comment");
+  const canExport = permissions.includes("tenant.requests.export");
+  const canAddEvidence = permissions.includes("tenant.evidence.add");
+  const canRemoveEvidence = permissions.includes("tenant.evidence.remove");
+  const canAssignInternal = permissions.includes("tenant.approvals.assign_internal");
+  const canAssignExternal = permissions.includes("tenant.approvals.assign_external");
+  const canRemind = permissions.includes("tenant.approvals.remind");
+  const canManagePayment = permissions.includes("tenant.payments.manage");
+  const canLink = permissions.includes("tenant.requests.link");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiFetch(`/api/records/${recordId}`, {
+        showToastOnError: false,
+      });
+      if (res.status === 404) {
+        setError("Request not found or you don't have access.");
+        return;
+      }
+      if (!res.ok) {
+        setError("Failed to load request.");
+        return;
+      }
+      const json = (await res.json()) as RecordDetailResponse & {
+        data: RecordDetailResponse["data"] & {
+          record: RecordDetailExtended & {
+            amount?: unknown;
+            requestedAmount?: unknown;
+            approvedAmount?: unknown;
+            taxAmount?: unknown;
+          };
+        };
+      };
+      setData(normalizeDetailData(json.data));
+    } catch {
+      setError("Failed to load request.");
+    } finally {
+      setLoading(false);
+    }
+  }, [apiFetch, recordId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function handleCloseRequest() {
+    if (!data || closing) return;
+    setClosing(true);
+    try {
+      const res = await apiFetch(`/api/records/${recordId}/close`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          closeReason,
+          closeReasonNotes: closeNotes.trim() || undefined,
+        }),
+        showToastOnError: false,
+      });
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as {
+          error?: { message?: string };
+        };
+        toast.addToast("error", json.error?.message ?? "Failed to close request.");
+        return;
+      }
+      toast.addToast("success", "Request closed.");
+      setCloseDialogOpen(false);
+      setCloseNotes("");
+      await load();
+    } catch {
+      toast.addToast("error", "Network error. Please try again.");
+    } finally {
+      setClosing(false);
+    }
+  }
+
+  async function handleExportPdf() {
+    const res = await apiFetch(`/api/records/${recordId}/export`, {
+      method: "POST",
+      showToastOnError: false,
+    });
+    if (!res.ok) {
+      const json = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+      toast.addToast("error", json.error?.message ?? "Export failed.");
+      return;
+    }
+    toast.addToast("success", "Export queued. Check back shortly.");
+  }
+
+  if (loading) return <RequestDetailSkeleton />;
+
+  if (error) {
+    return (
+      <div className="space-y-4">
+        <Link
+          href="/app/requests"
+          className="inline-flex items-center gap-1.5 text-sm text-(--text-muted) transition-colors hover:text-(--text-primary)"
+        >
+          <IconChevronLeft size={14} />
+          Back to requests
+        </Link>
+        <div className="rounded-lg border border-(--color-danger-soft) bg-(--color-danger-soft) px-4 py-3 text-sm text-(--color-danger)">
+          {error}
+        </div>
+      </div>
+    );
+  }
+
+  if (!data) return null;
+
+  const { record, evidence, participants, timeline, comments, links, payment, missingProof } =
+    data;
+  const rec = record as RecordDetailExtended;
+  const costCenterDisplay = rec.costCenter
+    ? `${rec.costCenter.code} — ${rec.costCenter.name}`
+    : (rec.costCenterCode ?? null);
+  const departmentDisplay =
+    rec.costCenter?.department?.name ??
+    rec.department?.name ??
+    rec.departmentName ??
+    null;
+  const isClosed = rec.status === "CLOSED";
+  const catConfig = RECORD_CATEGORY_CONFIG[rec.type];
+  const approverParticipants = participants.filter((p) => p.participantRole === "APPROVER");
+  const showSubmitForApproval =
+    rec.status === "OPEN" &&
+    approverParticipants.length === 0 &&
+    canAssignInternal &&
+    !isClosed;
+  const createdByLabel =
+    rec.createdByUserId === currentUserId
+      ? currentUserName || currentUserEmail || "You"
+      : "Teammate";
+  const neededByPast =
+    rec.neededByDate &&
+    !isClosed &&
+    new Date(rec.neededByDate).getTime() < new Date().setHours(0, 0, 0, 0);
+  const closeReasonOptions = (
+    catConfig?.defaultCloseReasons?.length
+      ? catConfig.defaultCloseReasons
+      : (Object.keys(RECORD_CLOSE_REASON_LABELS) as string[])
+  ).map((k) => ({ value: k, label: RECORD_CLOSE_REASON_LABELS[k] ?? k }));
+
+  const requiredOk = (() => {
+    if (!catConfig) return true;
+    for (const f of catConfig.requiredFields) {
+      if (f === "title" && !rec.title?.trim()) return false;
+      if (f === "requestedAmount" && rec.requestedAmount == null) return false;
+      if (f === "currencyCode" && !rec.currencyCode?.trim() && rec.requestedAmount != null)
+        return false;
+      if (f === "businessJustification" && !rec.businessJustification?.trim()) return false;
+      if (f === "vendorName" && !rec.vendorName?.trim()) return false;
+      if (f === "payeeName" && !rec.payeeName?.trim()) return false;
+      if (f === "neededByDate" && !rec.neededByDate) return false;
+      if (f === "policyExceptionReason" && !rec.policyExceptionReason?.trim()) return false;
+    }
+    return true;
+  })();
+
+  const healthWarnings =
+    (requiredOk ? 0 : 1) +
+    (evidence.length === 0 ? 1 : 0) +
+    (approverParticipants.length === 0 ? 1 : 0) +
+    (rec.hasPolicyException ? 1 : 0) +
+    (rec.possibleDuplicate ? 1 : 0) +
+    (rec.overdue ? 1 : 0) +
+    (rec.isOverBudget ? 1 : 0) +
+    (rec.status === "AWAITING_INFO" ? 1 : 0);
+
+  const healthSummary =
+    healthWarnings === 0 ? "All clear" : healthWarnings <= 2 ? "Needs attention" : "Action required";
+
+  return (
+    <div className="space-y-6">
+      <Link
+        href="/app/requests"
+        className="inline-flex items-center gap-1.5 text-sm text-(--text-muted) transition-colors hover:text-(--text-primary)"
+      >
+        <IconChevronLeft size={14} />
+        Back to requests
+      </Link>
+
+      <header className="space-y-4 rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev) p-4 sm:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-semibold text-(--text-primary)">
+            {rec.recordKey ?? `#${rec.id.slice(0, 8)}`}
+          </span>
+          <Badge variant={RECORD_STATUS_BADGE[rec.status]}>
+            {RECORD_STATUS_LABELS[rec.status]}
+          </Badge>
+          <Badge variant="secondary">{RECORD_TYPE_LABELS[rec.type]}</Badge>
+          <Badge variant={RECORD_PRIORITY_BADGE[rec.priority] ?? "secondary"}>
+            {RECORD_PRIORITY_LABELS[rec.priority] ?? rec.priority}
+          </Badge>
+          {rec.overdue && (
+            <Badge variant="destructive">Overdue</Badge>
+          )}
+        </div>
+        <h1 className="break-words text-2xl font-semibold tracking-tight text-(--text-primary)">
+          {rec.title}
+        </h1>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-(--text-muted)">
+          <span>
+            Created {formatDate(rec.createdAt)} by {createdByLabel}
+          </span>
+          {rec.neededByDate && (
+            <span className={neededByPast ? "font-medium text-(--color-warning)" : ""}>
+              Needed by: {formatDate(rec.neededByDate)}
+              {neededByPast ? " · URGENT" : ""}
+            </span>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          {(rec.requestedAmount != null || rec.amount != null) && (
+            <span className="font-medium text-(--text-primary)">
+              {formatAmount(
+                rec.requestedAmount ?? rec.amount,
+                rec.currencyCode ?? rec.currency
+              )}
+            </span>
+          )}
+          <span className="text-(--text-secondary)">
+            Approval: {RECORD_APPROVAL_STATUS_LABELS[rec.approvalStatus] ?? rec.approvalStatus}
+          </span>
+        </div>
+
+        <div className="flex flex-wrap gap-2 border-t border-(--border-subtle) pt-4">
+          {showSubmitForApproval && (
+            <button
+              type="button"
+              onClick={() => setAssignApproverOpen(true)}
+              className="inline-flex h-9 items-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white shadow-sm hover:bg-(--color-primary-hover)"
+            >
+              Submit for approval
+            </button>
+          )}
+          {canAddEvidence && !isClosed && (
+            <a
+              href="#section-evidence"
+              className="inline-flex h-9 items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm text-(--text-secondary) hover:bg-(--bg-surface-hover)"
+            >
+              Add evidence
+            </a>
+          )}
+          {canAssignInternal && !isClosed && (
+            <button
+              type="button"
+              onClick={() => setAssignApproverOpen(true)}
+              className="inline-flex h-9 items-center rounded-lg border border-(--border-subtle) px-4 text-sm text-(--text-secondary) hover:bg-(--bg-surface-hover)"
+            >
+              Assign approver
+            </button>
+          )}
+          {canExport && (
+            <button
+              type="button"
+              onClick={() => void handleExportPdf()}
+              className="inline-flex h-9 items-center rounded-lg border border-(--border-subtle) px-4 text-sm text-(--text-secondary) hover:bg-(--bg-surface-hover)"
+            >
+              Export PDF
+            </button>
+          )}
+          {canClose && !isClosed && (
+            <button
+              type="button"
+              onClick={() => {
+                setCloseReason(closeReasonOptions[0]?.value ?? "APPROVED_AND_COMPLETED");
+                setCloseDialogOpen(true);
+              }}
+              className="inline-flex h-9 items-center rounded-lg border border-(--border-subtle) px-4 text-sm text-(--text-secondary) hover:bg-(--bg-surface-hover)"
+            >
+              Close request
+            </button>
+          )}
+          {record.status === "DRAFT" && record.createdByUserId === currentUserId && (
+            <SubmitDraftButton recordId={recordId} onSuccess={load} />
+          )}
+          {rec.status === "OPEN" && rec.createdByUserId === currentUserId && !isClosed && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCloseReason("CANCELED");
+                  setCloseDialogOpen(true);
+                }}
+                className="inline-flex h-9 items-center rounded-lg px-3 text-sm text-(--text-muted) hover:text-(--text-secondary)"
+              >
+                Cancel request
+              </button>
+            )}
+        </div>
+
+        {closeDialogOpen && (
+          <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface) p-4">
+            <p className="mb-3 text-sm font-medium text-(--text-primary)">Close request</p>
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-(--text-muted)">
+                  Reason for closing
+                </label>
+                <select
+                  value={closeReason}
+                  onChange={(e) => setCloseReason(e.target.value)}
+                  className="h-10 w-full max-w-md rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 text-sm text-(--text-primary)"
+                >
+                  {closeReasonOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-(--text-muted)">
+                  Additional notes (optional)
+                </label>
+                <Textarea
+                  value={closeNotes}
+                  onChange={(e) => setCloseNotes(e.target.value)}
+                  maxLength={1000}
+                  rows={3}
+                  placeholder="Optional context for the audit log…"
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleCloseRequest()}
+                  disabled={closing}
+                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white disabled:opacity-60"
+                >
+                  {closing && <Spinner size="sm" />}
+                  Close request
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCloseDialogOpen(false)}
+                  disabled={closing}
+                  className="inline-flex h-9 items-center rounded-lg border px-4 text-sm text-(--text-secondary)"
+                >
+                  Keep open
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </header>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <div id="section-overview-meta">
+            <CardRoot>
+              <CardHeader>
+                <h2 className="text-sm font-semibold text-(--text-primary)">Overview</h2>
+              </CardHeader>
+              <CardContent className="space-y-4">
+              {rec.description && (
+                <div>
+                  <p className="mb-1 text-xs font-medium tracking-wide text-(--text-muted) uppercase">
+                    Description
+                  </p>
+                  <p className="whitespace-pre-wrap text-sm text-(--text-secondary)">
+                    {rec.description}
+                  </p>
+                </div>
+              )}
+              {rec.businessJustification && (
+                <div>
+                  <p className="mb-1 text-xs font-medium tracking-wide text-(--text-muted) uppercase">
+                    Business justification
+                  </p>
+                  <p className="whitespace-pre-wrap text-sm text-(--text-secondary)">
+                    {rec.businessJustification}
+                  </p>
+                </div>
+              )}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <DetailField label="Category" value={RECORD_CATEGORY_CONFIG[rec.type]?.label ?? RECORD_TYPE_LABELS[rec.type]} />
+                {rec.neededByDate && (
+                  <DetailField label="Needed by" value={formatDate(rec.neededByDate)} />
+                )}
+                {costCenterDisplay && (
+                  <DetailField label="Cost center" value={costCenterDisplay} />
+                )}
+                {departmentDisplay && (
+                  <DetailField label="Department" value={departmentDisplay} />
+                )}
+                {rec.vendorName && (
+                  <DetailField label="Vendor / Supplier" value={rec.vendorName} />
+                )}
+                {rec.payeeName && (
+                  <DetailField label="Payee / Beneficiary" value={rec.payeeName} />
+                )}
+                {rec.invoiceNumber && (
+                  <DetailField label="Invoice number" value={rec.invoiceNumber} />
+                )}
+                {(rec.contractReference || rec.purchaseOrderRef) && (
+                  <DetailField
+                    label="Contract / PO reference"
+                    value={[rec.contractReference, rec.purchaseOrderRef].filter(Boolean).join(" · ")}
+                  />
+                )}
+                {rec.clientName && <DetailField label="Client" value={rec.clientName} />}
+                {rec.clientEmail && <DetailField label="Client email" value={rec.clientEmail} />}
+              </div>
+              {rec.hasPolicyException && (
+                <div className="rounded-lg border border-(--color-warning-soft) bg-(--color-warning-soft) px-3 py-2 text-sm text-(--color-warning)">
+                  <span className="font-medium">Policy exception</span>
+                  {rec.policyExceptionReason && (
+                    <p className="mt-1 text-xs text-(--text-secondary)">{rec.policyExceptionReason}</p>
+                  )}
+                </div>
+              )}
+              {rec.isRecurring &&
+                rec.requestedAmount == null &&
+                rec.approvedAmount == null && (
+                  <Badge variant="secondary">Recurring</Badge>
+                )}
+              </CardContent>
+            </CardRoot>
+          </div>
+
+          {(rec.requestedAmount != null || rec.approvedAmount != null) && (
+            <CardRoot>
+              <CardHeader>
+                <h2 className="text-sm font-semibold text-(--text-primary)">Financial details</h2>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <div>
+                    <p className="text-xs font-medium text-(--text-muted)">Requested amount</p>
+                    <p
+                      className={`mt-1 text-xl font-semibold tabular-nums ${
+                        rec.requestedAmount != null ? "text-(--text-primary)" : "text-(--text-muted)"
+                      }`}
+                    >
+                      {rec.requestedAmount != null
+                        ? formatAmount(rec.requestedAmount, rec.currencyCode ?? rec.currency)
+                        : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-(--text-muted)">Approved amount</p>
+                    <p
+                      className={`mt-1 text-xl font-semibold tabular-nums ${
+                        rec.approvedAmount != null ? "text-(--text-primary)" : "text-(--text-muted)"
+                      }`}
+                    >
+                      {rec.approvedAmount != null
+                        ? formatAmount(rec.approvedAmount, rec.currencyCode ?? rec.currency)
+                        : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-(--text-muted)">Currency</p>
+                    <p className="mt-1 text-xl font-semibold text-(--text-primary)">
+                      {rec.currencyCode ?? rec.currency ?? "—"}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {rec.amountIsEstimated && <Badge variant="warning">Amount estimated</Badge>}
+                  {rec.budgetImpactType != null && (
+                    <Badge variant="secondary">
+                      {RECORD_BUDGET_IMPACT_LABELS[rec.budgetImpactType] ?? rec.budgetImpactType}
+                    </Badge>
+                  )}
+                  {rec.isRecurring && <Badge variant="secondary">Recurring</Badge>}
+                </div>
+              </CardContent>
+            </CardRoot>
+          )}
+
+          <div id="section-evidence">
+            <EvidenceSection
+              evidence={evidence}
+              isClosed={isClosed}
+              recordId={recordId}
+              canRemoveEvidence={canRemoveEvidence}
+              onRefresh={load}
+            />
+            <AddEvidenceSection
+              recordId={recordId}
+              isClosed={isClosed}
+              canAdd={canAddEvidence}
+              onRefresh={load}
+            />
+          </div>
+
+          <CommentSection
+            recordId={recordId}
+            isClosed={isClosed}
+            canComment={canComment}
+            onRefresh={load}
+          />
+
+          <TimelineSection timeline={timeline} comments={comments} />
+        </div>
+
+        <div className="space-y-6">
+          <div id="section-approvers">
+            <ParticipantsSection
+              participants={participants}
+              recordId={recordId}
+              isClosed={isClosed}
+              currentUserId={currentUserId}
+              canAssignInternal={canAssignInternal}
+              canAssignExternal={canAssignExternal}
+              canRemind={canRemind}
+              onRefresh={load}
+              onOpenAssignInternal={() => setAssignApproverOpen(true)}
+              onOpenAssignExternal={() => setAssignExternalOpen(true)}
+            />
+          </div>
+
+          <div id="section-links">
+            <LinkedSection
+              links={links}
+              currentRecordId={recordId}
+              canLink={canLink}
+              isClosed={isClosed}
+              onOpenLink={() => setLinkRecordOpen(true)}
+            />
+          </div>
+
+          <CardRoot>
+            <CardHeader>
+              <h2 className="text-sm font-semibold text-(--text-primary)">Request health</h2>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <p className="text-xs font-medium text-(--text-muted)">{healthSummary}</p>
+              <ul className="space-y-1.5 text-xs">
+                <li className={requiredOk ? "text-(--color-success)" : "text-(--color-warning)"}>
+                  {requiredOk ? "✅ Required fields complete" : "⚠ Missing required fields"}
+                </li>
+                <li className={evidence.length > 0 ? "text-(--color-success)" : "text-(--color-warning)"}>
+                  {evidence.length > 0
+                    ? "✅ Evidence attached"
+                    : "⚠ No supporting evidence has been added yet"}
+                </li>
+                <li
+                  className={
+                    approverParticipants.length > 0 ? "text-(--color-success)" : "text-(--color-warning)"
+                  }
+                >
+                  {approverParticipants.length > 0
+                    ? "✅ Approvers assigned"
+                    : "⚠ No approvers assigned yet"}
+                </li>
+                {rec.hasPolicyException && (
+                  <li className="text-(--color-warning)">⚠ Policy exception flagged</li>
+                )}
+                {rec.possibleDuplicate && (
+                  <li className="text-(--color-warning)">⚠ Possible duplicate</li>
+                )}
+                {rec.overdue && <li className="text-(--color-warning)">⚠ Overdue</li>}
+                {rec.isOverBudget && <li className="text-(--color-warning)">⚠ Over budget</li>}
+                {rec.status === "AWAITING_INFO" && (
+                  <li className="text-(--color-warning)">⚠ Awaiting info</li>
+                )}
+              </ul>
+              <div className="flex flex-wrap gap-2 pt-2">
+                {!requiredOk && (
+                  <a href="#section-overview-meta" className="text-xs text-(--color-primary) hover:underline">
+                    Review overview
+                  </a>
+                )}
+                {evidence.length === 0 && (
+                  <a href="#section-evidence" className="text-xs text-(--color-primary) hover:underline">
+                    Add evidence
+                  </a>
+                )}
+                {approverParticipants.length === 0 && (
+                  <a href="#section-approvers" className="text-xs text-(--color-primary) hover:underline">
+                    Assign approvers
+                  </a>
+                )}
+              </div>
+            </CardContent>
+          </CardRoot>
+
+          {record.requestedAmount != null && record.requestedAmount > 0 && (
+            <PaymentSection
+              payment={payment}
+              missingProof={missingProof}
+              canManage={canManagePayment}
+              canRemoveEvidence={canRemoveEvidence}
+              isClosed={isClosed}
+              recordId={recordId}
+              onOpenSetStatus={() => setSetPaymentOpen(true)}
+              onRefresh={load}
+            />
+          )}
+        </div>
+      </div>
+
+      <AssignApproverModal
+        open={assignApproverOpen}
+        onClose={() => setAssignApproverOpen(false)}
+        recordId={recordId}
+        onSuccess={load}
+      />
+      <AssignExternalApproverModal
+        open={assignExternalOpen}
+        onClose={() => setAssignExternalOpen(false)}
+        recordId={recordId}
+        onSuccess={load}
+      />
+      {data && (
+        <SetPaymentStatusModal
+          open={setPaymentOpen}
+          onClose={() => setSetPaymentOpen(false)}
+          recordId={recordId}
+          currentStatus={data.payment?.status ?? null}
+          onSuccess={load}
+        />
+      )}
+      <LinkRecordModal
+        open={linkRecordOpen}
+        onClose={() => setLinkRecordOpen(false)}
+        recordId={recordId}
+        onSuccess={load}
+      />
+    </div>
+  );
+}
+
+function DetailField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="mb-0.5 text-xs font-medium tracking-wide text-(--text-muted) uppercase">
+        {label}
+      </p>
+      <p className="text-sm text-(--text-primary)">{value}</p>
+    </div>
+  );
+}
+
+function DownloadEvidenceButton({
+  evidenceId,
+  recordId,
+  fileName,
+}: {
+  evidenceId: string;
+  recordId: string;
+  fileName: string | null;
+}) {
+  const apiFetch = useApiFetch();
+  const toast = useToast();
+  const [loading, setLoading] = useState(false);
+
+  async function handleDownload() {
+    setLoading(true);
+    try {
+      const res = await apiFetch(`/api/records/${recordId}/evidence/${evidenceId}`, {
+        showToastOnError: false,
+      });
+      if (!res.ok) {
+        toast.addToast("error", "Failed to get download link.");
+        return;
+      }
+      const json = (await res.json()) as {
+        data: { downloadUrl: string; fileName: string | null };
+      };
+      const a = document.createElement("a");
+      a.href = json.data.downloadUrl;
+      a.download = json.data.fileName ?? fileName ?? "file";
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch {
+      toast.addToast("error", "Download failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void handleDownload()}
+      disabled={loading}
+      className="ml-auto shrink-0 rounded px-2 py-1 text-xs text-(--color-primary) transition-opacity hover:underline disabled:opacity-50"
+    >
+      {loading ? "…" : "Download"}
+    </button>
+  );
+}
+
+function EvidenceSection({
+  evidence,
+  isClosed,
+  recordId,
+  canRemoveEvidence,
+  onRefresh,
+}: {
+  evidence: RecordEvidenceItem[];
+  isClosed: boolean;
+  recordId: string;
+  canRemoveEvidence: boolean;
+  onRefresh: () => void | Promise<void>;
+}) {
+  if (evidence.length === 0 && isClosed) return null;
+  return (
+    <CardRoot>
+      <CardHeader>
+        <h2 className="text-sm font-semibold text-(--text-primary)">
+          Evidence
+          {evidence.length > 0 && (
+            <span className="ml-1.5 font-normal text-(--text-muted)">({evidence.length})</span>
+          )}
+        </h2>
+      </CardHeader>
+      <CardContent>
+        {evidence.length === 0 ? (
+          <p className="text-sm text-(--text-muted)">No supporting evidence has been added yet.</p>
+        ) : (
+          <ul className="space-y-2">
+            {evidence.map((ev) => (
+              <li
+                key={ev.id}
+                className="flex items-center gap-3 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 py-2.5"
+              >
+                {ev.evidenceType === "LINK" ? (
+                  <IconLink size={14} className="shrink-0 text-(--text-muted)" />
+                ) : (
+                  <IconFileText size={14} className="shrink-0 text-(--text-muted)" />
+                )}
+                <div className="min-w-0 flex-1">
+                  {ev.evidenceType === "LINK" && ev.url ? (
+                    <a
+                      href={ev.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block truncate text-sm text-(--color-primary) hover:underline"
+                    >
+                      {ev.label ?? ev.url}
+                    </a>
+                  ) : (
+                    <span className="block truncate text-sm text-(--text-primary)">
+                      {ev.label ?? ev.fileName ?? "File"}
+                    </span>
+                  )}
+                  <span className="text-xs text-(--text-muted)">
+                    {formatDate(ev.createdAt)}
+                    {ev.sizeBytes != null && ` · ${(ev.sizeBytes / 1024).toFixed(0)} KB`}
+                  </span>
+                </div>
+                {ev.evidenceType === "FILE" && (
+                  <DownloadEvidenceButton
+                    evidenceId={ev.id}
+                    recordId={recordId}
+                    fileName={ev.fileName}
+                  />
+                )}
+                {canRemoveEvidence && !isClosed && (
+                  <RemoveEvidenceButton
+                    evidenceId={ev.id}
+                    recordId={recordId}
+                    onSuccess={onRefresh}
+                  />
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </CardRoot>
+  );
+}
+
+function RemoveEvidenceButton({
+  evidenceId,
+  recordId,
+  onSuccess,
+}: {
+  evidenceId: string;
+  recordId: string;
+  onSuccess: () => void | Promise<void>;
+}) {
+  const apiFetch = useApiFetch();
+  const toast = useToast();
+  const [loading, setLoading] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+
+  if (!confirming) {
+    return (
+      <button
+        type="button"
+        onClick={() => setConfirming(true)}
+        className="shrink-0 rounded px-2 py-1 text-xs text-(--color-danger) opacity-60 transition-opacity hover:opacity-100"
+      >
+        Remove
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      <span className="text-xs text-(--text-muted)">Remove?</span>
+      <button
+        type="button"
+        onClick={async () => {
+          setLoading(true);
+          try {
+            const res = await apiFetch(`/api/records/${recordId}/evidence/${evidenceId}`, {
+              method: "DELETE",
+              showToastOnError: false,
+            });
+            if (!res.ok) {
+              const json = (await res.json().catch(() => ({}))) as {
+                error?: { message?: string };
+              };
+              toast.addToast("error", json.error?.message ?? "Failed to remove.");
+              setConfirming(false);
+              return;
+            }
+            toast.addToast("success", "Evidence removed.");
+            await onSuccess();
+          } catch {
+            toast.addToast("error", "Network error.");
+          } finally {
+            setLoading(false);
+            setConfirming(false);
+          }
+        }}
+        disabled={loading}
+        className="rounded px-1.5 py-0.5 text-xs font-medium text-(--color-danger) transition-opacity hover:opacity-80 disabled:opacity-50"
+      >
+        {loading ? "…" : "Yes"}
+      </button>
+      <button
+        type="button"
+        onClick={() => setConfirming(false)}
+        className="rounded px-1.5 py-0.5 text-xs text-(--text-muted) transition-opacity hover:opacity-80"
+      >
+        No
+      </button>
+    </div>
+  );
+}
+
+function ParticipantsSection({
+  participants,
+  recordId,
+  isClosed,
+  currentUserId,
+  canAssignInternal,
+  canAssignExternal,
+  canRemind,
+  onRefresh,
+  onOpenAssignInternal,
+  onOpenAssignExternal,
+}: {
+  participants: RecordParticipant[];
+  recordId: string;
+  isClosed: boolean;
+  currentUserId: string;
+  canAssignInternal: boolean;
+  canAssignExternal: boolean;
+  canRemind: boolean;
+  onRefresh: () => void | Promise<void>;
+  onOpenAssignInternal: () => void;
+  onOpenAssignExternal: () => void;
+}) {
+  const apiFetch = useApiFetch();
+  const toast = useToast();
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [reminding, setReminding] = useState(false);
+  const [rejectModalOpen, setRejectModalOpen] = useState(false);
+  const [rejectTargetId, setRejectTargetId] = useState<string | null>(null);
+  const [rejectSubmitting, setRejectSubmitting] = useState(false);
+
+  const approvers = participants.filter((p) => p.participantRole === "APPROVER");
+  const hasPendingApprovers = approvers.some((p) => p.status === "PENDING");
+  const blockingApproverId =
+    approvers.find((p) => p.status === "PENDING")?.id ?? null;
+
+  const statusBadge: Record<ParticipantStatus, BadgeVariant> = {
+    PENDING: "warning",
+    APPROVED: "success",
+    REJECTED: "destructive",
+  };
+
+  async function handleAction(
+    participantId: string,
+    action: "APPROVE" | "REJECT",
+    comment?: string
+  ) {
+    setActionLoading(participantId);
+    try {
+      const res = await apiFetch(
+        `/api/records/${recordId}/participants/${participantId}/action`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action, comment }),
+          showToastOnError: false,
+        }
+      );
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as {
+          error?: { message?: string };
+        };
+        toast.addToast("error", json.error?.message ?? "Action failed.");
+        return;
+      }
+      toast.addToast("success", action === "APPROVE" ? "Approved." : "Rejected.");
+      await onRefresh();
+    } catch {
+      toast.addToast("error", "Network error.");
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleRemind() {
+    setReminding(true);
+    try {
+      const res = await apiFetch(`/api/records/${recordId}/remind`, {
+        method: "POST",
+        showToastOnError: false,
+      });
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as {
+          error?: { message?: string };
+        };
+        toast.addToast("error", json.error?.message ?? "Failed to send reminders.");
+        return;
+      }
+      toast.addToast("success", "Reminders sent.");
+    } catch {
+      toast.addToast("error", "Network error.");
+    } finally {
+      setReminding(false);
+    }
+  }
+
+  return (
+    <>
+    <CardRoot>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-(--text-primary)">
+            Approval workflow
+            {approvers.length > 0 && (
+              <span className="ml-1.5 font-normal text-(--text-muted)">
+                ({approvers.length})
+              </span>
+            )}
+          </h2>
+          {!isClosed && (
+            <div className="flex gap-1.5">
+              {canRemind && hasPendingApprovers && (
+                <button
+                  type="button"
+                  onClick={() => void handleRemind()}
+                  disabled={reminding}
+                  className="inline-flex h-7 items-center gap-1 rounded border border-(--border-subtle) bg-(--bg-surface-elev) px-2.5 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:opacity-60"
+                >
+                  {reminding ? <Spinner size="sm" /> : null}
+                  {reminding ? "Sending…" : "Send reminder"}
+                </button>
+              )}
+              {canAssignExternal && (
+                <button
+                  type="button"
+                  onClick={onOpenAssignExternal}
+                  className="inline-flex h-7 items-center gap-1 rounded border border-(--border-subtle) bg-(--bg-surface-elev) px-2.5 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)"
+                >
+                  <IconPlus size={12} />
+                  External
+                </button>
+              )}
+              {canAssignInternal && (
+                <button
+                  type="button"
+                  onClick={onOpenAssignInternal}
+                  className="inline-flex h-7 items-center gap-1 rounded border border-(--border-subtle) bg-(--bg-surface-elev) px-2.5 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)"
+                >
+                  <IconPlus size={12} />
+                  Internal
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent>
+        {approvers.length === 0 ? (
+          <div className="space-y-3">
+            <p className="text-sm text-(--text-muted)">
+              This request has not been routed for approval yet.
+            </p>
+            {!isClosed && (canAssignInternal || canAssignExternal) && (
+              <div className="flex flex-wrap gap-2">
+                {canAssignInternal && (
+                  <button
+                    type="button"
+                    onClick={onOpenAssignInternal}
+                    className="inline-flex h-8 items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 text-xs font-medium text-(--text-secondary) hover:bg-(--bg-surface-hover)"
+                  >
+                    Add internal approver
+                  </button>
+                )}
+                {canAssignExternal && (
+                  <button
+                    type="button"
+                    onClick={onOpenAssignExternal}
+                    className="inline-flex h-8 items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 text-xs font-medium text-(--text-secondary) hover:bg-(--bg-surface-hover)"
+                  >
+                    Add external approver
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <ul className="space-y-3">
+            {approvers.map((p) => {
+              const isMyApproval =
+                p.participantType === "INTERNAL" &&
+                p.userId != null &&
+                p.userId === currentUserId;
+              const isBlocking = p.id === blockingApproverId;
+              return (
+                <li
+                  key={p.id}
+                  className={[
+                    "relative flex flex-wrap items-start justify-between gap-3 rounded-lg border bg-(--bg-surface-elev) px-3 py-2.5",
+                    isBlocking
+                      ? "border-(--color-primary) ring-1 ring-(--color-primary-soft)"
+                      : "border-(--border-subtle)",
+                  ].join(" ")}
+                >
+                  {isBlocking && (
+                    <span className="absolute -left-1 top-2 h-[calc(100%-16px)] w-1 rounded-full bg-(--color-primary)" />
+                  )}
+                  <div className="min-w-0 pl-1">
+                    <p className="text-sm font-medium text-(--text-primary)">
+                      {p.participantType === "INTERNAL"
+                        ? (p.name ?? p.userId ?? "Internal user")
+                        : (p.email ?? "External approver")}
+                    </p>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                      <Badge variant="secondary" className="text-[10px]">
+                        {p.participantType === "EXTERNAL" ? "External" : "Internal"}
+                      </Badge>
+                      <Badge variant="secondary" className="text-[10px]">
+                        {p.participantRole === "APPROVER" ? "Approver" : "Viewer"}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-(--text-muted)">
+                      {p.respondedAt
+                        ? `Responded ${formatDate(p.respondedAt)}`
+                        : "Awaiting response"}
+                    </p>
+                    {p.responseReason && (
+                      <p className="mt-1 text-xs text-(--text-secondary) italic">
+                        &ldquo;{p.responseReason}&rdquo;
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={statusBadge[p.status] ?? "default"}>
+                      {p.status.charAt(0) + p.status.slice(1).toLowerCase()}
+                    </Badge>
+                    {p.status === "PENDING" && !isClosed && isMyApproval && (
+                      <div className="flex gap-1.5">
+                        <button
+                          type="button"
+                          disabled={actionLoading === p.id}
+                          onClick={() => void handleAction(p.id, "APPROVE")}
+                          className="rounded bg-(--color-success-soft) px-2 py-1 text-xs font-medium text-(--color-success) transition-opacity hover:opacity-80 disabled:opacity-50"
+                        >
+                          {actionLoading === p.id ? <Spinner size="sm" /> : "Approve"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={actionLoading === p.id}
+                          onClick={() => {
+                            setRejectTargetId(p.id);
+                            setRejectModalOpen(true);
+                          }}
+                          className="rounded bg-(--color-danger-soft) px-2 py-1 text-xs font-medium text-(--color-danger) transition-opacity hover:opacity-80 disabled:opacity-50"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </CardContent>
+    </CardRoot>
+    <RejectApprovalModal
+      open={rejectModalOpen}
+      onClose={() => {
+        setRejectModalOpen(false);
+        setRejectTargetId(null);
+      }}
+      submitting={rejectSubmitting}
+      onConfirm={async (reason) => {
+        if (!rejectTargetId) return;
+        setRejectSubmitting(true);
+        try {
+          const res = await apiFetch(
+            `/api/records/${recordId}/participants/${rejectTargetId}/action`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "REJECT", comment: reason }),
+              showToastOnError: false,
+            }
+          );
+          if (!res.ok) {
+            const json = (await res.json().catch(() => ({}))) as {
+              error?: { message?: string };
+            };
+            toast.addToast("error", json.error?.message ?? "Rejection failed.");
+            return;
+          }
+          toast.addToast("success", "Request rejected.");
+          setRejectModalOpen(false);
+          setRejectTargetId(null);
+          await onRefresh();
+        } catch {
+          toast.addToast("error", "Network error.");
+        } finally {
+          setRejectSubmitting(false);
+        }
+      }}
+    />
+    </>
+  );
+}
+
+function TimelineSection({
+  timeline,
+  comments,
+}: {
+  timeline: RecordEventItem[];
+  comments: RecordComment[];
+}) {
+  const commentMap = new Map(comments.map((c) => [c.id, c]));
+
+  const sortedEvents = [...timeline].sort(
+    (a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime()
+  );
+
+  return (
+    <CardRoot>
+      <CardHeader>
+        <h2 className="text-sm font-semibold text-(--text-primary)">Timeline</h2>
+      </CardHeader>
+      <CardContent>
+        {sortedEvents.length === 0 ? (
+          <p className="text-sm text-(--text-muted)">No activity recorded yet.</p>
+        ) : (
+          <ol className="space-y-4">
+            {sortedEvents.map((ev) => {
+              const commentId =
+                ev.eventType === "COMMENT_ADDED"
+                  ? (ev.metadata?.commentId as string | undefined)
+                  : undefined;
+              const comment = commentId ? commentMap.get(commentId) : undefined;
+
+              return (
+                <li key={ev.id} className="flex gap-3">
+                  <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-(--border-subtle) bg-(--bg-surface-elev)">
+                    <span className="h-1.5 w-1.5 rounded-full bg-(--text-muted)" />
+                  </div>
+                  <div className="min-w-0 flex-1 border-b border-(--border-subtle) pb-4 last:border-0 last:pb-0">
+                    <div className="flex flex-wrap items-baseline gap-2">
+                      <span
+                        className={[
+                          "text-sm font-medium",
+                          comment?.isCritical
+                            ? "text-(--color-danger)"
+                            : "text-(--text-primary)",
+                        ].join(" ")}
+                      >
+                        {RECORD_EVENT_LABELS[ev.eventType] ?? ev.eventType}
+                        {ev.eventType === "EVIDENCE_FILE_ADDED" &&
+                        ev.metadata?.fileName != null &&
+                        ev.metadata.fileName !== "" ? (
+                          <span className="ml-1 font-normal text-(--text-muted)">
+                            — {String(ev.metadata.fileName)}
+                          </span>
+                        ) : null}
+                        {ev.eventType === "EVIDENCE_LINK_ADDED" &&
+                        ev.metadata?.label != null &&
+                        ev.metadata.label !== "" ? (
+                          <span className="ml-1 font-normal text-(--text-muted)">
+                            — {String(ev.metadata.label)}
+                          </span>
+                        ) : null}
+                        {ev.eventType === "EVIDENCE_FILE_REMOVED" &&
+                        (ev.metadata?.fileName != null || ev.metadata?.label != null) ? (
+                          <span className="ml-1 font-normal text-(--text-muted)">
+                            — {String(ev.metadata?.fileName ?? ev.metadata?.label ?? "")}
+                          </span>
+                        ) : null}
+                        {ev.eventType === "EVIDENCE_LINK_REMOVED" &&
+                        ev.metadata?.label != null &&
+                        ev.metadata.label !== "" ? (
+                          <span className="ml-1 font-normal text-(--text-muted)">
+                            — {String(ev.metadata.label)}
+                          </span>
+                        ) : null}
+                        {ev.eventType === "PAYMENT_EVIDENCE_REMOVED" &&
+                        (ev.metadata?.fileName != null || ev.metadata?.label != null) ? (
+                          <span className="ml-1 font-normal text-(--text-muted)">
+                            — {String(ev.metadata?.fileName ?? ev.metadata?.label ?? "")}
+                          </span>
+                        ) : null}
+                      </span>
+                      {comment?.isCritical && (
+                        <span className="flex items-center gap-1 text-xs text-(--color-danger)">
+                          <IconAlertCircle size={11} />
+                          Action required
+                        </span>
+                      )}
+                      <span className="text-xs text-(--text-muted)">{formatDate(ev.occurredAt)}</span>
+                    </div>
+                    {(ev.actorName || ev.actorDisplayEmail) && (
+                      <p className="mt-0.5 text-xs text-(--text-muted)">
+                        by {ev.actorName ?? ev.actorDisplayEmail}
+                      </p>
+                    )}
+                    {comment && (
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-(--text-secondary)">
+                        {comment.content}
+                      </p>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </CardContent>
+    </CardRoot>
+  );
+}
+
+function SubmitDraftButton({
+  recordId,
+  onSuccess,
+}: {
+  recordId: string;
+  onSuccess: () => void | Promise<void>;
+}) {
+  const apiFetch = useApiFetch();
+  const toast = useToast();
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit() {
+    setSubmitting(true);
+    try {
+      const res = await apiFetch(`/api/records/${recordId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "OPEN" }),
+        showToastOnError: false,
+      });
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as {
+          error?: { message?: string };
+        };
+        toast.addToast("error", json.error?.message ?? "Failed to submit.");
+        return;
+      }
+      toast.addToast("success", "Request submitted.");
+      await onSuccess();
+    } catch {
+      toast.addToast("error", "Network error.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void handleSubmit()}
+      disabled={submitting}
+      className="inline-flex h-9 items-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-(--color-primary-hover) disabled:opacity-60"
+    >
+      {submitting && <Spinner size="sm" />}
+      {submitting ? "Submitting…" : "Submit request"}
+    </button>
+  );
+}
+
+function CommentSection({
+  recordId,
+  isClosed,
+  canComment,
+  onRefresh,
+}: {
+  recordId: string;
+  isClosed: boolean;
+  canComment: boolean;
+  onRefresh: () => void | Promise<void>;
+}) {
+  const apiFetch = useApiFetch();
+  const toast = useToast();
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const [content, setContent] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [mentionSearch, setMentionSearch] = useState<string | null>(null);
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionUsers, setMentionUsers] = useState<
+    { user: { id: string; name: string | null; email: string | null } }[]
+  >([]);
+
+  useEffect(() => {
+    if (!mentionOpen) return;
+    apiFetch("/api/tenant/users?context=assignment", { showToastOnError: false })
+      .then((r) => r.json())
+      .then(
+        (json: {
+          data?: {
+            users?: { user: { id: string; name: string | null; email: string | null } }[];
+          };
+        }) => {
+          setMentionUsers(json.data?.users ?? []);
+        }
+      )
+      .catch(() => {});
+  }, [mentionOpen, apiFetch]);
+
+  const filteredMentions = mentionUsers.filter((u) => {
+    if (!mentionSearch) return true;
+    const q = mentionSearch.toLowerCase();
+    return (
+      u.user.name?.toLowerCase().includes(q) ||
+      (u.user.email?.toLowerCase().includes(q) ?? false)
+    );
+  });
+
+  function handleContentChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const val = e.target.value;
+    setContent(val);
+    const cursor = e.target.selectionStart ?? val.length;
+    const before = val.slice(0, cursor);
+    const match = before.match(/@([a-zA-Z0-9._\-\s]*)$/);
+    if (match) {
+      setMentionSearch(match[1]);
+      setMentionOpen(true);
+    } else {
+      setMentionOpen(false);
+      setMentionSearch(null);
+    }
+  }
+
+  function insertMention(user: { name: string | null; email: string | null }) {
+    const handle = user.name ?? user.email ?? "user";
+    const cursor = textareaRef.current?.selectionStart ?? content.length;
+    const before = content.slice(0, cursor).replace(/@([a-zA-Z0-9._\-\s]*)$/, `@${handle} `);
+    const after = content.slice(cursor);
+    setContent(before + after);
+    setMentionOpen(false);
+    setMentionSearch(null);
+    setTimeout(() => textareaRef.current?.focus(), 0);
+  }
+
+  if (!canComment || isClosed) return null;
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!content.trim()) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await apiFetch(`/api/records/${recordId}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: content.trim(), commentScope: "GENERAL" }),
+        showToastOnError: false,
+      });
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as {
+          error?: { message?: string };
+        };
+        setError(json.error?.message ?? "Failed to post comment.");
+        return;
+      }
+      setContent("");
+      toast.addToast("success", "Comment added.");
+      await onRefresh();
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <CardRoot>
+      <CardHeader>
+        <h2 className="text-sm font-semibold text-(--text-primary)">Add comment</h2>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          {error && <p className="text-xs text-(--color-danger)">{error}</p>}
+          <div className="relative">
+            <Textarea
+              ref={textareaRef}
+              value={content}
+              onChange={handleContentChange}
+              placeholder="Write a comment… Use @ to mention someone"
+              rows={3}
+              maxLength={5000}
+              disabled={submitting}
+            />
+            {mentionOpen && filteredMentions.length > 0 && (
+              <div className="absolute bottom-full left-0 z-20 mb-1 max-h-48 w-full overflow-y-auto rounded-lg border border-(--border-subtle) bg-(--bg-surface) shadow-lg">
+                {filteredMentions.slice(0, 8).map((u) => (
+                  <button
+                    key={u.user.id}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      insertMention(u.user);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-(--bg-surface-elev)"
+                  >
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-(--bg-surface-elev) text-xs font-semibold text-(--text-muted) uppercase">
+                      {(u.user.name ?? u.user.email ?? "?")[0]}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm text-(--text-primary)">
+                        {u.user.name ?? u.user.email}
+                      </p>
+                      {u.user.name && u.user.email && (
+                        <p className="truncate text-xs text-(--text-muted)">{u.user.email}</p>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-(--text-muted)">Use @ to mention a team member</p>
+            <button
+              type="submit"
+              disabled={submitting || !content.trim()}
+              className="inline-flex h-9 items-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-(--color-primary-hover) disabled:opacity-60"
+            >
+              {submitting && <Spinner size="sm" />}
+              {submitting ? "Posting…" : "Post comment"}
+            </button>
+          </div>
+        </form>
+      </CardContent>
+    </CardRoot>
+  );
+}
+
+function AddEvidenceSection({
+  recordId,
+  isClosed,
+  canAdd,
+  onRefresh,
+}: {
+  recordId: string;
+  isClosed: boolean;
+  canAdd: boolean;
+  onRefresh: () => void | Promise<void>;
+}) {
+  const apiFetch = useApiFetch();
+  const toast = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [mode, setMode] = useState<"idle" | "link" | "uploading">("idle");
+  const [label, setLabel] = useState("");
+  const [url, setUrl] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!canAdd || isClosed) return null;
+
+  async function uploadFile(file: File) {
+    setMode("uploading");
+    setUploadProgress("Preparing upload…");
+    setError(null);
+    try {
+      const mimeType = resolveMimeType(file);
+      const urlRes = await apiFetch(`/api/records/${recordId}/evidence/upload-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: file.name,
+          mimeType,
+          sizeBytes: Math.max(file.size, 0),
+        }),
+        showToastOnError: false,
+      });
+      if (!urlRes.ok) {
+        const json = (await urlRes.json().catch(() => ({}))) as {
+          error?: { message?: string };
+        };
+        setError(json.error?.message ?? "Failed to prepare upload.");
+        setMode("idle");
+        return;
+      }
+      const urlJson = (await urlRes.json()) as {
+        data: { uploadUrl: string; objectKey: string };
+      };
+      const { uploadUrl, objectKey } = urlJson.data;
+
+      setUploadProgress("Uploading…");
+      const uploadRes = await fetch(uploadUrl, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": mimeType },
+      });
+      if (!uploadRes.ok) {
+        setError("Upload failed. Please try again.");
+        setMode("idle");
+        return;
+      }
+
+      setUploadProgress("Saving…");
+      const confirmRes = await apiFetch(`/api/records/${recordId}/evidence/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          objectKey,
+          fileName: file.name,
+          mimeType,
+          sizeBytes: Math.max(file.size, 0),
+          label: file.name,
+        }),
+        showToastOnError: false,
+      });
+      if (!confirmRes.ok) {
+        const json = (await confirmRes.json().catch(() => ({}))) as {
+          error?: { message?: string };
+        };
+        setError(json.error?.message ?? "Failed to save.");
+        setMode("idle");
+        return;
+      }
+      toast.addToast("success", "File uploaded.");
+      setMode("idle");
+      await onRefresh();
+    } catch {
+      setError("Upload failed.");
+      setMode("idle");
+    } finally {
+      setUploadProgress(null);
+    }
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) void uploadFile(file);
+    e.target.value = "";
+  }
+
+  useEffect(() => {
+    function handlePaste(e: ClipboardEvent) {
+      if (mode === "uploading" || !canAdd || isClosed) return;
+      const imageItem = Array.from(e.clipboardData?.items ?? []).find((item) =>
+        item.type.startsWith("image/")
+      );
+      if (!imageItem) return;
+      const file = imageItem.getAsFile();
+      if (!file) return;
+      void uploadFile(
+        new File([file], `screenshot-${Date.now()}.png`, { type: "image/png" })
+      );
+    }
+    document.addEventListener("paste", handlePaste);
+    return () => document.removeEventListener("paste", handlePaste);
+  }, [mode, canAdd, isClosed]);
+
+  async function handleAddLink(e: React.FormEvent) {
+    e.preventDefault();
+    if (!label.trim() || !url.trim()) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await apiFetch(`/api/records/${recordId}/evidence`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          evidenceType: "LINK",
+          label: label.trim(),
+          url: url.trim(),
+        }),
+        showToastOnError: false,
+      });
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as {
+          error?: { message?: string };
+        };
+        setError(json.error?.message ?? "Failed to add link.");
+        return;
+      }
+      setLabel("");
+      setUrl("");
+      setMode("idle");
+      toast.addToast("success", "Link added.");
+      await onRefresh();
+    } catch {
+      setError("Network error.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="mt-2 space-y-2">
+      {error && <p className="text-xs text-(--color-danger)">{error}</p>}
+
+      {mode === "uploading" && (
+        <div className="flex items-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 py-2 text-sm text-(--text-muted)">
+          <Spinner size="sm" />
+          {uploadProgress ?? "Uploading…"}
+        </div>
+      )}
+
+      {mode === "link" && (
+        <form
+          onSubmit={handleAddLink}
+          className="space-y-3 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) p-4"
+        >
+          <div className="space-y-1.5">
+            <label className="block text-xs font-medium text-(--text-primary)">
+              Label <span className="text-(--color-danger)">*</span>
+            </label>
+            <Input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="Invoice #1234"
+              maxLength={255}
+              disabled={submitting}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="block text-xs font-medium text-(--text-primary)">
+              URL <span className="text-(--color-danger)">*</span>
+            </label>
+            <Input
+              type="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://…"
+              maxLength={2048}
+              disabled={submitting}
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={submitting || !label.trim() || !url.trim()}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-(--color-primary) px-3 text-xs font-medium text-white transition-colors hover:bg-(--color-primary-hover) disabled:opacity-60"
+            >
+              {submitting && <Spinner size="sm" />}
+              Add
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("idle");
+                setError(null);
+              }}
+              className="inline-flex h-8 items-center rounded-lg border border-(--border-subtle) px-3 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+
+      {mode === "idle" && (
+        <div
+          className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-(--border-subtle) bg-(--bg-surface-elev) px-4 py-5 text-center transition-colors hover:border-(--color-primary) hover:bg-(--color-primary-soft)"
+          onClick={() => fileInputRef.current?.click()}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault();
+            const f = e.dataTransfer.files[0];
+            if (f) void uploadFile(f);
+          }}
+        >
+          <IconUpload size={18} className="text-(--text-muted)" />
+          <div>
+            <p className="text-sm font-medium text-(--text-primary)">
+              Drop files here, click to upload, or paste (Ctrl/Cmd+V)
+            </p>
+            <p className="mt-0.5 text-xs text-(--text-muted)">
+              Images, PDF, Word, Excel, CSV · Max 25 MB
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setMode("link");
+            }}
+            className="inline-flex h-7 items-center gap-1 rounded border border-(--border-subtle) bg-(--bg-surface) px-2.5 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)"
+          >
+            <IconPlus size={11} />
+            Add link instead
+          </button>
+        </div>
+      )}
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+        onChange={handleFileChange}
+      />
+    </div>
+  );
+}
+
+function LinkedSection({
+  links,
+  currentRecordId,
+  canLink,
+  isClosed,
+  onOpenLink,
+}: {
+  links: RecordLinkItem[];
+  currentRecordId: string;
+  canLink: boolean;
+  isClosed: boolean;
+  onOpenLink: () => void;
+}) {
+  return (
+    <CardRoot>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-(--text-primary)">
+            Linked requests
+            {links.length > 0 && (
+              <span className="ml-1.5 font-normal text-(--text-muted)">({links.length})</span>
+            )}
+          </h2>
+          {canLink && !isClosed && (
+            <button
+              type="button"
+              onClick={onOpenLink}
+              className="inline-flex h-7 items-center gap-1 rounded border border-(--border-subtle) bg-(--bg-surface-elev) px-2.5 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)"
+            >
+              <IconPlus size={12} />
+              Link
+            </button>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent>
+        {links.length === 0 ? (
+          <p className="text-sm text-(--text-muted)">No related requests have been linked yet.</p>
+        ) : (
+          <ul className="space-y-2">
+            {links.map((l) => {
+              const otherId = l.fromRecordId === currentRecordId ? l.toRecordId : l.fromRecordId;
+              const typeLabel = RECORD_LINK_TYPE_LABELS[l.linkType] ?? l.linkType;
+              const fromHere = l.fromRecordId === currentRecordId;
+              const directionText = fromHere
+                ? `This request → ${typeLabel} →`
+                : `→ ${typeLabel} → this request`;
+              return (
+                <li key={l.id}>
+                  <Link
+                    href={`/app/requests/${otherId}`}
+                    className="flex flex-col gap-0.5 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 py-2 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--text-primary)"
+                  >
+                    <span className="flex items-center gap-2">
+                      <IconLink size={13} className="shrink-0 text-(--text-muted)" />
+                      <span className="text-xs text-(--text-muted)">{directionText}</span>
+                    </span>
+                    <span className="truncate pl-5 font-mono text-xs text-(--color-primary)">
+                      {otherId}
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </CardContent>
+    </CardRoot>
+  );
+}
+
+function PaymentSection({
+  payment,
+  missingProof,
+  canManage,
+  canRemoveEvidence,
+  isClosed,
+  recordId,
+  onOpenSetStatus,
+  onRefresh,
+}: {
+  payment: RecordPaymentItem;
+  missingProof: boolean;
+  canManage: boolean;
+  canRemoveEvidence: boolean;
+  isClosed: boolean;
+  recordId: string;
+  onOpenSetStatus: () => void;
+  onRefresh: () => void | Promise<void>;
+}) {
+  const apiFetch = useApiFetch();
+  const toast = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [addMode, setAddMode] = useState<"idle" | "text" | "link">("idle");
+  const [noteContent, setNoteContent] = useState("");
+  const [noteLabel, setNoteLabel] = useState("");
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkLabel, setLinkLabel] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [addError, setAddError] = useState<string | null>(null);
+
+  function resetAddForm() {
+    setAddMode("idle");
+    setAddError(null);
+    setNoteContent("");
+    setNoteLabel("");
+    setLinkUrl("");
+    setLinkLabel("");
+  }
+
+  async function uploadFile(file: File) {
+    setSubmitting(true);
+    setUploadProgress("Preparing...");
+    setAddError(null);
+    try {
+      const mimeType = resolveMimeType(file);
+      const urlRes = await apiFetch(`/api/records/${recordId}/payment/evidence/upload-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: file.name,
+          mimeType,
+          sizeBytes: Math.max(file.size, 0),
+        }),
+        showToastOnError: false,
+      });
+      if (!urlRes.ok) {
+        const json = (await urlRes.json().catch(() => ({}))) as {
+          error?: { message?: string };
+        };
+        setAddError(json.error?.message ?? "Failed to prepare upload.");
+        return;
+      }
+      const urlJson = (await urlRes.json()) as {
+        data: { uploadUrl: string; objectKey: string };
+      };
+      const { uploadUrl, objectKey } = urlJson.data;
+
+      setUploadProgress("Uploading...");
+      const putRes = await fetch(uploadUrl, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": mimeType },
+      });
+      if (!putRes.ok) {
+        setAddError("Upload failed. Please try again.");
+        return;
+      }
+
+      setUploadProgress("Saving...");
+      const confirmRes = await apiFetch(`/api/records/${recordId}/payment/evidence/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          objectKey,
+          fileName: file.name,
+          mimeType,
+          sizeBytes: Math.max(file.size, 0),
+          label: file.name,
+        }),
+        showToastOnError: false,
+      });
+      if (!confirmRes.ok) {
+        const json = (await confirmRes.json().catch(() => ({}))) as {
+          error?: { message?: string };
+        };
+        setAddError(json.error?.message ?? "Failed to save.");
+        return;
+      }
+      toast.addToast("success", "File uploaded.");
+      await onRefresh();
+    } catch {
+      setAddError("Upload failed.");
+    } finally {
+      setSubmitting(false);
+      setUploadProgress(null);
+    }
+  }
+
+  async function handleAddEvidence(e: React.FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    setAddError(null);
+    try {
+      const body =
+        addMode === "text"
+          ? {
+              evidenceType: "TEXT" as const,
+              contentText: noteContent.trim(),
+              label: noteLabel.trim() || undefined,
+            }
+          : {
+              evidenceType: "LINK" as const,
+              url: linkUrl.trim(),
+              label: linkLabel.trim(),
+            };
+
+      const res = await apiFetch(`/api/records/${recordId}/payment/evidence`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        showToastOnError: false,
+      });
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as {
+          error?: { message?: string };
+        };
+        setAddError(json.error?.message ?? "Failed to add proof.");
+        return;
+      }
+      toast.addToast("success", "Payment proof added.");
+      resetAddForm();
+      await onRefresh();
+    } catch {
+      setAddError("Network error.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <CardRoot>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-(--text-primary)">Payment</h2>
+          {canManage && !isClosed && (
+            <button
+              type="button"
+              onClick={onOpenSetStatus}
+              className="inline-flex h-7 items-center gap-1 rounded border border-(--border-subtle) bg-(--bg-surface-elev) px-2.5 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)"
+            >
+              Update status
+            </button>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {payment ? (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={PAYMENT_STATUS_BADGE[payment.status] ?? "secondary"}>
+                {PAYMENT_STATUS_LABELS[payment.status] ?? payment.status}
+              </Badge>
+              {missingProof && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-(--color-warning-soft) px-2 py-0.5 text-xs text-(--color-warning)">
+                  <IconAlertCircle size={11} />
+                  Missing proof
+                </span>
+              )}
+            </div>
+
+            {payment.evidence.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-(--text-muted)">
+                  Payment proof ({payment.evidence.length})
+                </p>
+                <ul className="space-y-1.5">
+                  {payment.evidence.map((ev) => (
+                    <li
+                      key={ev.id}
+                      className="flex items-center gap-2 rounded border border-(--border-subtle) bg-(--bg-surface-elev) px-2.5 py-2"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-medium text-(--text-primary)">
+                          {ev.label ?? `Proof v${ev.versionNumber}`}
+                        </p>
+                        <p className="text-xs text-(--text-muted)">
+                          {ev.evidenceType} · {formatDate(ev.createdAt)}
+                        </p>
+                      </div>
+                      {canRemoveEvidence && !isClosed && (
+                        <RemovePaymentEvidenceButton
+                          evidenceId={ev.id}
+                          recordId={recordId}
+                          onSuccess={onRefresh}
+                        />
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {canManage && !isClosed && (
+              <div className="space-y-2">
+                {addMode === "idle" && addError && (
+                  <p className="text-xs text-(--color-danger)">{addError}</p>
+                )}
+
+                {submitting && uploadProgress && (
+                  <div className="flex items-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 py-2 text-xs text-(--text-muted)">
+                    <Spinner size="sm" />
+                    {uploadProgress}
+                  </div>
+                )}
+
+                {addMode === "idle" && (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={submitting}
+                      className="inline-flex h-7 items-center gap-1 rounded border border-(--border-subtle) bg-(--bg-surface-elev) px-2.5 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:opacity-50"
+                    >
+                      <IconUpload size={12} />
+                      Upload file
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAddMode("text")}
+                      disabled={submitting}
+                      className="inline-flex h-7 items-center gap-1 rounded border border-(--border-subtle) bg-(--bg-surface-elev) px-2.5 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:opacity-50"
+                    >
+                      + Add note
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAddMode("link")}
+                      disabled={submitting}
+                      className="inline-flex h-7 items-center gap-1 rounded border border-(--border-subtle) bg-(--bg-surface-elev) px-2.5 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:opacity-50"
+                    >
+                      + Add link
+                    </button>
+                  </div>
+                )}
+
+                {addMode !== "idle" && (
+                  <form
+                    onSubmit={handleAddEvidence}
+                    className="space-y-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) p-3"
+                  >
+                    {addError && (
+                      <p className="text-xs text-(--color-danger)">{addError}</p>
+                    )}
+
+                    {addMode === "text" && (
+                      <>
+                        <div className="space-y-1">
+                          <label className="block text-xs font-medium text-(--text-primary)">
+                            Note <span className="text-(--color-danger)">*</span>
+                          </label>
+                          <Textarea
+                            value={noteContent}
+                            onChange={(e) => setNoteContent(e.target.value)}
+                            placeholder="Payment confirmation details..."
+                            rows={3}
+                            maxLength={5000}
+                            disabled={submitting}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-xs font-medium text-(--text-primary)">
+                            Label{" "}
+                            <span className="font-normal text-(--text-muted)">(optional)</span>
+                          </label>
+                          <Input
+                            value={noteLabel}
+                            onChange={(e) => setNoteLabel(e.target.value)}
+                            placeholder="e.g. Wire transfer confirmed"
+                            maxLength={255}
+                            disabled={submitting}
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {addMode === "link" && (
+                      <>
+                        <div className="space-y-1">
+                          <label className="block text-xs font-medium text-(--text-primary)">
+                            Label <span className="text-(--color-danger)">*</span>
+                          </label>
+                          <Input
+                            value={linkLabel}
+                            onChange={(e) => setLinkLabel(e.target.value)}
+                            placeholder="e.g. Bank receipt"
+                            maxLength={255}
+                            disabled={submitting}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-xs font-medium text-(--text-primary)">
+                            URL <span className="text-(--color-danger)">*</span>
+                          </label>
+                          <Input
+                            type="url"
+                            value={linkUrl}
+                            onChange={(e) => setLinkUrl(e.target.value)}
+                            placeholder="https://..."
+                            maxLength={2048}
+                            disabled={submitting}
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="submit"
+                        disabled={
+                          submitting ||
+                          (addMode === "text" && !noteContent.trim()) ||
+                          (addMode === "link" && (!linkUrl.trim() || !linkLabel.trim()))
+                        }
+                        className="inline-flex h-7 items-center gap-1.5 rounded bg-(--color-primary) px-3 text-xs font-medium text-white disabled:opacity-60"
+                      >
+                        {submitting && <Spinner size="sm" />}
+                        {submitting ? "Saving..." : "Add proof"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={resetAddForm}
+                        className="inline-flex h-7 items-center rounded border border-(--border-subtle) px-3 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-(--text-muted)">No payment information recorded.</p>
+            {canManage && !isClosed && (
+              <button
+                type="button"
+                onClick={onOpenSetStatus}
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)"
+              >
+                Set payment status
+              </button>
+            )}
+          </div>
+        )}
+      </CardContent>
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void uploadFile(f);
+          e.target.value = "";
+        }}
+      />
+    </CardRoot>
+  );
+}
+
+function RemovePaymentEvidenceButton({
+  evidenceId,
+  recordId,
+  onSuccess,
+}: {
+  evidenceId: string;
+  recordId: string;
+  onSuccess: () => void | Promise<void>;
+}) {
+  const apiFetch = useApiFetch();
+  const toast = useToast();
+  const [loading, setLoading] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+
+  if (!confirming) {
+    return (
+      <button
+        type="button"
+        onClick={() => setConfirming(true)}
+        className="shrink-0 rounded px-2 py-1 text-xs text-(--color-danger) opacity-60 transition-opacity hover:opacity-100"
+      >
+        Remove
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      <span className="text-xs text-(--text-muted)">Remove?</span>
+      <button
+        type="button"
+        onClick={async () => {
+          setLoading(true);
+          try {
+            const res = await apiFetch(
+              `/api/records/${recordId}/payment/evidence/${evidenceId}`,
+              {
+                method: "DELETE",
+                showToastOnError: false,
+              }
+            );
+            if (!res.ok) {
+              const json = (await res.json().catch(() => ({}))) as {
+                error?: { message?: string };
+              };
+              toast.addToast("error", json.error?.message ?? "Failed to remove.");
+              setConfirming(false);
+              return;
+            }
+            toast.addToast("success", "Proof removed.");
+            await onSuccess();
+          } catch {
+            toast.addToast("error", "Network error.");
+          } finally {
+            setLoading(false);
+            setConfirming(false);
+          }
+        }}
+        disabled={loading}
+        className="rounded px-1.5 py-0.5 text-xs font-medium text-(--color-danger) transition-opacity hover:opacity-80 disabled:opacity-50"
+      >
+        {loading ? "…" : "Yes"}
+      </button>
+      <button
+        type="button"
+        onClick={() => setConfirming(false)}
+        className="rounded px-1.5 py-0.5 text-xs text-(--text-muted) transition-opacity hover:opacity-80"
+      >
+        No
+      </button>
+    </div>
+  );
+}
+
+function RequestDetailSkeleton() {
+  return (
+    <div className="space-y-6">
+      <Skeleton className="h-4 w-24" />
+      <div className="space-y-2">
+        <Skeleton className="h-8 w-2/3" />
+        <Skeleton className="h-4 w-48" />
+      </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="space-y-4 lg:col-span-2">
+          <Skeleton className="h-40 w-full rounded-xl" />
+          <Skeleton className="h-56 w-full rounded-xl" />
+        </div>
+        <div className="space-y-4">
+          <Skeleton className="h-40 w-full rounded-xl" />
+        </div>
+      </div>
+    </div>
+  );
+}

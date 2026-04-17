@@ -25,7 +25,7 @@ const runSeed = isTruthyEnv(process.env.RUN_SEED);
 
 run("prisma generate", "npx prisma generate");
 run("prisma migrate deploy", "npx prisma migrate deploy");
-run("sync role permissions", "npx tsx scripts/sync-tenant-role-permissions.ts");
+run("sync role permissions", "npm run sync:role-permissions");
 
 if (runSeed) {
   console.log("[vercel-build] RUN_SEED is true -> running prisma db seed...");

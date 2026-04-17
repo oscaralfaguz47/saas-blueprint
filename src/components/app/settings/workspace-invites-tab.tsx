@@ -30,19 +30,20 @@ type Tenant = { id: string; name: string };
 type InvitationItem = {
   id: string;
   email: string;
-  status: string;
+  status: "ACTIVE" | "EXPIRED" | "REVOKED" | "ACCEPTED" | "REJECTED";
   invitedAt: string;
   expiresAt: string;
+  role: string;
   invitedBy: { name: string | null; email: string | null } | null;
 };
 
-type Props = { tenant: Tenant; permissions: string[] };
+type Props = { tenant: Tenant; permissions: string[]; currentUserRole: string };
 
 type ActionType = "resend" | "revoke" | "reinvite";
 type SortBy = "email" | "status" | "invitedAt" | "expiresAt";
 type SortDir = "asc" | "desc";
 
-export function WorkspaceInvitesTab({ tenant, permissions }: Props) {
+export function WorkspaceInvitesTab({ tenant, permissions, currentUserRole }: Props) {
   const permSet = new Set(permissions);
   const canInvite = permSet.has("tenant.users.invite");
   const canManageInvites = permSet.has("tenant.users.manage");
@@ -252,6 +253,7 @@ export function WorkspaceInvitesTab({ tenant, permissions }: Props) {
         open={inviteOpen}
         onClose={() => setInviteOpen(false)}
         workspaceName={tenant.name}
+        currentUserRole={currentUserRole}
         onSuccess={loadInitial}
       />
 
@@ -262,6 +264,9 @@ export function WorkspaceInvitesTab({ tenant, permissions }: Props) {
               <TableRow>
                 <TableHead>Email</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wide text-(--text-muted)">
+                  Role
+                </TableHead>
                 <TableHead>Invited by</TableHead>
                 <TableHead>Invited at</TableHead>
                 <TableHead>Expires at</TableHead>
@@ -276,6 +281,9 @@ export function WorkspaceInvitesTab({ tenant, permissions }: Props) {
                   </TableCell>
                   <TableCell>
                     <Skeleton className="h-5 w-16" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-20" />
                   </TableCell>
                   <TableCell>
                     <Skeleton className="h-5 w-24" />
@@ -308,6 +316,9 @@ export function WorkspaceInvitesTab({ tenant, permissions }: Props) {
               <TableRow>
                 <SortHeader col="email" label="Email" />
                 <SortHeader col="status" label="Status" />
+                <TableHead className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wide text-(--text-muted)">
+                  Role
+                </TableHead>
                 <TableHead>Invited by</TableHead>
                 <SortHeader col="invitedAt" label="Invited at" />
                 <SortHeader col="expiresAt" label="Expires at" />
@@ -321,6 +332,24 @@ export function WorkspaceInvitesTab({ tenant, permissions }: Props) {
                   <TableCell>
                     <span className="inline-flex rounded-full bg-(--bg-surface-elev) px-2 py-0.5 text-xs font-medium text-(--text-primary)">
                       {inv.status}
+                    </span>
+                  </TableCell>
+                  <TableCell className="px-3 py-3 text-sm text-(--text-secondary)">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{
+                          backgroundColor:
+                            inv.role === "Owner"
+                              ? "#7c3aed"
+                              : inv.role === "Admin"
+                                ? "#2563eb"
+                                : inv.role === "Finance"
+                                  ? "#16a34a"
+                                  : "#71717a",
+                        }}
+                      />
+                      {inv.role}
                     </span>
                   </TableCell>
                   <TableCell className="text-(--text-muted)">

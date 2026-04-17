@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import { PermissionScope, type PrismaClient } from "@prisma/client";
 
 /** A2 system role names (workspace). */
 export const TENANT_SYSTEM_ROLE_NAMES = [
@@ -21,6 +21,7 @@ export const ROLE_PERMS: Record<TenantSystemRoleName, string[]> = {
     "tenant.audit.read",
     "tenant.billing.manage",
     "tenant.settings.manage",
+    "tenant.financial_config.manage",
     "tenant.roles.read",
     "tenant.roles.manage",
     "tenant.users.read",
@@ -35,6 +36,7 @@ export const ROLE_PERMS: Record<TenantSystemRoleName, string[]> = {
     "tenant.requests.export",
     "tenant.requests.comment",
     "tenant.evidence.add",
+    "tenant.evidence.remove",
     "tenant.approvals.assign_internal",
     "tenant.approvals.assign_external",
     "tenant.approvals.remind",
@@ -47,6 +49,7 @@ export const ROLE_PERMS: Record<TenantSystemRoleName, string[]> = {
     "tenant.audit.read",
     "tenant.billing.manage",
     "tenant.settings.manage",
+    "tenant.financial_config.manage",
     "tenant.roles.read",
     "tenant.roles.manage",
     "tenant.users.read",
@@ -61,6 +64,7 @@ export const ROLE_PERMS: Record<TenantSystemRoleName, string[]> = {
     "tenant.requests.export",
     "tenant.requests.comment",
     "tenant.evidence.add",
+    "tenant.evidence.remove",
     "tenant.approvals.assign_internal",
     "tenant.approvals.assign_external",
     "tenant.approvals.remind",
@@ -72,6 +76,7 @@ export const ROLE_PERMS: Record<TenantSystemRoleName, string[]> = {
   Admin: [
     "tenant.audit.read",
     "tenant.settings.manage",
+    "tenant.financial_config.manage",
     "tenant.roles.read",
     "tenant.roles.manage",
     "tenant.users.read",
@@ -86,6 +91,7 @@ export const ROLE_PERMS: Record<TenantSystemRoleName, string[]> = {
     "tenant.requests.export",
     "tenant.requests.comment",
     "tenant.evidence.add",
+    "tenant.evidence.remove",
     "tenant.approvals.assign_internal",
     "tenant.approvals.assign_external",
     "tenant.approvals.remind",
@@ -97,6 +103,7 @@ export const ROLE_PERMS: Record<TenantSystemRoleName, string[]> = {
   Finance: [
     "tenant.audit.read",
     "tenant.settings.manage",
+    "tenant.financial_config.manage",
     "tenant.users.read",
     "tenant.users.invite",
     "tenant.users.manage",
@@ -148,6 +155,18 @@ export async function ensureTenantRolesAndPermissionsWithPrisma(
   if (!roleIdByName.get("Owner") && !roleIdByName.get("Primary Owner")) return;
 
   const neededCodes = Array.from(new Set(Object.values(ROLE_PERMS).flatMap((arr) => arr)));
+  for (const code of neededCodes) {
+    await prisma.permission.upsert({
+      where: { code },
+      update: {},
+      create: {
+        code,
+        scope: PermissionScope.TENANT,
+        description: `Auto-created tenant permission: ${code}`,
+      },
+    });
+  }
+
   const perms = await prisma.permission.findMany({
     where: { code: { in: neededCodes } },
     select: { id: true, code: true },

@@ -49,6 +49,11 @@ const PERMISSIONS = [
   { code: "tenant.audit.read", scope: "TENANT", description: "View audit logs (AuditLog)" },
   { code: "tenant.billing.manage", scope: "TENANT", description: "Manage billing, plans, subscriptions" },
   { code: "tenant.settings.manage", scope: "TENANT", description: "Manage workspace settings" },
+  {
+    code: "tenant.financial_config.manage",
+    scope: "TENANT",
+    description: "Manage financial configuration (departments and cost centers)",
+  },
   { code: "tenant.roles.read", scope: "TENANT", description: "View roles and permissions" },
   { code: "tenant.roles.manage", scope: "TENANT", description: "Create/edit roles and assign permissions" },
   { code: "tenant.users.read", scope: "TENANT", description: "View workspace users" },
@@ -63,6 +68,11 @@ const PERMISSIONS = [
   { code: "tenant.requests.export", scope: "TENANT", description: "Export request packet (PDF) and/or bundle (ZIP)" },
   { code: "tenant.requests.comment", scope: "TENANT", description: "Add comments on requests" },
   { code: "tenant.evidence.add", scope: "TENANT", description: "Attach evidence (files and links)" },
+  {
+    code: "tenant.evidence.remove",
+    scope: "TENANT",
+    description: "Remove evidence from requests (Primary Owner, Owner, Admin only)",
+  },
   { code: "tenant.approvals.assign_internal", scope: "TENANT", description: "Assign internal approvers" },
   { code: "tenant.approvals.assign_external", scope: "TENANT", description: "Send external approvals via email/token" },
   { code: "tenant.approvals.remind", scope: "TENANT", description: "Send manual reminders to pending approvers" },
@@ -307,6 +317,7 @@ async function ensurePlans() {
       name: "Base",
       isActive: true,
       priceMonthly: null,
+      priceYearly: null,
       featuresJson: { seatsLimit: 5 },
     },
     {
@@ -314,97 +325,82 @@ async function ensurePlans() {
       name: "Free",
       isActive: true,
       priceMonthly: 0,
+      priceYearly: 0,
       featuresJson: {
-        requests: {
-          included: 10,
-          hardCap: true,
-          rolloverMonths: 0,
-          maxAvailable: 10,
-          overageCentsPerUnit: null,
-          overageCapCents: null,
-        },
-        pdf: { included: 1, hardCap: true, watermark: true },
+        requests: { included: 35, hardCap: true, rolloverMonths: 0, maxAvailable: 35, overageCentsPerUnit: null, overageCapCents: null },
+        pdf: { included: 3, hardCap: true, watermark: true },
         zip: { enabled: false },
         search: false,
         manualReminders: false,
         paymentStatus: false,
         auditLog: "basic",
+        membersLimit: 5,
+        auditRetentionDays: 30,
+        emailBranding: "powered_by",
+        storageLimitGb: 1,
       },
     },
     {
       code: "starter",
       name: "Starter",
       isActive: true,
-      priceMonthly: 5900,
+      priceMonthly: 4900,
+      priceYearly: 49900,
       featuresJson: {
-        requests: {
-          included: 200,
-          hardCap: false,
-          rolloverMonths: 2,
-          maxAvailable: 400,
-          overageCentsPerUnit: 25,
-          overageCapCents: 7900,
-        },
-        pdf: { included: 50, hardCap: true, watermark: false },
+        requests: { included: -1, hardCap: false, rolloverMonths: 0, maxAvailable: -1, overageCentsPerUnit: null, overageCapCents: null },
+        pdf: { included: 25, hardCap: true, watermark: false },
         zip: { enabled: false },
         search: true,
         manualReminders: true,
         paymentStatus: true,
-        auditLog: 90,
+        auditLog: "full",
+        membersLimit: 15,
+        auditRetentionDays: 90,
+        emailBranding: "powered_by",
+        storageLimitGb: 20,
       },
     },
     {
       code: "pro",
       name: "Pro",
       isActive: true,
-      priceMonthly: 19900,
+      priceMonthly: 9900,
+      priceYearly: 100900,
       featuresJson: {
-        requests: {
-          included: 2000,
-          hardCap: false,
-          rolloverMonths: 1,
-          maxAvailable: 4000,
-          overageCentsPerUnit: 5,
-          overageCapCents: null,
-        },
-        // included: -1 means unlimited (no hard cap on count)
+        requests: { included: -1, hardCap: false, rolloverMonths: 0, maxAvailable: -1, overageCentsPerUnit: null, overageCapCents: null },
         pdf: { included: -1, hardCap: false, watermark: false },
         zip: { enabled: true },
         search: true,
         manualReminders: true,
         paymentStatus: true,
         auditLog: "full",
+        membersLimit: 80,
+        auditRetentionDays: 365,
+        emailBranding: "removed",
+        storageLimitGb: 100,
       },
     },
     {
-      code: "enterprise",
-      name: "Enterprise",
+      code: "scale",
+      name: "Scale",
       isActive: true,
-      priceMonthly: 49900,
+      priceMonthly: 24900,
+      priceYearly: 253900,
       featuresJson: {
-        requests: {
-          included: 4000,
-          hardCap: true,
-          rolloverMonths: 0,
-          maxAvailable: 4000,
-          overageCentsPerUnit: null,
-          overageCapCents: null,
-        },
-        // included: -1 means unlimited
+        requests: { included: -1, hardCap: false, rolloverMonths: 0, maxAvailable: -1, overageCentsPerUnit: null, overageCapCents: null },
         pdf: { included: -1, hardCap: false, watermark: false },
         zip: { enabled: true },
         search: true,
         manualReminders: true,
         paymentStatus: true,
         auditLog: "full",
+        membersLimit: -1,
+        auditRetentionDays: 1095,
+        emailBranding: "removed",
+        storageLimitGb: 500,
       },
     },
   ];
-
-  for (const pl of plans) {
-    validatePlanFeatures(pl.featuresJson, pl.code);
-    validatePriceMonthly(pl.priceMonthly, pl.code);
-  }
 
   await prisma.$transaction(async (tx) => {
     for (const pl of plans) {
@@ -414,6 +410,7 @@ async function ensurePlans() {
           name: pl.name,
           isActive: pl.isActive,
           priceMonthly: pl.priceMonthly,
+          priceYearly: pl.priceYearly ?? null,
           featuresJson: pl.featuresJson,
         },
         create: {
@@ -421,13 +418,14 @@ async function ensurePlans() {
           name: pl.name,
           isActive: pl.isActive,
           priceMonthly: pl.priceMonthly,
+          priceYearly: pl.priceYearly ?? null,
           featuresJson: pl.featuresJson,
         },
       });
     }
   });
 
-  console.log(`[seed] Plans: ${plans.length} upserted (base, free, starter, pro, enterprise).`);
+  console.log(`[seed] Plans: ${plans.length} upserted (base, free, starter, pro, scale).`);
   return { count: plans.length };
 }
 

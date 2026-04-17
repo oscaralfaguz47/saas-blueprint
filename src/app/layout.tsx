@@ -6,7 +6,6 @@ import "./globals.css";
 import Providers from "./providers";
 import { SessionProviderShell } from "./session-provider-shell";
 import { OAuthPopupDetector } from "@/components/auth/oauth-popup-detector";
-import { ChatWidgetRoot } from "@/components/help/chat-widget-root";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -88,9 +87,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             </Suspense>
             <Providers>{children}</Providers>
           </div>
-        </SessionProviderShell>
-        <SessionProviderShell>
-          <ChatWidgetRoot />
         </SessionProviderShell>
       </body>
     </html>

@@ -39,7 +39,8 @@ export function useApiFetch() {
               res.status === 400 ||
               res.status === 429 ||
               data.error?.code === "VALIDATION_ERROR" ||
-              data.error?.code === "RATE_LIMITED"
+              data.error?.code === "RATE_LIMITED" ||
+              data.error?.code === "NO_TENANT"
             )
               return res;
             toast.addToast("error", getApiErrorMessage(res, data));

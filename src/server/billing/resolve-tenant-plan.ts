@@ -1,7 +1,13 @@
 import "server-only";
 
 import { prisma } from "@/server/db";
-import type { PlanCode, PlanFeatures, RequestsLimits } from "./provider-types";
+import type {
+  BillingInterval,
+  EmailBranding,
+  PlanCode,
+  PlanFeatures,
+  RequestsLimits,
+} from "./provider-types";
 import {
   resolveEffectiveSubscription,
   type EffectiveSubscription,
@@ -19,29 +25,35 @@ export type ResolvedTenantPlan = {
   graceUntil: Date | null;
   cancelAtPeriodEnd: boolean;
   pendingPlanCode: string | null;
+  pendingBillingInterval: "monthly" | "annual" | null;
   pendingChangeType: string | null;
   entitlementEffectiveUntil: Date | null;
   paymentStatus: string | null;
   graceEndsAt: Date | null;
   pastDueSince: Date | null;
   isBlocked: boolean;
+  billingInterval: BillingInterval;
 };
 
 const DEFAULT_FREE_FEATURES: PlanFeatures = {
   requests: {
-    included: 10,
+    included: 35,
     hardCap: true,
     rolloverMonths: 0,
-    maxAvailable: 10,
+    maxAvailable: 35,
     overageCentsPerUnit: null,
     overageCapCents: null,
   },
-  pdf: { included: 1, hardCap: true, watermark: true },
+  pdf: { included: 3, hardCap: true, watermark: true },
   zip: { enabled: false },
   search: false,
   manualReminders: false,
   paymentStatus: false,
   auditLog: "basic",
+  membersLimit: 5,
+  auditRetentionDays: 30,
+  emailBranding: "powered_by",
+  storageLimitGb: 1,
 };
 
 /** Build PlanFeatures from server plan catalog (EPIC 5 canonical). */
@@ -57,7 +69,7 @@ function featuresFromCatalog(entry: import("./plans/catalog").PlanCatalogEntry):
       overageCapCents: null,
     },
     pdf: {
-      included: entry.pdfIncluded < 0 ? -1 : entry.pdfIncluded,
+      included: entry.pdfIncluded,
       hardCap: entry.pdfHardCap,
       watermark: entry.pdfWatermark,
     },
@@ -66,6 +78,10 @@ function featuresFromCatalog(entry: import("./plans/catalog").PlanCatalogEntry):
     manualReminders: entry.code !== "free",
     paymentStatus: entry.code !== "free",
     auditLog: entry.code === "free" ? "basic" : "full",
+    membersLimit: entry.membersLimit,
+    auditRetentionDays: entry.auditRetentionDays,
+    emailBranding: entry.emailBranding,
+    storageLimitGb: entry.storageLimitGb,
   };
 }
 
@@ -79,17 +95,17 @@ function parseFeaturesJson(featuresJson: unknown): PlanFeatures {
   const zip = raw.zip as Record<string, unknown> | undefined;
   return {
     requests: {
-      included: typeof req?.included === "number" ? req.included : 10,
+      included: typeof req?.included === "number" ? req.included : 35,
       hardCap: req?.hardCap !== false,
       rolloverMonths: typeof req?.rolloverMonths === "number" ? req.rolloverMonths : 0,
-      maxAvailable: typeof req?.maxAvailable === "number" ? req.maxAvailable : 10,
+      maxAvailable: typeof req?.maxAvailable === "number" ? req.maxAvailable : 35,
       overageCentsPerUnit:
         typeof req?.overageCentsPerUnit === "number" ? req.overageCentsPerUnit : null,
       overageCapCents:
         typeof req?.overageCapCents === "number" ? req.overageCapCents : null,
     },
     pdf: {
-      included: typeof pdf?.included === "number" ? pdf.included : 1,
+      included: typeof pdf?.included === "number" ? pdf.included : 3,
       hardCap: pdf?.hardCap !== false,
       watermark: pdf?.watermark === true,
     },
@@ -103,6 +119,10 @@ function parseFeaturesJson(featuresJson: unknown): PlanFeatures {
         : raw.auditLog === "full"
           ? "full"
           : "basic",
+    membersLimit: typeof raw?.membersLimit === "number" ? raw.membersLimit : 5,
+    auditRetentionDays: typeof raw?.auditRetentionDays === "number" ? raw.auditRetentionDays : 30,
+    emailBranding: (raw?.emailBranding === "removed" ? "removed" : "powered_by") as EmailBranding,
+    storageLimitGb: typeof raw?.storageLimitGb === "number" ? raw.storageLimitGb : 1,
   };
 }
 
@@ -131,12 +151,14 @@ export async function resolveTenantPlan(
       graceUntil: null,
       cancelAtPeriodEnd: false,
       pendingPlanCode: null,
+      pendingBillingInterval: null,
       pendingChangeType: null,
       entitlementEffectiveUntil: null,
       paymentStatus: null,
       graceEndsAt: null,
       pastDueSince: null,
       isBlocked: false,
+      billingInterval: "monthly",
     };
   }
 
@@ -163,11 +185,13 @@ export async function resolveTenantPlan(
     graceUntil: effective.graceUntil,
     cancelAtPeriodEnd: effective.cancelAtPeriodEnd,
     pendingPlanCode: effective.pendingPlanCode,
+    pendingBillingInterval: effective.pendingBillingInterval,
     pendingChangeType: effective.pendingChangeType,
     entitlementEffectiveUntil: effective.entitlementEffectiveUntil,
     paymentStatus: effective.paymentStatus,
     graceEndsAt: effective.graceEndsAt,
     pastDueSince: effective.pastDueSince,
     isBlocked: effective.isBlocked,
+    billingInterval: effective.billingInterval,
   };
 }

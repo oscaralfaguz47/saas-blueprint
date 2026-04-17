@@ -169,3 +169,59 @@ export async function handleTransactionCompleted(envelope: unknown): Promise<{
 
   return { processed: true };
 }
+
+/**
+ * Handle transaction.updated webhook: sync revisedAt when invoice is edited
+ * from Paddle customer portal. Only acts when data.revised_at is present.
+ * Idempotent: uses upsert on providerTransactionId.
+ */
+export async function handleTransactionUpdated(envelope: unknown): Promise<{
+  processed: boolean;
+  ignored?: boolean;
+}> {
+  const parsed = paddleWebhookEnvelopeSchema.safeParse(envelope);
+  if (!parsed.success) return { processed: false };
+  const { event_id: eventId, event_type: eventType, data } = parsed.data;
+  const txn = data as TransactionData & { revised_at?: string | null };
+
+  const providerTransactionId = txn?.id?.trim();
+  if (!providerTransactionId || providerTransactionId.length > 191) {
+    logWebhookReceived({ eventType, providerEventId: eventId, result: "ignored" });
+    return { processed: false, ignored: true };
+  }
+
+  // Only process if Paddle indicates the transaction was revised
+  const revisedAt = txn?.revised_at?.trim?.() ? new Date(txn.revised_at) : null;
+  if (!revisedAt || isNaN(revisedAt.getTime())) {
+    logWebhookReceived({ eventType, providerEventId: eventId, result: "ignored" });
+    return { processed: false, ignored: true };
+  }
+
+  // Find the transaction in our DB — must already exist (created by transaction.completed)
+  const existing = await prisma.billingTransaction.findUnique({
+    where: { providerTransactionId },
+    select: { id: true, tenantId: true, revisedAt: true },
+  });
+
+  if (!existing) {
+    logWebhookReceived({ eventType, providerEventId: eventId, result: "ignored" });
+    return { processed: false, ignored: true };
+  }
+
+  // Idempotent: only update if not already marked as revised
+  if (!existing.revisedAt) {
+    await prisma.billingTransaction.update({
+      where: { providerTransactionId },
+      data: { revisedAt },
+    });
+  }
+
+  logWebhookReceived({
+    eventType,
+    providerEventId: eventId,
+    extractedTenantId: existing.tenantId,
+    result: "success",
+  });
+
+  return { processed: true };
+}

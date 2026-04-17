@@ -30,7 +30,14 @@ export const GET = withErrorHandler(async () => {
     select: {
       isDefaultTenant: true,
       tenant: {
-        select: { id: true, name: true, slug: true, status: true },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          status: true,
+          currency: true,
+          timezone: true,
+        },
       },
     },
     orderBy: [{ isDefaultTenant: "desc" }, { joinedAt: "desc" }],

@@ -532,6 +532,7 @@ export function WorkspaceMembersTab({
         open={inviteOpen}
         onClose={() => setInviteOpen(false)}
         workspaceName={tenant.name}
+        currentUserRole={currentUserRole}
         onSuccess={loadInitial}
       />
       {tenant.slug ? (

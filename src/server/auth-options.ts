@@ -13,7 +13,10 @@ import { prisma } from "@/server/db";
 import { env } from "@/lib/env";
 import { getNextAuthCookieHeader } from "@/server/nextauth-cookie-header";
 
-import { ensureBootstrapPlatformOwner } from "@/server/services/platform-bootstrap";
+import {
+  activatePendingVendorInvitation,
+  ensureBootstrapPlatformOwner,
+} from "@/server/services/platform-bootstrap";
 import { isMfaEnforcedForUser } from "@/server/security/member-security-governance";
 import { sendMagicLink } from "@/server/services/send-magic-link";
 import { writeAuditLog } from "@/server/services/audit";
@@ -437,6 +440,10 @@ async function runUserBootstraps(params: { userId: string; email?: string | null
 
   // Ensure platform owner/admin bootstrap (idempotent)
   await ensureBootstrapPlatformOwner({
+    userId: params.userId,
+    email: params.email ?? undefined,
+  });
+  await activatePendingVendorInvitation({
     userId: params.userId,
     email: params.email ?? undefined,
   });

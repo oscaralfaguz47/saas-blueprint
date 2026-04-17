@@ -9,7 +9,8 @@ import { logCheckoutInitiated } from "@/server/billing/billing-log";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 
 const checkoutBodySchema = z.object({
-  planCode: z.enum(["starter", "pro", "enterprise"]),
+  planCode: z.enum(["starter", "pro", "scale"]),
+  billingInterval: z.enum(["monthly", "annual"]).optional().default("monthly"),
 });
 
 export const POST = withErrorHandler(async (req: Request) => {
@@ -41,7 +42,7 @@ export const POST = withErrorHandler(async (req: Request) => {
       details: parsed.error.flatten(),
     });
   }
-  const { planCode } = parsed.data;
+  const { planCode, billingInterval } = parsed.data;
 
   const customerEmail = session.user.email?.trim();
   if (!customerEmail) {
@@ -54,6 +55,7 @@ export const POST = withErrorHandler(async (req: Request) => {
       planCode,
       customerEmail,
       customerName: session.user.name ?? null,
+      billingInterval,
     });
 
     logCheckoutInitiated({
