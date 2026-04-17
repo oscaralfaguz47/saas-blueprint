@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import Script from "next/script";
@@ -21,9 +21,11 @@ import {
   type PlanCode,
   type InAppPlanItem,
 } from "@/lib/billing/plan-catalog";
+import { buildPlanChangeViewModel } from "@/lib/billing/plan-change-view-model";
 import { useSession } from "next-auth/react";
 import { IconAlertCircle, IconEye, IconPencil } from "@/components/ui/icons";
 import { BillingProfileSection } from "@/components/app/settings/billing-profile-section";
+import { PlanChangeConfirmModal } from "./plan-change-confirm-modal";
 import { Input } from "@/components/ui/input";
 
 const PADDLE_SCRIPT_URL = "https://cdn.paddle.com/paddle/v2/paddle.js";
@@ -490,6 +492,12 @@ export function WorkspaceBillingTab() {
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<BillingSummary | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutPreparing, setCheckoutPreparing] = useState(false);
+  const [paddleCheckoutOrigin, setPaddleCheckoutOrigin] = useState<
+    "plan_upgrade" | "other" | null
+  >(null);
+  const paddleCheckoutOriginRef = useRef<"plan_upgrade" | "other" | null>(null);
+  paddleCheckoutOriginRef.current = paddleCheckoutOrigin;
   const [paymentMethodUpdateLoading, setPaymentMethodUpdateLoading] = useState(false);
   const [changePlanOpen, setChangePlanOpen] = useState(false);
   const [changePlanBillingCycle, setChangePlanBillingCycle] = useState<"monthly" | "annual">(
@@ -501,6 +509,63 @@ export function WorkspaceBillingTab() {
     plan: InAppPlanItem;
     direction: "upgrade" | "downgrade";
   } | null>(null);
+  const confirmViewModel = useMemo(() => {
+    if (!confirmTarget) return null;
+
+    const currentPlanCode = toPlanCodeFromNormalized(
+      changePlanPreview?.currentPlanCode ?? summary?.planCode ?? "free"
+    );
+    const targetPlanCode = confirmTarget.plan.code;
+    const currentInterval: "monthly" | "annual" =
+      (summary?.billingInterval as "monthly" | "annual" | undefined) ?? "monthly";
+    const targetBillingInterval =
+      (changePlanPreview?.billingInterval as "monthly" | "annual" | undefined) ??
+      changePlanBillingCycle;
+    const effectiveAt =
+      changePlanPreview?.effectiveAt ??
+      (targetPlanCode === "free" || confirmTarget.direction === "downgrade"
+        ? "next_period"
+        : "immediate");
+    const fullPlanPriceCents =
+      changePlanPreview?.nextPriceCents ??
+      (targetBillingInterval === "annual"
+        ? confirmTarget.plan.priceYearlyCents
+        : confirmTarget.plan.priceMonthlyCents);
+
+    const targetInterval =
+      (changePlanPreview?.billingInterval as "monthly" | "annual") ?? "monthly";
+
+    const isImmediateUpgrade =
+      changePlanPreview?.effectiveAt === "immediate" &&
+      !changePlanPreview?.requiresCheckout;
+
+    let renewalOrEffectiveDate: string | null;
+
+    if (changePlanPreview?.requiresCheckout) {
+      renewalOrEffectiveDate = null;
+    } else if (isImmediateUpgrade && targetInterval === "annual") {
+      const oneYearFromNow = new Date();
+      oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
+      renewalOrEffectiveDate = oneYearFromNow.toISOString();
+    } else {
+      renewalOrEffectiveDate =
+        changePlanPreview?.effectiveFromDate ??
+        changePlanPreview?.currentPeriodEnd ??
+        null;
+    }
+
+    return buildPlanChangeViewModel({
+      currentPlanCode,
+      currentBillingInterval: currentInterval,
+      targetPlanCode,
+      targetBillingInterval: targetBillingInterval,
+      effectiveAt,
+      fullPlanPriceCents,
+      currency: changePlanPreview?.currency ?? "USD",
+      requiresCheckout: changePlanPreview?.requiresCheckout ?? false,
+      renewalOrEffectiveDate,
+    });
+  }, [confirmTarget, changePlanPreview, summary, changePlanBillingCycle]);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [clearScheduledChangeLoading, setClearScheduledChangeLoading] = useState(false);
   const [paymentDeclinedModalOpen, setPaymentDeclinedModalOpen] = useState(false);
@@ -868,6 +933,12 @@ export function WorkspaceBillingTab() {
           if (data.name === "checkout.closed" || data.name === "checkout.completed") {
             clearPaddleCheckoutOverlayStyles();
           }
+          if (data.name === "checkout.closed") {
+            if (paddleCheckoutOriginRef.current === "plan_upgrade") {
+              setChangePlanOpen(true);
+            }
+            setPaddleCheckoutOrigin(null);
+          }
         },
         checkout: {
           settings: {
@@ -882,7 +953,7 @@ export function WorkspaceBillingTab() {
     } catch {
       setPaddleReady(true);
     }
-  }, [clientToken]);
+  }, [clientToken, paddleCheckoutOrigin]);
 
   useEffect(() => {
     return () => clearPaddleCheckoutOverlayStyles();
@@ -1122,6 +1193,7 @@ export function WorkspaceBillingTab() {
           : undefined;
       if (Paddle?.Checkout?.open) {
         applyPaddleCheckoutOverlayStyles();
+        setPaddleCheckoutOrigin("other");
         Paddle.Checkout.open({
           transactionId,
           settings: { displayMode: "overlay" },
@@ -1153,6 +1225,7 @@ export function WorkspaceBillingTab() {
           : undefined;
       if (Paddle?.Checkout?.open) {
         applyPaddleCheckoutOverlayStyles();
+        setPaddleCheckoutOrigin("other");
         Paddle.Checkout.open({
           transactionId: providerTransactionId,
           settings: { displayMode: "overlay" },
@@ -1162,6 +1235,82 @@ export function WorkspaceBillingTab() {
       }
     },
     [toast],
+  );
+
+  const handleDirectCheckout = useCallback(
+    async (plan: InAppPlanItem) => {
+      setCheckoutLoading(true);
+      setCheckoutPreparing(true);
+      try {
+        const res = await apiFetch("/api/billing/change-plan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            targetPlanCode: plan.code,
+            effective: "immediate",
+            billingInterval: changePlanBillingCycle,
+          }),
+          showToastOnError: true,
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const errorMessage =
+            (json as { error?: { message?: string } })?.error?.message ?? "";
+          if (errorMessage.includes("Annual billing is not yet configured")) {
+            toast.addToast(
+              "error",
+              "Annual billing is not yet available for this plan. Please select monthly billing or contact support.",
+            );
+            return;
+          }
+          return;
+        }
+        const data = json.data as {
+          mode: string;
+          transactionId?: string;
+          environment?: string;
+        };
+        if (data.mode === "checkout" && data.transactionId) {
+          try {
+            sessionStorage.setItem("billing:postCheckoutPlan", plan.code);
+          } catch {
+            /* ignore */
+          }
+          const Paddle =
+            typeof window !== "undefined"
+              ? (
+                  window as {
+                    Paddle?: {
+                      Checkout?: {
+                        open: (opts: {
+                          transactionId: string;
+                          settings?: { displayMode: string };
+                        }) => void;
+                      };
+                    };
+                  }
+                ).Paddle
+              : undefined;
+          if (Paddle?.Checkout?.open) {
+            applyPaddleCheckoutOverlayStyles();
+            setPaddleCheckoutOrigin("plan_upgrade");
+            Paddle.Checkout.open({
+              transactionId: data.transactionId,
+              settings: { displayMode: "overlay" },
+            });
+          } else {
+            toast.addToast(
+              "error",
+              "Payment window could not open. Refresh the page and try again.",
+            );
+          }
+        }
+      } finally {
+        setCheckoutLoading(false);
+        setCheckoutPreparing(false);
+      }
+    },
+    [apiFetch, toast, changePlanBillingCycle],
   );
 
   const handleSelectPlan = useCallback(
@@ -1183,8 +1332,13 @@ export function WorkspaceBillingTab() {
           const json = await res.json().catch(() => ({}));
           const data = json.data as ChangePlanPreview | undefined;
           if (data) {
-            setChangePlanPreview(data);
-            setConfirmPlanOpen(true);
+            if (data.requiresCheckout) {
+              setChangePlanOpen(false);
+              await handleDirectCheckout(plan);
+            } else {
+              setChangePlanPreview(data);
+              setConfirmPlanOpen(true);
+            }
           }
         } catch {
           toast.addToast("error", "Could not load plan preview.");
@@ -1195,12 +1349,13 @@ export function WorkspaceBillingTab() {
         setConfirmPlanOpen(true);
       }
     },
-    [billingState.currentPlan, apiFetch, toast, changePlanBillingCycle],
+    [billingState.currentPlan, apiFetch, toast, changePlanBillingCycle, handleDirectCheckout],
   );
 
   const handleConfirmUpgrade = useCallback(async () => {
     if (!confirmTarget || confirmTarget.direction !== "upgrade") return;
     setCheckoutLoading(true);
+    setCheckoutPreparing(true);
     try {
       const res = await apiFetch("/api/billing/change-plan", {
         method: "POST",
@@ -1270,6 +1425,7 @@ export function WorkspaceBillingTab() {
             : undefined;
         if (Paddle?.Checkout?.open) {
           applyPaddleCheckoutOverlayStyles();
+          setPaddleCheckoutOrigin("plan_upgrade");
           Paddle.Checkout.open({
             transactionId: data.transactionId,
             settings: { displayMode: "overlay" },
@@ -1293,6 +1449,7 @@ export function WorkspaceBillingTab() {
       }
     } finally {
       setCheckoutLoading(false);
+      setCheckoutPreparing(false);
     }
   }, [confirmTarget, apiFetch, toast, fetchSummary, session?.user?.email, changePlanBillingCycle]);
 
@@ -2259,7 +2416,7 @@ export function WorkspaceBillingTab() {
                     : "Billed upfront for the full year. ~15% savings versus monthly. Downgrades take effect at renewal."}
                 </p>
                 <div
-                  className="inline-flex shrink-0 cursor-pointer rounded-full border border-(--border-subtle) bg-(--bg-surface) p-0.5"
+                  className="inline-flex self-start shrink-0 cursor-pointer rounded-full border border-(--border-subtle) bg-(--bg-surface) p-0.5"
                   role="group"
                   aria-label="Display billing cycle"
                 >
@@ -2509,166 +2666,52 @@ export function WorkspaceBillingTab() {
         );
       })()}
 
-      {/* Confirm plan change dialog — overlay close prevented to avoid accidental dismiss */}
-      <Dialog
-        open={confirmPlanOpen}
-        onClose={closeConfirm}
-        title={confirmTarget?.direction === "upgrade" ? "Confirm upgrade" : "Confirm change"}
-        closeDisabled={scheduleLoading || checkoutLoading}
-        allowOverlayClose={false}
-        contentClassName="max-h-[90vh] overflow-hidden flex flex-col max-w-md"
-      >
-        {confirmTarget && (
-          <div className="-mx-6 max-h-[calc(90vh-7rem)] overflow-y-auto overscroll-contain px-6 pb-6">
-            <div className="space-y-4">
-              {confirmTarget.direction === "upgrade" ? (
-                <>
-                  <div className="space-y-3 text-sm">
-                    {(() => {
-                      const confirmBillingInterval =
-                        changePlanPreview?.billingInterval ?? changePlanBillingCycle;
-                      const isAnnualConfirm = confirmBillingInterval === "annual";
-                      return (
-                        <>
-                    <div>
-                      <p className="text-xs font-medium text-(--text-muted)">Current plan</p>
-                      <p className="mt-0.5 font-medium text-(--text-primary)">
-                        {planLabelFromCode(
-                          changePlanPreview?.currentPlanCode ?? summary?.planCode ?? "free",
-                        )}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-(--text-muted)">New plan</p>
-                      <p className="mt-0.5 font-medium text-(--text-primary)">
-                        {confirmTarget.plan.name}
-                        {changePlanPreview?.nextPriceCents != null &&
-                          (isAnnualConfirm ? (
-                            <>
-                              <span className="font-normal text-(--text-secondary)">
-                                {" "}
-                                — {formatPriceExact(changePlanPreview.nextPriceCents)}/year billed
-                                upfront
-                              </span>
-                              <span className="mt-1 block text-xs font-normal text-(--text-secondary)">
-                                {formatPriceExact(
-                                  Math.round(changePlanPreview.nextPriceCents / 12),
-                                )}
-                                /mo equivalent
-                              </span>
-                            </>
-                          ) : (
-                            <span className="font-normal text-(--text-secondary)">
-                              {" "}
-                              — {formatPriceMonthly(changePlanPreview.nextPriceCents)}/month
-                            </span>
-                          ))}
-                      </p>
-                      {isAnnualConfirm && (
-                        <p className="mt-2 text-xs text-(--text-muted)">
-                          Annual billing — billed upfront
-                        </p>
-                      )}
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-(--text-muted)">Billing cycle</p>
-                      <p className="mt-0.5 font-medium text-(--text-primary)">
-                        {isAnnualConfirm ? "Annual (billed upfront)" : "Monthly"}
-                      </p>
-                    </div>
-                    {changePlanPreview?.effectiveAt === "immediate" &&
-                      changePlanPreview?.nextPriceCents != null && (
-                        <div>
-                          <p className="text-xs font-medium text-(--text-muted)">Due now</p>
-                          <p className="mt-0.5 text-(--text-primary)">
-                            {formatPriceMonthly(changePlanPreview.nextPriceCents)} (prorated)
-                          </p>
-                        </div>
-                      )}
-                    {changePlanPreview?.effectiveAt === "next_period" &&
-                      changePlanPreview?.effectiveFromDate && (
-                        <p className="text-(--text-muted)">
-                          Effective {formatDate(changePlanPreview.effectiveFromDate)}.
-                        </p>
-                      )}
-                    <p className="text-(--text-muted)">
-                      {changePlanPreview?.requiresCheckout
-                        ? "You'll enter your payment details in the next step."
-                        : changePlanPreview?.effectiveAt === "immediate"
-                          ? isAnnualConfirm
-                            ? "Annual billing — billed upfront. Your plan will update after payment is confirmed."
-                            : "Billing cycle remains the same. Your plan will update after payment is confirmed."
-                          : "Your new amount will be charged at the end of the current billing cycle."}
-                    </p>
-                        </>
-                      );
-                    })()}
-                    {paymentMethod && !changePlanPreview?.requiresCheckout && (
-                      <div>
-                        <p className="text-xs font-medium text-(--text-muted)">Payment method</p>
-                        <p className="mt-0.5 text-(--text-primary)">
-                          {formatCardBrand(paymentMethod.brand)} •••• {paymentMethod.last4}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    <button
-                      type="button"
-                      onClick={handleConfirmUpgrade}
-                      disabled={checkoutLoading}
-                      className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-50"
-                    >
-                      {checkoutLoading ? (
-                        <>
-                          <Spinner size="sm" />
-                          Preparing…
-                        </>
-                      ) : (
-                        `Upgrade to ${confirmTarget.plan.name}`
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={closeConfirm}
-                      disabled={checkoutLoading}
-                      className="inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  {/* REMOVED: old Activate plan form (EPIC 4) */}
-                  <p className="text-sm text-(--text-primary)">
-                    You are downgrading to {confirmTarget.plan.name}. Downgrades take effect at the
-                    end of the current billing period.
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={handleConfirmDowngrade}
-                      disabled={scheduleLoading}
-                      className="inline-flex h-9 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-50"
-                    >
-                      {scheduleLoading ? "Loading…" : "Schedule downgrade"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={closeConfirm}
-                      disabled={scheduleLoading}
-                      className="inline-flex h-9 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </>
-              )}
+      {checkoutPreparing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-(--bg-base)/60 backdrop-blur-md">
+          <div className="flex flex-col items-center gap-5 rounded-2xl border border-(--border-subtle) bg-(--bg-surface) px-10 py-8 shadow-2xl">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--color-primary)/10">
+              <Spinner size="lg" />
+            </div>
+            <div className="flex flex-col items-center gap-1.5 text-center">
+              <p className="text-base font-semibold text-(--text-primary)">Preparing your checkout</p>
+              <p className="max-w-[220px] text-sm text-(--text-muted)">
+                Connecting securely to our payment provider…
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="text-(--text-muted)"
+              >
+                <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+              <p className="text-xs text-(--text-muted)">Secured by Paddle</p>
             </div>
           </div>
-        )}
-      </Dialog>
+        </div>
+      )}
+
+      <PlanChangeConfirmModal
+        open={confirmPlanOpen}
+        viewModel={confirmViewModel}
+        isLoading={checkoutLoading || scheduleLoading}
+        onConfirm={() => {
+          if (confirmTarget?.direction === "upgrade") {
+            handleConfirmUpgrade();
+          } else {
+            handleConfirmDowngrade();
+          }
+        }}
+        onClose={closeConfirm}
+      />
 
       {/* Payment declined — UI only: layout, spacing, amber accent. No logic/handler changes. */}
       <Dialog
