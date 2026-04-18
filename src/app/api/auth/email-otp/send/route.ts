@@ -9,6 +9,7 @@ import { ApiErrors, apiError, apiSuccess, withErrorHandler } from "@/lib/api-res
 import { parseBody } from "@/lib/validations";
 import { ValidationError } from "@/lib/validations/common";
 import { env } from "@/lib/env";
+import { resolveSender } from "@/server/services/email-templates";
 
 const bodySchema = z.object({
   email: z.string().email().max(191).transform((v) => v.trim().toLowerCase()),
@@ -51,8 +52,10 @@ export const POST = withErrorHandler(async (req: Request) => {
     );
   }
 
-  const magicFrom = env.EMAIL_FROM;
-  if (!magicFrom) {
+  let magicFrom: string;
+  try {
+    magicFrom = resolveSender("security");
+  } catch {
     return ApiErrors.INTERNAL_ERROR("Email not configured");
   }
 

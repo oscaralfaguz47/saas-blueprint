@@ -6,122 +6,20 @@ import { indexKbArticle } from "@/server/knowledge-base/kb-indexer";
 import { JOB_TYPES } from "@/server/jobs/background-jobs";
 import { processRecordExportJob } from "@/server/record-export/record-export-jobs";
 import { env } from "@/lib/env";
+import {
+  escapeHtml,
+  buildEmailShell,
+  buildCtaButton,
+  buildHighlightBox,
+  buildQuoteBlock,
+  resolveSender,
+  EMAIL_THEME,
+} from "@/server/services/email-templates";
 
 const MAX_BATCH = 15;
 
 function appUrl(): string {
   return env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, "") || env.NEXTAUTH_URL?.replace(/\/+$/, "") || "";
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-/**
- * Builds a consistent Enterprise-grade HTML email for support ticket events.
- * Uses hardcoded hex values only — email clients do not support CSS variables.
- */
-function buildSupportEmail(params: {
-  recipientName: string;
-  preheader: string;
-  bodyHtml: string;
-  ctaLabel: string;
-  ctaUrl: string;
-  footerNote?: string;
-}): string {
-  const { recipientName, preheader, bodyHtml, ctaLabel, ctaUrl, footerNote } = params;
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${preheader}</title>
-</head>
-<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <!-- Preheader text (shown in inbox preview) -->
-  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${preheader}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>
-  <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#f4f4f5;padding:40px 16px;">
-    <tr>
-      <td align="center">
-        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:480px;">
-
-          <!-- Logo / brand header -->
-          <tr>
-            <td style="padding:0 0 16px;">
-              <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-                <tr>
-                  <td style="padding:24px 32px;background:#09090b;border-radius:12px 12px 0 0;">
-                    <p style="margin:0;font-size:18px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">Relitrue</p>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- Card body -->
-          <tr>
-            <td style="background:#ffffff;border-radius:0 0 12px 12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);overflow:hidden;">
-
-              <!-- Greeting -->
-              <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-                <tr>
-                  <td style="padding:28px 32px 0;">
-                    <p style="margin:0;font-size:15px;color:#3f3f46;">Hi <strong>${escapeHtml(recipientName)}</strong>,</p>
-                  </td>
-                </tr>
-
-                <!-- Dynamic body content -->
-                <tr>
-                  <td style="padding:12px 32px 0;">
-                    ${bodyHtml}
-                  </td>
-                </tr>
-
-                <!-- CTA button -->
-                <tr>
-                  <td style="padding:24px 32px 28px;">
-                    <a href="${ctaUrl}"
-                       style="display:inline-block;background:#09090b;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:600;letter-spacing:0.1px;">
-                      ${ctaLabel}
-                    </a>
-                  </td>
-                </tr>
-
-                <!-- Footer -->
-                <tr>
-                  <td style="padding:16px 32px 20px;background:#fafafa;border-top:1px solid #e4e4e7;">
-                    <p style="margin:0;font-size:12px;color:#a1a1aa;line-height:1.5;">
-                      ${
-                        footerNote
-                          ? escapeHtml(footerNote)
-                          : "You're receiving this email because of activity on your Relitrue account."
-                      }
-                    </p>
-                  </td>
-                </tr>
-              </table>
-
-            </td>
-          </tr>
-
-          <!-- Bottom spacer -->
-          <tr>
-            <td style="padding:20px 0;text-align:center;">
-              <p style="margin:0;font-size:11px;color:#a1a1aa;">© Relitrue. All rights reserved.</p>
-            </td>
-          </tr>
-
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
 }
 
 function formatTicketStatus(raw: string): string {
@@ -145,7 +43,7 @@ async function sendTicketEmail(params: {
   html: string;
 }): Promise<void> {
   try {
-    await sendEmail(params);
+    await sendEmail({ ...params, from: resolveSender("support") });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "unknown";
     console.error("[jobs] Email send failed", msg);
@@ -245,24 +143,38 @@ async function executeJob(job: {
     if (!ticket || !toEmail) return;
     const base = appUrl();
     const link = base ? `${base}/app/help/tickets/${ticket.id}` : `/app/help/tickets/${ticket.id}`;
-    const workspaceLabel = ticket.tenant?.name ?? "Relitrue";
+    const workspaceLabel = ticket.tenant?.name ?? (env.APP_NAME ?? "Relitrue");
+    const recipientName = ticket.requester?.name ?? "there";
+    const preheader = `Support request received: ${ticket.subject}`;
+    const t = EMAIL_THEME;
+    const innerBodyHtml = `
+    <p style="margin:0;font-size:15px;color:${t.colorTextBody};line-height:1.6;font-family:${t.fontStack};">
+      We received your support request. Our team typically responds within one business day.
+    </p>
+    ${buildHighlightBox(`
+      <p style="margin:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:${t.colorTextMuted};font-family:${t.fontStack};">Ticket</p>
+      <p style="margin:6px 0 0;font-size:15px;font-weight:600;color:${t.colorTextPrimary};font-family:${t.fontStack};">${escapeHtml(ticket.subject)}</p>
+      <p style="margin:4px 0 0;font-size:13px;color:${t.colorTextBody};font-family:${t.fontStack};">Workspace: <strong>${escapeHtml(workspaceLabel)}</strong></p>
+    `)}`;
     await sendTicketEmail({
       to: toEmail,
       subject: `Support request received: ${ticket.subject}`,
-      html: buildSupportEmail({
-        recipientName: ticket.requester?.name ?? "there",
-        preheader: `Support request received: ${ticket.subject}`,
+      html: buildEmailShell({
+        title: preheader,
+        preheader,
         bodyHtml: `
-    <p style="margin:0;font-size:15px;color:#3f3f46;line-height:1.6;">
-      We received your support request. Our team typically responds within one business day.
-    </p>
-    <div style="margin:16px 0 0;background:#f4f4f5;border-radius:8px;padding:14px 16px;">
-      <p style="margin:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:#71717a;">Ticket</p>
-      <p style="margin:6px 0 0;font-size:15px;font-weight:600;color:#09090b;">${escapeHtml(ticket.subject)}</p>
-      <p style="margin:4px 0 0;font-size:13px;color:#3f3f46;">Workspace: <strong>${escapeHtml(workspaceLabel)}</strong></p>
-    </div>`,
-        ctaLabel: "View your ticket",
-        ctaUrl: link,
+    <p style="margin:0;font-size:15px;color:${t.colorTextBody};">Hi <strong>${escapeHtml(recipientName)}</strong>,</p>
+    <div style="margin:12px 0 0;">
+      ${innerBodyHtml}
+    </div>
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
+           style="border-collapse:collapse;margin-top:24px;">
+      <tr>
+        <td align="center" style="padding:0;">
+          ${buildCtaButton("View your ticket", link)}
+        </td>
+      </tr>
+    </table>`,
         footerNote: "You're receiving this because you submitted a support request.",
       }),
     });
@@ -292,22 +204,37 @@ async function executeJob(job: {
     if (!ticket || !toEmail) return;
     const base = appUrl();
     const link = base ? `${base}/app/help/tickets/${ticket.id}` : `/app/help/tickets/${ticket.id}`;
+    const recipientName = ticket.requester?.name ?? "there";
+    const preheader = `New reply on your support ticket: ${ticket.subject}`;
+    const appName = env.APP_NAME ?? "Relitrue";
+    const t = EMAIL_THEME;
+    const innerBodyHtml = `
+    <p style="margin:0;font-size:15px;color:${t.colorTextBody};line-height:1.6;font-family:${t.fontStack};">
+      ${escapeHtml(appName)} Support replied to your ticket. Open the thread to read the reply and respond.
+    </p>
+    ${buildHighlightBox(`
+      <p style="margin:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:${t.colorTextMuted};font-family:${t.fontStack};">Ticket</p>
+      <p style="margin:6px 0 0;font-size:15px;font-weight:600;color:${t.colorTextPrimary};font-family:${t.fontStack};">${escapeHtml(ticket.subject)}</p>
+    `)}`;
     await sendTicketEmail({
       to: toEmail,
       subject: `New reply on: ${ticket.subject}`,
-      html: buildSupportEmail({
-        recipientName: ticket.requester?.name ?? "there",
-        preheader: `New reply on your support ticket: ${ticket.subject}`,
+      html: buildEmailShell({
+        title: preheader,
+        preheader,
         bodyHtml: `
-    <p style="margin:0;font-size:15px;color:#3f3f46;line-height:1.6;">
-      Relitrue Support replied to your ticket. Open the thread to read the reply and respond.
-    </p>
-    <div style="margin:16px 0 0;background:#f4f4f5;border-radius:8px;padding:14px 16px;">
-      <p style="margin:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:#71717a;">Ticket</p>
-      <p style="margin:6px 0 0;font-size:15px;font-weight:600;color:#09090b;">${escapeHtml(ticket.subject)}</p>
-    </div>`,
-        ctaLabel: "View conversation",
-        ctaUrl: link,
+    <p style="margin:0;font-size:15px;color:${t.colorTextBody};">Hi <strong>${escapeHtml(recipientName)}</strong>,</p>
+    <div style="margin:12px 0 0;">
+      ${innerBodyHtml}
+    </div>
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
+           style="border-collapse:collapse;margin-top:24px;">
+      <tr>
+        <td align="center" style="padding:0;">
+          ${buildCtaButton("View conversation", link)}
+        </td>
+      </tr>
+    </table>`,
         footerNote: "You're receiving this because you have an open support ticket.",
       }),
     });
@@ -334,24 +261,38 @@ async function executeJob(job: {
     if (!toEmail) return;
     const base = appUrl();
     const link = base ? `${base}/app/help/tickets/${ticket.id}` : `/app/help/tickets/${ticket.id}`;
-    await sendTicketEmail({
-      to: toEmail,
-      subject: `Ticket closed: ${ticket.subject}`,
-      html: buildSupportEmail({
-        recipientName: ticket.requester?.name ?? "there",
-        preheader: `Your support ticket has been closed: ${ticket.subject}`,
-        bodyHtml: `
-    <p style="margin:0;font-size:15px;color:#3f3f46;line-height:1.6;">
+    const recipientName = ticket.requester?.name ?? "there";
+    const preheader = `Your support ticket has been closed: ${ticket.subject}`;
+    const t = EMAIL_THEME;
+    const innerBodyHtml = `
+    <p style="margin:0;font-size:15px;color:${t.colorTextBody};line-height:1.6;font-family:${t.fontStack};">
       Your support ticket has been marked as closed. If you need further assistance,
       you can reopen it at any time.
     </p>
-    <div style="margin:16px 0 0;background:#f4f4f5;border-radius:8px;padding:14px 16px;">
-      <p style="margin:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:#71717a;">Ticket</p>
-      <p style="margin:6px 0 0;font-size:15px;font-weight:600;color:#09090b;">${escapeHtml(ticket.subject)}</p>
-      <p style="margin:6px 0 0;font-size:13px;color:#71717a;">Status: <strong style="color:#09090b;">Closed</strong></p>
-    </div>`,
-        ctaLabel: "View ticket",
-        ctaUrl: link,
+    ${buildHighlightBox(`
+      <p style="margin:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:${t.colorTextMuted};font-family:${t.fontStack};">Ticket</p>
+      <p style="margin:6px 0 0;font-size:15px;font-weight:600;color:${t.colorTextPrimary};font-family:${t.fontStack};">${escapeHtml(ticket.subject)}</p>
+      <p style="margin:6px 0 0;font-size:13px;color:${t.colorTextMuted};font-family:${t.fontStack};">Status: <strong style="color:${t.colorTextPrimary};">Closed</strong></p>
+    `)}`;
+    await sendTicketEmail({
+      to: toEmail,
+      subject: `Ticket closed: ${ticket.subject}`,
+      html: buildEmailShell({
+        title: preheader,
+        preheader,
+        bodyHtml: `
+    <p style="margin:0;font-size:15px;color:${t.colorTextBody};">Hi <strong>${escapeHtml(recipientName)}</strong>,</p>
+    <div style="margin:12px 0 0;">
+      ${innerBodyHtml}
+    </div>
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
+           style="border-collapse:collapse;margin-top:24px;">
+      <tr>
+        <td align="center" style="padding:0;">
+          ${buildCtaButton("View ticket", link)}
+        </td>
+      </tr>
+    </table>`,
         footerNote: "You're receiving this because you have a support ticket with us.",
       }),
     });
@@ -402,31 +343,45 @@ async function executeJob(job: {
     if (!toEmail) return;
     const base = appUrl();
     const ticketUrl = base ? `${base}/app/help/tickets/${ticket.id}` : `/app/help/tickets/${ticket.id}`;
-    const safeSubject = escapeHtml(ticket.subject);
     const replyPreview = msg.bodyText ?? "";
     const replyPreviewTruncated = replyPreview.slice(0, 500);
-    const replyPreviewSuffix = replyPreview.length > 500 ? "…" : "";
+    const replyPreviewSuffix = replyPreview.length > 500 ? "&#8230;" : "";
+    const recipientName = ticket.requester?.name ?? "there";
+    const preheader = `New reply on your support ticket: ${ticket.subject}`;
+    const appName = env.APP_NAME ?? "Relitrue";
+    const t = EMAIL_THEME;
+    const innerBodyHtml = `
+    <p style="margin:0;font-size:15px;color:${t.colorTextBody};line-height:1.6;font-family:${t.fontStack};">
+      ${escapeHtml(appName)} Support replied to your ticket.
+    </p>
+    ${buildHighlightBox(`
+      <p style="margin:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:${t.colorTextMuted};font-family:${t.fontStack};">Ticket</p>
+      <p style="margin:6px 0 0;font-size:15px;font-weight:600;color:${t.colorTextPrimary};font-family:${t.fontStack};">${escapeHtml(ticket.subject)}</p>
+    `)}
+    ${buildQuoteBlock(`
+      <p style="margin:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:${t.colorTextMuted};font-family:${t.fontStack};">Reply</p>
+      <p style="margin:6px 0 0;font-size:14px;color:${t.colorTextBody};line-height:1.6;font-family:${t.fontStack};">${escapeHtml(replyPreviewTruncated)}${replyPreviewSuffix}</p>
+    `)}`;
     try {
       await sendTicketEmail({
         to: toEmail,
         subject: `New reply on your support ticket: ${ticket.subject}`,
-        html: buildSupportEmail({
-          recipientName: ticket.requester?.name ?? "there",
-          preheader: `New reply on your support ticket: ${ticket.subject}`,
+        html: buildEmailShell({
+          title: preheader,
+          preheader,
           bodyHtml: `
-    <p style="margin:0;font-size:15px;color:#3f3f46;line-height:1.6;">
-      Relitrue Support replied to your ticket.
-    </p>
-    <div style="margin:16px 0 0;background:#f4f4f5;border-radius:8px;padding:14px 16px;">
-      <p style="margin:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:#71717a;">Ticket</p>
-      <p style="margin:6px 0 0;font-size:15px;font-weight:600;color:#09090b;">${safeSubject}</p>
+    <p style="margin:0;font-size:15px;color:${t.colorTextBody};">Hi <strong>${escapeHtml(recipientName)}</strong>,</p>
+    <div style="margin:12px 0 0;">
+      ${innerBodyHtml}
     </div>
-    <div style="margin:16px 0 0;border-left:3px solid #e4e4e7;padding:10px 16px;background:#fafafa;border-radius:0 6px 6px 0;">
-      <p style="margin:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:#71717a;">Reply</p>
-      <p style="margin:6px 0 0;font-size:14px;color:#3f3f46;line-height:1.6;white-space:pre-wrap;">${escapeHtml(replyPreviewTruncated)}${replyPreviewSuffix}</p>
-    </div>`,
-          ctaLabel: "View conversation",
-          ctaUrl: ticketUrl,
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
+           style="border-collapse:collapse;margin-top:24px;">
+      <tr>
+        <td align="center" style="padding:0;">
+          ${buildCtaButton("View conversation", ticketUrl)}
+        </td>
+      </tr>
+    </table>`,
           footerNote: "You're receiving this because you have an open support ticket.",
         }),
       });
@@ -477,37 +432,50 @@ async function executeJob(job: {
     if (!toEmail) return;
     const base = appUrl();
     const ticketUrl = base ? `${base}/app/help/tickets/${ticket.id}` : `/app/help/tickets/${ticket.id}`;
-    const safeSubject = escapeHtml(ticket.subject);
+    const recipientName = ticket.requester?.name ?? "there";
+    const preheader = `Your ticket status was updated: ${ticket.subject}`;
+    const t = EMAIL_THEME;
+    const innerBodyHtml = `
+    <p style="margin:0;font-size:15px;color:${t.colorTextBody};line-height:1.6;font-family:${t.fontStack};">
+      The status of your support ticket was updated.
+    </p>
+    ${buildHighlightBox(`
+      <p style="margin:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:${t.colorTextMuted};font-family:${t.fontStack};">Ticket</p>
+      <p style="margin:6px 0 0;font-size:15px;font-weight:600;color:${t.colorTextPrimary};font-family:${t.fontStack};">${escapeHtml(ticket.subject)}</p>
+      <table cellpadding="0" cellspacing="0" role="presentation" style="margin:10px 0 0;">
+        <tr>
+          <td style="font-size:13px;color:${t.colorTextMuted};padding-right:8px;font-family:${t.fontStack};">From</td>
+          <td style="font-size:13px;font-weight:600;color:${t.colorTextPrimary};font-family:${t.fontStack};">${escapeHtml(formatTicketStatus(previousStatus))}</td>
+        </tr>
+        <tr>
+          <td style="font-size:13px;color:${t.colorTextMuted};padding-right:8px;padding-top:4px;font-family:${t.fontStack};">To</td>
+          <td style="font-size:13px;font-weight:600;color:${t.colorTextPrimary};padding-top:4px;font-family:${t.fontStack};">${escapeHtml(formatTicketStatus(newStatus))}</td>
+        </tr>
+      </table>
+    `)}
+    <p style="margin:16px 0 0;font-size:12px;color:${t.colorTextMuted};font-family:${t.fontStack};">
+      If you didn't expect this change, you can reply to your ticket directly.
+    </p>`;
     try {
       await sendTicketEmail({
         to: toEmail,
         subject: `Ticket status updated: ${ticket.subject}`,
-        html: buildSupportEmail({
-          recipientName: ticket.requester?.name ?? "there",
-          preheader: `Your ticket status was updated: ${ticket.subject}`,
+        html: buildEmailShell({
+          title: preheader,
+          preheader,
           bodyHtml: `
-    <p style="margin:0;font-size:15px;color:#3f3f46;line-height:1.6;">
-      The status of your support ticket was updated.
-    </p>
-    <div style="margin:16px 0 0;background:#f4f4f5;border-radius:8px;padding:14px 16px;">
-      <p style="margin:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:#71717a;">Ticket</p>
-      <p style="margin:6px 0 0;font-size:15px;font-weight:600;color:#09090b;">${safeSubject}</p>
-      <table cellpadding="0" cellspacing="0" role="presentation" style="margin:10px 0 0;">
-        <tr>
-          <td style="font-size:13px;color:#71717a;padding-right:8px;">From</td>
-          <td style="font-size:13px;font-weight:600;color:#09090b;">${escapeHtml(formatTicketStatus(previousStatus))}</td>
-        </tr>
-        <tr>
-          <td style="font-size:13px;color:#71717a;padding-right:8px;padding-top:4px;">To</td>
-          <td style="font-size:13px;font-weight:600;color:#09090b;padding-top:4px;">${escapeHtml(formatTicketStatus(newStatus))}</td>
-        </tr>
-      </table>
+    <p style="margin:0;font-size:15px;color:${t.colorTextBody};">Hi <strong>${escapeHtml(recipientName)}</strong>,</p>
+    <div style="margin:12px 0 0;">
+      ${innerBodyHtml}
     </div>
-    <p style="margin:16px 0 0;font-size:12px;color:#71717a;">
-      If you didn't expect this change, you can reply to your ticket directly.
-    </p>`,
-          ctaLabel: "View ticket",
-          ctaUrl: ticketUrl,
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
+           style="border-collapse:collapse;margin-top:24px;">
+      <tr>
+        <td align="center" style="padding:0;">
+          ${buildCtaButton("View ticket", ticketUrl)}
+        </td>
+      </tr>
+    </table>`,
           footerNote: "You're receiving this because you have a support ticket with us.",
         }),
       });
@@ -581,28 +549,42 @@ async function executeJob(job: {
 
       const customerReplyPreview = msg.bodyText ?? "";
       const customerReplyTruncated = customerReplyPreview.slice(0, 500);
-      const customerReplySuffix = customerReplyPreview.length > 500 ? "…" : "";
+      const customerReplySuffix = customerReplyPreview.length > 500 ? "&#8230;" : "";
+
+      const preheader = `Customer replied to: ${ticket.subject}`;
+      const t = EMAIL_THEME;
+      const innerBodyHtml = `
+    <p style="margin:0;font-size:15px;color:${t.colorTextBody};line-height:1.6;font-family:${t.fontStack};">
+      A customer replied to a support ticket assigned to you.
+    </p>
+    ${buildHighlightBox(`
+      <p style="margin:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:${t.colorTextMuted};font-family:${t.fontStack};">Ticket</p>
+      <p style="margin:6px 0 0;font-size:15px;font-weight:600;color:${t.colorTextPrimary};font-family:${t.fontStack};">${escapeHtml(ticket.subject)}</p>
+    `)}
+    ${buildQuoteBlock(`
+      <p style="margin:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:${t.colorTextMuted};font-family:${t.fontStack};">Customer replied</p>
+      <p style="margin:6px 0 0;font-size:14px;color:${t.colorTextBody};line-height:1.6;font-family:${t.fontStack};">${escapeHtml(customerReplyTruncated)}${customerReplySuffix}</p>
+    `)}`;
 
       await sendTicketEmail({
         to: assigneeEmail,
-        subject: `Customer replied: ${escapeHtml(ticket.subject)}`,
-        html: buildSupportEmail({
-          recipientName: assigneeName,
-          preheader: `Customer replied to: ${ticket.subject}`,
+        subject: `Customer replied: ${ticket.subject}`,
+        html: buildEmailShell({
+          title: preheader,
+          preheader,
           bodyHtml: `
-    <p style="margin:0;font-size:15px;color:#3f3f46;line-height:1.6;">
-      A customer replied to a support ticket assigned to you.
-    </p>
-    <div style="margin:16px 0 0;background:#f4f4f5;border-radius:8px;padding:14px 16px;">
-      <p style="margin:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:#71717a;">Ticket</p>
-      <p style="margin:6px 0 0;font-size:15px;font-weight:600;color:#09090b;">${escapeHtml(ticket.subject)}</p>
+    <p style="margin:0;font-size:15px;color:${t.colorTextBody};">Hi <strong>${escapeHtml(assigneeName)}</strong>,</p>
+    <div style="margin:12px 0 0;">
+      ${innerBodyHtml}
     </div>
-    <div style="margin:16px 0 0;border-left:3px solid #e4e4e7;padding:10px 16px;background:#fafafa;border-radius:0 6px 6px 0;">
-      <p style="margin:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:#71717a;">Customer replied</p>
-      <p style="margin:6px 0 0;font-size:14px;color:#3f3f46;line-height:1.6;white-space:pre-wrap;">${escapeHtml(customerReplyTruncated)}${customerReplySuffix}</p>
-    </div>`,
-          ctaLabel: "View ticket",
-          ctaUrl: adminTicketUrl,
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
+           style="border-collapse:collapse;margin-top:24px;">
+      <tr>
+        <td align="center" style="padding:0;">
+          ${buildCtaButton("View ticket", adminTicketUrl)}
+        </td>
+      </tr>
+    </table>`,
           footerNote: "You're receiving this because you are assigned to this support ticket.",
         }),
       });
@@ -662,24 +644,39 @@ async function executeJob(job: {
     });
 
     try {
+      const recipientName = assignee.name ?? "there";
+      const preheader = `New support ticket assigned to you: ${ticket.subject}`;
+      const t = EMAIL_THEME;
+      const innerBodyHtml = `
+  <p style="margin:0;font-size:15px;color:${t.colorTextBody};line-height:1.6;font-family:${t.fontStack};">
+    A new support ticket has been assigned to you.
+  </p>
+  ${buildHighlightBox(`
+    <p style="margin:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:${t.colorTextMuted};font-family:${t.fontStack};">Ticket</p>
+    <p style="margin:6px 0 0;font-size:15px;font-weight:600;color:${t.colorTextPrimary};font-family:${t.fontStack};">${escapeHtml(ticket.subject)}</p>
+    <p style="margin:6px 0 0;font-size:13px;color:${t.colorTextBody};font-family:${t.fontStack};">From: <strong>${escapeHtml(requesterLabel)}</strong></p>
+    ${isSales ? "" : `<p style="margin:4px 0 0;font-size:13px;color:${t.colorTextBody};font-family:${t.fontStack};">Workspace: <strong>${escapeHtml(workspaceLabel)}</strong></p>`}
+  `)}`;
+
       await sendTicketEmail({
         to: assignee.email,
         subject: `New ticket assigned to you: ${ticket.subject}`,
-        html: buildSupportEmail({
-          recipientName: assignee.name ?? "there",
-          preheader: `New support ticket assigned to you: ${ticket.subject}`,
+        html: buildEmailShell({
+          title: preheader,
+          preheader,
           bodyHtml: `
-  <p style="margin:0;font-size:15px;color:#3f3f46;line-height:1.6;">
-    A new support ticket has been assigned to you.
-  </p>
-  <div style="margin:16px 0 0;background:#f4f4f5;border-radius:8px;padding:14px 16px;">
-    <p style="margin:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:#71717a;">Ticket</p>
-    <p style="margin:6px 0 0;font-size:15px;font-weight:600;color:#09090b;">${escapeHtml(ticket.subject)}</p>
-    <p style="margin:6px 0 0;font-size:13px;color:#3f3f46;">From: <strong>${escapeHtml(requesterLabel)}</strong></p>
-    ${isSales ? "" : `<p style="margin:4px 0 0;font-size:13px;color:#3f3f46;">Workspace: <strong>${escapeHtml(workspaceLabel)}</strong></p>`}
-  </div>`,
-          ctaLabel: "View ticket",
-          ctaUrl: adminTicketUrl,
+    <p style="margin:0;font-size:15px;color:${t.colorTextBody};">Hi <strong>${escapeHtml(recipientName)}</strong>,</p>
+    <div style="margin:12px 0 0;">
+      ${innerBodyHtml}
+    </div>
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
+           style="border-collapse:collapse;margin-top:24px;">
+      <tr>
+        <td align="center" style="padding:0;">
+          ${buildCtaButton("View ticket", adminTicketUrl)}
+        </td>
+      </tr>
+    </table>`,
           footerNote: "You're receiving this because this ticket was assigned to you.",
         }),
       });

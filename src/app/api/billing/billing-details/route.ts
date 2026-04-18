@@ -11,6 +11,12 @@ import { sendEmail } from "@/server/services/invitation-email";
 import { prisma } from "@/server/db";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { env } from "@/lib/env";
+import {
+  buildEmailShell,
+  escapeHtml,
+  resolveSender,
+  EMAIL_THEME,
+} from "@/server/services/email-templates";
 import { parseBody } from "@/lib/validations/common";
 import { z } from "zod";
 
@@ -200,10 +206,21 @@ export const PUT = withErrorHandler(async (req: Request) => {
     .filter(Boolean);
   if (adminEmails.length > 0) {
     // Fire-and-forget: non-critical internal notification; must not block the user response
+    const t = EMAIL_THEME;
+    const bodyHtml = `
+      <p style="margin:0;font-size:15px;color:${t.colorTextBody};">
+        Tenant <strong>${escapeHtml(tenantId)}</strong> updated billing details (future invoices).
+      </p>`;
     void sendEmail({
       to: adminEmails[0],
       subject: "Billing profile updated",
-      html: `<p>Tenant ${tenantId} updated billing details (future invoices).</p>`,
+      html: buildEmailShell({
+        title: "Billing profile updated",
+        preheader: "A tenant updated their billing profile",
+        bodyHtml,
+        footerNote: "You're receiving this because you are listed as a platform billing contact.",
+      }),
+      from: resolveSender("support"),
     }).catch(() => {
       // Intentionally swallowed: notification failure must not affect billing profile update
     });

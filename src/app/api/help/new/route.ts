@@ -12,17 +12,16 @@ import { getClientIp } from "@/server/http-client-ip";
 import { JOB_TYPES, enqueueBackgroundJob } from "@/server/jobs/background-jobs";
 import { prisma } from "@/server/db";
 import { sendEmail } from "@/server/services/invitation-email";
+import {
+  buildEmailShell,
+  buildHighlightBox,
+  buildQuoteBlock,
+  escapeHtml,
+  resolveSender,
+  EMAIL_THEME,
+} from "@/server/services/email-templates";
 import { findLeastLoadedAdmin } from "@/server/support/support-auto-assign";
 import { checkHelpSalesInquiryLimit } from "@/server/support/support-rate-limits";
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 function buildExternalConfirmationEmail(params: {
   email: string;
@@ -32,83 +31,55 @@ function buildExternalConfirmationEmail(params: {
   const { subject, message } = params;
   const preview = message.slice(0, 500);
   const truncated = message.length > 500;
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>We received your message</title>
-</head>
-<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <div style="display:none;max-height:0;overflow:hidden;">We received your message and will get back to you shortly.&nbsp;&zwnj;</div>
-  <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#f4f4f5;padding:40px 16px;">
-    <tr>
-      <td align="center">
-        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:480px;">
-          <tr>
-            <td style="padding:0 0 16px;">
-              <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-                <tr>
-                  <td style="padding:24px 32px;background:#09090b;border-radius:12px 12px 0 0;">
-                    <p style="margin:0;font-size:18px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">Relitrue</p>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-          <tr>
-            <td style="background:#ffffff;border-radius:0 0 12px 12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);overflow:hidden;">
-              <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-                <tr>
-                  <td style="padding:28px 32px 0;">
-                    <p style="margin:0;font-size:15px;color:#3f3f46;line-height:1.6;">
-                      Thanks for reaching out! We received your message and will get back to you within one business day.
-                    </p>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding:16px 32px 0;">
-                    <div style="background:#f4f4f5;border-radius:8px;padding:14px 16px;">
-                      <p style="margin:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:#71717a;">Your message</p>
-                      <p style="margin:6px 0 0;font-size:15px;font-weight:600;color:#09090b;">${escapeHtml(subject)}</p>
-                    </div>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding:12px 32px 0;">
-                    <div style="border-left:3px solid #e4e4e7;padding:10px 16px;background:#fafafa;border-radius:0 6px 6px 0;">
-                      <p style="margin:0;font-size:14px;color:#3f3f46;line-height:1.6;white-space:pre-wrap;">${escapeHtml(preview)}${truncated ? "…" : ""}</p>
-                    </div>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding:24px 32px 28px;">
-                    <p style="margin:0;font-size:13px;color:#71717a;line-height:1.5;">
-                      If you have additional information to add, simply reply to this email.
-                    </p>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding:16px 32px 20px;background:#fafafa;border-top:1px solid #e4e4e7;">
-                    <p style="margin:0;font-size:12px;color:#a1a1aa;line-height:1.5;">
-                      You're receiving this because you submitted a message via Relitrue.
-                    </p>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:20px 0;text-align:center;">
-              <p style="margin:0;font-size:11px;color:#a1a1aa;">© Relitrue. All rights reserved.</p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
+  const t = EMAIL_THEME;
+  const appName = env.APP_NAME ?? "Relitrue";
+  const bodyHtml = `
+    <p style="margin:0;font-size:15px;color:${t.colorTextBody};line-height:1.6;font-family:${t.fontStack};">
+      Thanks for reaching out! We received your message and will get back to you within one business day.
+    </p>
+    ${buildHighlightBox(`
+      <p style="margin:0;font-size:11px;font-weight:600;text-transform:uppercase;
+                letter-spacing:0.5px;color:${t.colorTextMuted};font-family:${t.fontStack};">Your message</p>
+      <p style="margin:6px 0 0;font-size:15px;font-weight:600;color:${t.colorTextPrimary};
+                font-family:${t.fontStack};">${escapeHtml(subject)}</p>
+    `)}
+    ${buildQuoteBlock(`
+      <p style="margin:0;font-size:14px;color:${t.colorTextBody};line-height:1.6;
+                font-family:${t.fontStack};">${escapeHtml(preview)}${truncated ? "&#8230;" : ""}</p>
+    `)}
+    <p style="margin:16px 0 0;font-size:13px;color:${t.colorTextMuted};line-height:1.5;font-family:${t.fontStack};">
+      If you have additional information to add, simply reply to this email.
+    </p>`;
+
+  return buildEmailShell({
+    title: "We received your message",
+    preheader: "We received your message and will get back to you shortly.",
+    bodyHtml,
+    footerNote: `You're receiving this because you submitted a message via ${appName}.`,
+  });
+}
+
+function buildSalesInquiryAdminEmail(params: {
+  email: string;
+  subject: string;
+  message: string;
+  ticketId: string;
+}): string {
+  const t = EMAIL_THEME;
+  const bodyHtml = `
+    <p style="margin:0;font-size:15px;color:${t.colorTextBody};font-family:${t.fontStack};"><strong>From:</strong> ${escapeHtml(params.email)}</p>
+    <p style="margin:12px 0 0;font-size:15px;color:${t.colorTextBody};font-family:${t.fontStack};"><strong>Subject:</strong> ${escapeHtml(params.subject)}</p>
+    ${buildHighlightBox(`
+      <p style="margin:0;font-size:14px;color:${t.colorTextBody};line-height:1.6;font-family:${t.fontStack};">${escapeHtml(params.message)}</p>
+    `)}
+    <p style="margin:12px 0 0;font-size:12px;color:${t.colorTextMuted};font-family:${t.fontStack};">Ticket ID: ${escapeHtml(params.ticketId)}</p>`;
+
+  return buildEmailShell({
+    title: `[Sales inquiry] ${params.subject}`,
+    preheader: `Sales inquiry: ${params.subject}`,
+    bodyHtml,
+    footerNote: "You're receiving this because you are configured to receive sales inquiries.",
+  });
 }
 
 const bodySchema = z.object({
@@ -204,7 +175,13 @@ export const POST = withErrorHandler(async (req: Request) => {
       await sendEmail({
         to: notifyTo,
         subject: `[Sales inquiry] ${subject}`,
-        html: `<p><strong>From:</strong> ${email}</p><p><strong>Subject:</strong> ${subject}</p><p>${message.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br/>")}</p><p>Ticket ID: ${ticket.id}</p>`,
+        html: buildSalesInquiryAdminEmail({
+          email,
+          subject,
+          message,
+          ticketId: ticket.id,
+        }),
+        from: resolveSender("support"),
       });
     } catch (e) {
       console.error("[help/new] sales_notification_failed", {
@@ -222,6 +199,7 @@ export const POST = withErrorHandler(async (req: Request) => {
       to: email,
       subject: `We received your message: ${subject}`,
       html: buildExternalConfirmationEmail({ email, subject, message }),
+      from: resolveSender("support"),
     });
   } catch (e) {
     console.error("[help/new] submitter_confirmation_email_failed", {

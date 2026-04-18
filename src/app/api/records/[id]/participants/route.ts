@@ -10,16 +10,15 @@ import { canAccessRequest } from "@/server/security/request-authorization";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { env } from "@/lib/env";
 import { sendEmail } from "@/server/services/invitation-email";
+import {
+  buildEmailShell,
+  buildCtaButton,
+  buildHighlightBox,
+  escapeHtml,
+  resolveSender,
+  EMAIL_THEME,
+} from "@/server/services/email-templates";
 import { z } from "zod";
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 const paramsSchema = z.object({ id: z.string().cuid() });
 
@@ -231,17 +230,40 @@ export const POST = withErrorHandler(async (
       const requestLabel =
         recordForEmail?.recordKey ?? recordForEmail?.title ?? "a financial request";
       const userName = targetUser.name ?? targetUser.email;
+      const t = EMAIL_THEME;
+      const bodyHtml = `
+    <p style="margin:0;font-size:15px;color:${t.colorTextBody};">
+      Hello <strong>${escapeHtml(userName)}</strong>,
+    </p>
+    <p style="margin:12px 0 0;font-size:15px;color:${t.colorTextBody};">
+      You have been assigned as an approver for:
+    </p>
+    ${buildHighlightBox(`
+      <p style="margin:0;font-size:15px;font-weight:600;color:${t.colorTextPrimary};font-family:${t.fontStack};">${escapeHtml(requestLabel)}</p>
+    `)}
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
+           style="border-collapse:collapse;margin-top:24px;">
+      <tr>
+        <td align="center" style="padding:0;">
+          ${buildCtaButton("View and approve request", requestLink)}
+        </td>
+      </tr>
+    </table>
+    <p style="margin:12px 0 0;font-size:12px;color:${t.colorTextMuted};">
+      You can approve or reject the request after signing in to your account.
+    </p>`;
 
       try {
         await sendEmail({
           to: targetUser.email,
           subject: `Your approval is needed: ${requestLabel}`,
-          html: `
-        <p>Hello ${escapeHtml(userName)},</p>
-        <p>You have been assigned as an approver for <strong>${escapeHtml(requestLabel)}</strong>.</p>
-        <p><a href="${requestLink}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">View and approve request</a></p>
-        <p style="color:#6b7280;font-size:12px;">You can approve or reject the request after signing in to your account.</p>
-      `,
+          html: buildEmailShell({
+            title: `Approval needed: ${requestLabel}`,
+            preheader: `Your approval is needed for ${requestLabel}`,
+            bodyHtml,
+            footerNote: "You're receiving this because you were assigned as an approver.",
+          }),
+          from: resolveSender("notifications"),
         });
       } catch (emailErr) {
         console.error("[internal-approver] failed to send notification email:", emailErr);

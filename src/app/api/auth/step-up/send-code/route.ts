@@ -6,6 +6,7 @@ import { ApiErrors, apiError, apiSuccess, withErrorHandler } from "@/lib/api-res
 import { generateEmailOtp } from "@/server/services/email-otp";
 import { sendMagicLink } from "@/server/services/send-magic-link";
 import { env } from "@/lib/env";
+import { resolveSender } from "@/server/services/email-templates";
 
 /**
  * POST /api/auth/step-up/send-code
@@ -29,8 +30,10 @@ export const POST = withErrorHandler(async () => {
     );
   }
 
-  const from = env.EMAIL_FROM ?? "";
-  if (!from) {
+  let from: string;
+  try {
+    from = resolveSender("security");
+  } catch {
     return ApiErrors.INTERNAL_ERROR("Email is not configured. Contact support.");
   }
 

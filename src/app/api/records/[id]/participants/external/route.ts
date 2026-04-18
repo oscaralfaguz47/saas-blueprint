@@ -10,17 +10,16 @@ import { canAccessRequest } from "@/server/security/request-authorization";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { env } from "@/lib/env";
 import { sendEmail } from "@/server/services/invitation-email";
+import {
+  buildEmailShell,
+  buildCtaButton,
+  buildHighlightBox,
+  escapeHtml,
+  resolveSender,
+  EMAIL_THEME,
+} from "@/server/services/email-templates";
 import { z } from "zod";
 import { randomBytes, createHash } from "crypto";
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 const paramsSchema = z.object({ id: z.string().cuid() });
 
@@ -158,17 +157,45 @@ export const POST = withErrorHandler(async (
   const requestLabel =
     recordForEmail?.recordKey ?? recordForEmail?.title ?? "a financial request";
 
+  const t = EMAIL_THEME;
+  const expiryDate = (participant.expiresAt ?? expiresAt).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const bodyHtml = `
+    <p style="margin:0;font-size:15px;color:${t.colorTextBody};">
+      Hello${name ? ` <strong>${escapeHtml(name)}</strong>` : ""},
+    </p>
+    <p style="margin:12px 0 0;font-size:15px;color:${t.colorTextBody};">
+      You have been requested to review and approve:
+    </p>
+    ${buildHighlightBox(`
+      <p style="margin:0;font-size:15px;font-weight:600;color:${t.colorTextPrimary};font-family:${t.fontStack};">${escapeHtml(requestLabel)}</p>
+    `)}
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
+           style="border-collapse:collapse;margin-top:24px;">
+      <tr>
+        <td align="center" style="padding:0;">
+          ${buildCtaButton("Review and approve", approvalLink)}
+        </td>
+      </tr>
+    </table>
+    <p style="margin:12px 0 0;font-size:12px;color:${t.colorTextMuted};">
+      This link expires on ${escapeHtml(expiryDate)}.
+    </p>`;
+
   try {
     await sendEmail({
       to: email,
       subject: `Your approval is requested: ${requestLabel}`,
-      html: `
-      <p>Hello${name ? ` ${escapeHtml(name)}` : ""},</p>
-      <p>You have been requested to review and approve <strong>${escapeHtml(requestLabel)}</strong>.</p>
-      <p><a href="${approvalLink}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">Review and approve</a></p>
-      <p>This link expires on ${(participant.expiresAt ?? expiresAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}.</p>
-      <p style="color:#6b7280;font-size:12px;">If you were not expecting this request, you can safely ignore this email.</p>
-    `,
+      html: buildEmailShell({
+        title: `Approval requested: ${requestLabel}`,
+        preheader: `You have been asked to approve ${requestLabel}`,
+        bodyHtml,
+        footerNote: "If you were not expecting this request, you can safely ignore this email.",
+      }),
+      from: resolveSender("notifications"),
     });
   } catch (emailErr) {
     console.error("[external-approver] failed to send approval email:", emailErr);

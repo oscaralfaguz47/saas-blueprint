@@ -7,6 +7,12 @@ import { sendEmail } from "@/server/services/invitation-email";
 import { prisma } from "@/server/db";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { env } from "@/lib/env";
+import {
+  buildEmailShell,
+  escapeHtml,
+  resolveSender,
+  EMAIL_THEME,
+} from "@/server/services/email-templates";
 import { parseBody } from "@/lib/validations/common";
 import { z } from "zod";
 
@@ -60,10 +66,26 @@ export const POST = withErrorHandler(async (req: Request) => {
     .filter(Boolean);
   if (adminEmails.length > 0) {
     try {
+      const t = EMAIL_THEME;
+      const noteText = body.note ?? "—";
+      const bodyHtml = `
+        <p style="margin:0;font-size:15px;color:${t.colorTextBody};">
+          Tenant <strong>${escapeHtml(tenantId)}</strong> requested a change to existing invoice billing details.
+        </p>
+        <p style="margin:12px 0 0;font-size:14px;color:${t.colorTextMuted};">
+          Request ID: <strong>${escapeHtml(supportRequest.id)}</strong>
+        </p>
+        <p style="margin:12px 0 0;font-size:14px;color:${t.colorTextBody};">Note: ${escapeHtml(noteText)}</p>`;
       await sendEmail({
         to: adminEmails[0],
         subject: "Billing support request: change invoice billing details",
-        html: `<p>Tenant ${tenantId} requested a change to existing invoice billing details. Request ID: ${supportRequest.id}. Note: ${body.note ?? "—"}</p>`,
+        html: buildEmailShell({
+          title: "Billing support request",
+          preheader: "A tenant requested a billing details change on an invoice",
+          bodyHtml,
+          footerNote: "You're receiving this because you are listed as a platform billing contact.",
+        }),
+        from: resolveSender("support"),
       });
     } catch {
       // non-blocking

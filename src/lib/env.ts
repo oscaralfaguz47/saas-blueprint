@@ -40,8 +40,18 @@ const envSchema = z.object({
   MICROSOFT_ENTRA_ID_ISSUER: z.string().url().optional(),
 
   // ── Email ───────────────────────────────────────────────────────────────
-  EMAIL_FROM: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
+  /**
+   * Generic fallback sender — used only when a specific sender is not set.
+   * In production all three typed senders below must be configured.
+   */
+  EMAIL_FROM: z.string().optional(),
+  /** Security emails: magic links, OTP codes, step-up verification, account linking. */
+  EMAIL_FROM_SECURITY: z.string().optional(),
+  /** Notification emails: workspace invites, approval assignments, platform-admin invites. */
+  EMAIL_FROM_NOTIFICATIONS: z.string().optional(),
+  /** Support emails: support tickets, billing notifications, sales inquiries. */
+  EMAIL_FROM_SUPPORT: z.string().optional(),
 
   // ── Storage (R2) ────────────────────────────────────────────────────────
   R2_ACCOUNT_ID: z.string().optional(),
