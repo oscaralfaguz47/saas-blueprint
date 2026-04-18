@@ -15,6 +15,12 @@ import {
   sendEmail,
   sendVendorInviteEmail,
 } from "@/server/services/invitation-email";
+import {
+  buildEmailShell,
+  escapeHtml,
+  resolveSender,
+  EMAIL_THEME,
+} from "@/server/services/email-templates";
 import { writeAuditLog } from "@/server/services/audit";
 
 export const GET = withErrorHandler(async () => {
@@ -171,13 +177,25 @@ export const POST = withErrorHandler(async (req: Request) => {
 
     try {
       const appName = env.APP_NAME ?? "Relitrue";
+      const t = EMAIL_THEME;
+      const bodyHtml = `
+        <p style="margin:0;font-size:15px;color:${t.colorTextBody};">
+          You've been granted platform admin access to <strong>${escapeHtml(appName)}</strong>
+          as <strong>${escapeHtml(role.name)}</strong>.
+        </p>
+        <p style="margin:12px 0 0;font-size:14px;color:${t.colorTextMuted};">
+          Sign in to your account to continue. Two-factor authentication (2FA) is required.
+        </p>`;
       await sendEmail({
         to: body.email,
         subject: "You've been granted platform admin access",
-        html: `
-          <p>You've been granted platform admin access to <strong>${appName}</strong> as <strong>${role.name}</strong>.</p>
-          <p>Sign in to your account to continue. Two-factor authentication (2FA) is required for platform admin access.</p>
-        `,
+        html: buildEmailShell({
+          title: "Platform admin access granted",
+          preheader: `You now have platform admin access to ${appName}`,
+          bodyHtml,
+          footerNote: `You're receiving this because your account was granted admin access to ${appName}.`,
+        }),
+        from: resolveSender("notifications"),
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "unknown";

@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { env } from "@/lib/env";
+import { resolveSender } from "@/server/services/email-templates";
 import { prisma } from "@/server/db";
 import { sendMagicLink } from "@/server/services/send-magic-link";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
@@ -52,9 +53,11 @@ export const POST = withErrorHandler(async (req: Request) => {
     return ApiErrors.RATE_LIMITED("Please wait before requesting another email.");
   }
 
-  const from = env.EMAIL_FROM;
-  if (!from) {
-    console.error("[link/send-email] EMAIL_FROM env var not set");
+  let from: string;
+  try {
+    from = resolveSender("security");
+  } catch {
+    console.error("[link/send-email] Security email sender not configured");
     return ApiErrors.INTERNAL_ERROR();
   }
 

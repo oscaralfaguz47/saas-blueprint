@@ -19,6 +19,7 @@ import {
 } from "@/server/services/platform-bootstrap";
 import { isMfaEnforcedForUser } from "@/server/security/member-security-governance";
 import { sendMagicLink } from "@/server/services/send-magic-link";
+import { resolveSender } from "@/server/services/email-templates";
 import { writeAuditLog } from "@/server/services/audit";
 import {
   buildProfilePhotoObjectKey,
@@ -531,7 +532,7 @@ export const authOptions: NextAuthOptions = {
     }),
 
     EmailProvider({
-      from: env.EMAIL_FROM,
+      from: resolveSender("security"),
       async sendVerificationRequest({ identifier, url, provider }) {
         await sendMagicLink({
           email: identifier,
