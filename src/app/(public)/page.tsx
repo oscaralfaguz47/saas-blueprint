@@ -258,7 +258,7 @@ export default async function PublicHomePage() {
                     </li>
                     <li className="flex items-start gap-3 text-xs text-(--text-secondary)">
                       <span
-                        className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-slate-600"
+                        className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-(--border-strong)"
                         aria-hidden
                       />
                       <span className="min-w-0 flex-1">
@@ -268,7 +268,7 @@ export default async function PublicHomePage() {
                     </li>
                     <li className="flex items-start gap-3 text-xs text-(--text-secondary)">
                       <span
-                        className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-slate-600"
+                        className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-(--border-strong)"
                         aria-hidden
                       />
                       <span className="min-w-0 flex-1">
