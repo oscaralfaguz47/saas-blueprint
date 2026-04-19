@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -16,6 +15,7 @@ import {
   IconX,
 } from "@/components/ui/icons";
 import { Spinner } from "@/components/ui/spinner";
+import { ThemeLogo } from "@/components/ui/theme-logo";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { useCreateWorkspaceModal } from "@/components/app/workspace/create-workspace-modal-context";
 import { useCreateRequestModal } from "@/components/app/requests/create-request-modal-context";
@@ -272,22 +272,10 @@ export default function AppSidebar({
         >
           {showLabels ? (
             <span className="relative block h-6 w-[110px] shrink-0">
-              {/* Light mode logo */}
-              <Image
-                src="/relitrue-logo.svg"
-                alt="Relitrue"
+              <ThemeLogo
                 width={110}
                 height={24}
-                className="h-6 w-auto object-contain object-left block [html[data-theme='dark']_&]:hidden"
-                priority
-              />
-              {/* Dark mode logo */}
-              <Image
-                src="/relitrue-logo-dark.svg"
-                alt="Relitrue"
-                width={110}
-                height={24}
-                className="h-6 w-auto object-contain object-left hidden [html[data-theme='dark']_&]:block"
+                className="h-6 w-auto object-contain object-left"
                 priority
               />
             </span>

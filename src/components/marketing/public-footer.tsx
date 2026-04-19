@@ -1,7 +1,7 @@
-import Image from "next/image";
 import Link from "next/link";
 
 import { Container } from "@/components/ui/container";
+import { ThemeLogo } from "@/components/ui/theme-logo";
 
 type PublicFooterProps = {
   isLoggedIn: boolean;
@@ -18,21 +18,10 @@ export function PublicFooter({ isLoggedIn }: PublicFooterProps) {
         <div className="flex flex-col gap-1">
           <Link href="/" className="flex items-center gap-2">
             <span className="relative block h-6 w-[100px] shrink-0">
-              {/* Light mode logo */}
-              <Image
-                src="/relitrue-logo.svg"
-                alt="Relitrue"
+              <ThemeLogo
                 width={100}
                 height={24}
-                className="h-6 w-auto max-w-[100px] object-contain object-left block [html[data-theme='dark']_&]:hidden"
-              />
-              {/* Dark mode logo */}
-              <Image
-                src="/relitrue-logo-dark.svg"
-                alt="Relitrue"
-                width={100}
-                height={24}
-                className="h-6 w-auto max-w-[100px] object-contain object-left hidden [html[data-theme='dark']_&]:block"
+                className="h-6 w-auto max-w-[100px] object-contain object-left"
               />
             </span>
           </Link>
