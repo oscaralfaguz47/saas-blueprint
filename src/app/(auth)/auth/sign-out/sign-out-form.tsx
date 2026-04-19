@@ -93,7 +93,7 @@ export default function SignOutForm({
       <button
         type="submit"
         disabled={busy}
-        className="inline-flex h-11 w-full items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-emerald-500 px-4 text-sm font-semibold text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {busy ? <Spinner size="sm" /> : buttonLabel}
       </button>

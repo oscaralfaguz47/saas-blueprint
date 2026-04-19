@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="100" viewBox="0 0 300 100" fill="none">
+  <defs>
+    <linearGradient id="textGradient" x1="0" y1="0" x2="300" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="38%" stop-color="#0b3b46"/>
+      <stop offset="72%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+
+    <filter id="softGlow" x="-10%" y="-30%" width="120%" height="160%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2.2" flood-color="#10b981" flood-opacity="0.16"/>
+    </filter>
+  </defs>
+
+  <text
+    x="6"
+    y="72"
+    textLength="288"
+    lengthAdjust="spacingAndGlyphs"
+    font-family="Inter, Segoe UI, Arial, Helvetica, sans-serif"
+    font-size="74"
+    font-weight="800"
+    letter-spacing="-1.2"
+    fill="url(#textGradient)"
+    filter="url(#softGlow)">
+    Relitrue
+  </text>
+</svg>

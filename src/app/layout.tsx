@@ -15,6 +15,9 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "SaaS Blueprint",
   description: "SaaS Blueprint",
+  icons: {
+    icon: "/relitrue-favicon.svg",
+  },
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {

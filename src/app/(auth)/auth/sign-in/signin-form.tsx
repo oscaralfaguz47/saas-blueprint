@@ -204,7 +204,7 @@ function ResendCodeButton({
             type="button"
             onClick={handleResend}
             disabled={sending}
-            className="font-medium text-(--text-primary) hover:underline disabled:opacity-60"
+            className="font-medium text-emerald-400 transition-colors hover:text-emerald-300 disabled:opacity-60"
           >
             {sending ? "Sending..." : "Resend code"}
           </button>
@@ -452,7 +452,7 @@ export default function SignInForm() {
   return (
     <div className="space-y-4">
       <div>
-        <p className="mt-2 text-sm text-(--text-secondary)">
+        <p className="text-sm leading-relaxed text-(--text-secondary)">
           No password required —{" "}
           <span className="text-(--text-muted)">
             new accounts are created automatically.
@@ -466,7 +466,7 @@ export default function SignInForm() {
         onClick={handleGoogle}
         disabled={isBusy}
         aria-label="Continue with Google"
-        className="inline-flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex h-12 w-full cursor-pointer items-center justify-center gap-3 rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev) px-4 text-sm font-semibold text-(--text-primary) transition-all hover:border-(--border-strong) hover:bg-(--bg-surface-hover) disabled:cursor-not-allowed disabled:opacity-60"
       >
         <GoogleIcon />
         {status.type === "sending_google"
@@ -480,7 +480,7 @@ export default function SignInForm() {
         onClick={handleMicrosoft}
         disabled={isBusy}
         aria-label="Continue with Microsoft"
-        className="inline-flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex h-12 w-full cursor-pointer items-center justify-center gap-3 rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev) px-4 text-sm font-semibold text-(--text-primary) transition-all hover:border-(--border-strong) hover:bg-(--bg-surface-hover) disabled:cursor-not-allowed disabled:opacity-60"
       >
         <MicrosoftIcon />
         {status.type === "sending_microsoft"
@@ -491,7 +491,7 @@ export default function SignInForm() {
       {/* Divider */}
       <div className="flex items-center gap-3 text-xs text-(--text-muted)">
         <div className="h-px flex-1 bg-(--border-subtle)" />
-        <span className="font-medium">or continue with email</span>
+        <span className="text-[10px] font-medium uppercase tracking-wide">or continue with email</span>
         <div className="h-px flex-1 bg-(--border-subtle)" />
       </div>
 
@@ -502,7 +502,7 @@ export default function SignInForm() {
         status.type === "error") && (
         <form onSubmit={handleEmailContinue} className="space-y-4">
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-(--text-secondary)">
+            <span className="mb-1.5 block text-sm font-medium text-(--text-secondary)">
               Work or personal email
             </span>
 
@@ -518,11 +518,13 @@ export default function SignInForm() {
               autoComplete="email"
               disabled={isBusy}
               className={[
-                "h-11 w-full rounded-lg border bg-(--bg-main) px-3 text-sm text-(--text-primary) outline-none transition-colors",
+                "h-11 w-full rounded-xl border bg-(--bg-surface-elev) px-4 text-sm text-(--text-primary) outline-none transition-all",
                 "placeholder:text-(--text-muted)",
-                "focus:border-primary focus:ring-2 focus:ring-primary",
+                "focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20",
                 "disabled:cursor-not-allowed disabled:opacity-60",
-                showInlineError ? "border-(--color-danger)" : "border-(--border-subtle)",
+                showInlineError
+                  ? "border-(--color-danger)"
+                  : "border-(--border-subtle) hover:border-(--border-strong)",
               ].join(" ")}
             />
           </label>
@@ -530,7 +532,7 @@ export default function SignInForm() {
           <button
             type="submit"
             disabled={isBusy || !emailNormalized}
-            className="inline-flex h-11 w-full cursor-pointer items-center justify-center rounded-lg bg-primary px-4 text-sm font-semibold text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-11 w-full cursor-pointer items-center justify-center rounded-xl bg-emerald-500 px-4 text-sm font-semibold text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {status.type === "sending_email" ? "Sending code..." : "Continue"}
           </button>
@@ -540,7 +542,7 @@ export default function SignInForm() {
               type="button"
               onClick={handlePasskey}
               disabled={isBusy}
-              className="flex items-center gap-1.5 text-xs text-(--text-muted) hover:text-(--text-primary) transition-colors disabled:opacity-40"
+              className="flex items-center gap-2 text-xs text-(--text-muted) transition-colors hover:text-emerald-400 disabled:opacity-40"
             >
               <PasskeyIcon />
               {status.type === "sending_passkey"
@@ -567,7 +569,7 @@ export default function SignInForm() {
                   setOtpError(null);
                   setEmail("");
                 }}
-                className="text-xs text-(--text-muted) hover:text-(--text-primary)"
+                className="text-xs text-emerald-400 transition-colors hover:text-emerald-300"
               >
                 ← Change email
               </button>
@@ -600,11 +602,13 @@ export default function SignInForm() {
               }}
               placeholder="— — — — — —"
               className={[
-                "h-12 w-full rounded-lg border bg-(--bg-main) px-4 text-center text-2xl font-mono font-semibold text-(--text-primary) outline-none transition-colors tracking-[0.5em]",
-                "placeholder:text-(--text-muted) placeholder:tracking-[0.4em] placeholder:text-xl",
-                "focus:border-primary focus:ring-2 focus:ring-primary",
+                "h-14 w-full rounded-xl border bg-(--bg-surface-elev) px-4 text-center text-3xl font-mono font-bold text-(--text-primary) outline-none transition-all tracking-[0.5em]",
+                "placeholder:text-(--text-muted) placeholder:text-xl placeholder:tracking-[0.4em]",
+                "focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20",
                 "disabled:cursor-not-allowed disabled:opacity-60",
-                otpError ? "border-(--color-danger)" : "border-(--border-subtle)",
+                otpError
+                  ? "border-(--color-danger)"
+                  : "border-(--border-subtle) hover:border-(--border-strong)",
               ].join(" ")}
             />
 
@@ -614,7 +618,7 @@ export default function SignInForm() {
           <button
             type="submit"
             disabled={status.type === "verifying_code" || otpCode.length !== 6}
-            className="inline-flex h-11 w-full cursor-pointer items-center justify-center rounded-lg bg-primary px-4 text-sm font-semibold text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-11 w-full cursor-pointer items-center justify-center rounded-xl bg-emerald-500 px-4 text-sm font-semibold text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {status.type === "verifying_code" ? "Verifying..." : "Verify code"}
           </button>
@@ -633,13 +637,13 @@ export default function SignInForm() {
       )}
 
       {status.type === "error" && (
-        <div className="rounded-xl border border-(--color-danger) bg-(--bg-surface) px-4 py-3 text-sm">
+        <div className="rounded-xl border border-(--color-danger)/40 bg-(--color-danger)/5 px-4 py-4 text-sm">
           <div className="font-semibold text-(--text-primary)">Sign-in error</div>
           <div className="mt-1 text-(--text-secondary)">{status.message}</div>
           <button
             type="button"
             onClick={reset}
-            className="mt-3 inline-flex text-xs font-medium text-(--text-secondary) hover:text-(--text-primary)"
+            className="mt-3 inline-flex text-xs font-medium text-(--text-muted) transition-colors hover:text-emerald-400"
           >
             Dismiss
           </button>

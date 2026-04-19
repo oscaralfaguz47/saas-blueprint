@@ -1,7 +1,7 @@
 "use client";
 
 // App shell only: persisted user preference. Public routes ignore this and stay dark.
-export const APP_THEME_STORAGE_KEY = "atl.theme.app";
+export const APP_THEME_STORAGE_KEY = "relitrue.theme.app";
 
 export default function ThemeBootstrap() {
   const key = APP_THEME_STORAGE_KEY;

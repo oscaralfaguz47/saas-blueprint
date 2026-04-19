@@ -101,7 +101,7 @@ export function TwoFaChallengeForm({ hasBackupCodes = true }: Props) {
             placeholder="000000 or backup code"
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            className="text-center text-lg tracking-widest"
+            className="h-14 rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev) text-center font-mono text-2xl font-bold tracking-[0.4em] focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
             maxLength={10}
             disabled={loading}
           />
@@ -114,14 +114,14 @@ export function TwoFaChallengeForm({ hasBackupCodes = true }: Props) {
                 e.preventDefault();
                 document.getElementById("code")?.focus();
               }}
-              className="underline hover:text-(--color-primary)"
+              className="text-sm text-emerald-400 transition-colors hover:text-emerald-300"
             >
               Use a backup code
             </Link>
           </p>
         )}
         <div className="space-y-2">
-          <label className="flex items-center gap-2 text-sm text-(--text-secondary)">
+          <label className="flex cursor-pointer items-center gap-2.5 text-sm text-(--text-secondary)">
             <input
               type="checkbox"
               checked={rememberDevice}
@@ -136,7 +136,7 @@ export function TwoFaChallengeForm({ hasBackupCodes = true }: Props) {
               value={rememberDays}
               onChange={(e) => setRememberDays(e.target.value as "30" | "60" | "90")}
               disabled={loading}
-              className="rounded-lg border border-(--border-subtle) bg-(--bg-main) px-3 py-2 text-sm text-(--text-primary)"
+              className="rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev) px-3 py-2 text-sm text-(--text-primary) focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
               aria-label="Remember duration"
             >
               {REMEMBER_DAYS_OPTIONS.map((opt) => (
@@ -155,20 +155,20 @@ export function TwoFaChallengeForm({ hasBackupCodes = true }: Props) {
         <button
           type="submit"
           disabled={loading}
-          className="w-full inline-flex h-11 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-60"
+          className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-emerald-500 px-4 text-sm font-semibold text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loading ? "Verifying…" : "Verify"}
         </button>
       </form>
-      <div className="border-t border-(--border-subtle) pt-4">
-        <p className="text-sm text-(--text-muted) mb-2">
+      <div className="mt-2 border-t border-(--border-subtle) pt-5">
+        <p className="mb-3 text-sm text-(--text-muted)">
           Lost access to your authenticator? You can sign out and try another account.
         </p>
         <button
           type="button"
           onClick={onSignOut}
           disabled={cancelLoading}
-          className="text-sm font-medium text-(--text-secondary) hover:text-(--text-primary) underline disabled:opacity-60"
+          className="text-sm font-medium text-emerald-400 transition-colors hover:text-emerald-300 disabled:opacity-60"
         >
           {cancelLoading ? "Signing out…" : "Sign out"}
         </button>

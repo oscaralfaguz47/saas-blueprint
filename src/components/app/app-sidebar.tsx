@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -261,7 +262,7 @@ export default function AppSidebar({
     <div className="flex h-full flex-col bg-(--bg-app)">
       {/* Top brand row — entire row clickable, routes to /requests */}
       <div
-        className={`flex h-14 shrink-0 items-center border-b border-[var(--border-subtle)] ${showLabels ? "px-4" : "justify-center px-0"} ${isMobile ? "justify-between" : ""}`}
+        className={`flex h-14 shrink-0 items-center border-b border-(--border-subtle) ${showLabels ? "px-4" : "justify-center px-0"} ${isMobile ? "justify-between" : ""}`}
       >
         <Link
           href="/app/requests"
@@ -269,9 +270,32 @@ export default function AppSidebar({
           className={`flex flex-1 items-center gap-2 font-semibold text-(--text-primary) transition-colors duration-150 ${showLabels ? "" : "justify-center"} rounded-lg ${brandBoxBg} hover:bg-(--bg-surface-hover) min-h-[2.5rem] ${showLabels ? "pr-3 pl-2" : "p-2"}`}
           title={collapsed ? "Requests" : undefined}
         >
-          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-(--border-subtle) bg-(--bg-surface) text-xs font-semibold shadow-sm text-(--text-muted)">
-            ATL
-          </span>
+          {showLabels ? (
+            <span className="relative block h-6 w-[110px] shrink-0">
+              {/* Light mode logo */}
+              <Image
+                src="/relitrue-logo.svg"
+                alt="Relitrue"
+                width={110}
+                height={24}
+                className="h-6 w-auto object-contain object-left block [html[data-theme='dark']_&]:hidden"
+                priority
+              />
+              {/* Dark mode logo */}
+              <Image
+                src="/relitrue-logo-dark.svg"
+                alt="Relitrue"
+                width={110}
+                height={24}
+                className="h-6 w-auto object-contain object-left hidden [html[data-theme='dark']_&]:block"
+                priority
+              />
+            </span>
+          ) : (
+            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-xs font-bold text-emerald-400">
+              R
+            </span>
+          )}
         </Link>
         {isMobile ? (
           <button

@@ -4,7 +4,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 
 import { Container } from "@/components/ui/container";
-import { ButtonLink } from "@/components/ui/button";
+import { PublicFooter } from "@/components/marketing/public-footer";
+import { PublicHeader } from "@/components/marketing/public-header";
 
 function SectionTitle({
   eyebrow,
@@ -18,17 +19,13 @@ function SectionTitle({
   return (
     <div>
       {eyebrow ? (
-        <p className="text-xs font-medium uppercase tracking-wide text-(--text-muted)">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-emerald-400">
           {eyebrow}
         </p>
       ) : null}
 
-      <h1 className="mt-2 text-3xl font-semibold text-(--text-primary) md:text-4xl">
-        {title}
-      </h1>
-      <p className="mt-3 max-w-2xl text-sm leading-relaxed text-(--text-secondary)">
-        {description}
-      </p>
+      <h1 className="mt-3 text-3xl font-bold text-(--text-primary) md:text-4xl">{title}</h1>
+      <p className="mt-3 max-w-2xl text-base text-(--text-secondary)">{description}</p>
     </div>
   );
 }
@@ -62,206 +59,160 @@ const PublicPricingPlanSection = dynamic(
   }
 );
 
+function TrustDot() {
+  return <span className="mr-2 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden />;
+}
+
+const FAQ_ITEMS: { q: string; a: string }[] = [
+  {
+    q: "Do external approvers need an account?",
+    a: "No. Approvers receive a secure, tokenized link by email. They can review and approve directly — no sign-up, no password, no friction.",
+  },
+  {
+    q: "What counts as a workspace?",
+    a: "A workspace is a single organization or team environment. Each workspace has its own members, requests, billing, and audit trail.",
+  },
+  {
+    q: "Can I switch plans at any time?",
+    a: "Yes. Upgrades apply immediately. Downgrades take effect at the end of your current billing period. No data is ever deleted when you change plans.",
+  },
+  {
+    q: "Is there a free trial for paid plans?",
+    a: "All plans start with access to the Free tier so you can evaluate the product. Paid plans unlock higher limits and advanced features when you're ready.",
+  },
+  {
+    q: "What happens to my data if I downgrade?",
+    a: "Your existing records, evidence, and timelines are always preserved. Downgrading restricts future actions within the lower plan limits but never deletes historical data.",
+  },
+  {
+    q: "Do you support annual billing?",
+    a: "Yes. Annual billing is available on all paid plans and includes a discount. You can switch between monthly and annual from workspace billing settings.",
+  },
+  {
+    q: "Is my data encrypted?",
+    a: "Yes. All data is encrypted in transit (TLS) and at rest. File attachments are stored privately with short-lived signed access URLs.",
+  },
+  {
+    q: "Can I get an invoice for my subscription?",
+    a: "Yes. Invoices are generated automatically for every billing cycle and accessible from your workspace billing settings.",
+  },
+];
+
 export default async function PricingPage() {
   const session = await getServerSession(authOptions);
   const isLoggedIn = !!session?.user;
 
+  const primaryCtaHref = isLoggedIn
+    ? "/app/settings/workspace?tab=billing"
+    : "/auth/sign-in";
+  const primaryCtaLabel = isLoggedIn ? "Go to billing" : "Get started free";
+
   return (
-    <main className="min-h-screen bg-(--marketing-section-alt)">
-      {/* Header */}
-      <header className="border-b border-(--border-subtle) bg-(--bg-main)">
-        <Container>
-          <div className="flex h-16 items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Link
-                href="/"
-                className="grid h-9 w-9 place-items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface)"
-              >
-                <span className="text-xs font-semibold text-(--text-primary)">ATL</span>
-              </Link>
+    <main className="min-h-screen bg-(--marketing-hero-bg)">
+      <PublicHeader isLoggedIn={isLoggedIn} />
 
-              <Link href="/" className="text-sm font-medium text-(--text-primary)">
-                ATL
-              </Link>
-
-              <span className="hidden text-sm text-(--text-muted) md:inline">Pricing</span>
-            </div>
-
-            <nav className="flex items-center gap-3">
-              <Link
-                href="/help"
-                className="text-sm font-medium text-(--text-secondary) transition-colors hover:text-(--text-primary)"
-              >
-                Get in touch
-              </Link>
-              <Link
-                href="/"
-                className="text-sm font-medium text-(--text-secondary) transition-colors hover:text-(--text-primary)"
-              >
-                Home
-              </Link>
-
-              <Link
-                href="/terms"
-                className="hidden text-sm font-medium text-(--text-secondary) transition-colors hover:text-(--text-primary) md:inline"
-              >
-                Terms
-              </Link>
-
-              <Link
-                href="/privacy"
-                className="hidden text-sm font-medium text-(--text-secondary) transition-colors hover:text-(--text-primary) md:inline"
-              >
-                Privacy
-              </Link>
-
-              <ButtonLink
-                href={isLoggedIn ? "/app/settings/workspace?tab=billing" : "/auth/sign-in"}
-                variant="secondary"
-              >
-                {isLoggedIn ? "Billing" : "Sign in"}
-              </ButtonLink>
-            </nav>
-          </div>
-        </Container>
-      </header>
-
-      {/* Hero + plans (client island inside Suspense) */}
+      {/* SECTION 1 — PRICING HERO */}
       <section className="bg-(--marketing-hero-bg)">
-        <Container>
-          <div className="py-20 md:py-24">
-            <SectionTitle
-              eyebrow="Simple, self-serve"
-              title="Pricing per workspace, designed for critical approvals"
-              description="Choose the plan that matches your team size, audit needs, and storage. All plans include secure external approval links, revocation, and an audit-ready timeline. Upgrade or change plans anytime from workspace billing."
-            />
-
-            <PublicPricingPlanSection isLoggedIn={isLoggedIn} />
-          </div>
-        </Container>
-      </section>
-
-      {/* FAQ */}
-      <section className="bg-(--marketing-section-alt)">
-        <Container>
-          <div className="py-20">
-            <h2 className="text-2xl font-semibold text-(--text-primary) md:text-3xl">FAQ</h2>
-            <p className="mt-2 max-w-2xl text-sm text-(--text-secondary)">
-              The most common questions before teams roll this into their process.
+        <Container className="!py-24 md:!py-32">
+          <div className="mx-auto max-w-3xl text-center">
+            <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-emerald-400">
+              Simple, transparent pricing
             </p>
-
-            <div className="mt-8 grid gap-4 md:grid-cols-2">
-              <div className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-6">
-                <h3 className="text-sm font-semibold text-(--text-primary)">
-                  What counts as a “request”?
-                </h3>
-                <p className="mt-2 text-sm leading-relaxed text-(--text-secondary)">
-                  A request is a workflow item created in your workspace (including external
-                  approvals). The Free plan includes 35 requests per month; Starter, Pro, and Scale
-                  include unlimited requests with fair use. Limits are per workspace per billing
-                  period.
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-6">
-                <h3 className="text-sm font-semibold text-(--text-primary)">
-                  What happens if an external approver never responds?
-                </h3>
-                <p className="mt-2 text-sm leading-relaxed text-(--text-secondary)">
-                  The request stays in{" "}
-                  <span className="text-(--text-primary)">Pending — No response</span>. We never
-                  auto-approve. The timeline shows reminders and key milestones.
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-6">
-                <h3 className="text-sm font-semibold text-(--text-primary)">
-                  Can I revoke an approval link?
-                </h3>
-                <p className="mt-2 text-sm leading-relaxed text-(--text-secondary)">
-                  Yes. Links are scoped per request, expiring by default, and revocable at any time.
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-6">
-                <h3 className="text-sm font-semibold text-(--text-primary)">
-                  Do external approvers need an account?
-                </h3>
-                <p className="mt-2 text-sm leading-relaxed text-(--text-secondary)">
-                  No. They receive a secure link where they can approve/reject and optionally
-                  comment.
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-6">
-                <h3 className="text-sm font-semibold text-(--text-primary)">
-                  How does rollover work?
-                </h3>
-                <p className="mt-2 text-sm leading-relaxed text-(--text-secondary)">
-                  Rollover and fair-use rules depend on your plan and billing period. Starter, Pro,
-                  and Scale include unlimited requests with fair use rather than a fixed monthly
-                  request bank with rollover. Your workspace billing page shows what applies to
-                  your subscription.
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-6">
-                <h3 className="text-sm font-semibold text-(--text-primary)">
-                  Is this a payments platform?
-                </h3>
-                <p className="mt-2 text-sm leading-relaxed text-(--text-secondary)">
-                  No. ATL is workflow software. It helps document approvals and evidence, and
-                  optionally tracks payment status as a record field.
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <ButtonLink
-                href={isLoggedIn ? "/app/settings/workspace?tab=billing" : "/auth/sign-in"}
-                variant="primary"
-              >
-                {isLoggedIn ? "Go to Billing" : "Start free"}
-              </ButtonLink>
-              <ButtonLink href="/" variant="secondary">
-                See how it works
-              </ButtonLink>
+            <h1 className="mt-0 text-4xl font-bold leading-[1.1] tracking-tight text-(--text-primary) md:text-5xl">
+              The right plan for your approval workflow.
+            </h1>
+            <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-(--text-secondary) md:text-lg">
+              All plans include secure external approval links, revocation, evidence attachments, and
+              an audit-ready timeline. Upgrade or change anytime.
+            </p>
+            <div className="mt-8 flex flex-wrap justify-center gap-x-8 gap-y-2">
+              <span className="flex items-center text-xs text-(--text-muted)">
+                <TrustDot />
+                No contracts. Cancel anytime.
+              </span>
+              <span className="flex items-center text-xs text-(--text-muted)">
+                <TrustDot />
+                Upgrade or downgrade instantly.
+              </span>
+              <span className="flex items-center text-xs text-(--text-muted)">
+                <TrustDot />
+                All plans include external approvals.
+              </span>
             </div>
           </div>
         </Container>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-(--border-subtle) bg-(--bg-main)">
-        <Container>
-          <div className="flex flex-col gap-4 py-10 md:flex-row md:items-center md:justify-between">
-            <div className="text-sm text-(--text-muted)">
-              © {new Date().getFullYear()} ATL. All rights reserved.
-            </div>
+      {/* SECTION 2 — PLANS */}
+      <section className="bg-(--marketing-hero-bg) pb-24">
+        <Container className="!py-0">
+          <SectionTitle
+            eyebrow="Pricing plans"
+            title="Pricing per workspace, designed for critical approvals"
+            description="Choose the plan that matches your team size, audit needs, and storage. All plans include secure external approval links, revocation, and an audit-ready timeline. Upgrade or change plans anytime from workspace billing."
+          />
 
-            <div className="flex items-center gap-6 text-sm">
-              <Link
-                href="/privacy"
-                className="text-(--text-secondary) transition-colors hover:text-(--text-primary)"
+          <PublicPricingPlanSection isLoggedIn={isLoggedIn} />
+        </Container>
+      </section>
+
+      {/* SECTION 3 — FAQ */}
+      <section className="bg-(--marketing-section-alt) py-24">
+        <Container className="!py-0">
+          <div className="mb-14">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-emerald-400">FAQ</p>
+            <h2 className="mt-3 text-3xl font-bold text-(--text-primary) md:text-4xl">
+              Common questions before you commit.
+            </h2>
+            <p className="mt-3 max-w-2xl text-base text-(--text-secondary)">
+              Everything you need to know about plans, billing, and how Relitrue works.
+            </p>
+          </div>
+
+          <div className="mt-12 grid gap-4 md:grid-cols-2">
+            {FAQ_ITEMS.map((item) => (
+              <div
+                key={item.q}
+                className="rounded-2xl border border-(--border-subtle) bg-(--bg-surface) p-6"
               >
-                Privacy
+                <h3 className="mb-2 text-sm font-semibold text-(--text-primary)">{item.q}</h3>
+                <p className="text-sm leading-relaxed text-(--text-secondary)">{item.a}</p>
+              </div>
+            ))}
+          </div>
+        </Container>
+      </section>
+
+      {/* SECTION 4 — FINAL CTA */}
+      <section className="border-y border-(--border-subtle) bg-(--bg-surface) py-20">
+        <Container className="!py-0">
+          <div className="mx-auto max-w-2xl text-center">
+            <h2 className="text-3xl font-bold text-(--text-primary) md:text-4xl">
+              Start closing approvals with confidence.
+            </h2>
+            <p className="mx-auto mt-4 max-w-xl text-base text-(--text-secondary)">
+              Join finance and operations teams already using Relitrue to bring structure and
+              auditability to every approval.
+            </p>
+            <div className="mt-10 flex flex-wrap justify-center gap-4">
+              <Link
+                href={primaryCtaHref}
+                className="inline-flex items-center gap-2 rounded-md bg-emerald-500 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-600"
+              >
+                {primaryCtaLabel}
               </Link>
               <Link
-                href="/terms"
-                className="text-(--text-secondary) transition-colors hover:text-(--text-primary)"
+                href="/"
+                className="inline-flex items-center gap-2 rounded-md border border-(--border-subtle) px-6 py-3 text-sm font-medium text-(--text-secondary) transition-all hover:border-(--border-strong) hover:text-(--text-primary)"
               >
-                Terms
-              </Link>
-              <Link
-                href="/auth/sign-in"
-                className="text-(--text-secondary) transition-colors hover:text-(--text-primary)"
-              >
-                Sign in
+                See how it works
               </Link>
             </div>
           </div>
         </Container>
-      </footer>
+      </section>
+
+      <PublicFooter isLoggedIn={isLoggedIn} />
     </main>
   );
 }
