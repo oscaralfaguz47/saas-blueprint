@@ -44,12 +44,22 @@ export default function AuthCard({
         <div className="w-full max-w-md">
           <div className="mb-8 flex items-center justify-between">
             <Link href="/" className="flex items-center gap-3">
+              {/* Light mode logo */}
               <Image
                 src="/relitrue-logo.svg"
                 alt="Relitrue"
                 width={110}
                 height={24}
-                className="h-6 w-auto object-contain object-left"
+                className="h-6 w-auto object-contain object-left block [html[data-theme='dark']_&]:hidden"
+                priority
+              />
+              {/* Dark mode logo */}
+              <Image
+                src="/relitrue-logo-dark.svg"
+                alt="Relitrue"
+                width={110}
+                height={24}
+                className="h-6 w-auto object-contain object-left hidden [html[data-theme='dark']_&]:block"
                 priority
               />
             </Link>

@@ -18,12 +18,21 @@ export function PublicFooter({ isLoggedIn }: PublicFooterProps) {
         <div className="flex flex-col gap-1">
           <Link href="/" className="flex items-center gap-2">
             <span className="relative block h-6 w-[100px] shrink-0">
+              {/* Light mode logo */}
               <Image
                 src="/relitrue-logo.svg"
                 alt="Relitrue"
                 width={100}
                 height={24}
-                className="h-6 w-auto max-w-[100px] object-contain object-left"
+                className="h-6 w-auto max-w-[100px] object-contain object-left block [html[data-theme='dark']_&]:hidden"
+              />
+              {/* Dark mode logo */}
+              <Image
+                src="/relitrue-logo-dark.svg"
+                alt="Relitrue"
+                width={100}
+                height={24}
+                className="h-6 w-auto max-w-[100px] object-contain object-left hidden [html[data-theme='dark']_&]:block"
               />
             </span>
           </Link>

@@ -272,12 +272,22 @@ export default function AppSidebar({
         >
           {showLabels ? (
             <span className="relative block h-6 w-[110px] shrink-0">
+              {/* Light mode logo */}
               <Image
                 src="/relitrue-logo.svg"
                 alt="Relitrue"
                 width={110}
                 height={24}
-                className="h-6 w-auto object-contain object-left"
+                className="h-6 w-auto object-contain object-left block [html[data-theme='dark']_&]:hidden"
+                priority
+              />
+              {/* Dark mode logo */}
+              <Image
+                src="/relitrue-logo-dark.svg"
+                alt="Relitrue"
+                width={110}
+                height={24}
+                className="h-6 w-auto object-contain object-left hidden [html[data-theme='dark']_&]:block"
                 priority
               />
             </span>

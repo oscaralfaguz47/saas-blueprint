@@ -18,12 +18,22 @@ export function PublicHeader({ isLoggedIn }: PublicHeaderProps) {
       <Container className="!flex !h-full !max-w-[1280px] !items-center !justify-between !py-0">
         <Link href="/" className="flex min-w-0 shrink-0 items-center gap-2.5">
           <span className="relative block h-7 w-[120px] shrink-0">
+            {/* Light mode logo */}
             <Image
               src="/relitrue-logo.svg"
               alt="Relitrue"
               width={120}
               height={28}
-              className="h-7 w-auto max-w-[120px] object-contain object-left"
+              className="h-7 w-auto max-w-[120px] object-contain object-left block [html[data-theme='dark']_&]:hidden"
+              priority
+            />
+            {/* Dark mode logo */}
+            <Image
+              src="/relitrue-logo-dark.svg"
+              alt="Relitrue"
+              width={120}
+              height={28}
+              className="h-7 w-auto max-w-[120px] object-contain object-left hidden [html[data-theme='dark']_&]:block"
               priority
             />
           </span>
