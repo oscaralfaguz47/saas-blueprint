@@ -30,7 +30,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <script
           nonce={nonce}
           dangerouslySetInnerHTML={{
-            __html: `try{var p=location.pathname,a=p.startsWith('/app')||p.startsWith('/admin'),s=a&&localStorage.getItem('atl.theme.app'),t=s==='light'||s==='dark'||s==='system'?s:'dark';document.documentElement.setAttribute('data-theme',t)}catch(e){document.documentElement.setAttribute('data-theme','dark')}`,
+            __html: `try{var p=location.pathname,a=p.startsWith('/app')||p.startsWith('/admin'),s=a&&localStorage.getItem('relitrue.theme.app'),t=s==='light'||s==='dark'||s==='system'?s:'dark';document.documentElement.setAttribute('data-theme',t)}catch(e){document.documentElement.setAttribute('data-theme','dark')}`,
           }}
         />
         <script
