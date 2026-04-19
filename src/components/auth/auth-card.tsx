@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 type MessageTone = "error" | "info" | "success" | "warning";
@@ -20,13 +21,13 @@ type AuthCardProps = {
 function toneStyles(tone: MessageTone) {
   switch (tone) {
     case "error":
-      return "border-(--color-danger) bg-(--bg-surface) text-(--text-primary)";
+      return "border-(--color-danger)/40 bg-(--color-danger)/5 text-(--text-primary)";
     case "success":
-      return "border-(--color-success) bg-(--bg-surface) text-(--text-primary)";
+      return "border-emerald-500/30 bg-emerald-500/5 text-(--text-primary)";
     case "warning":
-      return "border-(--color-warning) bg-(--bg-surface) text-(--text-primary)";
+      return "border-(--color-warning)/40 bg-(--color-warning)/5 text-(--text-primary)";
     default:
-      return "border-(--border-subtle) bg-(--bg-surface) text-(--text-primary)";
+      return "border-(--border-subtle) bg-(--bg-surface-elev) text-(--text-primary)";
   }
 }
 
@@ -39,45 +40,45 @@ export default function AuthCard({
 }: AuthCardProps) {
   return (
     <main className="min-h-screen bg-(--bg-main)">
-      <div className="flex min-h-screen items-center justify-center px-6 py-12">
+      <div className="flex min-h-screen flex-col items-center justify-center px-6 py-12">
         <div className="w-full max-w-md">
-          {/* Top brand row */}
-          <div className="mb-6 flex items-center justify-between">
+          <div className="mb-8 flex items-center justify-between">
             <Link href="/" className="flex items-center gap-3">
-              <div className="grid h-9 w-9 place-items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface)">
-                <span className="text-xs font-semibold text-(--text-primary)">ATL</span>
-              </div>
-              <span className="text-sm font-medium text-(--text-primary)">ATL</span>
+              <Image
+                src="/relitrue-logo.svg"
+                alt="Relitrue"
+                width={110}
+                height={24}
+                className="h-6 w-auto object-contain object-left"
+                priority
+              />
             </Link>
 
-            <span className="rounded-md border border-(--border-subtle) bg-(--bg-surface) px-2 py-1 text-xs font-medium text-(--text-secondary)">
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
               {badgeText}
             </span>
           </div>
 
-          {/* Card */}
-          <div className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-6">
+          <div className="rounded-2xl border border-(--border-subtle) bg-(--bg-surface) p-8 shadow-2xl">
             <div className="text-center">
-              <h1 className="text-xl font-semibold text-(--text-primary)">{title}</h1>
+              <h1 className="text-2xl font-bold tracking-tight text-(--text-primary)">{title}</h1>
               {subtitle != null ? (
-                <div className="mt-2 text-sm leading-relaxed text-(--text-secondary)">
-                  {subtitle}
-                </div>
+                <div className="mt-2.5 text-sm leading-relaxed text-(--text-secondary)">{subtitle}</div>
               ) : null}
             </div>
 
             {message ? (
               <div className={["mt-6 rounded-xl border p-4", toneStyles(message.tone)].join(" ")}>
                 <div className="flex items-start justify-between gap-3">
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-(--text-primary)">{message.title}</p>
                     {message.description ? (
                       <p className="mt-1 text-sm text-(--text-secondary)">{message.description}</p>
                     ) : null}
                   </div>
-
                   {message.code ? (
-                    <span className="rounded-md bg-(--bg-surface-elev) px-2 py-1 text-xs font-medium text-(--text-secondary)">
+                    <span className="shrink-0 rounded-md bg-(--bg-surface-elev) px-2 py-1 font-mono text-xs font-medium text-(--text-muted)">
                       {message.code}
                     </span>
                   ) : null}
@@ -85,15 +86,15 @@ export default function AuthCard({
               </div>
             ) : null}
 
-            <div className="mt-6">{children}</div>
+            <div className="mt-7">{children}</div>
 
-            <p className="mt-6 text-center text-xs text-(--text-muted)">
+            <p className="mt-8 text-center text-xs text-(--text-muted)">
               By continuing, you agree to our{" "}
-              <Link href="/terms" className="text-(--text-secondary) hover:text-(--text-primary)">
+              <Link href="/terms" className="text-emerald-400 transition-colors hover:text-emerald-300">
                 Terms
               </Link>{" "}
               and{" "}
-              <Link href="/privacy" className="text-(--text-secondary) hover:text-(--text-primary)">
+              <Link href="/privacy" className="text-emerald-400 transition-colors hover:text-emerald-300">
                 Privacy Policy
               </Link>
               .

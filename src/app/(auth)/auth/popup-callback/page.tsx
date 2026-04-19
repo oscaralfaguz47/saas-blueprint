@@ -32,7 +32,7 @@ function PopupCallbackContent() {
 
   return (
     <div className="flex h-screen items-center justify-center">
-      <p className="text-sm text-gray-500">Completing sign-in...</p>
+      <p className="text-sm text-(--text-muted)">Completing sign-in...</p>
     </div>
   );
 }
@@ -42,7 +42,7 @@ export default function PopupCallbackPage() {
     <Suspense
       fallback={
         <div className="flex h-screen items-center justify-center">
-          <p className="text-sm text-gray-500">Completing sign-in...</p>
+          <p className="text-sm text-(--text-muted)">Completing sign-in...</p>
         </div>
       }
     >
