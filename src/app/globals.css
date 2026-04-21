@@ -138,7 +138,7 @@
   --bg-main: #f5f7f5;
   --bg-app: #f8faf8;
   --bg-surface: #ffffff;
-  --bg-surface-elev: #f3f7f4;
+  --bg-surface-elev: #e8edf2;
   --bg-surface-hover: #edf4ef;
 
   --marketing-hero-bg: #edf4ef;
@@ -225,7 +225,7 @@
     --bg-main: #f5f7f5;
     --bg-app: #f8faf8;
     --bg-surface: #ffffff;
-    --bg-surface-elev: #f3f7f4;
+    --bg-surface-elev: #e8edf2;
     --bg-surface-hover: #edf4ef;
 
     --color-primary: #059669;
@@ -342,5 +342,27 @@ header[data-app-header="true"] {
 
 .scrollbar-dialog::-webkit-scrollbar-thumb:hover {
   background-color: var(--text-muted);
+}
+
+/* Skeleton shimmer loading animation */
+@keyframes skeleton-wave {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--bg-surface-elev) 0%,
+    color-mix(in srgb, var(--bg-surface-elev) 60%,
+      var(--text-primary) 40%) 50%,
+    var(--bg-surface-elev) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-wave 1.8s ease-in-out infinite;
 }
 

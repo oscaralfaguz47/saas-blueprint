@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -29,6 +30,7 @@ import {
   RECORD_APPROVAL_STATUS_LABELS,
   type BadgeVariant,
 } from "@/lib/record-utils";
+import { CURRENCY_OPTIONS } from "@/lib/currencies";
 import type { RecordApprovalStatus, RecordListItem, RecordPriority, RecordType } from "@/types/records";
 import { useCreateRequestModal } from "./create-request-modal-context";
 
@@ -448,7 +450,7 @@ export function RequestsListClient({ canCreate, canReadAll, workspaceCurrency }:
             onClick={() =>
               openCreateRequestModal({ workspaceCurrency: workspaceCurrency ?? "USD" })
             }
-            className="inline-flex h-10 items-center gap-2 rounded-xl bg-(--color-primary) px-5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-(--color-primary-hover)"
+            className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-xl bg-(--color-primary) px-5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-(--color-primary-hover)"
           >
             <IconPlus size={16} />
             New request
@@ -573,7 +575,7 @@ export function RequestsListClient({ canCreate, canReadAll, workspaceCurrency }:
                 type="button"
                 onClick={() => setShowFilters((v) => !v)}
                 className={[
-                  "inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-sm transition-colors",
+                  "inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm transition-colors",
                   showFilters || activeFilterCount > 0
                     ? "border-(--color-primary) bg-(--color-primary-soft) text-(--color-primary)"
                     : "border-(--border-subtle) bg-(--bg-surface) text-(--text-secondary) hover:bg-(--bg-surface-hover)",
@@ -830,7 +832,7 @@ function FiltersPanel({
         <button
           type="button"
           onClick={() => setShowAdvanced((v) => !v)}
-          className="flex w-full items-center justify-between px-4 py-2.5 text-xs font-medium text-(--text-muted) transition-colors hover:text-(--text-primary)"
+          className="flex w-full cursor-pointer items-center justify-between px-4 py-2.5 text-xs font-medium text-(--text-muted) transition-colors hover:text-(--text-primary)"
         >
           <span className="flex items-center gap-2">
             <span>Advanced filters</span>
@@ -878,11 +880,11 @@ function FiltersPanel({
                 <label className="block text-[11px] font-semibold tracking-wider text-(--text-muted) uppercase">
                   Currency
                 </label>
-                <Input
+                <SearchableSelect
+                  options={[{ value: "", label: "Any currency" }, ...CURRENCY_OPTIONS]}
                   value={filters.currency}
-                  onChange={(e) => set("currency", e.target.value.toUpperCase())}
-                  placeholder="USD"
-                  maxLength={3}
+                  onChange={(val) => set("currency", val)}
+                  placeholder="Any currency"
                 />
               </div>
               <div className="space-y-1.5">
@@ -937,7 +939,7 @@ function FiltersPanel({
         <button
           type="button"
           onClick={onClear}
-          className="text-xs font-semibold text-(--text-muted) transition-colors hover:text-(--color-primary)"
+          className="cursor-pointer text-xs font-semibold text-(--text-muted) transition-colors hover:text-(--color-primary)"
         >
           Clear all
         </button>
@@ -1043,7 +1045,7 @@ function RecordsList({
             type="button"
             onClick={onLoadMore}
             disabled={loadingMore}
-            className="inline-flex h-9 items-center gap-2 rounded-xl border border-(--border-subtle) bg-(--bg-surface) px-6 text-sm font-medium text-(--text-secondary) transition-all hover:border-(--border-strong) hover:bg-(--bg-surface-hover) hover:text-(--text-primary) disabled:opacity-60"
+            className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-xl border border-(--border-subtle) bg-(--bg-surface) px-6 text-sm font-medium text-(--text-secondary) transition-all hover:border-(--border-strong) hover:bg-(--bg-surface-hover) hover:text-(--text-primary) disabled:opacity-60"
           >
             {loadingMore ? <Spinner size="sm" /> : null}
             {loadingMore ? "Loading…" : "Load more requests"}
@@ -1063,7 +1065,7 @@ function RecordRow({ record, onClick }: { record: RecordListItem; onClick: () =>
       type="button"
       onClick={onClick}
       className={
-        "group w-full rounded-xl border border-(--border-subtle) bg-(--bg-surface) px-4 py-4 text-left transition-all duration-150 hover:border-(--border-strong) hover:bg-(--bg-surface-hover) hover:shadow-sm " +
+        "group w-full cursor-pointer rounded-xl border border-(--border-subtle) bg-(--bg-surface) px-4 py-4 text-left transition-all duration-150 hover:border-(--border-strong) hover:bg-(--bg-surface-hover) hover:shadow-sm " +
         priorityAccentClass(record.priority)
       }
     >
