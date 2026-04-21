@@ -307,6 +307,7 @@ header[data-app-header="true"] {
 
 .scrollbar-custom::-webkit-scrollbar-track {
   background: transparent;
+  margin: 4px 0;
 }
 
 .scrollbar-custom::-webkit-scrollbar-thumb {
@@ -315,6 +316,31 @@ header[data-app-header="true"] {
 }
 
 .scrollbar-custom::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-muted);
+}
+
+/* Elegant thin scrollbar for dialog/modal bodies */
+.scrollbar-dialog {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+  overscroll-behavior: contain;
+}
+
+.scrollbar-dialog::-webkit-scrollbar {
+  width: 3px;
+}
+
+.scrollbar-dialog::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 8px 0;
+}
+
+.scrollbar-dialog::-webkit-scrollbar-thumb {
+  background-color: var(--border-strong);
+  border-radius: 9999px;
+}
+
+.scrollbar-dialog::-webkit-scrollbar-thumb:hover {
   background-color: var(--text-muted);
 }
 

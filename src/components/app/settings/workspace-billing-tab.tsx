@@ -2118,6 +2118,35 @@ export function WorkspaceBillingTab() {
         closeDisabled={editBillingSaving}
         allowOverlayClose={!editBillingSaving}
         contentClassName="max-w-md"
+        footer={
+          !editBillingDetailsLoading && editBillingDetails ? (
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={closeEditBillingModal}
+                disabled={editBillingSaving}
+                className="rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 py-2 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitEditBilling}
+                disabled={editBillingSaving}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-(--color-primary) px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+              >
+                {editBillingSaving ? (
+                  <>
+                    <Spinner className="h-4 w-4" />
+                    Saving…
+                  </>
+                ) : (
+                  "Save changes"
+                )}
+              </button>
+            </div>
+          ) : undefined
+        }
       >
         <div className="space-y-4">
           {editBillingDetailsLoading ? (
@@ -2321,31 +2350,6 @@ export function WorkspaceBillingTab() {
               <Alert variant="warning" className="text-sm font-medium">
                 This invoice can only be edited once. Please review all fields before submitting.
               </Alert>
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={closeEditBillingModal}
-                  disabled={editBillingSaving}
-                  className="rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 py-2 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={submitEditBilling}
-                  disabled={editBillingSaving}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-(--color-primary) px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
-                >
-                  {editBillingSaving ? (
-                    <>
-                      <Spinner className="h-4 w-4" />
-                      Saving…
-                    </>
-                  ) : (
-                    "Save changes"
-                  )}
-                </button>
-              </div>
             </>
           ) : null}
         </div>

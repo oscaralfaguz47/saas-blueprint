@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
@@ -33,11 +33,13 @@ export function CreateRequestModal({
   const [wizardMount, setWizardMount] = useState(0);
   const [linkingSource, setLinkingSource] = useState(false);
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
+  const [wizardFooter, setWizardFooter] = useState<ReactNode>(null);
 
   useEffect(() => {
     if (!open) {
       setLinkingSource(false);
       setCurrentStep(1);
+      setWizardFooter(null);
     } else {
       setWizardMount((k) => k + 1);
       setCurrentStep(1);
@@ -100,6 +102,7 @@ export function CreateRequestModal({
       contentClassName="max-w-2xl"
       closeDisabled={isLoading}
       headerExtra={stepIndicator}
+      footer={wizardFooter ?? undefined}
     >
       {linkingSource && (
         <div className="mb-4 flex items-center gap-2 text-sm text-(--text-muted)">
@@ -113,6 +116,7 @@ export function CreateRequestModal({
         workspaceCurrency={workspaceCurrency}
         onStepChange={(step) => setCurrentStep(step)}
         onSubmitSuccess={handleWizardSuccess}
+        onFooterChange={setWizardFooter}
       />
     </Dialog>
   );
