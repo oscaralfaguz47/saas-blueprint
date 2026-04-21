@@ -87,7 +87,7 @@ export function AccountSettingsTabs({
   return (
     <div className="space-y-4 sm:space-y-6">
       <div>
-        <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-(--color-primary)">
+        <p className="text-xs font-semibold uppercase tracking-widest text-(--color-primary) mb-1">
           Account
         </p>
         <h1 className="text-2xl font-bold tracking-tight text-(--text-primary)">
@@ -119,7 +119,7 @@ export function AccountSettingsTabs({
               <button
                 type="button"
                 onClick={() => setVendorSetupBannerDismissed(true)}
-                className="absolute right-3 top-3 text-xs font-medium text-(--text-secondary) hover:text-(--text-primary)"
+                className="absolute right-3 top-3 cursor-pointer text-xs font-medium text-(--text-secondary) hover:text-(--text-primary)"
               >
                 Dismiss
               </button>

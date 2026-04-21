@@ -141,20 +141,49 @@ export function ProfileTab({ profile: initialProfile }: Props) {
   return (
     <div className="space-y-6 sm:space-y-8">
       <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
-        <h2 className="text-base font-semibold text-(--text-primary)">Profile photo</h2>
+        <h2 className="text-base font-bold text-(--text-primary)">Profile photo</h2>
         <p className="mt-1 text-sm text-(--text-secondary)">
           Upload any image (JPEG, PNG, WebP, GIF, etc.) under 10MB. It will be compressed and stored
           for a lightweight display.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-3 sm:gap-4">
-          <div className="h-20 w-20 shrink-0 overflow-hidden rounded-full border border-(--border-subtle) bg-(--bg-surface-elev)">
-            {initialProfile.avatarUrl ? (
-              <img src={initialProfile.avatarUrl} alt="" className="h-full w-full object-cover" />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center text-2xl font-semibold text-(--text-muted)">
-                {(initialProfile.name ?? initialProfile.email ?? "U").slice(0, 1).toUpperCase()}
-              </div>
-            )}
+          <div
+            className="group relative h-24 w-24 shrink-0 cursor-pointer"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <div className="h-24 w-24 overflow-hidden rounded-full border-2 border-(--border-subtle) bg-(--bg-surface-elev) transition-colors duration-150 group-hover:border-(--color-primary)">
+              {initialProfile.avatarUrl ? (
+                <img
+                  src={initialProfile.avatarUrl}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-2xl font-semibold text-(--text-muted)">
+                  {(initialProfile.name ?? initialProfile.email ?? "U").slice(0, 1).toUpperCase()}
+                </div>
+              )}
+            </div>
+            <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+              <svg
+                className="h-5 w-5 text-white"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z"
+                />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z"
+                />
+              </svg>
+            </div>
           </div>
           <div>
             <input
@@ -168,7 +197,7 @@ export function ProfileTab({ profile: initialProfile }: Props) {
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={photoStatus === "uploading"}
-              className="inline-flex h-10 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60"
+              className="inline-flex h-10 cursor-pointer items-center justify-center rounded-xl border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) transition-all hover:border-(--border-strong) hover:bg-(--bg-surface-elev) disabled:opacity-60"
             >
               {photoStatus === "uploading" ? "Uploading…" : "Upload photo"}
             </button>
@@ -178,7 +207,7 @@ export function ProfileTab({ profile: initialProfile }: Props) {
       </section>
 
       <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
-        <h2 className="text-base font-semibold text-(--text-primary)">Profile</h2>
+        <h2 className="text-base font-bold text-(--text-primary)">Profile</h2>
         <p className="mt-1 text-sm text-(--text-secondary)">
           Update your name, phone, and timezone.
         </p>
@@ -187,7 +216,7 @@ export function ProfileTab({ profile: initialProfile }: Props) {
           <div>
             <label
               htmlFor="profile-name"
-              className="block text-sm font-medium text-(--text-primary)"
+              className="block text-sm font-semibold text-(--text-primary)"
             >
               Name
             </label>
@@ -203,7 +232,7 @@ export function ProfileTab({ profile: initialProfile }: Props) {
           <div>
             <label
               htmlFor="profile-email"
-              className="block text-sm font-medium text-(--text-primary)"
+              className="block text-sm font-semibold text-(--text-primary)"
             >
               Email
             </label>
@@ -215,12 +244,27 @@ export function ProfileTab({ profile: initialProfile }: Props) {
               disabled
               className="mt-1 bg-(--bg-surface-elev)"
             />
-            <p className="mt-1 text-xs text-(--text-muted)">Email cannot be changed here.</p>
+            <p className="mt-1 flex items-center gap-1 text-xs text-(--text-muted)">
+              <svg
+                className="h-3 w-3 shrink-0"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"
+                />
+              </svg>
+              Email cannot be changed here.
+            </p>
           </div>
           <div>
             <label
               htmlFor="profile-phone"
-              className="block text-sm font-medium text-(--text-primary)"
+              className="block text-sm font-semibold text-(--text-primary)"
             >
               Phone
             </label>
@@ -236,7 +280,7 @@ export function ProfileTab({ profile: initialProfile }: Props) {
           <div>
             <label
               htmlFor="profile-timezone"
-              className="block text-sm font-medium text-(--text-primary)"
+              className="block text-sm font-semibold text-(--text-primary)"
             >
               Timezone
             </label>
@@ -253,16 +297,16 @@ export function ProfileTab({ profile: initialProfile }: Props) {
             <button
               type="submit"
               disabled={saveStatus === "submitting"}
-              className="inline-flex h-11 min-w-[140px] items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-10 min-w-[140px] cursor-pointer items-center justify-center gap-2 rounded-xl bg-(--color-primary) px-5 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
             >
               {saveStatus === "submitting" ? (
                 <>
-                  <Spinner size="sm" className="mr-2" />
+                  <Spinner size="sm" />
                   Saving…
                 </>
               ) : saveStatus === "success" ? (
                 <>
-                  <IconCheck size={18} className="mr-2" />
+                  <IconCheck size={18} />
                   Changes saved
                 </>
               ) : (
