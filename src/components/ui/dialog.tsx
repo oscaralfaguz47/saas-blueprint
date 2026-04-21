@@ -97,7 +97,7 @@ export function Dialog({
       aria-modal="true"
       aria-labelledby={titleId}
       aria-describedby={descId}
-      className="fixed inset-0 z-50 flex min-h-screen items-center justify-center p-3 sm:p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
       onPointerDown={handleOverlayPointerDown}
       onPointerUp={handleOverlayPointerUp}
       onPointerLeave={() => setPointerDownOnOverlay(false)}
@@ -109,8 +109,8 @@ export function Dialog({
       <div
         className={
           contentClassName
-            ? `relative flex max-h-[92dvh] w-full flex-col rounded-2xl border border-(--border-subtle) bg-(--bg-surface) shadow-2xl sm:max-h-[88dvh] ${contentClassName}`
-            : "relative flex max-h-[92dvh] w-full max-w-md flex-col rounded-2xl border border-(--border-subtle) bg-(--bg-surface) shadow-2xl sm:max-h-[88dvh]"
+            ? `relative flex w-full flex-col rounded-2xl border border-(--border-subtle) bg-(--bg-surface) shadow-2xl max-h-[90dvh] ${contentClassName}`
+            : "relative flex w-full max-w-md flex-col rounded-2xl border border-(--border-subtle) bg-(--bg-surface) shadow-2xl max-h-[90dvh]"
         }
         onPointerDown={handleContentPointerDown}
         onClick={(e) => e.stopPropagation()}

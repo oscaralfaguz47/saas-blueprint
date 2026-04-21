@@ -802,17 +802,19 @@ export function SecurityTab({
     <div className="space-y-6 sm:space-y-8">
       {/* Two-Factor Authentication */}
       <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
-        <h2 className="text-base font-semibold text-(--text-primary)">Two-Factor Authentication</h2>
+        <h2 className="text-base font-bold text-(--text-primary)">Two-Factor Authentication</h2>
         <p className="mt-1 text-sm text-(--text-secondary)">
           Add an extra layer of security with an authenticator app.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-2">
           {totpEnabled || (backupCodes && backupCodes.length > 0) ? (
-            <span className="rounded-md border border-(--color-success) bg-(--bg-surface-elev) px-2 py-1 text-sm font-medium text-(--color-success)">
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-sm font-semibold text-emerald-400">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
               Enabled
             </span>
           ) : (
-            <span className="rounded-md border border-(--border-subtle) bg-(--bg-surface-elev) px-2 py-1 text-sm text-(--text-secondary)">
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 py-1 text-sm font-medium text-(--text-muted)">
+              <span className="h-2 w-2 rounded-full bg-(--border-strong)" />
               Not enabled
             </span>
           )}
@@ -826,7 +828,7 @@ export function SecurityTab({
                 type="button"
                 onClick={handleStartSetup}
                 disabled={loading}
-                className="inline-flex h-10 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-60"
+                className="inline-flex h-10 cursor-pointer items-center justify-center rounded-xl bg-(--color-primary) px-4 text-sm font-medium text-white transition-colors hover:bg-(--color-primary-hover) disabled:opacity-60"
               >
                 {loading ? "Starting…" : "Enable 2FA"}
               </button>
@@ -876,7 +878,7 @@ export function SecurityTab({
               <button
                 type="submit"
                 disabled={loading || verifyCode.length !== 6}
-                className="inline-flex h-10 items-center justify-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white hover:bg-(--color-primary-hover) disabled:opacity-60"
+                className="inline-flex h-10 cursor-pointer items-center justify-center rounded-xl bg-(--color-primary) px-4 text-sm font-medium text-white transition-colors hover:bg-(--color-primary-hover) disabled:opacity-60"
               >
                 {loading ? "Verifying…" : "Verify and enable"}
               </button>
@@ -920,7 +922,7 @@ export function SecurityTab({
               <button
                 type="submit"
                 disabled={loadingDisable || loadingRegenerate || !disableCode.trim()}
-                className="inline-flex h-10 items-center justify-center rounded-lg border border-(--border-subtle) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60"
+                className="inline-flex h-10 cursor-pointer items-center justify-center rounded-xl border border-(--border-subtle) px-4 text-sm font-medium text-(--text-primary) transition-colors hover:border-(--border-strong) hover:bg-(--bg-surface-elev) disabled:opacity-60"
               >
                 {loadingDisable ? "Disabling…" : "Disable 2FA"}
               </button>
@@ -947,7 +949,7 @@ export function SecurityTab({
               <button
                 type="submit"
                 disabled={loadingDisable || loadingRegenerate || regenerateCode.length !== 6}
-                className="inline-flex h-10 items-center justify-center rounded-lg border border-(--border-subtle) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-60"
+                className="inline-flex h-10 cursor-pointer items-center justify-center rounded-xl border border-(--border-subtle) px-4 text-sm font-medium text-(--text-primary) transition-colors hover:border-(--border-strong) hover:bg-(--bg-surface-elev) disabled:opacity-60"
               >
                 {loadingRegenerate ? "Regenerating…" : "Regenerate codes"}
               </button>
@@ -964,7 +966,7 @@ export function SecurityTab({
       </section>
       {/* Passkeys */}
       <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
-        <h2 className="text-base font-semibold text-(--text-primary)">Passkeys</h2>
+        <h2 className="text-base font-bold text-(--text-primary)">Passkeys</h2>
         <p className="mt-1 text-sm text-(--text-secondary)">
           Sign in with Face ID, Touch ID, or Windows Hello — no password required.
         </p>
@@ -974,7 +976,7 @@ export function SecurityTab({
             {passkeys.map((pk) => (
               <li
                 key={pk.id}
-                className="flex items-center justify-between rounded-lg border border-(--border-subtle) px-3 py-2"
+                className="flex items-center justify-between rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev) px-4 py-3 transition-colors hover:border-(--border-strong)"
               >
                 <div className="flex items-center gap-2 text-sm">
                   <span className="font-medium text-(--text-primary)">
@@ -991,7 +993,7 @@ export function SecurityTab({
                   type="button"
                   onClick={() => handleRemovePasskey(pk.id)}
                   disabled={!!removingPasskeyId}
-                  className="text-xs text-(--color-danger) hover:underline disabled:opacity-60"
+                  className="cursor-pointer text-xs font-medium text-(--color-danger) transition-colors hover:text-red-400 disabled:opacity-60"
                 >
                   {removingPasskeyId === pk.id ? "Removing..." : "Remove"}
                 </button>
@@ -1009,7 +1011,7 @@ export function SecurityTab({
             <button
               type="button"
               onClick={handleRegisterPasskey}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) transition-colors hover:border-(--border-strong) hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
             >
               {registeringPasskey ? "Registering..." : "Add Passkey"}
             </button>
@@ -1018,7 +1020,7 @@ export function SecurityTab({
       </section>
       {/* Sign-in methods */}
       <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
-        <h2 className="text-base font-semibold text-(--text-primary)">Sign-in methods</h2>
+        <h2 className="text-base font-bold text-(--text-primary)">Sign-in methods</h2>
         <p className="mt-1 text-sm text-(--text-secondary)">
           Linked sign-in methods you can use to access your account.
         </p>
@@ -1043,7 +1045,7 @@ export function SecurityTab({
             <li className="flex items-center gap-2">
               <GoogleIcon />
               <span className="font-medium text-(--text-primary)">Google</span>
-              <span className="rounded-md border border-(--border-subtle) px-1.5 py-0.5 text-xs">
+              <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400">
                 Linked
               </span>
             </li>
@@ -1052,7 +1054,7 @@ export function SecurityTab({
             <li className="flex items-center gap-2">
               <MicrosoftIcon />
               <span className="font-medium text-(--text-primary)">Microsoft</span>
-              <span className="rounded-md border border-(--border-subtle) px-1.5 py-0.5 text-xs">
+              <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400">
                 Linked
               </span>
             </li>
@@ -1060,7 +1062,7 @@ export function SecurityTab({
           {linkedProviders.includes("email") && (
             <li className="flex items-center gap-2">
               <span className="font-medium text-(--text-primary)">Magic link / Email</span>
-              <span className="rounded-md border border-(--border-subtle) px-1.5 py-0.5 text-xs">
+              <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400">
                 Linked
               </span>
             </li>
@@ -1076,7 +1078,7 @@ export function SecurityTab({
                   type="button"
                   disabled={!!linkingProvider}
                   onClick={() => handleLinkProvider("google")}
-                  className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) transition-colors hover:border-(--border-strong) hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <GoogleIcon />
                   {linkingProvider === "google" ? "Redirecting…" : "Link Google"}
@@ -1087,7 +1089,7 @@ export function SecurityTab({
                   type="button"
                   disabled={!!linkingProvider}
                   onClick={() => handleLinkProvider("azure-ad")}
-                  className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-primary) transition-colors hover:border-(--border-strong) hover:bg-(--bg-surface-elev) disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <MicrosoftIcon />
                   {linkingProvider === "azure-ad" ? "Redirecting…" : "Link Microsoft"}
@@ -1106,7 +1108,7 @@ export function SecurityTab({
       </section>
       {/* Inactivity auto-logout */}
       <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
-        <h2 className="text-base font-semibold text-(--text-primary)">Inactivity auto-logout</h2>
+        <h2 className="text-base font-bold text-(--text-primary)">Inactivity auto-logout</h2>
         <p className="mt-1 text-sm text-(--text-secondary)">
           {autoLogoutEnabled
             ? autoLogoutMinutes != null
@@ -1150,7 +1152,7 @@ export function SecurityTab({
                 handleAutoLogoutDurationChange(Number(v));
               }}
               disabled={autoLogoutLoading}
-              className="ml-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2 text-sm text-(--text-primary) focus:ring-2 focus:ring-(--color-primary) focus:outline-none disabled:opacity-60"
+              className="ml-2 cursor-pointer rounded-xl border border-(--border-subtle) bg-(--bg-surface) px-3 py-2 text-sm text-(--text-primary) transition-colors focus:ring-2 focus:ring-(--color-primary) focus:outline-none disabled:opacity-60"
               aria-label="Inactivity duration"
             >
               <option value="">Select time</option>
@@ -1168,7 +1170,7 @@ export function SecurityTab({
       <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-base font-semibold text-(--text-primary)">Devices</h2>
+            <h2 className="text-base font-bold text-(--text-primary)">Devices</h2>
             <p className="mt-1 text-sm text-(--text-secondary)">
               Active sessions on your account. Sign out any device you don&apos;t recognize.
             </p>
@@ -1178,7 +1180,7 @@ export function SecurityTab({
               type="button"
               onClick={handleRevokeOthers}
               disabled={revokingOthers}
-              className="shrink-0 text-sm font-medium text-(--color-danger) hover:underline disabled:opacity-60"
+              className="inline-flex h-8 shrink-0 cursor-pointer items-center rounded-lg border border-(--color-danger)/30 bg-(--color-danger)/5 px-3 text-xs font-semibold text-(--color-danger) transition-colors hover:bg-(--color-danger)/10 disabled:opacity-60"
             >
               {revokingOthers ? "Signing out..." : "Sign out all other devices"}
             </button>
@@ -1204,7 +1206,7 @@ export function SecurityTab({
               {deviceSessions.map((s) => (
                 <li
                   key={s.id}
-                  className="flex items-center gap-3 rounded-lg border border-(--border-subtle) px-3 py-3"
+                  className="flex items-center gap-3 rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev) px-4 py-3 transition-colors hover:border-(--border-strong)"
                 >
                   <DeviceIcon deviceType={s.deviceType} />
                   <div className="min-w-0 flex-1">
@@ -1213,7 +1215,7 @@ export function SecurityTab({
                         {s.device}
                       </span>
                       {s.isCurrent && (
-                        <span className="shrink-0 rounded-md border border-(--color-success) px-1.5 py-0.5 text-xs text-(--color-success)">
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-400">
                           This device
                         </span>
                       )}
@@ -1239,7 +1241,7 @@ export function SecurityTab({
                       type="button"
                       onClick={() => handleRevokeSession(s.id)}
                       disabled={!!revokingSessionId}
-                      className="shrink-0 text-xs font-medium text-(--color-danger) hover:underline disabled:opacity-60"
+                      className="shrink-0 cursor-pointer text-xs font-medium text-(--color-danger) transition-colors hover:text-red-400 disabled:opacity-60"
                     >
                       {revokingSessionId === s.id ? "Signing out..." : "Sign out"}
                     </button>
@@ -1265,7 +1267,7 @@ export function SecurityTab({
                 type="button"
                 onClick={() => void fetchDeviceSessions(nextCursor ?? undefined)}
                 disabled={devicesLoadingMore}
-                className="mt-2 w-full rounded-lg border border-(--border-subtle) py-2 text-xs font-medium text-(--text-muted) hover:text-(--text-primary) hover:bg-(--bg-surface-elev) transition-colors disabled:opacity-60"
+                className="mt-3 w-full cursor-pointer rounded-xl border border-(--border-subtle) py-2.5 text-xs font-semibold text-(--text-muted) transition-all hover:border-(--border-strong) hover:bg-(--bg-surface-elev) hover:text-(--text-primary) disabled:opacity-60"
               >
                 {devicesLoadingMore ? (
                   <span className="flex items-center justify-center gap-2">
@@ -1285,7 +1287,7 @@ export function SecurityTab({
       </section>
       {/* Login History */}
       <section className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4 sm:p-6">
-        <h2 className="text-base font-semibold text-(--text-primary)">
+        <h2 className="text-base font-bold text-(--text-primary)">
           Login history
         </h2>
         <p className="mt-1 text-sm text-(--text-secondary)">
@@ -1365,7 +1367,7 @@ export function SecurityTab({
                 type="button"
                 onClick={() => void fetchLoginHistory(historyNextCursor ?? undefined)}
                 disabled={historyLoadingMore}
-                className="mt-3 w-full rounded-lg border border-(--border-subtle) py-2 text-xs font-medium text-(--text-muted) hover:text-(--text-primary) hover:bg-(--bg-surface-elev) transition-colors disabled:opacity-60"
+                className="mt-3 w-full cursor-pointer rounded-xl border border-(--border-subtle) py-2.5 text-xs font-semibold text-(--text-muted) transition-all hover:border-(--border-strong) hover:bg-(--bg-surface-elev) hover:text-(--text-primary) disabled:opacity-60"
               >
                 {historyLoadingMore ? (
                   <span className="flex items-center justify-center gap-2">
