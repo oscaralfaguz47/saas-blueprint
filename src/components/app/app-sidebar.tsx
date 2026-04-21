@@ -11,7 +11,6 @@ import {
   IconHelpCircle,
   IconPlus,
   IconSettings,
-  IconWorkspace,
   IconX,
 } from "@/components/ui/icons";
 import { Spinner } from "@/components/ui/spinner";
@@ -35,6 +34,7 @@ type TenantItem = {
   slug: string;
   status: string;
   isDefaultTenant: boolean;
+  logoObjectKey?: string | null;
 };
 
 type AppSidebarProps = {
@@ -53,7 +53,6 @@ function isRequestsActive(pathname: string) {
 
 const hoverBg = "hover:bg-(--nav-hover)";
 const activeBg = "bg-(--nav-active) shadow-sm ring-1 ring-inset ring-(--color-primary-soft)/50";
-const brandBoxBg = "bg-(--bg-surface-elev) shadow-sm border border-(--border-subtle)";
 
 export default function AppSidebar({
   open,
@@ -267,7 +266,7 @@ export default function AppSidebar({
         <Link
           href="/app/requests"
           onClick={() => isMobile && onClose()}
-          className={`flex flex-1 items-center gap-2 font-semibold text-(--text-primary) transition-colors duration-150 ${showLabels ? "" : "justify-center"} rounded-lg ${brandBoxBg} hover:bg-(--bg-surface-hover) min-h-[2.5rem] ${showLabels ? "pr-3 pl-2" : "p-2"}`}
+          className={`flex flex-1 items-center gap-2.5 transition-colors duration-150 ${showLabels ? "" : "justify-center"} min-h-[2.5rem] ${showLabels ? "px-3 py-1.5" : "p-2"}`}
           title={collapsed ? "Requests" : undefined}
         >
           {showLabels ? (
@@ -280,9 +279,11 @@ export default function AppSidebar({
               />
             </span>
           ) : (
-            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-xs font-bold text-emerald-400">
-              R
-            </span>
+            <img
+              src="/relitrue-favicon.svg"
+              alt="Relitrue"
+              className="h-8 w-8 shrink-0"
+            />
           )}
         </Link>
         {isMobile ? (
@@ -328,7 +329,7 @@ export default function AppSidebar({
                   if (isMobile) onClose();
                 }}
                 title="New request"
-                className={`flex w-full items-center rounded-lg py-2.5 text-sm font-medium text-(--color-primary) transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} hover:bg-(--color-primary-soft)`}
+                className={`flex w-full cursor-pointer items-center rounded-lg py-2.5 text-sm font-medium text-(--color-primary) transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} hover:bg-(--color-primary-soft)`}
               >
                 <IconPlus size={18} className="shrink-0" />
                 {showLabels ? <span>New request</span> : null}
@@ -380,9 +381,17 @@ export default function AppSidebar({
                     key={t.id}
                     className={`flex items-center gap-2.5 rounded-lg px-2 py-2 ${t.isDefaultTenant ? activeBg : "hover:bg-(--nav-hover)"}`}
                   >
-                    <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-(--border-subtle) bg-(--bg-surface-elev) text-[10px] font-bold text-(--text-primary) uppercase">
-                      {workspaceInitials(t.name)}
-                    </span>
+                    {t.logoObjectKey ? (
+                      <img
+                        src={`/api/tenant/${t.id}/logo?v=${encodeURIComponent(t.logoObjectKey)}`}
+                        alt=""
+                        className="h-6 w-6 shrink-0 rounded-md border border-(--border-subtle) object-cover"
+                      />
+                    ) : (
+                      <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-(--border-subtle) bg-(--bg-surface-elev) text-[10px] font-bold text-(--text-primary) uppercase">
+                        {workspaceInitials(t.name)}
+                      </span>
+                    )}
                     <span className="min-w-0 flex-1 truncate text-sm text-(--text-primary)">
                       {t.name}
                     </span>
@@ -414,7 +423,7 @@ export default function AppSidebar({
             onClose();
           }}
           title="Create workspace"
-          className={`mt-1 flex w-full items-center rounded-lg py-2.5 text-sm text-(--text-secondary) transition-colors duration-150 ${hoverBg} hover:text-(--text-primary) ${showLabels ? "gap-3 px-3" : "justify-center px-2"}`}
+          className={`mt-1 flex w-full cursor-pointer items-center rounded-lg py-2.5 text-sm text-(--text-secondary) transition-colors duration-150 ${hoverBg} hover:text-(--text-primary) ${showLabels ? "gap-3 px-3" : "justify-center px-2"}`}
         >
           <IconPlus size={18} className="shrink-0" />
           {showLabels ? <span>Create workspace</span> : null}
@@ -430,7 +439,7 @@ export default function AppSidebar({
                 title="Workspace settings"
                 className={`flex w-full items-center rounded-lg py-2.5 text-sm transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} ${workspaceSettingsActive ? `${activeBg} font-medium text-(--text-primary)` : `text-(--text-secondary) ${hoverBg} hover:text-(--text-primary)`}`}
               >
-                <IconWorkspace size={18} className="shrink-0" />
+                <IconSettings size={18} className="shrink-0" />
                 {showLabels ? <span>Workspace settings</span> : null}
               </Link>
             ) : null}

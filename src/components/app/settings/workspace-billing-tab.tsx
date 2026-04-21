@@ -162,92 +162,63 @@ function formatCardBrand(brand: string): string {
 }
 
 /** Card brand icon (Visa, Mastercard, Amex, Discover) for payment method display. */
-function CardBrandIcon({ brand, className }: { brand: string; className?: string }) {
-  const key = brand.toLowerCase().replace(/\s+/g, "_");
-  const normalized = key === "american_express" ? "amex" : key;
-  const containerClassName = `flex h-10 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) ${className ?? ""}`;
+function CardBrandIcon({
+  brand,
+  className,
+}: {
+  brand: string;
+  className?: string;
+}) {
+  const key = brand.toLowerCase().replace(/[\s-]+/g, "_");
 
-  if (normalized === "visa") {
-    return (
-      <div className={containerClassName} aria-hidden title="Visa">
-        <svg width={40} height={26} viewBox="0 0 40 26" fill="none">
-          <rect width={40} height={26} rx={4} fill="#1A1F71" fillOpacity={0.15} />
-          <text
-            x={20}
-            y={17}
-            textAnchor="middle"
-            fill="#1A1F71"
-            fontSize={10}
-            fontWeight="bold"
-            fontFamily="system-ui, sans-serif"
-          >
-            VISA
-          </text>
-        </svg>
-      </div>
-    );
-  }
-  if (normalized === "mastercard") {
-    return (
-      <div className={containerClassName} aria-hidden title="Mastercard">
-        <svg width={40} height={26} viewBox="0 0 40 26" fill="none">
-          <rect width={40} height={26} rx={4} fill="#EB001B" fillOpacity={0.12} />
-          <circle cx={15} cy={13} r={8} fill="#EB001B" />
-          <circle cx={25} cy={13} r={8} fill="#F79E1B" fillOpacity={0.95} />
-          <path
-            fill="#FF5F00"
-            d="M25 7.3a8 8 0 000 11.4 8 8 0 010-11.4zM15 7.3a8 8 0 010 11.4 8 8 0 000-11.4z"
-          />
-        </svg>
-      </div>
-    );
-  }
-  if (normalized === "amex" || normalized === "american_express") {
-    return (
-      <div className={containerClassName} aria-hidden title="American Express">
-        <svg width={40} height={26} viewBox="0 0 40 26" fill="none">
-          <rect width={40} height={26} rx={4} fill="#006FCF" fillOpacity={0.15} />
-          <text
-            x={20}
-            y={16}
-            textAnchor="middle"
-            fill="#006FCF"
-            fontSize={7}
-            fontWeight="bold"
-            fontFamily="system-ui, sans-serif"
-          >
-            AMEX
-          </text>
-        </svg>
-      </div>
-    );
-  }
-  if (normalized === "discover") {
-    return (
-      <div className={containerClassName} aria-hidden title="Discover">
-        <svg width={40} height={26} viewBox="0 0 40 26" fill="none">
-          <rect width={40} height={26} rx={4} fill="#FF6000" fillOpacity={0.2} />
-          <text
-            x={20}
-            y={16}
-            textAnchor="middle"
-            fill="#FF6000"
-            fontSize={8}
-            fontWeight="bold"
-            fontFamily="system-ui, sans-serif"
-          >
-            DISCOVER
-          </text>
-        </svg>
-      </div>
-    );
-  }
+  // Normalize known aliases to canonical filenames
+  const ALIASES: Record<string, string> = {
+    american_express: "amex",
+    diners_club: "diners",
+    diners_club_international: "diners",
+    carte_bancaire: "cb",
+    cartes_bancaires: "cb",
+    cb: "cb",
+    union_pay: "unionpay",
+    union: "unionpay",
+  };
+
+  const normalized = ALIASES[key] ?? key;
+
+  // All brands we have SVGs for
+  const KNOWN_BRANDS = new Set([
+    "visa",
+    "mastercard",
+    "amex",
+    "discover",
+    "maestro",
+    "jcb",
+    "diners",
+    "unionpay",
+    "mir",
+  ]);
+
+  const hasSvg = KNOWN_BRANDS.has(normalized);
+  const src = hasSvg ? `/cards/${normalized}.svg` : `/cards/generic.svg`;
 
   return (
-    <div className={containerClassName} aria-hidden title={formatCardBrand(brand)}>
-      <span className="text-xs font-semibold text-(--text-muted)">
-        {formatCardBrand(brand).slice(0, 2).toUpperCase()}
-      </span>
+    <div
+      aria-hidden
+      title={formatCardBrand(brand)}
+      className={
+        `flex h-10 w-14 shrink-0 items-center justify-center ` +
+        `overflow-hidden rounded-lg border border-(--border-subtle) ` +
+        `bg-white shadow-sm ${className ?? ""}`
+      }
+    >
+      <img
+        src={src}
+        alt={formatCardBrand(brand)}
+        width={40}
+        height={26}
+        className="h-7 w-auto object-contain"
+        loading="lazy"
+      />
     </div>
   );
 }
@@ -2147,6 +2118,35 @@ export function WorkspaceBillingTab() {
         closeDisabled={editBillingSaving}
         allowOverlayClose={!editBillingSaving}
         contentClassName="max-w-md"
+        footer={
+          !editBillingDetailsLoading && editBillingDetails ? (
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={closeEditBillingModal}
+                disabled={editBillingSaving}
+                className="rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 py-2 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitEditBilling}
+                disabled={editBillingSaving}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-(--color-primary) px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+              >
+                {editBillingSaving ? (
+                  <>
+                    <Spinner className="h-4 w-4" />
+                    Saving…
+                  </>
+                ) : (
+                  "Save changes"
+                )}
+              </button>
+            </div>
+          ) : undefined
+        }
       >
         <div className="space-y-4">
           {editBillingDetailsLoading ? (
@@ -2350,31 +2350,6 @@ export function WorkspaceBillingTab() {
               <Alert variant="warning" className="text-sm font-medium">
                 This invoice can only be edited once. Please review all fields before submitting.
               </Alert>
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={closeEditBillingModal}
-                  disabled={editBillingSaving}
-                  className="rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 py-2 text-sm font-medium text-(--text-primary) hover:bg-(--bg-surface-elev) disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={submitEditBilling}
-                  disabled={editBillingSaving}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-(--color-primary) px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
-                >
-                  {editBillingSaving ? (
-                    <>
-                      <Spinner className="h-4 w-4" />
-                      Saving…
-                    </>
-                  ) : (
-                    "Save changes"
-                  )}
-                </button>
-              </div>
             </>
           ) : null}
         </div>

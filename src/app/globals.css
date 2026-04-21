@@ -138,7 +138,7 @@
   --bg-main: #f5f7f5;
   --bg-app: #f8faf8;
   --bg-surface: #ffffff;
-  --bg-surface-elev: #f3f7f4;
+  --bg-surface-elev: #e8edf2;
   --bg-surface-hover: #edf4ef;
 
   --marketing-hero-bg: #edf4ef;
@@ -225,7 +225,7 @@
     --bg-main: #f5f7f5;
     --bg-app: #f8faf8;
     --bg-surface: #ffffff;
-    --bg-surface-elev: #f3f7f4;
+    --bg-surface-elev: #e8edf2;
     --bg-surface-hover: #edf4ef;
 
     --color-primary: #059669;
@@ -307,6 +307,7 @@ header[data-app-header="true"] {
 
 .scrollbar-custom::-webkit-scrollbar-track {
   background: transparent;
+  margin: 4px 0;
 }
 
 .scrollbar-custom::-webkit-scrollbar-thumb {
@@ -316,5 +317,52 @@ header[data-app-header="true"] {
 
 .scrollbar-custom::-webkit-scrollbar-thumb:hover {
   background-color: var(--text-muted);
+}
+
+/* Elegant thin scrollbar for dialog/modal bodies */
+.scrollbar-dialog {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+  overscroll-behavior: contain;
+}
+
+.scrollbar-dialog::-webkit-scrollbar {
+  width: 3px;
+}
+
+.scrollbar-dialog::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 8px 0;
+}
+
+.scrollbar-dialog::-webkit-scrollbar-thumb {
+  background-color: var(--border-strong);
+  border-radius: 9999px;
+}
+
+.scrollbar-dialog::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-muted);
+}
+
+/* Skeleton shimmer loading animation */
+@keyframes skeleton-wave {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--bg-surface-elev) 0%,
+    color-mix(in srgb, var(--bg-surface-elev) 60%,
+      var(--text-primary) 40%) 50%,
+    var(--bg-surface-elev) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-wave 1.8s ease-in-out infinite;
 }
 

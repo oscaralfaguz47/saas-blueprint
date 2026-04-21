@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -29,6 +30,7 @@ import {
   RECORD_APPROVAL_STATUS_LABELS,
   type BadgeVariant,
 } from "@/lib/record-utils";
+import { CURRENCY_OPTIONS } from "@/lib/currencies";
 import type { RecordApprovalStatus, RecordListItem, RecordPriority, RecordType } from "@/types/records";
 import { useCreateRequestModal } from "./create-request-modal-context";
 
@@ -436,14 +438,19 @@ export function RequestsListClient({ canCreate, canReadAll, workspaceCurrency }:
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-(--text-primary)">Requests</h1>
+        <div>
+          <p className="mb-1 text-xs font-semibold tracking-widest text-(--color-primary) uppercase">
+            Workspace
+          </p>
+          <h1 className="text-2xl font-bold tracking-tight text-(--text-primary)">Requests</h1>
+        </div>
         {canCreate && (
           <button
             type="button"
             onClick={() =>
               openCreateRequestModal({ workspaceCurrency: workspaceCurrency ?? "USD" })
             }
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-(--color-primary-hover)"
+            className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-xl bg-(--color-primary) px-5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-(--color-primary-hover)"
           >
             <IconPlus size={16} />
             New request
@@ -568,7 +575,7 @@ export function RequestsListClient({ canCreate, canReadAll, workspaceCurrency }:
                 type="button"
                 onClick={() => setShowFilters((v) => !v)}
                 className={[
-                  "inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-sm transition-colors",
+                  "inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm transition-colors",
                   showFilters || activeFilterCount > 0
                     ? "border-(--color-primary) bg-(--color-primary-soft) text-(--color-primary)"
                     : "border-(--border-subtle) bg-(--bg-surface) text-(--text-secondary) hover:bg-(--bg-surface-hover)",
@@ -637,37 +644,63 @@ function MetricCard({
   tone: "neutral" | "warning" | "destructive";
   onClick?: () => void;
 }) {
-  const toneValue =
+  const valueColor =
     tone === "warning"
       ? "text-(--color-warning)"
       : tone === "destructive"
         ? "text-(--color-danger)"
         : "text-(--text-primary)";
 
+  const iconColor =
+    tone === "warning"
+      ? "text-(--color-warning)"
+      : tone === "destructive"
+        ? "text-(--color-danger)"
+        : "text-(--text-muted)";
+
   const inner = (
-    <>
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-xs font-medium tracking-wider text-(--text-muted) uppercase">{label}</p>
-        {icon}
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] leading-none font-semibold tracking-widest text-(--text-muted) uppercase">
+          {label}
+        </p>
+        <span className={iconColor}>{icon}</span>
       </div>
-      <p className={`mt-2 text-2xl font-semibold tabular-nums ${toneValue}`}>{value}</p>
-    </>
+      <p className={`text-2xl leading-none font-bold tabular-nums ${valueColor}`}>{value}</p>
+    </div>
   );
 
-  const className = [
-    "rounded-xl border px-4 py-3 text-left transition-colors",
-    onClick ? "cursor-pointer hover:bg-(--bg-surface-hover)" : "",
-    "border-(--border-subtle) bg-(--bg-surface)",
-  ].join(" ");
+  const baseClass = [
+    "rounded-xl border border-(--border-subtle) ",
+    "bg-(--bg-surface) px-4 py-4 text-left ",
+    "transition-all duration-150 ",
+    onClick
+      ? "cursor-pointer hover:border-(--border-strong) " +
+        "hover:bg-(--bg-surface-hover) hover:shadow-sm"
+      : "",
+    tone !== "neutral" ? "border-l-2 border-l-current" : "",
+  ].join("");
 
   if (onClick) {
     return (
-      <button type="button" className={className} onClick={onClick}>
+      <button
+        type="button"
+        className={baseClass}
+        onClick={onClick}
+        style={{
+          borderLeftColor:
+            tone === "warning"
+              ? "var(--color-warning)"
+              : tone === "destructive"
+                ? "var(--color-danger)"
+                : undefined,
+        }}
+      >
         {inner}
       </button>
     );
   }
-  return <div className={className}>{inner}</div>;
+  return <div className={baseClass}>{inner}</div>;
 }
 
 function FiltersPanel({
@@ -679,21 +712,41 @@ function FiltersPanel({
   onChange: (f: Filters) => void;
   onClear: () => void;
 }) {
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   function set<K extends keyof Filters>(key: K, value: Filters[K]) {
     onChange({ ...filters, [key]: value });
   }
 
+  const hasAdvancedFilters =
+    Boolean(filters.amountMin) ||
+    Boolean(filters.amountMax) ||
+    Boolean(filters.currency) ||
+    Boolean(filters.neededByFrom) ||
+    Boolean(filters.neededByTo) ||
+    Boolean(filters.dateFrom) ||
+    Boolean(filters.dateTo) ||
+    filters.policyExceptionOnly;
+
+  const selectClass =
+    "w-full rounded-lg border border-(--border-subtle) " +
+    "bg-(--bg-surface) px-3 py-2 text-sm " +
+    "text-(--text-primary) " +
+    "transition-colors focus:ring-2 focus:ring-(--color-focus-ring) " +
+    "focus:outline-none";
+
   return (
-    <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) p-4">
-      <p className="mb-4 text-sm font-medium text-(--text-primary)">Filters</p>
-      <div className="space-y-4">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="overflow-hidden rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev)">
+      <div className="p-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="space-y-1.5">
-            <label className="block text-xs font-medium text-(--text-muted)">Status</label>
+            <label className="block text-[11px] font-semibold tracking-wider text-(--text-muted) uppercase">
+              Status
+            </label>
             <select
               value={filters.status}
               onChange={(e) => set("status", e.target.value)}
-              className="w-full rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2 text-sm text-(--text-primary) focus:ring-2 focus:ring-(--color-focus-ring) focus:outline-none"
+              className={selectClass}
             >
               {STATUS_OPTIONS.map((o) => (
                 <option key={o.value || "any-status"} value={o.value}>
@@ -702,12 +755,15 @@ function FiltersPanel({
               ))}
             </select>
           </div>
+
           <div className="space-y-1.5">
-            <label className="block text-xs font-medium text-(--text-muted)">Category</label>
+            <label className="block text-[11px] font-semibold tracking-wider text-(--text-muted) uppercase">
+              Category
+            </label>
             <select
               value={filters.category}
               onChange={(e) => set("category", e.target.value)}
-              className="w-full rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2 text-sm text-(--text-primary) focus:ring-2 focus:ring-(--color-focus-ring) focus:outline-none"
+              className={selectClass}
             >
               <option value="">Any category</option>
               <optgroup label="Finance">
@@ -726,12 +782,15 @@ function FiltersPanel({
               </optgroup>
             </select>
           </div>
+
           <div className="space-y-1.5">
-            <label className="block text-xs font-medium text-(--text-muted)">Priority</label>
+            <label className="block text-[11px] font-semibold tracking-wider text-(--text-muted) uppercase">
+              Priority
+            </label>
             <select
               value={filters.priority}
               onChange={(e) => set("priority", e.target.value)}
-              className="w-full rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2 text-sm text-(--text-primary) focus:ring-2 focus:ring-(--color-focus-ring) focus:outline-none"
+              className={selectClass}
             >
               {PRIORITY_OPTIONS.map((o) => (
                 <option key={o.value || "any-priority"} value={o.value}>
@@ -740,97 +799,150 @@ function FiltersPanel({
               ))}
             </select>
           </div>
-          <div className="flex flex-col justify-end">
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-(--text-primary)">
-              <input
-                type="checkbox"
-                checked={filters.overdueOnly}
-                onChange={(e) => set("overdueOnly", e.target.checked)}
-                className="rounded border-(--border-subtle)"
-              />
-              Overdue only
+
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-semibold tracking-wider text-(--text-muted) uppercase">
+              Quick filters
             </label>
+            <div className="flex flex-col gap-2 pt-1">
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-(--text-secondary) transition-colors hover:text-(--text-primary)">
+                <input
+                  type="checkbox"
+                  checked={filters.overdueOnly}
+                  onChange={(e) => set("overdueOnly", e.target.checked)}
+                  className="rounded border-(--border-subtle) accent-(--color-primary)"
+                />
+                Overdue only
+              </label>
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-(--text-secondary) transition-colors hover:text-(--text-primary)">
+                <input
+                  type="checkbox"
+                  checked={filters.policyExceptionOnly}
+                  onChange={(e) => set("policyExceptionOnly", e.target.checked)}
+                  className="rounded border-(--border-subtle) accent-(--color-primary)"
+                />
+                Policy exception
+              </label>
+            </div>
           </div>
         </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <div className="space-y-1.5">
-            <label className="block text-xs font-medium text-(--text-muted)">Min amount</label>
-            <Input
-              type="number"
-              min="0"
-              value={filters.amountMin}
-              onChange={(e) => set("amountMin", e.target.value)}
-              placeholder="0"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className="block text-xs font-medium text-(--text-muted)">Max amount</label>
-            <Input
-              type="number"
-              min="0"
-              value={filters.amountMax}
-              onChange={(e) => set("amountMax", e.target.value)}
-              placeholder="∞"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className="block text-xs font-medium text-(--text-muted)">Currency</label>
-            <Input
-              value={filters.currency}
-              onChange={(e) => set("currency", e.target.value.toUpperCase())}
-              placeholder="USD"
-              maxLength={3}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className="block text-xs font-medium text-(--text-muted)">Needed by (from)</label>
-            <Input
-              type="date"
-              value={filters.neededByFrom}
-              onChange={(e) => set("neededByFrom", e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className="block text-xs font-medium text-(--text-muted)">Needed by (to)</label>
-            <Input
-              type="date"
-              value={filters.neededByTo}
-              onChange={(e) => set("neededByTo", e.target.value)}
-            />
-          </div>
-        </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-(--text-primary)">
-            <input
-              type="checkbox"
-              checked={filters.policyExceptionOnly}
-              onChange={(e) => set("policyExceptionOnly", e.target.checked)}
-              className="rounded border-(--border-subtle)"
-            />
-            Policy exception only
-          </label>
-          <button
-            type="button"
-            onClick={onClear}
-            className="text-sm font-medium text-(--text-muted) transition-colors hover:text-(--text-primary)"
+      </div>
+
+      <div className="border-t border-(--border-subtle)">
+        <button
+          type="button"
+          onClick={() => setShowAdvanced((v) => !v)}
+          className="flex w-full cursor-pointer items-center justify-between px-4 py-2.5 text-xs font-medium text-(--text-muted) transition-colors hover:text-(--text-primary)"
+        >
+          <span className="flex items-center gap-2">
+            <span>Advanced filters</span>
+            {hasAdvancedFilters ? (
+              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-(--color-primary) text-[9px] font-bold text-white">
+                •
+              </span>
+            ) : null}
+          </span>
+          <span
+            className={`text-(--text-muted) transition-transform duration-200 ${showAdvanced ? "rotate-180" : ""}`}
           >
-            Clear all
-          </button>
-        </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <label className="block text-xs font-medium text-(--text-muted)">Created from</label>
-            <Input
-              type="date"
-              value={filters.dateFrom}
-              onChange={(e) => set("dateFrom", e.target.value)}
-            />
+            ▾
+          </span>
+        </button>
+
+        {showAdvanced ? (
+          <div className="space-y-3 px-4 pb-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-semibold tracking-wider text-(--text-muted) uppercase">
+                  Min amount
+                </label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={filters.amountMin}
+                  onChange={(e) => set("amountMin", e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-semibold tracking-wider text-(--text-muted) uppercase">
+                  Max amount
+                </label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={filters.amountMax}
+                  onChange={(e) => set("amountMax", e.target.value)}
+                  placeholder="∞"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-semibold tracking-wider text-(--text-muted) uppercase">
+                  Currency
+                </label>
+                <SearchableSelect
+                  options={[{ value: "", label: "Any currency" }, ...CURRENCY_OPTIONS]}
+                  value={filters.currency}
+                  onChange={(val) => set("currency", val)}
+                  placeholder="Any currency"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-semibold tracking-wider text-(--text-muted) uppercase">
+                  Needed by (from)
+                </label>
+                <Input
+                  type="date"
+                  value={filters.neededByFrom}
+                  onChange={(e) => set("neededByFrom", e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-semibold tracking-wider text-(--text-muted) uppercase">
+                  Needed by (to)
+                </label>
+                <Input
+                  type="date"
+                  value={filters.neededByTo}
+                  onChange={(e) => set("neededByTo", e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-semibold tracking-wider text-(--text-muted) uppercase">
+                  Created from
+                </label>
+                <Input
+                  type="date"
+                  value={filters.dateFrom}
+                  onChange={(e) => set("dateFrom", e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-semibold tracking-wider text-(--text-muted) uppercase">
+                  Created to
+                </label>
+                <Input type="date" value={filters.dateTo} onChange={(e) => set("dateTo", e.target.value)} />
+              </div>
+            </div>
           </div>
-          <div className="space-y-1.5">
-            <label className="block text-xs font-medium text-(--text-muted)">Created to</label>
-            <Input type="date" value={filters.dateTo} onChange={(e) => set("dateTo", e.target.value)} />
-          </div>
-        </div>
+        ) : null}
+      </div>
+
+      <div className="flex items-center justify-between border-t border-(--border-subtle) px-4 py-2.5">
+        <p className="text-xs text-(--text-muted)">
+          {countActiveFilters(filters) > 0
+            ? `${countActiveFilters(filters)} filter${countActiveFilters(filters) === 1 ? "" : "s"} active`
+            : "No filters active"}
+        </p>
+        <button
+          type="button"
+          onClick={onClear}
+          className="cursor-pointer text-xs font-semibold text-(--text-muted) transition-colors hover:text-(--color-primary)"
+        >
+          Clear all
+        </button>
       </div>
     </div>
   );
@@ -933,7 +1045,7 @@ function RecordsList({
             type="button"
             onClick={onLoadMore}
             disabled={loadingMore}
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--text-primary) disabled:opacity-60"
+            className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-xl border border-(--border-subtle) bg-(--bg-surface) px-6 text-sm font-medium text-(--text-secondary) transition-all hover:border-(--border-strong) hover:bg-(--bg-surface-hover) hover:text-(--text-primary) disabled:opacity-60"
           >
             {loadingMore ? <Spinner size="sm" /> : null}
             {loadingMore ? "Loading…" : "Load more requests"}
@@ -953,26 +1065,26 @@ function RecordRow({ record, onClick }: { record: RecordListItem; onClick: () =>
       type="button"
       onClick={onClick}
       className={
-        "group w-full rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 py-3 text-left transition-colors hover:border-(--border-strong) hover:bg-(--bg-surface-hover) " +
+        "group w-full cursor-pointer rounded-xl border border-(--border-subtle) bg-(--bg-surface) px-4 py-4 text-left transition-all duration-150 hover:border-(--border-strong) hover:bg-(--bg-surface-hover) hover:shadow-sm " +
         priorityAccentClass(record.priority)
       }
     >
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Badge variant={RECORD_STATUS_BADGE[record.status]} className="shrink-0">
             {RECORD_STATUS_LABELS[record.status]}
           </Badge>
-          <span className="rounded border border-(--border-subtle) bg-(--bg-surface-elev) px-1.5 py-0.5 text-[11px] text-(--text-muted)">
+          <span className="rounded-md border border-(--border-subtle) bg-(--bg-surface-elev) px-2 py-0.5 text-[11px] font-medium text-(--text-muted)">
             {RECORD_TYPE_LABELS[record.type]}
           </span>
         </div>
-        <span className="shrink-0 text-sm font-semibold tabular-nums text-(--text-primary)">
+        <span className="shrink-0 text-sm font-bold tabular-nums text-(--text-primary)">
           {formatAmount(amount, currency)}
         </span>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-start justify-between gap-2">
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-(--text-primary)">
+      <div className="mt-2.5 flex flex-wrap items-start justify-between gap-2">
+        <span className="min-w-0 flex-1 text-sm leading-snug font-semibold text-(--text-primary) transition-colors group-hover:text-(--color-primary)">
           {record.title}
         </span>
         <NeededByLine neededByDate={record.neededByDate} />
@@ -980,7 +1092,9 @@ function RecordRow({ record, onClick }: { record: RecordListItem; onClick: () =>
 
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-(--text-muted)">
         {record.recordKey ? (
-          <span className="font-mono text-[11px] text-(--text-secondary)">{record.recordKey}</span>
+          <span className="rounded-md border border-(--border-subtle) bg-(--bg-surface-elev) px-1.5 py-0.5 font-mono text-[11px] text-(--text-secondary)">
+            {record.recordKey}
+          </span>
         ) : null}
         <span>Created {formatDate(record.createdAt)}</span>
         {approval &&
@@ -1005,13 +1119,13 @@ function RecordRow({ record, onClick }: { record: RecordListItem; onClick: () =>
           </Badge>
         ) : null}
         {record.hasUnreadMention ? (
-          <span className="rounded border border-(--color-warning-soft) bg-(--color-warning-soft) px-1.5 py-0.5 text-[10px] font-medium text-(--color-warning)">
-            ⚠ Mention
+          <span className="rounded-md border border-(--color-warning-soft) bg-(--color-warning-soft) px-1.5 py-0.5 text-[10px] font-medium text-(--color-warning)">
+            Mention
           </span>
         ) : null}
         {record.hasCriticalComment ? (
           <span
-            className="flex h-5 w-5 items-center justify-center rounded bg-(--color-danger-soft) text-xs font-bold text-(--color-danger)"
+            className="flex h-5 w-5 items-center justify-center rounded-md bg-(--color-danger-soft) text-xs font-bold text-(--color-danger)"
             aria-label="Action required"
           >
             !

@@ -86,7 +86,14 @@ export function AccountSettingsTabs({
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      <h1 className="text-xl font-semibold text-(--text-primary)">Account Settings</h1>
+      <div>
+        <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-(--color-primary)">
+          Account
+        </p>
+        <h1 className="text-2xl font-bold tracking-tight text-(--text-primary)">
+          Account Settings
+        </h1>
+      </div>
 
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList>

@@ -13,8 +13,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "SaaS Blueprint",
-  description: "SaaS Blueprint",
+  title: "Relitrue",
+  description: "Executive approvals, evidence, timeline.",
   icons: {
     icon: "/relitrue-favicon.svg",
   },

@@ -2,7 +2,7 @@ import * as React from "react";
 
 const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
   ({ className = "", ...props }, ref) => (
-    <div className="w-full overflow-auto">
+    <div className="w-full overflow-auto rounded-xl border border-(--border-subtle)">
       <table ref={ref} className={"w-full caption-bottom text-sm " + className} {...props} />
     </div>
   ),
@@ -13,7 +13,7 @@ const TableHeader = React.forwardRef<
   HTMLTableSectionElement,
   React.HTMLAttributes<HTMLTableSectionElement>
 >(({ className = "", ...props }, ref) => (
-  <thead ref={ref} className={"bg-(--bg-surface-elev)/40 [&_tr]:border-b " + className} {...props} />
+  <thead ref={ref} className={"bg-(--bg-surface-elev) [&_tr]:border-b " + className} {...props} />
 ));
 TableHeader.displayName = "TableHeader";
 
@@ -30,7 +30,9 @@ const TableRow = React.forwardRef<HTMLTableRowElement, React.HTMLAttributes<HTML
     <tr
       ref={ref}
       className={
-        "border-b border-(--border-subtle) transition-colors duration-200 hover:bg-(--bg-surface-hover)/50 " +
+        "border-b border-(--border-subtle) " +
+        "transition-colors duration-150 " +
+        "hover:bg-(--bg-surface-elev) " +
         className
       }
       {...props}
@@ -46,7 +48,11 @@ const TableHead = React.forwardRef<
   <th
     ref={ref}
     className={
-      "h-10 px-4 text-left align-middle text-quiet-uppercase [&:has([role=checkbox])]:pr-0 " +
+      "h-11 px-4 text-left align-middle " +
+      "text-[11px] font-semibold uppercase " +
+      "tracking-widest text-(--text-muted) " +
+      "whitespace-nowrap " +
+      "[&:has([role=checkbox])]:pr-0 " +
       className
     }
     {...props}
@@ -60,7 +66,12 @@ const TableCell = React.forwardRef<
 >(({ className = "", ...props }, ref) => (
   <td
     ref={ref}
-    className={"p-4 align-middle text-sm text-(--text-primary) [&:has([role=checkbox])]:pr-0 " + className}
+    className={
+      "px-4 py-3.5 align-middle text-sm " +
+      "text-(--text-primary) " +
+      "[&:has([role=checkbox])]:pr-0 " +
+      className
+    }
     {...props}
   />
 ));

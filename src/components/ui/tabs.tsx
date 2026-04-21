@@ -43,8 +43,13 @@ export function TabsList({ children, className = "" }: TabsListProps) {
   return (
     <nav
       role="tablist"
-      aria-label="Settings sections"
-      className={"scrollbar-thin flex flex-nowrap items-end gap-1.5 overflow-x-auto " + className}
+      className={
+        "flex flex-nowrap items-center gap-1 " +
+        "overflow-x-auto scrollbar-none " +
+        "border-b border-(--border-subtle) " +
+        "pb-0 " +
+        className
+      }
     >
       {children}
     </nav>
@@ -71,11 +76,23 @@ export function TabsTrigger({ value, children, className = "" }: TabsTriggerProp
       aria-selected={isActive}
       onClick={() => onValueChange(value)}
       className={
-        "flex min-h-[44px] shrink-0 cursor-pointer items-center justify-center rounded-t-lg px-4 py-3 text-sm font-medium transition-all " +
+        "relative flex min-h-[40px] shrink-0 cursor-pointer " +
+        "items-center justify-center gap-2 " +
+        "px-4 py-2.5 text-sm font-medium " +
+        "transition-all duration-150 " +
+        "focus-visible:outline-none " +
+        "focus-visible:ring-2 " +
+        "focus-visible:ring-(--color-primary) " +
+        "focus-visible:ring-offset-1 " +
         (isActive
-          ? "rounded-b-none border border-b-0 border-(--border-subtle) bg-(--bg-surface) font-semibold text-(--text-primary) shadow-sm"
-          : "rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) text-(--text-secondary) shadow-sm hover:bg-(--bg-surface-hover) hover:text-(--text-primary)") +
-        " " +
+          ? "border-b-2 border-(--color-primary) " +
+            "text-(--text-primary) font-semibold " +
+            "bg-transparent "
+          : "border-b-2 border-transparent " +
+            "text-(--text-muted) " +
+            "hover:text-(--text-secondary) " +
+            "hover:border-(--border-strong) " +
+            "bg-transparent ") +
         className
       }
     >
@@ -99,7 +116,7 @@ export function TabsContent({ value, children, className = "" }: TabsContentProp
   return (
     <div
       className={
-        "-mt-px rounded-t-none rounded-b-lg border border-t border-(--border-subtle) bg-(--bg-surface) p-8 shadow-sm " +
+        "mt-6 " +
         className
       }
     >

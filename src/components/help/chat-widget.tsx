@@ -93,6 +93,7 @@ export function ChatWidget({ forcedSurface }: ChatWidgetProps) {
   const [titles, setTitles] = useState<string[]>([]);
   const [hasUnread, setHasUnread] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   const threadRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -100,6 +101,18 @@ export function ChatWidget({ forcedSurface }: ChatWidgetProps) {
 
   const articleBase = useAppFlow ? "/app/help/article" : "/help/article";
   const contactHref = useAppFlow ? "/app/help/new" : "/help/new";
+
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setDialogOpen(document.body.style.overflow === "hidden");
+    });
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["style"],
+    });
+    setDialogOpen(document.body.style.overflow === "hidden");
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const url = useAppFlow ? "/api/app/help/chat/suggestions" : "/api/help/chat/suggestions";
@@ -368,6 +381,11 @@ export function ChatWidget({ forcedSurface }: ChatWidgetProps) {
         right: "24px",
         zIndex: 2147483647,
         isolation: "isolate",
+        // Hide on mobile when a dialog/modal is open
+        // On desktop it never overlaps modal buttons
+        opacity: dialogOpen ? 0 : 1,
+        pointerEvents: dialogOpen ? ("none" as const) : ("auto" as const),
+        transition: "opacity 200ms ease",
       }}
     >
       <div

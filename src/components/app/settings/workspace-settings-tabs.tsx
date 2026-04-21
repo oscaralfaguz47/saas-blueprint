@@ -77,10 +77,19 @@ export function WorkspaceSettingsTabs({
   };
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      <h1 className="text-xl font-semibold text-(--text-primary)">Workspace Settings</h1>
+    <div className="space-y-6 sm:space-y-8">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-(--color-primary)">
+            Settings
+          </p>
+          <h1 className="text-2xl font-bold tracking-tight text-(--text-primary)">
+            Workspace Settings
+          </h1>
+        </div>
+      </div>
 
-      <Tabs value={activeTab} onValueChange={handleTabChange}>
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-0">
         <TabsList>
           {visibleTabs.map((t) => (
             <TabsTrigger key={t.id} value={t.id}>

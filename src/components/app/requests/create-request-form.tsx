@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { useRouter } from "next/navigation";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { useToast } from "@/components/ui/toast";
@@ -19,7 +27,15 @@ import {
 } from "@/lib/record-utils";
 import { CURRENCY_OPTIONS } from "@/lib/currencies";
 import type { RecordType } from "@/types/records";
-import { IconBilling, IconFileText, IconDollarSign, IconClock, IconAlertCircle, IconWorkspace } from "@/components/ui/icons";
+import {
+  IconAlertCircle,
+  IconCheck,
+  IconDollarSign,
+  IconFileText,
+  IconFilter,
+  IconHelpCircle,
+  IconSend,
+} from "@/components/ui/icons";
 
 const FINANCE_CATEGORIES: RecordType[] = [
   "BUDGET_REQUEST",
@@ -54,23 +70,39 @@ function selectCategoryAndScrollToTitle(
   });
 }
 
-function CategoryIcon({ type, size = 20 }: { type: RecordType; size?: number }) {
+function CategoryIcon({
+  type,
+  size = 20,
+}: {
+  type: RecordType;
+  size?: number;
+}) {
   const common = "shrink-0 text-(--color-primary)";
   switch (type) {
     case "BUDGET_REQUEST":
-    case "FORECAST_ADJUSTMENT":
-      return <IconBilling size={size} className={common} />;
-    case "SPEND_APPROVAL":
-    case "VENDOR_PAYMENT_REQUEST":
+      // Budget = money/funding
       return <IconDollarSign size={size} className={common} />;
+    case "SPEND_APPROVAL":
+      // Approval = checkmark
+      return <IconCheck size={size} className={common} />;
+    case "VENDOR_PAYMENT_REQUEST":
+      // Sending payment to vendor
+      return <IconSend size={size} className={common} />;
     case "REIMBURSEMENT":
-      return <IconClock size={size} className={common} />;
+      // Money being returned
+      return <IconDollarSign size={size} className={common} />;
     case "FINANCIAL_EXCEPTION":
+      // Exception = alert/warning
       return <IconAlertCircle size={size} className={common} />;
     case "CONTRACT_SCOPE_CHANGE":
+      // Contract = document
       return <IconFileText size={size} className={common} />;
+    case "FORECAST_ADJUSTMENT":
+      // Adjustment = filter/tune
+      return <IconFilter size={size} className={common} />;
     case "OTHER_FINANCIAL_REQUEST":
-      return <IconWorkspace size={size} className={common} />;
+      // Generic/misc = help circle
+      return <IconHelpCircle size={size} className={common} />;
     default:
       return <IconFileText size={size} className={common} />;
   }
@@ -163,6 +195,8 @@ export type FinanceRequestWizardProps = {
   workspaceCurrency?: string;
   onStepChange?: (step: 1 | 2 | 3) => void;
   onSubmitSuccess: (payload: CreateSuccessPayload) => void;
+  /** Called with the footer buttons JSX so the parent modal can render them in a fixed footer */
+  onFooterChange?: (footer: ReactNode) => void;
 };
 
 export function FinanceRequestWizard({
@@ -170,6 +204,7 @@ export function FinanceRequestWizard({
   workspaceCurrency,
   onStepChange,
   onSubmitSuccess,
+  onFooterChange,
 }: FinanceRequestWizardProps) {
   const apiFetch = useApiFetch();
   const toast = useToast();
@@ -266,7 +301,7 @@ export function FinanceRequestWizard({
     return e;
   }, [form]);
 
-  function scrollWizardToTop() {
+  const scrollWizardToTop = useCallback(() => {
     setTimeout(() => {
       const root = topRef.current;
       const scrollParent = root?.closest(".overflow-y-auto") as HTMLElement | null;
@@ -276,9 +311,9 @@ export function FinanceRequestWizard({
         root?.scrollIntoView({ behavior: "auto", block: "start" });
       }
     }, 0);
-  }
+  }, []);
 
-  function goNext() {
+  const goNext = useCallback(() => {
     if (currentStep === 1) {
       const e = validateStep1();
       if (Object.keys(e).length) {
@@ -300,9 +335,9 @@ export function FinanceRequestWizard({
       setCurrentStep(3);
       scrollWizardToTop();
     }
-  }
+  }, [currentStep, validateStep1, validateStep2, scrollWizardToTop]);
 
-  function goBack() {
+  const goBack = useCallback(() => {
     if (currentStep === 2) {
       setCurrentStep(1);
       scrollWizardToTop();
@@ -310,7 +345,7 @@ export function FinanceRequestWizard({
       setCurrentStep(2);
       scrollWizardToTop();
     }
-  }
+  }, [currentStep, scrollWizardToTop]);
 
   useEffect(() => {
     onStepChange?.(currentStep);
@@ -352,7 +387,7 @@ export function FinanceRequestWizard({
 
   const canSubmitOpen = reviewMissing.length === 0;
 
-  async function submit(status: "OPEN" | "DRAFT") {
+  const submit = useCallback(async (status: "OPEN" | "DRAFT") => {
     if (status === "OPEN" && !canSubmitOpen) return;
     if (status === "DRAFT") setSavingDraft(true);
     else setSubmitting(true);
@@ -470,9 +505,94 @@ export function FinanceRequestWizard({
       setSavingDraft(false);
       setSubmitting(false);
     }
-  }
+  }, [canSubmitOpen, form, apiFetch, toast, onSubmitSuccess]);
 
   const isLoading = submitting || savingDraft;
+
+  useEffect(() => {
+    if (!onFooterChange) return;
+    onFooterChange(
+      <div className="flex w-full items-center justify-between gap-2">
+        <div className="flex-shrink-0">
+          {currentStep > 1 ? (
+            <button
+              type="button"
+              onClick={goBack}
+              disabled={isLoading}
+              className="inline-flex h-9 cursor-pointer items-center rounded-lg border border-(--border-subtle) px-4 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Back
+            </button>
+          ) : variant === "page" ? (
+            <button
+              type="button"
+              onClick={() => window.history.back()}
+              disabled={isLoading}
+              className="inline-flex h-9 cursor-pointer items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Cancel
+            </button>
+          ) : (
+            <div />
+          )}
+        </div>
+
+        <div className="flex flex-shrink-0 items-center gap-2">
+          {currentStep < 3 ? (
+            <button
+              type="button"
+              onClick={goNext}
+              disabled={isLoading}
+              className="inline-flex h-9 cursor-pointer items-center rounded-lg bg-(--color-primary) px-5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Next
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => void submit("DRAFT")}
+                disabled={isLoading || !form.title.trim()}
+                className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {savingDraft && <Spinner size="sm" />}
+                {savingDraft ? "Saving…" : "Save as draft"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void submit("OPEN")}
+                disabled={isLoading || !canSubmitOpen}
+                className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {submitting && <Spinner size="sm" />}
+                {submitting ? (
+                  "Creating…"
+                ) : (
+                  <>
+                    <span className="sm:hidden">Create</span>
+                    <span className="hidden sm:inline">Create financial request</span>
+                  </>
+                )}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    );
+    return () => onFooterChange(null);
+  }, [
+    currentStep,
+    isLoading,
+    canSubmitOpen,
+    savingDraft,
+    submitting,
+    goBack,
+    goNext,
+    submit,
+    variant,
+    form.title,
+    onFooterChange,
+  ]);
 
   const inner = (
     <div ref={topRef} className="space-y-6">
@@ -488,7 +608,7 @@ export function FinanceRequestWizard({
             <p className="mb-2 text-sm font-medium text-(--text-primary)">
               Request category <span className="text-(--color-danger)">*</span>
             </p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {FINANCE_CATEGORIES.map((cat) => (
                 <button
                   key={cat}
@@ -943,63 +1063,76 @@ export function FinanceRequestWizard({
         </div>
       )}
 
-      <div className="flex flex-col-reverse gap-2 border-t border-(--border-subtle) pt-4 sm:flex-row sm:justify-between">
-        <div className="flex flex-wrap gap-2">
-          {currentStep > 1 && (
-            <button
-              type="button"
-              onClick={goBack}
-              disabled={isLoading}
-              className="inline-flex h-9 cursor-pointer items-center rounded-lg border border-(--border-subtle) px-4 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Back
-            </button>
-          )}
-          {variant === "page" && currentStep === 1 && (
-            <button
-              type="button"
-              onClick={() => window.history.back()}
-              disabled={isLoading}
-              className="inline-flex h-9 cursor-pointer items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Cancel
-            </button>
-          )}
+      {!onFooterChange && (
+        <div className="border-t border-(--border-subtle) pt-4">
+          <div className="flex w-full items-center justify-between gap-2">
+            <div className="flex-shrink-0">
+              {currentStep > 1 ? (
+                <button
+                  type="button"
+                  onClick={goBack}
+                  disabled={isLoading}
+                  className="inline-flex h-9 cursor-pointer items-center rounded-lg border border-(--border-subtle) px-4 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Back
+                </button>
+              ) : variant === "page" ? (
+                <button
+                  type="button"
+                  onClick={() => window.history.back()}
+                  disabled={isLoading}
+                  className="inline-flex h-9 cursor-pointer items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+              ) : (
+                <div />
+              )}
+            </div>
+
+            <div className="flex flex-shrink-0 items-center gap-2">
+              {currentStep < 3 ? (
+                <button
+                  type="button"
+                  onClick={goNext}
+                  disabled={isLoading}
+                  className="inline-flex h-9 cursor-pointer items-center rounded-lg bg-(--color-primary) px-5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Next
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void submit("DRAFT")}
+                    disabled={isLoading || !form.title.trim()}
+                    className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {savingDraft && <Spinner size="sm" />}
+                    {savingDraft ? "Saving…" : "Save as draft"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void submit("OPEN")}
+                    disabled={isLoading || !canSubmitOpen}
+                    className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {submitting && <Spinner size="sm" />}
+                    {submitting ? (
+                      "Creating…"
+                    ) : (
+                      <>
+                        <span className="sm:hidden">Create</span>
+                        <span className="hidden sm:inline">Create financial request</span>
+                      </>
+                    )}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
         </div>
-        <div className="flex flex-wrap justify-end gap-2">
-          {currentStep < 3 ? (
-            <button
-              type="button"
-              onClick={goNext}
-              disabled={isLoading}
-              className="inline-flex h-9 cursor-pointer items-center rounded-lg bg-(--color-primary) px-5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Next
-            </button>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => void submit("DRAFT")}
-                disabled={isLoading || !form.title.trim()}
-                className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {savingDraft && <Spinner size="sm" />}
-                {savingDraft ? "Saving…" : "Save as draft"}
-              </button>
-              <button
-                type="button"
-                onClick={() => void submit("OPEN")}
-                disabled={isLoading || !canSubmitOpen}
-                className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {submitting && <Spinner size="sm" />}
-                {submitting ? "Creating…" : "Create financial request"}
-              </button>
-            </>
-          )}
-        </div>
-      </div>
+      )}
     </div>
   );
 
