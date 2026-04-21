@@ -37,6 +37,7 @@ export const GET = withErrorHandler(async () => {
           status: true,
           currency: true,
           timezone: true,
+          logoObjectKey: true,
         },
       },
     },
