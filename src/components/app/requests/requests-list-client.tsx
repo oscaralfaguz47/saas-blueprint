@@ -297,6 +297,8 @@ export function RequestsListClient({ canCreate, canReadAll, workspaceCurrency }:
   const [summary, setSummary] = useState<SummaryPayload | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryFailed, setSummaryFailed] = useState(false);
+  // Keyboard navigation: J = next record, K = previous record, Enter = open focused record
+  const [focusedIndex, setFocusedIndex] = useState<number>(-1);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -409,6 +411,38 @@ export function RequestsListClient({ canCreate, canReadAll, workspaceCurrency }:
     return () => clearTimeout(t);
   }, [searchInput]);
 
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      // Don't trigger if user is typing in an input/textarea/select
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key === "j" || e.key === "ArrowDown") {
+        e.preventDefault();
+        setFocusedIndex((prev) => Math.min(prev + 1, records.length - 1));
+      } else if (e.key === "k" || e.key === "ArrowUp") {
+        e.preventDefault();
+        setFocusedIndex((prev) => Math.max(prev - 1, 0));
+      } else if (e.key === "Enter" && focusedIndex >= 0 && records[focusedIndex]) {
+        try {
+          sessionStorage.setItem(
+            "rlt_request_nav_list",
+            JSON.stringify(records.map((r) => r.id))
+          );
+        } catch {
+          // ignore
+        }
+        router.push(`/app/requests/${records[focusedIndex]!.id}`);
+      }
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [records, focusedIndex, router]);
+
+  // Reset focused index when records change
+  useEffect(() => {
+    setFocusedIndex(-1);
+  }, [tab, search, filters]);
+
   function handleTabChange(value: string) {
     setTab(value as UiTab);
     setSearchInput("");
@@ -457,6 +491,14 @@ export function RequestsListClient({ canCreate, canReadAll, workspaceCurrency }:
           </button>
         )}
       </div>
+
+      {/* Attention banner — only shown when not already on inbox tab */}
+      {tab !== "inbox" && tab !== "awaiting_approval" && displaySummary && displaySummary.pendingMyApprovalCount > 0 ? (
+        <AttentionBanner
+          pendingApprovalCount={displaySummary.pendingMyApprovalCount}
+          onGoToInbox={() => setTab("inbox")}
+        />
+      ) : null}
 
       <section aria-label="Summary metrics" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {summaryLoading ? (
@@ -589,6 +631,15 @@ export function RequestsListClient({ canCreate, canReadAll, workspaceCurrency }:
                   </span>
                 ) : null}
               </button>
+              <span
+                title="Keyboard shortcuts: J/K to move between rows, Enter to open"
+                className="hidden cursor-default select-none items-center gap-1 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-2.5 py-1.5 text-[11px] font-medium text-(--text-muted) sm:inline-flex"
+              >
+                <kbd className="font-mono">J</kbd>
+                <span>/</span>
+                <kbd className="font-mono">K</kbd>
+                <span className="ml-1 opacity-60">navigate</span>
+              </span>
             </div>
           </div>
 
@@ -612,7 +663,18 @@ export function RequestsListClient({ canCreate, canReadAll, workspaceCurrency }:
                 uiTab={t.value}
                 canCreate={canCreate}
                 isFilteredOrSearch={isFilteredOrSearch}
-                onNavigate={(id) => router.push(`/app/requests/${id}`)}
+                focusedIndex={focusedIndex}
+                onNavigate={(id) => {
+                  try {
+                    sessionStorage.setItem(
+                      "rlt_request_nav_list",
+                      JSON.stringify(records.map((r) => r.id))
+                    );
+                  } catch {
+                    // ignore
+                  }
+                  router.push(`/app/requests/${id}`);
+                }}
                 onClearFilters={clearAllFiltersAndSearch}
                 onNewRequest={
                   canCreate
@@ -676,7 +738,7 @@ function MetricCard({
     "transition-all duration-150 ",
     onClick
       ? "cursor-pointer hover:border-(--border-strong) " +
-        "hover:bg-(--bg-surface-hover) hover:shadow-sm"
+        "hover:bg-(--bg-surface-hover) hover:shadow-sm hover:scale-[1.01]"
       : "",
     tone !== "neutral" ? "border-l-2 border-l-current" : "",
   ].join("");
@@ -958,6 +1020,7 @@ function RecordsList({
   uiTab,
   canCreate,
   isFilteredOrSearch,
+  focusedIndex,
   onNavigate,
   onClearFilters,
   onNewRequest,
@@ -971,6 +1034,7 @@ function RecordsList({
   uiTab: UiTab;
   canCreate: boolean;
   isFilteredOrSearch: boolean;
+  focusedIndex: number;
   onNavigate: (id: string) => void;
   onClearFilters: () => void;
   onNewRequest?: () => void;
@@ -1036,9 +1100,16 @@ function RecordsList({
 
   return (
     <div className="space-y-2">
-      {records.map((r) => (
-        <RecordRow key={r.id} record={r} onClick={() => onNavigate(r.id)} />
+      {records.map((r, idx) => (
+        <RecordRow key={r.id} record={r} onClick={() => onNavigate(r.id)} isFocused={focusedIndex === idx} />
       ))}
+      {!hasMore && records.length > 0 && (
+        <p className="pt-2 text-center text-xs text-(--text-muted)">
+          {records.length === 1
+            ? "1 request"
+            : `${records.length} requests`}
+        </p>
+      )}
       {hasMore ? (
         <div className="flex justify-center pt-2">
           <button
@@ -1056,7 +1127,7 @@ function RecordsList({
   );
 }
 
-function RecordRow({ record, onClick }: { record: RecordListItem; onClick: () => void }) {
+function RecordRow({ record, onClick, isFocused }: { record: RecordListItem; onClick: () => void; isFocused: boolean }) {
   const { amount, currency } = getBestAmount(record);
   const approval = record.approvalStatus;
 
@@ -1065,7 +1136,8 @@ function RecordRow({ record, onClick }: { record: RecordListItem; onClick: () =>
       type="button"
       onClick={onClick}
       className={
-        "group w-full cursor-pointer rounded-xl border border-(--border-subtle) bg-(--bg-surface) px-4 py-4 text-left transition-all duration-150 hover:border-(--border-strong) hover:bg-(--bg-surface-hover) hover:shadow-sm " +
+        "group w-full cursor-pointer rounded-xl border border-(--border-subtle) bg-(--bg-surface) px-4 py-4 text-left transition-all duration-150 hover:border-(--border-strong) hover:bg-(--bg-surface-hover) hover:shadow-sm animate-in fade-in duration-150 " +
+        (isFocused ? "ring-2 ring-(--color-primary) ring-offset-1 " : "") +
         priorityAccentClass(record.priority)
       }
     >
@@ -1092,9 +1164,17 @@ function RecordRow({ record, onClick }: { record: RecordListItem; onClick: () =>
 
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-(--text-muted)">
         {record.recordKey ? (
-          <span className="rounded-md border border-(--border-subtle) bg-(--bg-surface-elev) px-1.5 py-0.5 font-mono text-[11px] text-(--text-secondary)">
+          <button
+            type="button"
+            title="Click to copy request ID"
+            onClick={(e) => {
+              e.stopPropagation();
+              void navigator.clipboard.writeText(record.recordKey!).catch(() => {});
+            }}
+            className="rounded-md border border-(--border-subtle) bg-(--bg-surface-elev) px-1.5 py-0.5 font-mono text-[11px] text-(--text-secondary) transition-colors hover:border-(--color-primary) hover:bg-(--color-primary-soft) hover:text-(--color-primary)"
+          >
             {record.recordKey}
-          </span>
+          </button>
         ) : null}
         <span>Created {formatDate(record.createdAt)}</span>
         {approval &&
@@ -1131,6 +1211,44 @@ function RecordRow({ record, onClick }: { record: RecordListItem; onClick: () =>
             !
           </span>
         ) : null}
+      </div>
+    </button>
+  );
+}
+
+function AttentionBanner({
+  pendingApprovalCount,
+  onGoToInbox,
+}: {
+  pendingApprovalCount: number;
+  onGoToInbox: () => void;
+}) {
+  if (pendingApprovalCount === 0) return null;
+  return (
+    <button
+      type="button"
+      onClick={onGoToInbox}
+      className="group w-full cursor-pointer rounded-xl border border-(--color-warning-soft) bg-(--color-warning-soft) px-4 py-3 text-left transition-all hover:border-(--color-warning) hover:shadow-sm"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-(--color-warning) text-sm font-bold text-white">
+            {pendingApprovalCount > 99 ? "99+" : pendingApprovalCount}
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-(--color-warning)">
+              {pendingApprovalCount === 1
+                ? "1 request needs your approval"
+                : `${pendingApprovalCount} requests need your approval`}
+            </p>
+            <p className="text-xs text-(--text-muted)">
+              Click to view your approval inbox
+            </p>
+          </div>
+        </div>
+        <span className="text-xs font-semibold text-(--color-warning) transition-transform group-hover:translate-x-0.5">
+          View →
+        </span>
       </div>
     </button>
   );

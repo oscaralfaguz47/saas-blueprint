@@ -164,6 +164,14 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         }
       : null;
 
+    const tenantCurrency = membership?.tenant
+      ? await prisma.tenant.findUnique({
+          where: { id: membership.tenant.id },
+          select: { currency: true },
+        })
+      : null;
+    const workspaceCurrency = tenantCurrency?.currency ?? "USD";
+
     const userRecord = await prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -199,6 +207,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         showWelcomeBanner={showWelcomeBanner}
         workspaceName={bannerWorkspaceName}
         bannerTenantId={bannerTenantId}
+        workspaceCurrency={workspaceCurrency}
       >
         {children}
       </AppLayoutHydrationGate>

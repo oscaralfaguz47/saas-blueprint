@@ -36,6 +36,7 @@ import {
   IconHelpCircle,
   IconSend,
 } from "@/components/ui/icons";
+import { useRequestSmartDefaults } from "./create-request-modal-context";
 
 const FINANCE_CATEGORIES: RecordType[] = [
   "BUDGET_REQUEST",
@@ -62,8 +63,10 @@ const CATEGORY_DESCRIPTIONS: Record<string, string> = {
 function selectCategoryAndScrollToTitle(
   setField: <K extends keyof FormDataState>(key: K, value: FormDataState[K]) => void,
   titleRef: RefObject<HTMLDivElement | null>,
-  cat: RecordType
+  cat: RecordType,
+  saveLastCategory: (category: string) => void
 ) {
+  saveLastCategory(cat);
   setField("category", cat);
   requestAnimationFrame(() => {
     titleRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -208,10 +211,28 @@ export function FinanceRequestWizard({
 }: FinanceRequestWizardProps) {
   const apiFetch = useApiFetch();
   const toast = useToast();
+  const {
+    getLastCategory,
+    saveLastCategory,
+    getLastWorkspaceCurrency,
+    saveLastWorkspaceCurrency,
+  } = useRequestSmartDefaults();
   const topRef = useRef<HTMLDivElement>(null);
   const titleFieldRef = useRef<HTMLDivElement>(null);
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
-  const [form, setForm] = useState<FormDataState>(() => initialForm(workspaceCurrency));
+  const [form, setForm] = useState<FormDataState>(() => {
+    const base = initialForm(workspaceCurrency);
+    const lastCat = getLastCategory();
+    const lastCurr = getLastWorkspaceCurrency();
+    let next: FormDataState = { ...base };
+    if (lastCat && FINANCE_CATEGORIES.includes(lastCat as RecordType)) {
+      next = { ...next, category: lastCat as RecordType };
+    }
+    if (lastCurr && /^[A-Z]{3}$/.test(lastCurr.trim().toUpperCase())) {
+      next = { ...next, currency: lastCurr.trim().toUpperCase() };
+    }
+    return next;
+  });
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
@@ -614,7 +635,9 @@ export function FinanceRequestWizard({
                   key={cat}
                   type="button"
                   disabled={isLoading}
-                  onClick={() => selectCategoryAndScrollToTitle(setField, titleFieldRef, cat)}
+                  onClick={() =>
+                    selectCategoryAndScrollToTitle(setField, titleFieldRef, cat, saveLastCategory)
+                  }
                   className={[
                     "min-h-[auto] flex cursor-pointer gap-3 rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed",
                     form.category === cat
@@ -720,7 +743,10 @@ export function FinanceRequestWizard({
                 <SearchableSelect
                   options={CURRENCY_OPTIONS}
                   value={form.currency}
-                  onChange={(val) => setField("currency", val)}
+                  onChange={(val) => {
+                    setField("currency", val);
+                    saveLastWorkspaceCurrency(val);
+                  }}
                   placeholder="Select currency..."
                   disabled={isLoading}
                 />

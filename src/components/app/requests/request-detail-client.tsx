@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { useToast } from "@/components/ui/toast";
 import { Badge } from "@/components/ui/badge";
@@ -162,6 +163,17 @@ export function RequestDetailClient({
     void load();
   }, [load]);
 
+  // Escape closes the inline close-request dialog
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && closeDialogOpen) {
+        setCloseDialogOpen(false);
+      }
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [closeDialogOpen]);
+
   async function handleCloseRequest() {
     if (!data || closing) return;
     setClosing(true);
@@ -291,19 +303,31 @@ export function RequestDetailClient({
 
   return (
     <div className="space-y-6">
-      <Link
-        href="/app/requests"
-        className="inline-flex items-center gap-1.5 text-sm text-(--text-muted) transition-colors hover:text-(--text-primary)"
-      >
-        <IconChevronLeft size={14} />
-        Back to requests
-      </Link>
+      <div className="flex items-center justify-between gap-3">
+        <Link
+          href="/app/requests"
+          className="inline-flex items-center gap-1.5 text-sm text-(--text-muted) transition-colors hover:text-(--text-primary)"
+        >
+          <IconChevronLeft size={14} />
+          Back to requests
+        </Link>
+        <RequestKeyboardNav currentId={recordId} />
+      </div>
 
-      <header className="space-y-4 rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev) p-4 sm:p-6">
+      <header className="space-y-4 rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev) p-4 sm:p-6 animate-in fade-in slide-in-from-top-1 duration-200">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-semibold text-(--text-primary)">
+          <button
+            type="button"
+            title="Click to copy request ID"
+            onClick={() => {
+              void navigator.clipboard
+                .writeText(rec.recordKey ?? rec.id)
+                .catch(() => {});
+            }}
+            className="rounded-md border border-(--border-subtle) bg-(--bg-surface-elev) px-2 py-0.5 font-mono text-sm font-semibold text-(--text-primary) transition-colors hover:border-(--color-primary) hover:bg-(--color-primary-soft) hover:text-(--color-primary)"
+          >
             {rec.recordKey ?? `#${rec.id.slice(0, 8)}`}
-          </span>
+          </button>
           <Badge variant={RECORD_STATUS_BADGE[rec.status]}>
             {RECORD_STATUS_LABELS[rec.status]}
           </Badge>
@@ -464,6 +488,17 @@ export function RequestDetailClient({
         )}
       </header>
 
+      <NextActionBanner
+        rec={rec}
+        participants={participants}
+        evidence={evidence}
+        currentUserId={currentUserId}
+        canAssignInternal={canAssignInternal}
+        canAssignExternal={canAssignExternal}
+        canAddEvidence={canAddEvidence}
+        onOpenAssignInternal={() => setAssignApproverOpen(true)}
+      />
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           <div id="section-overview-meta">
@@ -605,12 +640,14 @@ export function RequestDetailClient({
             />
           </div>
 
-          <CommentSection
-            recordId={recordId}
-            isClosed={isClosed}
-            canComment={canComment}
-            onRefresh={load}
-          />
+          <div id="section-comments">
+            <CommentSection
+              recordId={recordId}
+              isClosed={isClosed}
+              canComment={canComment}
+              onRefresh={load}
+            />
+          </div>
 
           <TimelineSection timeline={timeline} comments={comments} />
         </div>
@@ -2393,6 +2430,253 @@ function RequestDetailSkeleton() {
           <Skeleton className="h-40 w-full rounded-xl" />
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * NextActionBanner — shows the single most important action the current user
+ * should take on this request right now. Contextual, not decorative.
+ */
+function NextActionBanner({
+  rec,
+  participants,
+  evidence,
+  currentUserId,
+  canAssignInternal,
+  canAssignExternal,
+  canAddEvidence,
+  onOpenAssignInternal,
+}: {
+  rec: RecordDetailExtended;
+  participants: RecordParticipant[];
+  evidence: RecordEvidenceItem[];
+  currentUserId: string;
+  canAssignInternal: boolean;
+  canAssignExternal: boolean;
+  canAddEvidence: boolean;
+  onOpenAssignInternal: () => void;
+}) {
+  // Don't show banner on closed/canceled/approved/rejected requests
+  if (["CLOSED", "CANCELED", "APPROVED", "REJECTED"].includes(rec.status)) return null;
+
+  const approverParticipants = participants.filter((p) => p.participantRole === "APPROVER");
+  const myPendingApproval = participants.find(
+    (p) =>
+      p.participantRole === "APPROVER" &&
+      p.status === "PENDING" &&
+      p.participantType === "INTERNAL" &&
+      p.userId === currentUserId
+  );
+
+  // Priority 1: I need to approve this
+  if (myPendingApproval) {
+    return (
+      <BannerShell tone="primary" icon="⏳">
+        <span className="font-semibold text-(--color-primary)">Your approval is needed.</span>
+        <span className="text-(--text-secondary)">
+          {" "}
+          Scroll down to the approval workflow section to approve or reject.
+        </span>
+        <a
+          href="#section-approvers"
+          className="ml-auto shrink-0 rounded-lg bg-(--color-primary) px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-(--color-primary-hover)"
+        >
+          Review →
+        </a>
+      </BannerShell>
+    );
+  }
+
+  // Priority 2: DRAFT — needs to be submitted
+  if (rec.status === "DRAFT" && rec.createdByUserId === currentUserId) {
+    return (
+      <BannerShell tone="warning" icon="📝">
+        <span className="font-semibold text-(--color-warning)">This is a draft.</span>
+        <span className="text-(--text-secondary)"> Submit it to start the approval process.</span>
+      </BannerShell>
+    );
+  }
+
+  // Priority 3: AWAITING_INFO
+  if (rec.status === "AWAITING_INFO") {
+    return (
+      <BannerShell tone="warning" icon="💬">
+        <span className="font-semibold text-(--color-warning)">Awaiting additional information.</span>
+        <span className="text-(--text-secondary)"> Check the comments section for what&apos;s needed.</span>
+        <a
+          href="#section-comments"
+          className="ml-auto shrink-0 rounded-lg border border-(--color-warning) px-3 py-1.5 text-xs font-semibold text-(--color-warning) transition-colors hover:bg-(--color-warning-soft)"
+        >
+          View comments →
+        </a>
+      </BannerShell>
+    );
+  }
+
+  // Priority 4: No approvers assigned and I can assign
+  if (
+    approverParticipants.length === 0 &&
+    rec.status === "OPEN" &&
+    (canAssignInternal || canAssignExternal)
+  ) {
+    return (
+      <BannerShell tone="neutral" icon="👤">
+        <span className="font-semibold text-(--text-primary)">No approvers assigned yet.</span>
+        <span className="text-(--text-secondary)"> Assign someone to move this request forward.</span>
+        <button
+          type="button"
+          onClick={onOpenAssignInternal}
+          className="ml-auto shrink-0 rounded-lg border border-(--border-strong) bg-(--bg-surface) px-3 py-1.5 text-xs font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-hover)"
+        >
+          Assign approver →
+        </button>
+      </BannerShell>
+    );
+  }
+
+  // Priority 5: No evidence and I can add it
+  if (evidence.length === 0 && canAddEvidence && rec.status === "OPEN") {
+    return (
+      <BannerShell tone="neutral" icon="📎">
+        <span className="font-semibold text-(--text-primary)">No supporting evidence yet.</span>
+        <span className="text-(--text-secondary)">
+          {" "}
+          Attach files or links to strengthen this request.
+        </span>
+        <a
+          href="#section-evidence"
+          className="ml-auto shrink-0 rounded-lg border border-(--border-strong) bg-(--bg-surface) px-3 py-1.5 text-xs font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-hover)"
+        >
+          Add evidence →
+        </a>
+      </BannerShell>
+    );
+  }
+
+  // Priority 6: Overdue
+  if (rec.overdue && rec.status === "OPEN") {
+    return (
+      <BannerShell tone="destructive" icon="🔴">
+        <span className="font-semibold text-(--color-danger)">This request is overdue.</span>
+        <span className="text-(--text-secondary)"> The needed-by date has passed.</span>
+      </BannerShell>
+    );
+  }
+
+  // Priority 7: Waiting for someone else's approval — show progress, no action
+  if (approverParticipants.some((p) => p.status === "PENDING")) {
+    const pending = approverParticipants.filter((p) => p.status === "PENDING");
+    const name = pending[0]?.name ?? pending[0]?.email ?? "approver";
+    return (
+      <BannerShell tone="neutral" icon="⏳">
+        <span className="text-(--text-secondary)">
+          Waiting for approval from{" "}
+          <span className="font-semibold text-(--text-primary)">{name}</span>
+          {pending.length > 1 ? ` and ${pending.length - 1} other${pending.length - 1 > 1 ? "s" : ""}` : ""}
+          .
+        </span>
+      </BannerShell>
+    );
+  }
+
+  return null;
+}
+
+function BannerShell({
+  tone,
+  icon,
+  children,
+}: {
+  tone: "primary" | "warning" | "destructive" | "neutral";
+  icon: string;
+  children: ReactNode;
+}) {
+  const styles = {
+    primary: "border-(--color-primary-soft) bg-(--color-primary-soft)",
+    warning: "border-(--color-warning-soft) bg-(--color-warning-soft)",
+    destructive: "border-(--color-danger-soft) bg-(--color-danger-soft)",
+    neutral: "border-(--border-subtle) bg-(--bg-surface-elev)",
+  };
+  return (
+    <div
+      className={`flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3 text-sm animate-in fade-in slide-in-from-top-1 duration-200 ${styles[tone]}`}
+    >
+      <span className="text-base" role="img" aria-hidden>
+        {icon}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * RequestKeyboardNav — enables Alt+← / Alt+→ (or J/K in list context) to navigate
+ * between requests. Reads the navigation list from sessionStorage key
+ * `rlt_request_nav_list` (set by the list page when navigating to a detail).
+ * Renders a subtle prev/next indicator in the top-right of the page.
+ */
+export function RequestKeyboardNav({ currentId }: { currentId: string }) {
+  const router = useRouter();
+  const [navList, setNavList] = useState<string[]>([]);
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("rlt_request_nav_list");
+      if (raw) setNavList(JSON.parse(raw) as string[]);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const currentIndex = navList.indexOf(currentId);
+  const hasPrev = currentIndex > 0;
+  const hasNext = currentIndex >= 0 && currentIndex < navList.length - 1;
+  const prevId = hasPrev ? navList[currentIndex - 1] : null;
+  const nextId = hasNext ? navList[currentIndex + 1] : null;
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.altKey && e.key === "ArrowLeft" && prevId) {
+        e.preventDefault();
+        router.push(`/app/requests/${prevId}`);
+      }
+      if (e.altKey && e.key === "ArrowRight" && nextId) {
+        e.preventDefault();
+        router.push(`/app/requests/${nextId}`);
+      }
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [prevId, nextId, router]);
+
+  if (navList.length === 0 || currentIndex === -1) return null;
+
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        onClick={() => prevId && router.push(`/app/requests/${prevId}`)}
+        disabled={!hasPrev}
+        title="Previous request (Alt + ←)"
+        className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) text-(--text-muted) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--text-primary) disabled:cursor-not-allowed disabled:opacity-30"
+      >
+        ←
+      </button>
+      <span className="min-w-[3rem] text-center text-xs text-(--text-muted)">
+        {currentIndex + 1} / {navList.length}
+      </span>
+      <button
+        type="button"
+        onClick={() => nextId && router.push(`/app/requests/${nextId}`)}
+        disabled={!hasNext}
+        title="Next request (Alt + →)"
+        className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) text-(--text-muted) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--text-primary) disabled:cursor-not-allowed disabled:opacity-30"
+      >
+        →
+      </button>
     </div>
   );
 }
