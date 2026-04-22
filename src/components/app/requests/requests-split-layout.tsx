@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { RequestsListClient } from "./requests-list-client";
 import { RequestDetailPanel } from "./request-detail-panel";
@@ -25,6 +25,8 @@ export function RequestsSplitLayout({
   const pathname = usePathname();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [listResetKey, setListResetKey] = useState(0);
+  const listMountTimeRef = useRef<number>(Date.now());
 
   // Detect mobile
   useEffect(() => {
@@ -33,6 +35,20 @@ export function RequestsSplitLayout({
     const listener = () => setIsMobile(m.matches);
     m.addEventListener("change", listener);
     return () => m.removeEventListener("change", listener);
+  }, []);
+
+  // Reset list when workspace switches. workspace-ready fires on tenant changes
+  // and after load; ignore events shortly after mount so the initial RSC/tenant
+  // paint does not remount the list, while a later user-driven switch does.
+  useEffect(() => {
+    function handleWorkspaceReady() {
+      if (Date.now() - listMountTimeRef.current < 500) return;
+      setSelectedId(null);
+      window.history.replaceState(null, "", "/app/requests");
+      setListResetKey((k) => k + 1);
+    }
+    window.addEventListener("workspace-ready", handleWorkspaceReady);
+    return () => window.removeEventListener("workspace-ready", handleWorkspaceReady);
   }, []);
 
   // Restore selected record from hash on initial page load only
@@ -105,6 +121,7 @@ export function RequestsSplitLayout({
     return (
       <div className="px-3 py-4">
         <RequestsListClient
+          key={`requests-list-${listResetKey}`}
           canCreate={canCreate}
           canReadAll={canReadAll}
           workspaceCurrency={workspaceCurrency}
@@ -129,7 +146,7 @@ export function RequestsSplitLayout({
       >
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-4">
           <RequestsListClient
-            key="requests-list"
+            key={`requests-list-${listResetKey}`}
             canCreate={canCreate}
             canReadAll={canReadAll}
             workspaceCurrency={workspaceCurrency}
