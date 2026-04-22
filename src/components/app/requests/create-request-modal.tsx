@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode, type RefObject } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
@@ -10,12 +10,15 @@ import {
   FinanceRequestWizard,
   type CreateSuccessPayload,
 } from "./create-request-form";
+import type { CreatedRecordPayload } from "./create-request-modal-context";
 
 type Props = {
   open: boolean;
   onClose: () => void;
   sourceRecordId?: string;
   workspaceCurrency?: string;
+  /** Ref to callback — avoids useState function closure issues */
+  onCreatedRef?: RefObject<((payload: CreatedRecordPayload) => void) | undefined>;
 };
 
 const STEP_LABELS = ["Category & basics", "Financial details", "Review"] as const;
@@ -25,6 +28,7 @@ export function CreateRequestModal({
   onClose,
   sourceRecordId,
   workspaceCurrency,
+  onCreatedRef,
 }: Props) {
   const router = useRouter();
   const apiFetch = useApiFetch();
@@ -67,8 +71,26 @@ export function CreateRequestModal({
       }
     }
 
+    // Read callback from ref before closing
+    const createdCallback = onCreatedRef?.current;
+    if (createdCallback) {
+      createdCallback({
+        id: payload.id,
+        title: payload.title ?? "",
+        type: payload.type ?? "OTHER_FINANCIAL_REQUEST",
+        status: payload.status ?? "OPEN",
+        createdAt: payload.createdAt ?? new Date().toISOString(),
+        priority: payload.priority ?? "MEDIUM",
+        requestedAmount: payload.requestedAmount ?? null,
+        currencyCode: payload.currencyCode ?? null,
+        neededByDate: payload.neededByDate ?? null,
+        recordKey: payload.recordKey ?? null,
+      });
+    }
     onClose();
-    router.push(`/app/requests/${payload.id}`);
+    if (!createdCallback) {
+      router.push(`/app/requests/${payload.id}`);
+    }
   }
 
   const isLoading = linkingSource;

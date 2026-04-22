@@ -20,6 +20,7 @@ import {
   IconUpload,
 } from "@/components/ui/icons";
 import { AssignApproverModal } from "./assign-approver-modal";
+import { QuickAssignApprover } from "./quick-assign-approver";
 import { RejectApprovalModal } from "./reject-approval-modal";
 import { AssignExternalApproverModal } from "./assign-external-approver-modal";
 import { SetPaymentStatusModal } from "./set-payment-status-modal";
@@ -61,6 +62,10 @@ type Props = {
   currentUserName?: string | null;
   currentUserEmail?: string | null;
   permissions: string[];
+  /** Split-view: override navigation so prev/next stays within the panel */
+  onNavigate?: (id: string) => void;
+  /** Split-view: makes the request header sticky within the panel scroll container */
+  stickyHeader?: boolean;
 };
 
 function numFromUnknown(raw: unknown): number | null {
@@ -99,8 +104,14 @@ export function RequestDetailClient({
   currentUserName = null,
   currentUserEmail = null,
   permissions,
+  onNavigate,
+  stickyHeader = false,
 }: Props) {
   const apiFetch = useApiFetch();
+  const apiFetchRef = useRef(apiFetch);
+  useEffect(() => {
+    apiFetchRef.current = apiFetch;
+  }, [apiFetch]);
   const toast = useToast();
 
   const [data, setData] = useState<RecordDetailResponse["data"] | null>(null);
@@ -130,7 +141,7 @@ export function RequestDetailClient({
     setLoading(true);
     setError(null);
     try {
-      const res = await apiFetch(`/api/records/${recordId}`, {
+      const res = await apiFetchRef.current(`/api/records/${recordId}`, {
         showToastOnError: false,
       });
       if (res.status === 404) {
@@ -157,10 +168,15 @@ export function RequestDetailClient({
     } finally {
       setLoading(false);
     }
-  }, [apiFetch, recordId]);
+  }, [recordId]); // apiFetch via stable ref — recordId is the only meaningful dep
 
   useEffect(() => {
-    void load();
+    // Small debounce prevents double-fetch when selectedId is set twice
+    // in the same React batch (e.g. handleSelectRecord + pathname sync)
+    const t = setTimeout(() => {
+      void load();
+    }, 20);
+    return () => clearTimeout(t);
   }, [load]);
 
   // Escape closes the inline close-request dialog
@@ -302,19 +318,20 @@ export function RequestDetailClient({
     healthWarnings === 0 ? "All clear" : healthWarnings <= 2 ? "Needs attention" : "Action required";
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3">
-        <Link
-          href="/app/requests"
-          className="inline-flex items-center gap-1.5 text-sm text-(--text-muted) transition-colors hover:text-(--text-primary)"
-        >
-          <IconChevronLeft size={14} />
-          Back to requests
-        </Link>
-        <RequestKeyboardNav currentId={recordId} />
-      </div>
+    <div className={stickyHeader ? "flex h-full flex-col overflow-hidden" : "space-y-6"}>
+      <div className={stickyHeader ? "shrink-0 space-y-3 px-4 pt-4 sm:px-6" : "space-y-3"}>
+        <div className="flex items-center justify-between gap-3">
+          <Link
+            href="/app/requests"
+            className="inline-flex items-center gap-1.5 text-sm text-(--text-muted) transition-colors hover:text-(--text-primary)"
+          >
+            <IconChevronLeft size={14} />
+            Back to requests
+          </Link>
+          <RequestKeyboardNav currentId={recordId} onNavigate={onNavigate} />
+        </div>
 
-      <header className="space-y-4 rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev) p-4 sm:p-6 animate-in fade-in slide-in-from-top-1 duration-200">
+        <header className="space-y-4 rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev) p-4 sm:p-6 animate-in fade-in slide-in-from-top-1 duration-200">
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -487,7 +504,15 @@ export function RequestDetailClient({
           </div>
         )}
       </header>
+      </div>
 
+      <div
+        className={
+          stickyHeader
+            ? "min-h-0 flex-1 space-y-6 overflow-y-auto px-4 pb-6 sm:px-6"
+            : "contents"
+        }
+      >
       <NextActionBanner
         rec={rec}
         participants={participants}
@@ -748,6 +773,7 @@ export function RequestDetailClient({
           )}
         </div>
       </div>
+      </div>
 
       <AssignApproverModal
         open={assignApproverOpen}
@@ -1006,7 +1032,7 @@ function ParticipantsSection({
   canAssignExternal,
   canRemind,
   onRefresh,
-  onOpenAssignInternal,
+  onOpenAssignInternal: _onOpenAssignInternal,
   onOpenAssignExternal,
 }: {
   participants: RecordParticipant[];
@@ -1130,14 +1156,13 @@ function ParticipantsSection({
                 </button>
               )}
               {canAssignInternal && (
-                <button
-                  type="button"
-                  onClick={onOpenAssignInternal}
-                  className="inline-flex h-7 items-center gap-1 rounded border border-(--border-subtle) bg-(--bg-surface-elev) px-2.5 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)"
-                >
-                  <IconPlus size={12} />
-                  Internal
-                </button>
+                <QuickAssignApprover
+                  recordId={recordId}
+                  onSuccess={onRefresh}
+                  assignedUserIds={approvers
+                    .filter((p) => p.userId != null)
+                    .map((p) => p.userId!)}
+                />
               )}
             </div>
           )}
@@ -1152,13 +1177,11 @@ function ParticipantsSection({
             {!isClosed && (canAssignInternal || canAssignExternal) && (
               <div className="flex flex-wrap gap-2">
                 {canAssignInternal && (
-                  <button
-                    type="button"
-                    onClick={onOpenAssignInternal}
-                    className="inline-flex h-8 items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 text-xs font-medium text-(--text-secondary) hover:bg-(--bg-surface-hover)"
-                  >
-                    Add internal approver
-                  </button>
+                  <QuickAssignApprover
+                    recordId={recordId}
+                    onSuccess={onRefresh}
+                    assignedUserIds={[]}
+                  />
                 )}
                 {canAssignExternal && (
                   <button
@@ -2616,7 +2639,13 @@ function BannerShell({
  * `rlt_request_nav_list` (set by the list page when navigating to a detail).
  * Renders a subtle prev/next indicator in the top-right of the page.
  */
-export function RequestKeyboardNav({ currentId }: { currentId: string }) {
+export function RequestKeyboardNav({
+  currentId,
+  onNavigate,
+}: {
+  currentId: string;
+  onNavigate?: (id: string) => void;
+}) {
   const router = useRouter();
   const [navList, setNavList] = useState<string[]>([]);
 
@@ -2641,16 +2670,24 @@ export function RequestKeyboardNav({ currentId }: { currentId: string }) {
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       if (e.altKey && e.key === "ArrowLeft" && prevId) {
         e.preventDefault();
-        router.push(`/app/requests/${prevId}`);
+        if (onNavigate) {
+          onNavigate(prevId);
+        } else {
+          router.push(`/app/requests/${prevId}`);
+        }
       }
       if (e.altKey && e.key === "ArrowRight" && nextId) {
         e.preventDefault();
-        router.push(`/app/requests/${nextId}`);
+        if (onNavigate) {
+          onNavigate(nextId);
+        } else {
+          router.push(`/app/requests/${nextId}`);
+        }
       }
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [prevId, nextId, router]);
+  }, [prevId, nextId, router, onNavigate]);
 
   if (navList.length === 0 || currentIndex === -1) return null;
 
@@ -2658,7 +2695,10 @@ export function RequestKeyboardNav({ currentId }: { currentId: string }) {
     <div className="flex items-center gap-1">
       <button
         type="button"
-        onClick={() => prevId && router.push(`/app/requests/${prevId}`)}
+        onClick={() =>
+          prevId &&
+          (onNavigate ? onNavigate(prevId) : router.push(`/app/requests/${prevId}`))
+        }
         disabled={!hasPrev}
         title="Previous request (Alt + ←)"
         className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) text-(--text-muted) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--text-primary) disabled:cursor-not-allowed disabled:opacity-30"
@@ -2670,7 +2710,10 @@ export function RequestKeyboardNav({ currentId }: { currentId: string }) {
       </span>
       <button
         type="button"
-        onClick={() => nextId && router.push(`/app/requests/${nextId}`)}
+        onClick={() =>
+          nextId &&
+          (onNavigate ? onNavigate(nextId) : router.push(`/app/requests/${nextId}`))
+        }
         disabled={!hasNext}
         title="Next request (Alt + →)"
         className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) text-(--text-muted) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--text-primary) disabled:cursor-not-allowed disabled:opacity-30"

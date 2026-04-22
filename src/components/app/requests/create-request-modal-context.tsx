@@ -1,12 +1,26 @@
 "use client";
 
-import { createContext, useCallback, useContext, useState } from "react";
+import { createContext, useCallback, useContext, useRef, useState } from "react";
 import { CreateRequestModal } from "./create-request-modal";
+
+export type CreatedRecordPayload = {
+  id: string;
+  title: string;
+  type: string;
+  status: string;
+  createdAt: string;
+  priority: string;
+  requestedAmount: number | null;
+  currencyCode: string | null;
+  neededByDate: string | null;
+  recordKey: string | null;
+};
 
 type ContextValue = {
   openCreateRequestModal: (opts?: {
     sourceRecordId?: string;
     workspaceCurrency?: string;
+    onCreated?: (payload: CreatedRecordPayload) => void;
   }) => void;
 };
 
@@ -20,11 +34,17 @@ export function CreateRequestModalProvider({
   const [open, setOpen] = useState(false);
   const [sourceRecordId, setSourceRecordId] = useState<string | undefined>();
   const [workspaceCurrency, setWorkspaceCurrency] = useState<string>("USD");
+  const onCreatedCallbackRef = useRef<((payload: CreatedRecordPayload) => void) | undefined>(undefined);
 
   const openCreateRequestModal = useCallback(
-    (opts?: { sourceRecordId?: string; workspaceCurrency?: string }) => {
+    (opts?: {
+      sourceRecordId?: string;
+      workspaceCurrency?: string;
+      onCreated?: (payload: CreatedRecordPayload) => void;
+    }) => {
       setSourceRecordId(opts?.sourceRecordId);
       setWorkspaceCurrency(opts?.workspaceCurrency ?? "USD");
+      onCreatedCallbackRef.current = opts?.onCreated;
       setOpen(true);
     },
     []
@@ -34,6 +54,7 @@ export function CreateRequestModalProvider({
     setOpen(false);
     setSourceRecordId(undefined);
     setWorkspaceCurrency("USD");
+    onCreatedCallbackRef.current = undefined;
   }, []);
 
   return (
@@ -44,6 +65,7 @@ export function CreateRequestModalProvider({
         onClose={handleClose}
         sourceRecordId={sourceRecordId}
         workspaceCurrency={workspaceCurrency}
+        onCreatedRef={onCreatedCallbackRef}
       />
     </Context.Provider>
   );

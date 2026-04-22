@@ -26,7 +26,7 @@ import {
   formatAmount,
 } from "@/lib/record-utils";
 import { CURRENCY_OPTIONS } from "@/lib/currencies";
-import type { RecordType } from "@/types/records";
+import type { RecordPriority, RecordType } from "@/types/records";
 import {
   IconAlertCircle,
   IconCheck,
@@ -119,6 +119,9 @@ export type CreateSuccessPayload = {
   type: RecordType;
   requestedAmount: number | null;
   currencyCode: string | null;
+  priority: RecordPriority;
+  neededByDate: string | null;
+  createdAt: string;
 };
 
 type FormDataState = {
@@ -482,6 +485,9 @@ export function FinanceRequestWizard({
           type?: string;
           requestedAmount?: unknown;
           currencyCode?: string | null;
+          createdAt?: string;
+          priority?: string;
+          neededByDate?: string | null;
         };
       };
 
@@ -511,6 +517,10 @@ export function FinanceRequestWizard({
         requestedAmount = Number.isFinite(n) ? n : null;
       }
       toast.addToast("success", status === "DRAFT" ? "Draft saved." : "Request created.");
+      const createdAtIso =
+        typeof payload.data?.createdAt === "string"
+          ? payload.data.createdAt
+          : new Date().toISOString();
       onSubmitSuccess({
         id,
         title: payload.data?.title ?? form.title.trim(),
@@ -519,6 +529,9 @@ export function FinanceRequestWizard({
         type: (payload.data?.type as RecordType) ?? form.category,
         requestedAmount,
         currencyCode: payload.data?.currencyCode ?? (form.amount.trim() ? form.currency : null),
+        priority: (payload.data?.priority as RecordPriority) ?? form.priority,
+        neededByDate: payload.data?.neededByDate ?? (nd ?? null),
+        createdAt: createdAtIso,
       });
     } catch {
       setGlobalError("Network error. Please try again.");

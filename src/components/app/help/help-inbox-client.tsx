@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -85,6 +85,10 @@ function priorityClassName(priority: string): string {
 
 export function HelpInboxClient() {
   const apiFetch = useApiFetch();
+  const apiFetchRef = useRef(apiFetch);
+  useEffect(() => {
+    apiFetchRef.current = apiFetch;
+  }, [apiFetch]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -93,7 +97,7 @@ export function HelpInboxClient() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiFetch("/api/app/help/tickets");
+      const res = await apiFetchRef.current("/api/app/help/tickets");
       if (!res.ok) {
         setError("Could not load tickets.");
         return;
@@ -105,7 +109,7 @@ export function HelpInboxClient() {
     } finally {
       setLoading(false);
     }
-  }, [apiFetch]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps — apiFetch via stable ref
 
   useEffect(() => {
     void load();

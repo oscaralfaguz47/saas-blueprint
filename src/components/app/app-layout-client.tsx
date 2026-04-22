@@ -37,11 +37,29 @@ export default function AppLayoutClient({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const lastRefreshRef = useRef<number>(Date.now());
+  const lastActivityRef = useRef<number>(Date.now());
+
+  // Track user activity so focus refresh only fires after genuine inactivity
+  useEffect(() => {
+    const updateActivity = () => {
+      lastActivityRef.current = Date.now();
+    };
+    window.addEventListener("click", updateActivity);
+    window.addEventListener("keydown", updateActivity);
+    return () => {
+      window.removeEventListener("click", updateActivity);
+      window.removeEventListener("keydown", updateActivity);
+    };
+  }, []);
 
   useEffect(() => {
     const handleFocus = () => {
       const now = Date.now();
-      if (now - lastRefreshRef.current > 60_000) {
+      // Only refresh if: last refresh was >5min ago AND last activity was >2min ago
+      // This prevents refresh when focus returns from modal/dialog/other app briefly
+      const staleData = now - lastRefreshRef.current > 5 * 60_000;
+      const genuinelyInactive = now - lastActivityRef.current > 2 * 60_000;
+      if (staleData && genuinelyInactive) {
         lastRefreshRef.current = now;
         router.refresh();
       }

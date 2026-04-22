@@ -65,7 +65,7 @@ export function GlobalNewRequestShortcut({
     <div
       role="status"
       aria-live="polite"
-      className="fixed bottom-6 right-6 z-50 animate-in fade-in slide-in-from-bottom-2 duration-300"
+      className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 animate-in fade-in slide-in-from-bottom-2 duration-300"
     >
       <div className="flex items-center gap-3 rounded-xl border border-(--border-subtle) bg-(--bg-surface) px-4 py-3 shadow-lg">
         <div className="flex items-center gap-2 text-sm text-(--text-secondary)">

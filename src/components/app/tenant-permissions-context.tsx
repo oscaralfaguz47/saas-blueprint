@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 
 type TenantPermissionsContextValue = {
@@ -14,13 +14,17 @@ const TenantPermissionsContext = createContext<TenantPermissionsContextValue | n
 
 export function TenantPermissionsProvider({ children }: { children: React.ReactNode }) {
   const apiFetch = useApiFetch();
+  const apiFetchRef = useRef(apiFetch);
+  useEffect(() => {
+    apiFetchRef.current = apiFetch;
+  }, [apiFetch]);
   const [permissions, setPermissions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const controller = new AbortController();
     const signal = controller.signal;
-    apiFetch("/api/tenant/permissions", { showToastOnError: false, signal })
+    apiFetchRef.current("/api/tenant/permissions", { showToastOnError: false, signal })
       .then((r) => (signal.aborted ? null : r.json()))
       .then((data: { data?: { permissions?: string[] } } | null) => {
         if (data && !signal.aborted) setPermissions(data.data?.permissions ?? []);
@@ -32,12 +36,12 @@ export function TenantPermissionsProvider({ children }: { children: React.ReactN
         if (!signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [apiFetch]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps — apiFetch via stable ref
 
   useEffect(() => {
     function handleWorkspaceReady() {
       setLoading(true);
-      apiFetch("/api/tenant/permissions", { showToastOnError: false })
+      apiFetchRef.current("/api/tenant/permissions", { showToastOnError: false })
         .then((r) => r.json())
         .then((data: { data?: { permissions?: string[] } } | null) => {
           setPermissions(data?.data?.permissions ?? []);
@@ -54,7 +58,7 @@ export function TenantPermissionsProvider({ children }: { children: React.ReactN
     return () => {
       window.removeEventListener("workspace-ready", handleWorkspaceReady);
     };
-  }, [apiFetch]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps — apiFetch via stable ref, no other deps needed
 
   const has = useCallback((code: string) => permissions.includes(code), [permissions]);
   const hasAny = useCallback(

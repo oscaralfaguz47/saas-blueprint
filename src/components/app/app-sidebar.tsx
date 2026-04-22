@@ -64,6 +64,10 @@ export default function AppSidebar({
   const pathname = usePathname() ?? "";
   const router = useRouter();
   const apiFetch = useApiFetch();
+  const apiFetchRef = useRef(apiFetch);
+  useEffect(() => {
+    apiFetchRef.current = apiFetch;
+  }, [apiFetch]);
   const { openCreateWorkspaceModal } = useCreateWorkspaceModal();
   const { openCreateRequestModal } = useCreateRequestModal();
   const { hasAny } = useTenantPermissions();
@@ -118,7 +122,7 @@ export default function AppSidebar({
     if (tenants.length === 0) setTenantsLoading(true);
     lastFetchAttemptRef.current = Date.now();
 
-    apiFetch("/api/tenant", { showToastOnError: true, signal })
+    apiFetchRef.current("/api/tenant", { showToastOnError: true, signal })
       .then((r) => (signal.aborted ? null : r.json()))
       .then((json: { data?: { tenants?: TenantItem[] } } | null) => {
         if (json && !signal.aborted) setTenants(json.data?.tenants ?? []);
@@ -135,13 +139,13 @@ export default function AppSidebar({
     return () => {
       controller.abort();
     };
-  }, [isMobile, open, apiFetch, tenants.length]);
+  }, [isMobile, open]); // apiFetch via ref — stable across renders
 
   useEffect(() => {
     const sidebarVisible = !isMobile || open;
     if (!sidebarVisible) return;
     const controller = new AbortController();
-    void apiFetch("/api/records?tab=inbox&limit=1", {
+    void apiFetchRef.current("/api/records?tab=inbox&limit=1", {
       showToastOnError: false,
       signal: controller.signal,
     })
@@ -154,7 +158,7 @@ export default function AppSidebar({
       })
       .catch(() => {});
     return () => controller.abort();
-  }, [isMobile, open, apiFetch]);
+  }, [isMobile, open]); // apiFetch via ref — stable across renders
 
   const refetchTenants = useCallback(() => {
     lastFetchAttemptRef.current = Date.now();
