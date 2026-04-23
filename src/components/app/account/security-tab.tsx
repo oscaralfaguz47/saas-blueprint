@@ -68,6 +68,35 @@ type StepUpSecurityPending =
   | { kind: "autoLogoutOff" }
   | { kind: "autoLogoutOn"; minutes: number };
 
+type LinkInitiateResponseBody = {
+  data?: { token?: string };
+  error?: { code?: string; message?: string };
+};
+
+export function parseLinkInitiateResponse(
+  resOk: boolean,
+  body: LinkInitiateResponseBody
+): { token: string | null; errorMessage: string | null } {
+  const token = body.data?.token ?? null;
+  if (!resOk || !token) {
+    return {
+      token: null,
+      errorMessage: body.error?.message ?? "Failed to initiate linking. Please try again.",
+    };
+  }
+  return { token, errorMessage: null };
+}
+
+export function buildLinkIntentCookieValue(
+  provider: "azure-ad" | "google",
+  token: string
+): string {
+  const cookieName = `__link_intent_${provider.replace(/-/g, "_")}`;
+  // Secure flag: required in HTTPS environments; silently ignored on http://localhost.
+  // SameSite=Lax allows the cookie to be sent on the OAuth callback redirect.
+  return `${cookieName}=${encodeURIComponent(token)}; Path=/; Max-Age=300; SameSite=Lax; Secure`;
+}
+
 function MicrosoftIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 21 21" className="h-5 w-5" focusable="false">
@@ -448,14 +477,17 @@ export function SecurityTab({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider }),
       });
-      const data = (await res.json()) as { token?: string; error?: string };
-      if (!res.ok || !data.token) {
-        setLinkError(data.error ?? "Failed to initiate linking. Please try again.");
+      // Server uses the standard `apiSuccess` envelope: { data: { token } }
+      // Errors use the standard error envelope: { error: { code, message } }
+      const body = (await res.json().catch(() => ({}))) as LinkInitiateResponseBody;
+      const { token, errorMessage } = parseLinkInitiateResponse(res.ok, body);
+
+      if (!token) {
+        setLinkError(errorMessage ?? "Failed to initiate linking. Please try again.");
         setLinkingProvider(null);
         return;
       }
-      const cookieName = `__link_intent_${provider.replace(/-/g, "_")}`;
-      document.cookie = `${cookieName}=${encodeURIComponent(data.token)}; Path=/; Max-Age=300; SameSite=Lax`;
+      document.cookie = buildLinkIntentCookieValue(provider, token);
 
       const popupCallbackUrl = `${window.location.origin}/auth/popup-callback`;
       const authUrl = await getOAuthAuthorizationUrl(provider, popupCallbackUrl);

@@ -25,16 +25,18 @@ export default async function PlatformAdminLayout({ children }: { children: Reac
       profilePhotoObjectKey: true,
       appearance: true,
       role: true,
+      security: {
+        select: { totpEnabled: true },
+      },
     },
   });
   if (!user || user.isPlatformBlocked) redirect("/unauthorized");
 
-  // Platform Admin requires 2FA to be enabled (security policy)
-  const security = await prisma.userSecurity.findUnique({
-    where: { userId: fullSession.user.id },
-    select: { totpEnabled: true },
-  });
-  if (!security?.totpEnabled) redirect("/app/account?tab=security&vendorSetup2fa=1");
+  // Platform Admin requires 2FA to be enabled (security policy).
+  // TOTP status read from DB on every render (never trust JWT).
+  if (!user.security?.totpEnabled) {
+    redirect("/app/account?tab=security&vendorSetup2fa=1");
+  }
 
   const canAccess = await hasVendorPermission({
     userId: fullSession.user.id,

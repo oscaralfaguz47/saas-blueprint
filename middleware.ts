@@ -163,22 +163,13 @@ function isProtectedPath(pathname: string) {
   return false;
 }
 
-function isAdminPath(pathname: string) {
-  return pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
-}
-
-function normalizePlatformAllowlist() {
-  const single = (env.BOOTSTRAP_ADMIN_EMAIL ?? "").trim().toLowerCase();
-  const raw = env.PLATFORM_ADMIN_EMAILS ?? "";
-  const list = raw
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-
-  if (single) list.push(single);
-
-  return Array.from(new Set(list));
-}
+// Platform Admin authorization is enforced server-side at two layers:
+//   1) `(platform-admin)/layout.tsx` for `/admin/**` UI routes
+//   2) `requireAdminAuth(...)` for `/api/admin/**` routes
+// Both layers read TOTP status and vendor permissions from the database
+// (`UserSecurity.totpEnabled`, `VendorUserRole`). The middleware intentionally
+// does NOT gate `/admin/**` by email allowlist — DB is the single source of truth
+// (see security-multitenancy.mdc §11, architecture.mdc §3).
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -297,23 +288,6 @@ export async function middleware(req: NextRequest) {
     url.searchParams.set("callbackUrl", callbackUrl);
 
     return redirectWithCsp(req, url, nonce);
-  }
-
-  // 4) Admin area allowlist gating by email
-  if (isAdminPath(pathname)) {
-    // Invited vendor users may accept while authenticated but not yet on the platform allowlist.
-    const isVendorInviteAcceptApi = pathname === "/api/admin/vendor-invitations/accept";
-    if (!isVendorInviteAcceptApi) {
-      const allowlist = normalizePlatformAllowlist();
-      const email = (token.email as string | undefined)?.toLowerCase();
-      const isAllowed = !!email && allowlist.includes(email);
-
-      if (!isAllowed) {
-        const url = req.nextUrl.clone();
-        url.pathname = "/unauthorized";
-        return redirectWithCsp(req, url, nonce);
-      }
-    }
   }
 
   return nextWithNonce(req, nonce, (res) => {
