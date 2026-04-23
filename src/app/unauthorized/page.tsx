@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SignOutLink } from "./sign-out-link";
 
 export default function UnauthorizedPage() {
   return (
@@ -29,12 +30,7 @@ export default function UnauthorizedPage() {
               Go back to app
             </Link>
 
-            <Link
-              href="/auth/sign-in"
-              className="text-sm font-medium text-(--text-secondary) hover:text-(--text-primary)"
-            >
-              Sign in with a different account
-            </Link>
+            <SignOutLink />
           </div>
         </div>
       </div>

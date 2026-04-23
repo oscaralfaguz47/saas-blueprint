@@ -3,20 +3,29 @@
 import { Suspense, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 
+export function buildOAuthPopupResultMessage(searchParams: URLSearchParams) {
+  const error = searchParams.get("error");
+  const provider = searchParams.get("provider");
+  const success = !error;
+
+  return {
+    type: "OAUTH_POPUP_RESULT" as const,
+    success,
+    error: error ?? undefined,
+    provider: provider ?? undefined,
+  };
+}
+
 function PopupCallbackContent() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    const error = searchParams.get("error");
-    const success = !error;
+    const message = buildOAuthPopupResultMessage(searchParams);
 
     const sendAndClose = () => {
       if (window.opener && !window.opener.closed) {
         try {
-          window.opener.postMessage(
-            { type: "OAUTH_POPUP_RESULT", success },
-            window.location.origin
-          );
+          window.opener.postMessage(message, window.location.origin);
         } catch {
           // opener may be cross-origin in some edge cases, ignore
         }
