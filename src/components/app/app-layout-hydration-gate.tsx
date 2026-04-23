@@ -8,6 +8,7 @@ import AppLayoutClient from "@/components/app/app-layout-client";
 import { ActivityTrackerProvider } from "@/components/app/activity-tracker-provider";
 import { ThemeProvider } from "@/components/theme/theme-provider";
 import { WelcomeBanner } from "@/components/app/welcome-banner";
+import { GlobalNewRequestShortcut } from "@/components/app/requests/global-new-request-shortcut";
 
 type Workspace = {
   id: string;
@@ -35,6 +36,7 @@ type AppLayoutHydrationGateProps = {
   workspaceName?: string | null;
   /** Own-workspace tenant id for welcome banner "go to settings" link */
   bannerTenantId?: string | null;
+  workspaceCurrency?: string;
   children: React.ReactNode;
 };
 
@@ -48,6 +50,7 @@ export function AppLayoutHydrationGate({
   showWelcomeBanner = false,
   workspaceName = null,
   bannerTenantId = null,
+  workspaceCurrency = "USD",
   children,
 }: AppLayoutHydrationGateProps) {
   return (
@@ -64,6 +67,7 @@ export function AppLayoutHydrationGate({
         <TenantPermissionsProvider>
           <CreateWorkspaceModalProvider>
             <CreateRequestModalProvider>
+              <GlobalNewRequestShortcut workspaceCurrency={workspaceCurrency} />
               <AppLayoutClient
                 user={user}
                 workspace={workspace}

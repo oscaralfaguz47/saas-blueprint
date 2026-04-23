@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { useToast } from "@/components/ui/toast";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +20,7 @@ import {
   IconUpload,
 } from "@/components/ui/icons";
 import { AssignApproverModal } from "./assign-approver-modal";
+import { QuickAssignApprover } from "./quick-assign-approver";
 import { RejectApprovalModal } from "./reject-approval-modal";
 import { AssignExternalApproverModal } from "./assign-external-approver-modal";
 import { SetPaymentStatusModal } from "./set-payment-status-modal";
@@ -60,6 +62,10 @@ type Props = {
   currentUserName?: string | null;
   currentUserEmail?: string | null;
   permissions: string[];
+  /** Split-view: override navigation so prev/next stays within the panel */
+  onNavigate?: (id: string) => void;
+  /** Split-view: makes the request header sticky within the panel scroll container */
+  stickyHeader?: boolean;
 };
 
 function numFromUnknown(raw: unknown): number | null {
@@ -98,8 +104,26 @@ export function RequestDetailClient({
   currentUserName = null,
   currentUserEmail = null,
   permissions,
+  onNavigate,
+  stickyHeader = false,
 }: Props) {
   const apiFetch = useApiFetch();
+  const apiFetchRef = useRef(apiFetch);
+  useEffect(() => {
+    apiFetchRef.current = apiFetch;
+  }, [apiFetch]);
+
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const handleScroll = () => setIsScrolled(el.scrollTop > 8);
+    el.addEventListener("scroll", handleScroll, { passive: true });
+    return () => el.removeEventListener("scroll", handleScroll);
+  }, []);
+
   const toast = useToast();
 
   const [data, setData] = useState<RecordDetailResponse["data"] | null>(null);
@@ -129,7 +153,7 @@ export function RequestDetailClient({
     setLoading(true);
     setError(null);
     try {
-      const res = await apiFetch(`/api/records/${recordId}`, {
+      const res = await apiFetchRef.current(`/api/records/${recordId}`, {
         showToastOnError: false,
       });
       if (res.status === 404) {
@@ -156,11 +180,27 @@ export function RequestDetailClient({
     } finally {
       setLoading(false);
     }
-  }, [apiFetch, recordId]);
+  }, [recordId]); // apiFetch via stable ref — recordId is the only meaningful dep
 
   useEffect(() => {
-    void load();
+    // Small debounce prevents double-fetch when selectedId is set twice
+    // in the same React batch (e.g. handleSelectRecord + pathname sync)
+    const t = setTimeout(() => {
+      void load();
+    }, 20);
+    return () => clearTimeout(t);
   }, [load]);
+
+  // Escape closes the inline close-request dialog
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && closeDialogOpen) {
+        setCloseDialogOpen(false);
+      }
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [closeDialogOpen]);
 
   async function handleCloseRequest() {
     if (!data || closing) return;
@@ -230,14 +270,6 @@ export function RequestDetailClient({
   const { record, evidence, participants, timeline, comments, links, payment, missingProof } =
     data;
   const rec = record as RecordDetailExtended;
-  const costCenterDisplay = rec.costCenter
-    ? `${rec.costCenter.code} — ${rec.costCenter.name}`
-    : (rec.costCenterCode ?? null);
-  const departmentDisplay =
-    rec.costCenter?.department?.name ??
-    rec.department?.name ??
-    rec.departmentName ??
-    null;
   const isClosed = rec.status === "CLOSED";
   const catConfig = RECORD_CATEGORY_CONFIG[rec.type];
   const approverParticipants = participants.filter((p) => p.participantRole === "APPROVER");
@@ -290,20 +322,35 @@ export function RequestDetailClient({
     healthWarnings === 0 ? "All clear" : healthWarnings <= 2 ? "Needs attention" : "Action required";
 
   return (
-    <div className="space-y-6">
-      <Link
-        href="/app/requests"
-        className="inline-flex items-center gap-1.5 text-sm text-(--text-muted) transition-colors hover:text-(--text-primary)"
-      >
-        <IconChevronLeft size={14} />
-        Back to requests
-      </Link>
+    <div className={stickyHeader ? "flex h-full flex-col overflow-hidden" : "space-y-6"}>
+      <div className={stickyHeader ? "shrink-0 space-y-3 px-4 pt-4 sm:px-6" : "space-y-3"}>
+        {!stickyHeader && (
+          <div className="flex items-center justify-between gap-3">
+            <Link
+              href="/app/requests"
+              className="inline-flex items-center gap-1.5 text-sm text-(--text-muted) transition-colors hover:text-(--text-primary)"
+            >
+              <IconChevronLeft size={14} />
+              Back to requests
+            </Link>
+            <RequestKeyboardNav currentId={recordId} onNavigate={onNavigate} />
+          </div>
+        )}
 
-      <header className="space-y-4 rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev) p-4 sm:p-6">
+        <header className="space-y-2.5 rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev) p-3 sm:p-4 animate-in fade-in slide-in-from-top-1 duration-200">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-semibold text-(--text-primary)">
+          <button
+            type="button"
+            title="Click to copy request ID"
+            onClick={() => {
+              void navigator.clipboard
+                .writeText(rec.recordKey ?? rec.id)
+                .catch(() => {});
+            }}
+            className="rounded-md border border-(--border-subtle) bg-(--bg-surface-elev) px-2 py-0.5 font-mono text-sm font-semibold text-(--text-primary) transition-colors hover:border-(--color-primary) hover:bg-(--color-primary-soft) hover:text-(--color-primary)"
+          >
             {rec.recordKey ?? `#${rec.id.slice(0, 8)}`}
-          </span>
+          </button>
           <Badge variant={RECORD_STATUS_BADGE[rec.status]}>
             {RECORD_STATUS_LABELS[rec.status]}
           </Badge>
@@ -314,21 +361,21 @@ export function RequestDetailClient({
           {rec.overdue && (
             <Badge variant="destructive">Overdue</Badge>
           )}
+          <span className="text-xs text-(--text-muted)">
+            Created {formatDate(rec.createdAt)} by {createdByLabel}
+          </span>
         </div>
         <h1 className="break-words text-2xl font-semibold tracking-tight text-(--text-primary)">
           {rec.title}
         </h1>
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-(--text-muted)">
-          <span>
-            Created {formatDate(rec.createdAt)} by {createdByLabel}
-          </span>
-          {rec.neededByDate && (
-            <span className={neededByPast ? "font-medium text-(--color-warning)" : ""}>
+        {rec.neededByDate && (
+          <div className="text-sm">
+            <span className={neededByPast ? "font-medium text-(--color-warning)" : "text-(--text-muted)"}>
               Needed by: {formatDate(rec.neededByDate)}
               {neededByPast ? " · URGENT" : ""}
             </span>
-          )}
-        </div>
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-3 text-sm">
           {(rec.requestedAmount != null || rec.amount != null) && (
             <span className="font-medium text-(--text-primary)">
@@ -343,7 +390,7 @@ export function RequestDetailClient({
           </span>
         </div>
 
-        <div className="flex flex-wrap gap-2 border-t border-(--border-subtle) pt-4">
+        <div className="flex flex-wrap gap-2 border-t border-(--border-subtle) pt-3">
           {showSubmitForApproval && (
             <button
               type="button"
@@ -463,81 +510,36 @@ export function RequestDetailClient({
           </div>
         )}
       </header>
+      </div>
+
+      <div
+        ref={scrollContainerRef}
+        className={
+          stickyHeader
+            ? "min-h-0 flex-1 space-y-6 overflow-y-auto px-4 pb-6 sm:px-6"
+            : "contents"
+        }
+        style={
+          stickyHeader && isScrolled
+            ? { boxShadow: "inset 0 8px 8px -8px rgba(0,0,0,0.08)" }
+            : undefined
+        }
+      >
+      <div className="mt-2">
+        <NextActionBanner
+          rec={rec}
+          participants={participants}
+          evidence={evidence}
+          currentUserId={currentUserId}
+          canAssignInternal={canAssignInternal}
+          canAssignExternal={canAssignExternal}
+          canAddEvidence={canAddEvidence}
+          onOpenAssignInternal={() => setAssignApproverOpen(true)}
+        />
+      </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          <div id="section-overview-meta">
-            <CardRoot>
-              <CardHeader>
-                <h2 className="text-sm font-semibold text-(--text-primary)">Overview</h2>
-              </CardHeader>
-              <CardContent className="space-y-4">
-              {rec.description && (
-                <div>
-                  <p className="mb-1 text-xs font-medium tracking-wide text-(--text-muted) uppercase">
-                    Description
-                  </p>
-                  <p className="whitespace-pre-wrap text-sm text-(--text-secondary)">
-                    {rec.description}
-                  </p>
-                </div>
-              )}
-              {rec.businessJustification && (
-                <div>
-                  <p className="mb-1 text-xs font-medium tracking-wide text-(--text-muted) uppercase">
-                    Business justification
-                  </p>
-                  <p className="whitespace-pre-wrap text-sm text-(--text-secondary)">
-                    {rec.businessJustification}
-                  </p>
-                </div>
-              )}
-              <div className="grid gap-3 sm:grid-cols-2">
-                <DetailField label="Category" value={RECORD_CATEGORY_CONFIG[rec.type]?.label ?? RECORD_TYPE_LABELS[rec.type]} />
-                {rec.neededByDate && (
-                  <DetailField label="Needed by" value={formatDate(rec.neededByDate)} />
-                )}
-                {costCenterDisplay && (
-                  <DetailField label="Cost center" value={costCenterDisplay} />
-                )}
-                {departmentDisplay && (
-                  <DetailField label="Department" value={departmentDisplay} />
-                )}
-                {rec.vendorName && (
-                  <DetailField label="Vendor / Supplier" value={rec.vendorName} />
-                )}
-                {rec.payeeName && (
-                  <DetailField label="Payee / Beneficiary" value={rec.payeeName} />
-                )}
-                {rec.invoiceNumber && (
-                  <DetailField label="Invoice number" value={rec.invoiceNumber} />
-                )}
-                {(rec.contractReference || rec.purchaseOrderRef) && (
-                  <DetailField
-                    label="Contract / PO reference"
-                    value={[rec.contractReference, rec.purchaseOrderRef].filter(Boolean).join(" · ")}
-                  />
-                )}
-                {rec.clientName && <DetailField label="Client" value={rec.clientName} />}
-                {rec.clientEmail && <DetailField label="Client email" value={rec.clientEmail} />}
-              </div>
-              {rec.hasPolicyException && (
-                <div className="rounded-lg border border-(--color-warning-soft) bg-(--color-warning-soft) px-3 py-2 text-sm text-(--color-warning)">
-                  <span className="font-medium">Policy exception</span>
-                  {rec.policyExceptionReason && (
-                    <p className="mt-1 text-xs text-(--text-secondary)">{rec.policyExceptionReason}</p>
-                  )}
-                </div>
-              )}
-              {rec.isRecurring &&
-                rec.requestedAmount == null &&
-                rec.approvedAmount == null && (
-                  <Badge variant="secondary">Recurring</Badge>
-                )}
-              </CardContent>
-            </CardRoot>
-          </div>
-
           {(rec.requestedAmount != null || rec.approvedAmount != null) && (
             <CardRoot>
               <CardHeader>
@@ -605,12 +607,14 @@ export function RequestDetailClient({
             />
           </div>
 
-          <CommentSection
-            recordId={recordId}
-            isClosed={isClosed}
-            canComment={canComment}
-            onRefresh={load}
-          />
+          <div id="section-comments">
+            <CommentSection
+              recordId={recordId}
+              isClosed={isClosed}
+              canComment={canComment}
+              onRefresh={load}
+            />
+          </div>
 
           <TimelineSection timeline={timeline} comments={comments} />
         </div>
@@ -678,11 +682,6 @@ export function RequestDetailClient({
                 )}
               </ul>
               <div className="flex flex-wrap gap-2 pt-2">
-                {!requiredOk && (
-                  <a href="#section-overview-meta" className="text-xs text-(--color-primary) hover:underline">
-                    Review overview
-                  </a>
-                )}
                 {evidence.length === 0 && (
                   <a href="#section-evidence" className="text-xs text-(--color-primary) hover:underline">
                     Add evidence
@@ -710,6 +709,7 @@ export function RequestDetailClient({
             />
           )}
         </div>
+      </div>
       </div>
 
       <AssignApproverModal
@@ -969,7 +969,7 @@ function ParticipantsSection({
   canAssignExternal,
   canRemind,
   onRefresh,
-  onOpenAssignInternal,
+  onOpenAssignInternal: _onOpenAssignInternal,
   onOpenAssignExternal,
 }: {
   participants: RecordParticipant[];
@@ -1093,14 +1093,13 @@ function ParticipantsSection({
                 </button>
               )}
               {canAssignInternal && (
-                <button
-                  type="button"
-                  onClick={onOpenAssignInternal}
-                  className="inline-flex h-7 items-center gap-1 rounded border border-(--border-subtle) bg-(--bg-surface-elev) px-2.5 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)"
-                >
-                  <IconPlus size={12} />
-                  Internal
-                </button>
+                <QuickAssignApprover
+                  recordId={recordId}
+                  onSuccess={onRefresh}
+                  assignedUserIds={approvers
+                    .filter((p) => p.userId != null)
+                    .map((p) => p.userId!)}
+                />
               )}
             </div>
           )}
@@ -1115,13 +1114,11 @@ function ParticipantsSection({
             {!isClosed && (canAssignInternal || canAssignExternal) && (
               <div className="flex flex-wrap gap-2">
                 {canAssignInternal && (
-                  <button
-                    type="button"
-                    onClick={onOpenAssignInternal}
-                    className="inline-flex h-8 items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 text-xs font-medium text-(--text-secondary) hover:bg-(--bg-surface-hover)"
-                  >
-                    Add internal approver
-                  </button>
+                  <QuickAssignApprover
+                    recordId={recordId}
+                    onSuccess={onRefresh}
+                    assignedUserIds={[]}
+                  />
                 )}
                 {canAssignExternal && (
                   <button
@@ -2378,7 +2375,7 @@ function RemovePaymentEvidenceButton({
 
 function RequestDetailSkeleton() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-4 py-4 sm:px-6">
       <Skeleton className="h-4 w-24" />
       <div className="space-y-2">
         <Skeleton className="h-8 w-2/3" />
@@ -2393,6 +2390,273 @@ function RequestDetailSkeleton() {
           <Skeleton className="h-40 w-full rounded-xl" />
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * NextActionBanner — shows the single most important action the current user
+ * should take on this request right now. Contextual, not decorative.
+ */
+function NextActionBanner({
+  rec,
+  participants,
+  evidence,
+  currentUserId,
+  canAssignInternal,
+  canAssignExternal,
+  canAddEvidence,
+  onOpenAssignInternal,
+}: {
+  rec: RecordDetailExtended;
+  participants: RecordParticipant[];
+  evidence: RecordEvidenceItem[];
+  currentUserId: string;
+  canAssignInternal: boolean;
+  canAssignExternal: boolean;
+  canAddEvidence: boolean;
+  onOpenAssignInternal: () => void;
+}) {
+  // Don't show banner on closed/canceled/approved/rejected requests
+  if (["CLOSED", "CANCELED", "APPROVED", "REJECTED"].includes(rec.status)) return null;
+
+  const approverParticipants = participants.filter((p) => p.participantRole === "APPROVER");
+  const myPendingApproval = participants.find(
+    (p) =>
+      p.participantRole === "APPROVER" &&
+      p.status === "PENDING" &&
+      p.participantType === "INTERNAL" &&
+      p.userId === currentUserId
+  );
+
+  // Priority 1: I need to approve this
+  if (myPendingApproval) {
+    return (
+      <BannerShell tone="primary" icon="⏳">
+        <span className="font-semibold text-(--color-primary)">Your approval is needed.</span>
+        <span className="text-(--text-secondary)">
+          {" "}
+          Scroll down to the approval workflow section to approve or reject.
+        </span>
+        <a
+          href="#section-approvers"
+          className="ml-auto shrink-0 rounded-lg bg-(--color-primary) px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-(--color-primary-hover)"
+        >
+          Review →
+        </a>
+      </BannerShell>
+    );
+  }
+
+  // Priority 2: DRAFT — needs to be submitted
+  if (rec.status === "DRAFT" && rec.createdByUserId === currentUserId) {
+    return (
+      <BannerShell tone="warning" icon="📝">
+        <span className="font-semibold text-(--color-warning)">This is a draft.</span>
+        <span className="text-(--text-secondary)"> Submit it to start the approval process.</span>
+      </BannerShell>
+    );
+  }
+
+  // Priority 3: AWAITING_INFO
+  if (rec.status === "AWAITING_INFO") {
+    return (
+      <BannerShell tone="warning" icon="💬">
+        <span className="font-semibold text-(--color-warning)">Awaiting additional information.</span>
+        <span className="text-(--text-secondary)"> Check the comments section for what&apos;s needed.</span>
+        <a
+          href="#section-comments"
+          className="ml-auto shrink-0 rounded-lg border border-(--color-warning) px-3 py-1.5 text-xs font-semibold text-(--color-warning) transition-colors hover:bg-(--color-warning-soft)"
+        >
+          View comments →
+        </a>
+      </BannerShell>
+    );
+  }
+
+  // Priority 4: No approvers assigned and I can assign
+  if (
+    approverParticipants.length === 0 &&
+    rec.status === "OPEN" &&
+    (canAssignInternal || canAssignExternal)
+  ) {
+    return (
+      <BannerShell tone="neutral" icon="👤">
+        <span className="font-semibold text-(--text-primary)">No approvers assigned yet.</span>
+        <span className="text-(--text-secondary)"> Assign someone to move this request forward.</span>
+        <button
+          type="button"
+          onClick={onOpenAssignInternal}
+          className="ml-auto shrink-0 rounded-lg border border-(--border-strong) bg-(--bg-surface) px-3 py-1.5 text-xs font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-hover)"
+        >
+          Assign approver →
+        </button>
+      </BannerShell>
+    );
+  }
+
+  // Priority 5: No evidence and I can add it
+  if (evidence.length === 0 && canAddEvidence && rec.status === "OPEN") {
+    return (
+      <BannerShell tone="neutral" icon="📎">
+        <span className="font-semibold text-(--text-primary)">No supporting evidence yet.</span>
+        <span className="text-(--text-secondary)">
+          {" "}
+          Attach files or links to strengthen this request.
+        </span>
+        <a
+          href="#section-evidence"
+          className="ml-auto shrink-0 rounded-lg border border-(--border-strong) bg-(--bg-surface) px-3 py-1.5 text-xs font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-hover)"
+        >
+          Add evidence →
+        </a>
+      </BannerShell>
+    );
+  }
+
+  // Priority 6: Overdue
+  if (rec.overdue && rec.status === "OPEN") {
+    return (
+      <BannerShell tone="destructive" icon="🔴">
+        <span className="font-semibold text-(--color-danger)">This request is overdue.</span>
+        <span className="text-(--text-secondary)"> The needed-by date has passed.</span>
+      </BannerShell>
+    );
+  }
+
+  // Priority 7: Waiting for someone else's approval — show progress, no action
+  if (approverParticipants.some((p) => p.status === "PENDING")) {
+    const pending = approverParticipants.filter((p) => p.status === "PENDING");
+    const name = pending[0]?.name ?? pending[0]?.email ?? "approver";
+    return (
+      <BannerShell tone="neutral" icon="⏳">
+        <span className="text-(--text-secondary)">
+          Waiting for approval from{" "}
+          <span className="font-semibold text-(--text-primary)">{name}</span>
+          {pending.length > 1 ? ` and ${pending.length - 1} other${pending.length - 1 > 1 ? "s" : ""}` : ""}
+          .
+        </span>
+      </BannerShell>
+    );
+  }
+
+  return null;
+}
+
+function BannerShell({
+  tone,
+  icon,
+  children,
+}: {
+  tone: "primary" | "warning" | "destructive" | "neutral";
+  icon: string;
+  children: ReactNode;
+}) {
+  const styles = {
+    primary: "border-(--color-primary-soft) bg-(--color-primary-soft)",
+    warning: "border-(--color-warning-soft) bg-(--color-warning-soft)",
+    destructive: "border-(--color-danger-soft) bg-(--color-danger-soft)",
+    neutral: "border-(--border-subtle) bg-(--bg-surface-elev)",
+  };
+  return (
+    <div
+      className={`flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3 text-sm animate-in fade-in slide-in-from-top-1 duration-200 ${styles[tone]}`}
+    >
+      <span className="text-base" role="img" aria-hidden>
+        {icon}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * RequestKeyboardNav — enables Alt+← / Alt+→ (or J/K in list context) to navigate
+ * between requests. Reads the navigation list from sessionStorage key
+ * `rlt_request_nav_list` (set by the list page when navigating to a detail).
+ * Renders a subtle prev/next indicator in the top-right of the page.
+ */
+export function RequestKeyboardNav({
+  currentId,
+  onNavigate,
+}: {
+  currentId: string;
+  onNavigate?: (id: string) => void;
+}) {
+  const router = useRouter();
+  const [navList, setNavList] = useState<string[]>([]);
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("rlt_request_nav_list");
+      if (raw) setNavList(JSON.parse(raw) as string[]);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const currentIndex = navList.indexOf(currentId);
+  const hasPrev = currentIndex > 0;
+  const hasNext = currentIndex >= 0 && currentIndex < navList.length - 1;
+  const prevId = hasPrev ? navList[currentIndex - 1] : null;
+  const nextId = hasNext ? navList[currentIndex + 1] : null;
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.altKey && e.key === "ArrowLeft" && prevId) {
+        e.preventDefault();
+        if (onNavigate) {
+          onNavigate(prevId);
+        } else {
+          router.push(`/app/requests/${prevId}`);
+        }
+      }
+      if (e.altKey && e.key === "ArrowRight" && nextId) {
+        e.preventDefault();
+        if (onNavigate) {
+          onNavigate(nextId);
+        } else {
+          router.push(`/app/requests/${nextId}`);
+        }
+      }
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [prevId, nextId, router, onNavigate]);
+
+  if (navList.length === 0 || currentIndex === -1) return null;
+
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        onClick={() =>
+          prevId &&
+          (onNavigate ? onNavigate(prevId) : router.push(`/app/requests/${prevId}`))
+        }
+        disabled={!hasPrev}
+        title="Previous request (Alt + ←)"
+        className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) text-(--text-muted) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--text-primary) disabled:cursor-not-allowed disabled:opacity-30"
+      >
+        ←
+      </button>
+      <span className="min-w-[3rem] text-center text-xs text-(--text-muted)">
+        {currentIndex + 1} / {navList.length}
+      </span>
+      <button
+        type="button"
+        onClick={() =>
+          nextId &&
+          (onNavigate ? onNavigate(nextId) : router.push(`/app/requests/${nextId}`))
+        }
+        disabled={!hasNext}
+        title="Next request (Alt + →)"
+        className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) text-(--text-muted) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--text-primary) disabled:cursor-not-allowed disabled:opacity-30"
+      >
+        →
+      </button>
     </div>
   );
 }

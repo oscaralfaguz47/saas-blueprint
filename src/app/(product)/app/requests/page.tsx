@@ -5,9 +5,8 @@ import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { getTenantPermissions } from "@/server/security/tenant-authorization";
-import { Container } from "@/components/ui/container";
 import { Skeleton } from "@/components/ui/skeleton";
-import { RequestsListClient } from "@/components/app/requests/requests-list-client";
+import { RequestsSplitLayout } from "@/components/app/requests/requests-split-layout";
 
 export const dynamic = "force-dynamic";
 
@@ -25,45 +24,44 @@ export default async function RequestsListPage() {
 
   const canCreate = permissions.includes("tenant.requests.create");
   const canReadAll = permissions.includes("tenant.requests.read_all");
+
   const tenantCurrency = await prisma.tenant.findUnique({
     where: { id: membership.tenant.id },
     select: { currency: true },
   });
 
   return (
-    <Container>
-      <Suspense fallback={<RequestsListSkeleton />}>
-        <RequestsListClient
-          canCreate={canCreate}
-          canReadAll={canReadAll}
-          workspaceCurrency={tenantCurrency?.currency ?? "USD"}
-        />
-      </Suspense>
-    </Container>
+    <Suspense fallback={<RequestsPageSkeleton />}>
+      <RequestsSplitLayout
+        canCreate={canCreate}
+        canReadAll={canReadAll}
+        workspaceCurrency={tenantCurrency?.currency ?? "USD"}
+        currentUserId={session.user.id}
+        permissions={permissions}
+      />
+    </Suspense>
   );
 }
 
-function RequestsListSkeleton() {
+function RequestsPageSkeleton() {
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <Skeleton className="h-7 w-32" />
-        <Skeleton className="h-9 w-36" />
+    <div className="flex h-full gap-0">
+      <div className="flex w-full flex-col gap-4 p-4 sm:w-[420px] sm:border-r sm:border-(--border-subtle)">
+        <Skeleton className="h-8 w-40" />
+        <div className="grid grid-cols-2 gap-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-20 rounded-xl" />
+          ))}
+        </div>
+        <Skeleton className="h-9 w-full rounded-lg" />
+        <div className="space-y-2">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-20 rounded-xl" />
+          ))}
+        </div>
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {[1, 2, 3, 4, 5].map((i) => (
-          <Skeleton key={i} className="h-24 w-full rounded-xl" />
-        ))}
-      </div>
-      <div className="flex gap-1.5">
-        {[1, 2, 3, 4].map((i) => (
-          <Skeleton key={i} className="h-9 w-28" />
-        ))}
-      </div>
-      <div className="space-y-2">
-        {[1, 2, 3, 4, 5].map((i) => (
-          <Skeleton key={i} className="h-20 w-full rounded-lg" />
-        ))}
+      <div className="hidden flex-1 sm:flex sm:items-center sm:justify-center">
+        <p className="text-sm text-(--text-muted)">Select a request to view details</p>
       </div>
     </div>
   );

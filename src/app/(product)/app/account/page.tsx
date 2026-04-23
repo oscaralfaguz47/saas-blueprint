@@ -81,13 +81,15 @@ export default async function AccountPage({ searchParams }: Props) {
   const authLevel = session.user.authLevel ?? "FULL";
 
   return (
-    <AccountSettingsTabs
-      profile={profile}
-      linkedProviders={linkedProviders}
-      authLevel={authLevel}
-      security={securityFlags}
-      currentUserEmail={user.email ?? null}
-      vendorSetup2fa={vendorSetup2fa}
-    />
+    <div className="h-full min-h-0 overflow-y-auto px-3 py-4 sm:px-6 sm:py-6">
+      <AccountSettingsTabs
+        profile={profile}
+        linkedProviders={linkedProviders}
+        authLevel={authLevel}
+        security={securityFlags}
+        currentUserEmail={user.email ?? null}
+        vendorSetup2fa={vendorSetup2fa}
+      />
+    </div>
   );
 }

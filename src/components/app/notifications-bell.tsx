@@ -61,6 +61,10 @@ function formatRelativeTime(iso: string): string {
 
 export function NotificationsBell({ initialUnreadCount = 0 }: Props) {
   const apiFetch = useApiFetch();
+  const apiFetchRef = useRef(apiFetch);
+  useEffect(() => {
+    apiFetchRef.current = apiFetch;
+  }, [apiFetch]);
   const router = useRouter();
 
   const [open, setOpen] = useState(false);
@@ -80,7 +84,7 @@ export function NotificationsBell({ initialUnreadCount = 0 }: Props) {
 
   const fetchNotifications = useCallback(async () => {
     try {
-      const res = await apiFetch("/api/app/notifications", { showToastOnError: false });
+      const res = await apiFetchRef.current("/api/app/notifications", { showToastOnError: false });
       if (!res.ok) {
         if (!mountedRef.current) return;
         setError("Could not load notifications.");
@@ -100,7 +104,7 @@ export function NotificationsBell({ initialUnreadCount = 0 }: Props) {
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [apiFetch]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps — apiFetch via stable ref
 
   useEffect(() => {
     mountedRef.current = true;
@@ -164,7 +168,7 @@ export function NotificationsBell({ initialUnreadCount = 0 }: Props) {
     if (!nextCursor || loadingMore) return;
     setLoadingMore(true);
     try {
-      const res = await apiFetch(
+      const res = await apiFetchRef.current(
         `/api/app/notifications?cursor=${encodeURIComponent(nextCursor)}&limit=20`,
         { showToastOnError: false }
       );
@@ -176,7 +180,7 @@ export function NotificationsBell({ initialUnreadCount = 0 }: Props) {
     } finally {
       setLoadingMore(false);
     }
-  }, [apiFetch, nextCursor, loadingMore]);
+  }, [nextCursor, loadingMore]);
 
   useEffect(() => {
     if (!open || !sentinelRef.current || !hasMore) return;
@@ -229,7 +233,7 @@ export function NotificationsBell({ initialUnreadCount = 0 }: Props) {
         curr.map((item) => (item.id === n.id ? { ...item, readAt: new Date().toISOString() } : item))
       );
       setUnreadCount((curr) => Math.max(0, curr - 1));
-      void apiFetch(`/api/app/notifications/${n.id}`, {
+      void apiFetchRef.current(`/api/app/notifications/${n.id}`, {
         method: "PATCH",
         showToastOnError: false,
       });
@@ -273,7 +277,7 @@ export function NotificationsBell({ initialUnreadCount = 0 }: Props) {
     setNotifications((curr) => curr.map((item) => ({ ...item, readAt: item.readAt ?? now })));
     setUnreadCount(0);
     try {
-      await apiFetch("/api/app/notifications/read-all", {
+      await apiFetchRef.current("/api/app/notifications/read-all", {
         method: "POST",
         showToastOnError: false,
       });

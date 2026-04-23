@@ -43,6 +43,7 @@ export default async function RequestDetailPage({
     <Container>
       <Suspense fallback={<RequestDetailSkeleton />}>
         <RequestDetailClient
+          key={id}
           recordId={id}
           currentUserId={session.user.id}
           currentUserName={currentUser?.name ?? null}
