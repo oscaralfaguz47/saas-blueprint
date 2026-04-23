@@ -2,7 +2,7 @@ import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 
-import { Container } from "@/components/ui/container";
+import { MarketingContainer } from "@/components/marketing/marketing-container";
 import { PublicFooter } from "@/components/marketing/public-footer";
 import { PublicHeader } from "@/components/marketing/public-header";
 
@@ -155,7 +155,7 @@ export default async function PublicHomePage() {
 
       {/* SECTION 1 — HERO */}
       <section className="bg-(--marketing-hero-bg)">
-        <Container className="!py-24 md:!py-32">
+        <MarketingContainer className="!py-24 md:!py-32">
           <div className="grid gap-12 md:grid-cols-12 md:items-center">
             <div className="md:col-span-6 lg:col-span-7">
               <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-emerald-400">
@@ -286,12 +286,12 @@ export default async function PublicHomePage() {
               </div>
             </div>
           </div>
-        </Container>
+        </MarketingContainer>
       </section>
 
       {/* SECTION 2 — METRICS */}
       <section className="border-y border-(--border-subtle) bg-(--bg-surface) py-12">
-        <Container className="!py-0">
+        <MarketingContainer className="!py-0">
           <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
             <div>
               <p className="text-3xl font-bold text-emerald-400">&lt; 5 min</p>
@@ -315,12 +315,12 @@ export default async function PublicHomePage() {
               <p className="mt-1 text-sm text-(--text-muted)">Security standard alignment</p>
             </div>
           </div>
-        </Container>
+        </MarketingContainer>
       </section>
 
       {/* SECTION 3 — HOW IT WORKS */}
       <section className="bg-(--marketing-section-alt) py-24">
-        <Container className="!py-0">
+        <MarketingContainer className="!py-0">
           <div className="mb-14">
             <p className="text-xs font-semibold uppercase tracking-widest text-emerald-400">
               How it works
@@ -394,12 +394,12 @@ export default async function PublicHomePage() {
               </p>
             </div>
           </div>
-        </Container>
+        </MarketingContainer>
       </section>
 
       {/* SECTION 4 — TRUST */}
       <section className="bg-(--marketing-hero-bg) py-24">
-        <Container className="!py-0">
+        <MarketingContainer className="!py-0">
           <div className="mb-14">
             <p className="text-xs font-semibold uppercase tracking-widest text-emerald-400">
               Trust &amp; governance
@@ -470,12 +470,12 @@ export default async function PublicHomePage() {
               View pricing
             </Link>
           </div>
-        </Container>
+        </MarketingContainer>
       </section>
 
       {/* SECTION 5 — FINAL CTA */}
       <section className="border-y border-(--border-subtle) bg-(--bg-surface) py-20">
-        <Container className="!py-0">
+        <MarketingContainer className="!py-0">
           <div className="mx-auto max-w-2xl text-center">
             <h2 className="text-3xl font-bold text-(--text-primary) md:text-4xl">
               Your approval process deserves a paper trail.
@@ -499,7 +499,7 @@ export default async function PublicHomePage() {
               </Link>
             </div>
           </div>
-        </Container>
+        </MarketingContainer>
       </section>
 
       <PublicFooter isLoggedIn={isLoggedIn} />

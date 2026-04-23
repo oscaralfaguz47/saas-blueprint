@@ -103,15 +103,17 @@ export default async function PlatformAdminLayout({ children }: { children: Reac
       pendingInvitationsCount={0}
       canAccessPlatformAdmin={true}
     >
-        <div className="w-full max-w-6xl px-4 py-6">
-        <AdminSubnav
-          canManageAdminUsers={canManageAdminUsers}
-          canViewSupport={canViewSupport}
-          canViewKnowledgeBase={canViewKnowledgeBase}
-          canViewChat={canViewChat}
-          canViewCronJobs={canViewCronJobs}
-        />
-        {children}
+      <div className="h-full min-h-0 w-full overflow-y-auto">
+        <div className="w-full px-4 py-6">
+          <AdminSubnav
+            canManageAdminUsers={canManageAdminUsers}
+            canViewSupport={canViewSupport}
+            canViewKnowledgeBase={canViewKnowledgeBase}
+            canViewChat={canViewChat}
+            canViewCronJobs={canViewCronJobs}
+          />
+          {children}
+        </div>
       </div>
     </AppLayoutHydrationGate>
   );

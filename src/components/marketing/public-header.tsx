@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { Container } from "@/components/ui/container";
+import { MarketingContainer } from "@/components/marketing/marketing-container";
 import { ThemeLogo } from "@/components/ui/theme-logo";
 
 type PublicHeaderProps = {
@@ -15,7 +15,7 @@ export function PublicHeader({ isLoggedIn }: PublicHeaderProps) {
     <header
       className="sticky top-0 z-50 h-16 border-b border-(--border-subtle) bg-(--bg-main) supports-[backdrop-filter]:bg-(--bg-main)/80 supports-[backdrop-filter]:backdrop-blur-md"
     >
-      <Container className="!flex !h-full !max-w-[1280px] !items-center !justify-between !py-0">
+      <MarketingContainer className="!flex !h-full !max-w-[1280px] !items-center !justify-between !py-0">
         <Link href="/" className="flex min-w-0 shrink-0 items-center gap-2.5">
           <span className="relative block h-7 w-[120px] shrink-0">
             <ThemeLogo
@@ -62,7 +62,7 @@ export function PublicHeader({ isLoggedIn }: PublicHeaderProps) {
             {ctaLabel}
           </Link>
         </div>
-      </Container>
+      </MarketingContainer>
     </header>
   );
 }

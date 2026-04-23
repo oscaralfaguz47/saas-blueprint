@@ -1,4 +1,4 @@
-import { Container } from "@/components/ui/container";
+import { MarketingContainer } from "@/components/marketing/marketing-container";
 import { PaddleCheckoutHost } from "@/components/app/checkout/paddle-checkout-host";
 
 /**
@@ -18,9 +18,9 @@ export default function CheckoutPage() {
 
   return (
     <main className="min-h-screen bg-(--bg-main)">
-      <Container className="py-12">
+      <MarketingContainer className="py-12">
         <PaddleCheckoutHost clientToken={clientToken} />
-      </Container>
+      </MarketingContainer>
     </main>
   );
 }
