@@ -38,7 +38,7 @@ import {
 } from "./create-request-modal-context";
 
 type ApiTab = "my" | "inbox" | "mentioned" | "shared" | "all";
-type UiTab = "my" | "inbox" | "awaiting_approval" | "mentioned" | "shared" | "all";
+type UiTab = "my" | "awaiting_approval" | "mentioned" | "shared" | "all";
 
 type SortOption =
   | "newest"
@@ -136,7 +136,6 @@ type TabSpec = { value: UiTab; label: string; apiTab: ApiTab; inboxBadge?: boole
 
 const BASE_TAB_SPECS: TabSpec[] = [
   { value: "my", label: "My Requests", apiTab: "my" },
-  { value: "inbox", label: "Inbox", apiTab: "inbox", inboxBadge: true },
   { value: "awaiting_approval", label: "Awaiting my approval", apiTab: "inbox", inboxBadge: true },
   { value: "mentioned", label: "Mentioned", apiTab: "mentioned" },
   { value: "shared", label: "Shared with me", apiTab: "shared" },
@@ -566,11 +565,11 @@ export function RequestsListClient({
       <div className="shrink-0 space-y-3">
         {!compact && (
         <>
-          {/* Attention banner — only shown when not already on inbox tab */}
-          {tab !== "inbox" && tab !== "awaiting_approval" && displaySummary && displaySummary.pendingMyApprovalCount > 0 ? (
+          {/* Attention banner — only shown when not already on awaiting approval tab */}
+          {tab !== "awaiting_approval" && displaySummary && displaySummary.pendingMyApprovalCount > 0 ? (
             <AttentionBanner
               pendingApprovalCount={displaySummary.pendingMyApprovalCount}
-              onGoToInbox={() => setTab("inbox")}
+              onGoToInbox={() => setTab("awaiting_approval")}
             />
           ) : null}
 
@@ -598,7 +597,7 @@ export function RequestsListClient({
                   }
                   onClick={() => {
                     setFilters(EMPTY_FILTERS);
-                    setTab("inbox");
+                    setTab("awaiting_approval");
                     setShowFilters(false);
                   }}
                 />
@@ -753,23 +752,16 @@ export function RequestsListClient({
                       "z-[200] mt-1 animate-in fade-in slide-in-from-top-1 duration-150 overflow-y-auto",
                       compact
                         ? "fixed top-auto max-h-[70vh]"
-                        : "absolute left-0 top-full w-[min(calc(100vw-280px),860px)]",
+                        : "absolute left-0 top-full w-[min(calc(100vw-2rem),860px)] max-sm:relative max-sm:left-auto max-sm:top-auto max-sm:w-full max-sm:max-h-none",
                     ].join(" ")}
                     style={
                       compact && filterContainerRef.current
                         ? (() => {
                             const isMobileView =
-                              typeof window !== "undefined" &&
-                              window.innerWidth < 640;
-                            const rect =
-                              filterContainerRef.current.getBoundingClientRect();
+                              typeof window !== "undefined" && window.innerWidth < 640;
+                            const rect = filterContainerRef.current.getBoundingClientRect();
                             return isMobileView
-                              ? {
-                                  top: rect.bottom + 4,
-                                  left: 8,
-                                  right: 8,
-                                  width: "auto",
-                                }
+                              ? { top: rect.bottom + 4, left: 8, right: 8, width: "auto" }
                               : {
                                   top: rect.bottom + 4,
                                   left: rect.left,
@@ -778,12 +770,7 @@ export function RequestsListClient({
                                 };
                           })()
                         : compact
-                          ? {
-                              top: 120,
-                              left: 8,
-                              right: 8,
-                              width: "auto",
-                            }
+                          ? { top: 120, left: 8, right: 8, width: "auto" }
                           : undefined
                     }
                   >
@@ -796,17 +783,6 @@ export function RequestsListClient({
                   </div>
                 )}
               </div>
-              {!compact && (
-                <span
-                  title="Keyboard shortcuts: J/K to move between rows, Enter to open"
-                  className="hidden cursor-default select-none items-center gap-1 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-2.5 py-1.5 text-[11px] font-medium text-(--text-muted) sm:inline-flex"
-                >
-                  <kbd className="font-mono">J</kbd>
-                  <span>/</span>
-                  <kbd className="font-mono">K</kbd>
-                  <span className="ml-1 opacity-60">navigate</span>
-                </span>
-              )}
             </div>
             {canCreate && !compact && (
               <button
@@ -817,7 +793,7 @@ export function RequestsListClient({
                     onCreated: handleOptimisticCreate,
                   })
                 }
-                className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-(--color-primary-hover) sm:ml-auto"
+                className="inline-flex h-9 w-auto shrink-0 cursor-pointer items-center gap-2 self-end rounded-lg bg-(--color-primary) px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-(--color-primary-hover) sm:ml-auto"
               >
                 <IconPlus size={15} />
                 New request
@@ -1007,7 +983,7 @@ function FiltersPanel({
           className={
             compact
               ? "grid grid-cols-1 gap-1.5"
-              : "grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5"
+              : "grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5"
           }
         >
           <div className="space-y-1">
@@ -1296,7 +1272,6 @@ function RecordsList({
     }
 
     const tabMessages: Partial<Record<UiTab, string>> = {
-      inbox: "No pending approvals. You're all caught up.",
       awaiting_approval: "No pending approvals. You're all caught up.",
       mentioned: "No unread mentions.",
       shared: "No requests have been shared with you.",
