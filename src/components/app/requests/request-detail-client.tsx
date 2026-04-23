@@ -112,6 +112,18 @@ export function RequestDetailClient({
   useEffect(() => {
     apiFetchRef.current = apiFetch;
   }, [apiFetch]);
+
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const handleScroll = () => setIsScrolled(el.scrollTop > 8);
+    el.addEventListener("scroll", handleScroll, { passive: true });
+    return () => el.removeEventListener("scroll", handleScroll);
+  }, []);
+
   const toast = useToast();
 
   const [data, setData] = useState<RecordDetailResponse["data"] | null>(null);
@@ -258,14 +270,6 @@ export function RequestDetailClient({
   const { record, evidence, participants, timeline, comments, links, payment, missingProof } =
     data;
   const rec = record as RecordDetailExtended;
-  const costCenterDisplay = rec.costCenter
-    ? `${rec.costCenter.code} — ${rec.costCenter.name}`
-    : (rec.costCenterCode ?? null);
-  const departmentDisplay =
-    rec.costCenter?.department?.name ??
-    rec.department?.name ??
-    rec.departmentName ??
-    null;
   const isClosed = rec.status === "CLOSED";
   const catConfig = RECORD_CATEGORY_CONFIG[rec.type];
   const approverParticipants = participants.filter((p) => p.participantRole === "APPROVER");
@@ -509,97 +513,33 @@ export function RequestDetailClient({
       </div>
 
       <div
+        ref={scrollContainerRef}
         className={
           stickyHeader
             ? "min-h-0 flex-1 space-y-6 overflow-y-auto px-4 pb-6 sm:px-6"
             : "contents"
         }
+        style={
+          stickyHeader && isScrolled
+            ? { boxShadow: "inset 0 8px 8px -8px rgba(0,0,0,0.08)" }
+            : undefined
+        }
       >
-      <NextActionBanner
-        rec={rec}
-        participants={participants}
-        evidence={evidence}
-        currentUserId={currentUserId}
-        canAssignInternal={canAssignInternal}
-        canAssignExternal={canAssignExternal}
-        canAddEvidence={canAddEvidence}
-        onOpenAssignInternal={() => setAssignApproverOpen(true)}
-      />
+      <div className="mt-2">
+        <NextActionBanner
+          rec={rec}
+          participants={participants}
+          evidence={evidence}
+          currentUserId={currentUserId}
+          canAssignInternal={canAssignInternal}
+          canAssignExternal={canAssignExternal}
+          canAddEvidence={canAddEvidence}
+          onOpenAssignInternal={() => setAssignApproverOpen(true)}
+        />
+      </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          <div id="section-overview-meta">
-            <CardRoot>
-              <CardHeader>
-                <h2 className="text-sm font-semibold text-(--text-primary)">Overview</h2>
-              </CardHeader>
-              <CardContent className="space-y-4">
-              {rec.description && (
-                <div>
-                  <p className="mb-1 text-xs font-medium tracking-wide text-(--text-muted) uppercase">
-                    Description
-                  </p>
-                  <p className="whitespace-pre-wrap text-sm text-(--text-secondary)">
-                    {rec.description}
-                  </p>
-                </div>
-              )}
-              {rec.businessJustification && (
-                <div>
-                  <p className="mb-1 text-xs font-medium tracking-wide text-(--text-muted) uppercase">
-                    Business justification
-                  </p>
-                  <p className="whitespace-pre-wrap text-sm text-(--text-secondary)">
-                    {rec.businessJustification}
-                  </p>
-                </div>
-              )}
-              <div className="grid gap-3 sm:grid-cols-2">
-                <DetailField label="Category" value={RECORD_CATEGORY_CONFIG[rec.type]?.label ?? RECORD_TYPE_LABELS[rec.type]} />
-                {rec.neededByDate && (
-                  <DetailField label="Needed by" value={formatDate(rec.neededByDate)} />
-                )}
-                {costCenterDisplay && (
-                  <DetailField label="Cost center" value={costCenterDisplay} />
-                )}
-                {departmentDisplay && (
-                  <DetailField label="Department" value={departmentDisplay} />
-                )}
-                {rec.vendorName && (
-                  <DetailField label="Vendor / Supplier" value={rec.vendorName} />
-                )}
-                {rec.payeeName && (
-                  <DetailField label="Payee / Beneficiary" value={rec.payeeName} />
-                )}
-                {rec.invoiceNumber && (
-                  <DetailField label="Invoice number" value={rec.invoiceNumber} />
-                )}
-                {(rec.contractReference || rec.purchaseOrderRef) && (
-                  <DetailField
-                    label="Contract / PO reference"
-                    value={[rec.contractReference, rec.purchaseOrderRef].filter(Boolean).join(" · ")}
-                  />
-                )}
-                {rec.clientName && <DetailField label="Client" value={rec.clientName} />}
-                {rec.clientEmail && <DetailField label="Client email" value={rec.clientEmail} />}
-              </div>
-              {rec.hasPolicyException && (
-                <div className="rounded-lg border border-(--color-warning-soft) bg-(--color-warning-soft) px-3 py-2 text-sm text-(--color-warning)">
-                  <span className="font-medium">Policy exception</span>
-                  {rec.policyExceptionReason && (
-                    <p className="mt-1 text-xs text-(--text-secondary)">{rec.policyExceptionReason}</p>
-                  )}
-                </div>
-              )}
-              {rec.isRecurring &&
-                rec.requestedAmount == null &&
-                rec.approvedAmount == null && (
-                  <Badge variant="secondary">Recurring</Badge>
-                )}
-              </CardContent>
-            </CardRoot>
-          </div>
-
           {(rec.requestedAmount != null || rec.approvedAmount != null) && (
             <CardRoot>
               <CardHeader>
@@ -742,11 +682,6 @@ export function RequestDetailClient({
                 )}
               </ul>
               <div className="flex flex-wrap gap-2 pt-2">
-                {!requiredOk && (
-                  <a href="#section-overview-meta" className="text-xs text-(--color-primary) hover:underline">
-                    Review overview
-                  </a>
-                )}
                 {evidence.length === 0 && (
                   <a href="#section-evidence" className="text-xs text-(--color-primary) hover:underline">
                     Add evidence

@@ -1006,7 +1006,7 @@ function FiltersPanel({
         <div
           className={
             compact
-              ? "grid grid-cols-1 gap-1.5 sm:grid-cols-2"
+              ? "grid grid-cols-1 gap-1.5"
               : "grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5"
           }
         >
@@ -1067,7 +1067,7 @@ function FiltersPanel({
 
           <div className="space-y-1">
             <label className="sr-only">Quick filters</label>
-            <div className="flex h-9 flex-row items-center gap-4">
+            <div className="flex flex-col gap-1.5">
               <label className="flex cursor-pointer items-center gap-2 text-sm text-(--text-secondary) transition-colors hover:text-(--text-primary)">
                 <input
                   type="checkbox"
