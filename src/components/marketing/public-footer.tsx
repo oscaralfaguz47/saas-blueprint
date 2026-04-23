@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { Container } from "@/components/ui/container";
+import { MarketingContainer } from "@/components/marketing/marketing-container";
 import { ThemeLogo } from "@/components/ui/theme-logo";
 
 type PublicFooterProps = {
@@ -14,7 +14,7 @@ export function PublicFooter({ isLoggedIn }: PublicFooterProps) {
 
   return (
     <footer className="border-t border-(--border-subtle) bg-(--bg-main)">
-      <Container className="!flex !max-w-[1280px] !flex-col !gap-4 !py-10 md:!flex-row md:!items-center md:!justify-between">
+      <MarketingContainer className="!flex !max-w-[1280px] !flex-col !gap-4 !py-10 md:!flex-row md:!items-center md:!justify-between">
         <div className="flex flex-col gap-1">
           <Link href="/" className="flex items-center gap-2">
             <span className="relative block h-6 w-[100px] shrink-0">
@@ -50,7 +50,7 @@ export function PublicFooter({ isLoggedIn }: PublicFooterProps) {
             {accountLabel}
           </Link>
         </div>
-      </Container>
+      </MarketingContainer>
     </footer>
   );
 }

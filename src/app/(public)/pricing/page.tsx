@@ -3,7 +3,7 @@ import dynamic from "next/dynamic";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 
-import { Container } from "@/components/ui/container";
+import { MarketingContainer } from "@/components/marketing/marketing-container";
 import { PublicFooter } from "@/components/marketing/public-footer";
 import { PublicHeader } from "@/components/marketing/public-header";
 
@@ -113,7 +113,7 @@ export default async function PricingPage() {
 
       {/* SECTION 1 — PRICING HERO */}
       <section className="bg-(--marketing-hero-bg)">
-        <Container className="!py-24 md:!py-32">
+        <MarketingContainer className="!py-24 md:!py-32">
           <div className="mx-auto max-w-3xl text-center">
             <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-emerald-400">
               Simple, transparent pricing
@@ -140,12 +140,12 @@ export default async function PricingPage() {
               </span>
             </div>
           </div>
-        </Container>
+        </MarketingContainer>
       </section>
 
       {/* SECTION 2 — PLANS */}
       <section className="bg-(--marketing-hero-bg) pb-24">
-        <Container className="!py-0">
+        <MarketingContainer className="!py-0">
           <SectionTitle
             eyebrow="Pricing plans"
             title="Pricing per workspace, designed for critical approvals"
@@ -153,12 +153,12 @@ export default async function PricingPage() {
           />
 
           <PublicPricingPlanSection isLoggedIn={isLoggedIn} />
-        </Container>
+        </MarketingContainer>
       </section>
 
       {/* SECTION 3 — FAQ */}
       <section className="bg-(--marketing-section-alt) py-24">
-        <Container className="!py-0">
+        <MarketingContainer className="!py-0">
           <div className="mb-14">
             <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-emerald-400">FAQ</p>
             <h2 className="mt-3 text-3xl font-bold text-(--text-primary) md:text-4xl">
@@ -180,12 +180,12 @@ export default async function PricingPage() {
               </div>
             ))}
           </div>
-        </Container>
+        </MarketingContainer>
       </section>
 
       {/* SECTION 4 — FINAL CTA */}
       <section className="border-y border-(--border-subtle) bg-(--bg-surface) py-20">
-        <Container className="!py-0">
+        <MarketingContainer className="!py-0">
           <div className="mx-auto max-w-2xl text-center">
             <h2 className="text-3xl font-bold text-(--text-primary) md:text-4xl">
               Start closing approvals with confidence.
@@ -209,7 +209,7 @@ export default async function PricingPage() {
               </Link>
             </div>
           </div>
-        </Container>
+        </MarketingContainer>
       </section>
 
       <PublicFooter isLoggedIn={isLoggedIn} />

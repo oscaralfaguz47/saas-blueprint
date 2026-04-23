@@ -2,7 +2,7 @@ import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 
-import { Container } from "@/components/ui/container";
+import { MarketingContainer } from "@/components/marketing/marketing-container";
 import { PublicFooter } from "@/components/marketing/public-footer";
 import { PublicHeader } from "@/components/marketing/public-header";
 
@@ -34,7 +34,7 @@ export default async function PrivacyPage() {
       <PublicHeader isLoggedIn={isLoggedIn} />
 
       <section className="border-b border-(--border-subtle) bg-(--marketing-legal-bg) py-16 md:py-20">
-        <Container>
+        <MarketingContainer>
           <div className="mx-auto max-w-4xl">
             <div className="mb-6 flex items-center gap-2">
               <Link
@@ -66,11 +66,11 @@ export default async function PrivacyPage() {
               </span>
             </div>
           </div>
-        </Container>
+        </MarketingContainer>
       </section>
 
       <section className="py-16 md:py-24">
-        <Container>
+        <MarketingContainer>
           <div className="mx-auto max-w-4xl">
             <div className="flex items-start gap-12">
               <aside className="sticky top-24 hidden w-56 shrink-0 lg:block">
@@ -302,7 +302,7 @@ export default async function PrivacyPage() {
               </div>
             </div>
           </div>
-        </Container>
+        </MarketingContainer>
       </section>
 
       <PublicFooter isLoggedIn={isLoggedIn} />
