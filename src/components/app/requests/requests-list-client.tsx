@@ -19,6 +19,7 @@ import {
   IconClock,
   IconDollarSign,
   IconShield,
+  IconX,
 } from "@/components/ui/icons";
 import {
   formatAmount,
@@ -55,6 +56,7 @@ type SummaryPayload = {
   awaitingInfoCount: number;
   hasPolicyExceptionCount: number;
   totalOpenAmount: number | null;
+  totalOpenAmountByCurrency: Record<string, number>;
 };
 
 type Filters = {
@@ -292,11 +294,14 @@ export function RequestsListClient({
   }, [apiFetch]);
 
   const tabSpecs = useMemo<TabSpec[]>(
-    () => (canReadAll ? [...BASE_TAB_SPECS, { value: "all", label: "All", apiTab: "all" }] : BASE_TAB_SPECS),
+    () =>
+      canReadAll
+        ? [{ value: "all", label: "All", apiTab: "all" }, ...BASE_TAB_SPECS]
+        : BASE_TAB_SPECS,
     [canReadAll]
   );
 
-  const [tab, setTab] = useState<UiTab>("my");
+  const [tab, setTab] = useState<UiTab>(canReadAll ? "all" : "my");
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [sort, setSort] = useState<SortOption>("newest");
@@ -347,7 +352,10 @@ export function RequestsListClient({
         }
         const json = (await res.json()) as { data: SummaryPayload };
         if (controller.signal.aborted) return;
-        setSummary(json.data);
+        setSummary({
+          ...json.data,
+          totalOpenAmountByCurrency: json.data.totalOpenAmountByCurrency ?? {},
+        });
         setSummaryFailed(false);
       } catch (e) {
         if (e instanceof Error && e.name === "AbortError") return;
@@ -465,6 +473,34 @@ export function RequestsListClient({
           ];
         });
       }
+
+      // Optimistically update summary cards — no fetch needed
+      setSummary((prev) => {
+        if (!prev) return prev;
+        const isOpen =
+          payload.status === "OPEN" ||
+          payload.status === "IN_REVIEW" ||
+          payload.status === "PENDING_APPROVAL" ||
+          payload.status === "AWAITING_INFO";
+        if (!isOpen) return prev;
+
+        const updatedByCurrency = { ...prev.totalOpenAmountByCurrency };
+        if (payload.requestedAmount != null && payload.currencyCode) {
+          updatedByCurrency[payload.currencyCode] =
+            (updatedByCurrency[payload.currencyCode] ?? 0) + payload.requestedAmount;
+        }
+
+        return {
+          ...prev,
+          openCount: prev.openCount + 1,
+          totalOpenAmount:
+            payload.requestedAmount != null
+              ? (prev.totalOpenAmount ?? 0) + payload.requestedAmount
+              : prev.totalOpenAmount,
+          totalOpenAmountByCurrency: updatedByCurrency,
+        };
+      });
+
       onCreated?.(payload);
     },
     [tab, onCreated]
@@ -581,61 +617,105 @@ export function RequestsListClient({
                 ))}
               </>
             ) : (
-              <>
-                <MetricCard
-                  label="Open requests"
-                  value={displaySummary ? String(displaySummary.openCount) : dash}
-                  icon={<IconFileText size={18} className="text-(--text-muted)" />}
-                  tone="neutral"
-                />
-                <MetricCard
-                  label="Pending my approval"
-                  value={displaySummary ? String(displaySummary.pendingMyApprovalCount) : dash}
-                  icon={<IconClock size={18} className="text-(--text-muted)" />}
-                  tone={
-                    displaySummary && displaySummary.pendingMyApprovalCount > 0 ? "warning" : "neutral"
-                  }
-                  onClick={() => {
-                    setFilters(EMPTY_FILTERS);
-                    setTab("awaiting_approval");
-                    setShowFilters(false);
-                  }}
-                />
-                <MetricCard
-                  label="Total open value"
-                  value={
-                    displaySummary && displaySummary.totalOpenAmount != null
-                      ? formatAmount(displaySummary.totalOpenAmount, "USD")
-                      : dash
-                  }
-                  icon={<IconDollarSign size={18} className="text-(--text-muted)" />}
-                  tone="neutral"
-                />
-                <MetricCard
-                  label="Overdue"
-                  value={displaySummary ? String(displaySummary.overdueCount) : dash}
-                  icon={<IconAlertCircle size={18} className="text-(--text-muted)" />}
-                  tone={displaySummary && displaySummary.overdueCount > 0 ? "destructive" : "neutral"}
-                  onClick={() => {
-                    setFilters({ ...EMPTY_FILTERS, overdueOnly: true });
-                    setShowFilters(true);
-                    setTab(canReadAll ? "all" : "my");
-                  }}
-                />
-                <MetricCard
-                  label="Policy exceptions"
-                  value={displaySummary ? String(displaySummary.hasPolicyExceptionCount) : dash}
-                  icon={<IconShield size={18} className="text-(--text-muted)" />}
-                  tone={
-                    displaySummary && displaySummary.hasPolicyExceptionCount > 0 ? "warning" : "neutral"
-                  }
-                  onClick={() => {
-                    setFilters({ ...EMPTY_FILTERS, policyExceptionOnly: true });
-                    setShowFilters(true);
-                    setTab(canReadAll ? "all" : "my");
-                  }}
-                />
-              </>
+              (() => {
+                const currencyEntries = displaySummary
+                  ? Object.entries(displaySummary.totalOpenAmountByCurrency ?? {})
+                  : [];
+                const isMultiCurrency = currencyEntries.length > 1;
+                return (
+                  <>
+                    <MetricCard
+                      label="Open requests"
+                      value={displaySummary ? String(displaySummary.openCount) : dash}
+                      icon={<IconFileText size={18} className="text-(--text-muted)" />}
+                      tone="neutral"
+                    />
+                    <MetricCard
+                      label="Pending my approval"
+                      value={displaySummary ? String(displaySummary.pendingMyApprovalCount) : dash}
+                      icon={<IconClock size={18} className="text-(--text-muted)" />}
+                      tone={
+                        displaySummary && displaySummary.pendingMyApprovalCount > 0
+                          ? "warning"
+                          : "neutral"
+                      }
+                      onClick={() => {
+                        setFilters(EMPTY_FILTERS);
+                        setTab("awaiting_approval");
+                        setShowFilters(false);
+                      }}
+                    />
+                    <MetricCard
+                      label="Total open value"
+                      icon={<IconDollarSign size={18} className="text-(--text-muted)" />}
+                      tone="neutral"
+                      customValue={
+                        !displaySummary ? (
+                          <p className="text-2xl leading-none font-bold tabular-nums text-(--text-primary)">
+                            {dash}
+                          </p>
+                        ) : isMultiCurrency ? (
+                          <div
+                            className="mt-1 max-h-[4.5rem] overflow-y-auto space-y-0.5 pr-1"
+                            style={{
+                              scrollbarWidth: "thin",
+                              scrollbarColor: "var(--border-subtle) transparent",
+                            }}
+                          >
+                            {currencyEntries.map(([code, amount]) => (
+                              <p
+                                key={code}
+                                className="text-sm leading-snug font-bold tabular-nums text-(--text-primary)"
+                              >
+                                {formatAmount(amount, code)}{" "}
+                                <span className="text-[11px] font-medium text-(--text-muted)">
+                                  {code}
+                                </span>
+                              </p>
+                            ))}
+                          </div>
+                        ) : currencyEntries.length === 1 ? (
+                          <p className="text-2xl leading-none font-bold tabular-nums text-(--text-primary)">
+                            {formatAmount(currencyEntries[0]![1], currencyEntries[0]![0])}
+                          </p>
+                        ) : (
+                          <p className="text-2xl leading-none font-bold tabular-nums text-(--text-primary)">
+                            {dash}
+                          </p>
+                        )
+                      }
+                    />
+                    <MetricCard
+                      label="Overdue"
+                      value={displaySummary ? String(displaySummary.overdueCount) : dash}
+                      icon={<IconAlertCircle size={18} className="text-(--text-muted)" />}
+                      tone={
+                        displaySummary && displaySummary.overdueCount > 0 ? "destructive" : "neutral"
+                      }
+                      onClick={() => {
+                        setFilters({ ...EMPTY_FILTERS, overdueOnly: true });
+                        setShowFilters(true);
+                        setTab(canReadAll ? "all" : "my");
+                      }}
+                    />
+                    <MetricCard
+                      label="Policy exceptions"
+                      value={displaySummary ? String(displaySummary.hasPolicyExceptionCount) : dash}
+                      icon={<IconShield size={18} className="text-(--text-muted)" />}
+                      tone={
+                        displaySummary && displaySummary.hasPolicyExceptionCount > 0
+                          ? "warning"
+                          : "neutral"
+                      }
+                      onClick={() => {
+                        setFilters({ ...EMPTY_FILTERS, policyExceptionOnly: true });
+                        setShowFilters(true);
+                        setTab(canReadAll ? "all" : "my");
+                      }}
+                    />
+                  </>
+                );
+              })()
             )}
           </section>
         </>
@@ -783,6 +863,16 @@ export function RequestsListClient({
                   </div>
                 )}
               </div>
+              {activeFilterCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setFilters(EMPTY_FILTERS)}
+                  className={`inline-flex ${compact ? "h-8" : "h-10"} cursor-pointer items-center gap-1.5 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 ${compact ? "text-xs" : "text-sm"} text-(--text-secondary) transition-colors hover:border-(--color-danger) hover:bg-(--color-danger-soft) hover:text-(--color-danger)`}
+                >
+                  <IconX size={13} />
+                  Clear filters
+                </button>
+              )}
             </div>
             {canCreate && !compact && (
               <button
@@ -876,12 +966,14 @@ function MetricCard({
   icon,
   tone,
   onClick,
+  customValue,
 }: {
   label: string;
-  value: string;
+  value?: string;
   icon: ReactNode;
   tone: "neutral" | "warning" | "destructive";
   onClick?: () => void;
+  customValue?: ReactNode;
 }) {
   const valueColor =
     tone === "warning"
@@ -905,7 +997,9 @@ function MetricCard({
         </p>
         <span className={iconColor}>{icon}</span>
       </div>
-      <p className={`text-2xl leading-none font-bold tabular-nums ${valueColor}`}>{value}</p>
+      {customValue ?? (
+        <p className={`text-2xl leading-none font-bold tabular-nums ${valueColor}`}>{value}</p>
+      )}
     </div>
   );
 
