@@ -88,9 +88,9 @@ export default async function WorkspaceSettingsPage() {
     ) ?? "Member";
 
   return (
-    <Suspense
-      fallback={
-        <Container>
+    <div className="h-full min-h-0 overflow-y-auto px-3 py-4 sm:px-6 sm:py-6">
+      <Suspense
+        fallback={
           <div className="space-y-6">
             <Skeleton className="h-7 w-48" />
             <div className="flex gap-1 border-b border-(--border-subtle)">
@@ -104,15 +104,15 @@ export default async function WorkspaceSettingsPage() {
               <Skeleton className="h-10 w-full max-w-md" />
             </div>
           </div>
-        </Container>
-      }
-    >
-      <WorkspaceSettingsTabs
-        tenant={tenant}
-        permissions={permissions}
-        currentUserId={session.user.id}
-        currentUserRole={currentUserRole}
-      />
-    </Suspense>
+        }
+      >
+        <WorkspaceSettingsTabs
+          tenant={tenant}
+          permissions={permissions}
+          currentUserId={session.user.id}
+          currentUserRole={currentUserRole}
+        />
+      </Suspense>
+    </div>
   );
 }

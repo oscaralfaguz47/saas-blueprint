@@ -91,10 +91,8 @@ export default function AppLayoutClient({
           workspace={workspace}
           onMenuClick={isMobile ? () => setSidebarOpen(true) : undefined}
         />
-        <main className="min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto text-(--text-primary)">
-          <div className="w-full px-3 py-4 sm:px-6 sm:py-6">
-            {children}
-          </div>
+        <main className="min-h-0 w-full flex-1 overflow-hidden text-(--text-primary)">
+          {children}
         </main>
       </div>
       <ChatWidgetRoot hasTenant={!!workspace} />

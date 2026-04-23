@@ -133,11 +133,11 @@ export function RequestsSplitLayout({
   }
 
   return (
-    <div className="flex h-full w-full overflow-hidden">
+    <div className="flex h-full min-h-0 w-full overflow-hidden">
       {/* LEFT — List panel */}
       <div
         className={[
-          "flex flex-col overflow-hidden border-r border-(--border-subtle)",
+          "flex h-full min-h-0 flex-col overflow-hidden border-r border-(--border-subtle)",
           "transition-all duration-200",
           selectedId
             ? "w-[380px] min-w-[320px] max-w-[420px]"
@@ -159,7 +159,7 @@ export function RequestsSplitLayout({
       </div>
 
       {/* RIGHT — Detail panel */}
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {selectedId ? (
           <div className="h-full min-h-0 animate-in fade-in duration-150">
             <RequestDetailPanel

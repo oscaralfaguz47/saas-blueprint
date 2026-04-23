@@ -305,6 +305,7 @@ export function RequestsListClient({
 
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [showFilters, setShowFilters] = useState(false);
+  const filterContainerRef = useRef<HTMLDivElement>(null);
   const filtersRef = useRef(filters);
   const sortRef = useRef(sort);
   useEffect(() => {
@@ -512,6 +513,18 @@ export function RequestsListClient({
     setFocusedIndex(-1);
   }, [tab, search, filters]);
 
+  // Close filters panel when clicking outside
+  useEffect(() => {
+    if (!showFilters) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (filterContainerRef.current && !filterContainerRef.current.contains(e.target as Node)) {
+        setShowFilters(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showFilters]);
+
   function handleTabChange(value: string) {
     setTab(value as UiTab);
     setSearchInput("");
@@ -539,32 +552,8 @@ export function RequestsListClient({
   const dash = "—";
 
   return (
-    <div className={compact ? "flex h-full flex-col overflow-hidden" : "space-y-6"}>
-      <div className={compact ? "shrink-0 space-y-3" : "contents"}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="mb-1 text-xs font-semibold tracking-widest text-(--color-primary) uppercase">
-              Workspace
-            </p>
-            <h1 className="text-2xl font-bold tracking-tight text-(--text-primary)">Requests</h1>
-          </div>
-          {canCreate && (
-            <button
-              type="button"
-              onClick={() =>
-                openCreateRequestModal({
-                  workspaceCurrency: workspaceCurrency ?? "USD",
-                  onCreated: handleOptimisticCreate,
-                })
-              }
-              className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-xl bg-(--color-primary) px-5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-(--color-primary-hover)"
-            >
-              <IconPlus size={16} />
-              New request
-            </button>
-          )}
-        </div>
-
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="shrink-0 space-y-3">
         {!compact && (
         <>
           {/* Attention banner — only shown when not already on inbox tab */}
@@ -647,11 +636,11 @@ export function RequestsListClient({
       <Tabs
         value={tab}
         onValueChange={handleTabChange}
-        className={compact ? "flex min-h-0 flex-1 flex-col" : undefined}
+        className="flex min-h-0 flex-1 flex-col"
       >
-        <div className={compact ? "flex min-h-0 flex-1 flex-col gap-2" : "space-y-4"}>
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
           <div
-            className={compact ? "shrink-0 bg-(--bg-main) py-1" : ""}
+            className="shrink-0 bg-(--bg-main) py-1"
             style={
               compact
                 ? {
@@ -685,7 +674,7 @@ export function RequestsListClient({
           <div
             className={[
               "flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center",
-              compact ? "shrink-0 bg-(--bg-main) pb-2" : "",
+              "shrink-0 bg-(--bg-main) pb-1",
             ].join(" ")}
           >
             <div className="relative min-w-[200px] flex-1 sm:max-w-md">
@@ -721,24 +710,55 @@ export function RequestsListClient({
                   </option>
                 ))}
               </select>
-              <button
-                type="button"
-                onClick={() => setShowFilters((v) => !v)}
-                className={[
-                  `inline-flex ${compact ? "h-8" : "h-10"} cursor-pointer items-center gap-2 rounded-lg border px-3 ${compact ? "text-xs" : "text-sm"} transition-colors`,
-                  showFilters || activeFilterCount > 0
-                    ? "border-(--color-primary) bg-(--color-primary-soft) text-(--color-primary)"
-                    : "border-(--border-subtle) bg-(--bg-surface) text-(--text-secondary) hover:bg-(--bg-surface-hover)",
-                ].join(" ")}
-              >
-                <IconFilter size={14} />
-                Filters
-                {activeFilterCount > 0 ? (
-                  <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-(--color-primary) px-1 text-[10px] font-semibold text-white">
-                    {activeFilterCount}
-                  </span>
-                ) : null}
-              </button>
+              <div ref={filterContainerRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowFilters((v) => !v)}
+                  className={[
+                    `inline-flex ${compact ? "h-8" : "h-10"} cursor-pointer items-center gap-2 rounded-lg border px-3 ${compact ? "text-xs" : "text-sm"} transition-colors`,
+                    showFilters || activeFilterCount > 0
+                      ? "border-(--color-primary) bg-(--color-primary-soft) text-(--color-primary)"
+                      : "border-(--border-subtle) bg-(--bg-surface) text-(--text-secondary) hover:bg-(--bg-surface-hover)",
+                  ].join(" ")}
+                >
+                  <IconFilter size={14} />
+                  Filters
+                  {activeFilterCount > 0 ? (
+                    <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-(--color-primary) px-1 text-[10px] font-semibold text-white">
+                      {activeFilterCount}
+                    </span>
+                  ) : null}
+                </button>
+                {showFilters && (
+                  <div
+                    className={[
+                      "z-[200] mt-1 animate-in fade-in slide-in-from-top-1 duration-150",
+                      compact
+                        ? "fixed top-auto"
+                        : "absolute left-0 top-full w-[min(calc(100vw-280px),860px)]",
+                    ].join(" ")}
+                    style={
+                      compact && filterContainerRef.current
+                        ? {
+                            top: filterContainerRef.current.getBoundingClientRect().bottom + 4,
+                            left: filterContainerRef.current.getBoundingClientRect().left,
+                            right: "auto",
+                            width: "min(calc(100vw - 24px), 380px)",
+                          }
+                        : compact
+                          ? { top: 120, left: 8, width: "min(calc(100vw - 24px), 380px)" }
+                          : undefined
+                    }
+                  >
+                    <FiltersPanel
+                      filters={filters}
+                      onChange={setFilters}
+                      onClear={() => setFilters(EMPTY_FILTERS)}
+                      compact={compact}
+                    />
+                  </div>
+                )}
+              </div>
               {!compact && (
                 <span
                   title="Keyboard shortcuts: J/K to move between rows, Enter to open"
@@ -751,30 +771,30 @@ export function RequestsListClient({
                 </span>
               )}
             </div>
+            {canCreate && !compact && (
+              <button
+                type="button"
+                onClick={() =>
+                  openCreateRequestModal({
+                    workspaceCurrency: workspaceCurrency ?? "USD",
+                    onCreated: handleOptimisticCreate,
+                  })
+                }
+                className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-(--color-primary-hover) sm:ml-auto"
+              >
+                <IconPlus size={15} />
+                New request
+              </button>
+            )}
           </div>
 
-          {showFilters ? (
-            <div
-              className={compact ? "shrink-0 max-h-64 overflow-y-auto" : undefined}
-              style={
-                compact
-                  ? {
-                      scrollbarWidth: "thin",
-                      scrollbarColor: "var(--border-subtle) transparent",
-                    }
-                  : undefined
-              }
-            >
-              <FiltersPanel
-                filters={filters}
-                onChange={setFilters}
-                onClear={() => setFilters(EMPTY_FILTERS)}
-                compact={compact}
-              />
-            </div>
-          ) : null}
-
-          <div className={compact ? "min-h-0 flex-1 overflow-y-auto" : ""}>
+          <div
+            className="min-h-0 flex-1 overflow-y-auto pb-4"
+            style={{
+              scrollbarWidth: "thin",
+              scrollbarColor: "var(--border-subtle) transparent",
+            }}
+          >
           {tabSpecs.map((t) => (
             <TabsContent
               key={t.value}
@@ -930,25 +950,23 @@ function FiltersPanel({
 
   const selectClass =
     "w-full rounded-lg border border-(--border-subtle) " +
-    "bg-(--bg-surface) px-3 py-2 text-sm " +
+    "bg-(--bg-surface) px-3 py-1.5 text-sm h-9 " +
     "text-(--text-primary) " +
     "transition-colors focus:ring-2 focus:ring-(--color-focus-ring) " +
     "focus:outline-none";
 
   return (
-    <div className="overflow-hidden rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev)">
-      <div className="p-4">
+    <div className="overflow-hidden rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev) shadow-lg">
+      <div className="p-2.5">
         <div
           className={
             compact
-              ? "grid grid-cols-1 gap-2"
-              : "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4"
+              ? "grid grid-cols-2 gap-1.5"
+              : "grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5"
           }
         >
-          <div className="space-y-1.5">
-            <label className="block text-[11px] font-semibold tracking-wider text-(--text-muted) uppercase">
-              Status
-            </label>
+          <div className="space-y-1">
+            <label className="sr-only">Status</label>
             <select
               value={filters.status}
               onChange={(e) => set("status", e.target.value)}
@@ -962,10 +980,8 @@ function FiltersPanel({
             </select>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="block text-[11px] font-semibold tracking-wider text-(--text-muted) uppercase">
-              Category
-            </label>
+          <div className="space-y-1">
+            <label className="sr-only">Category</label>
             <select
               value={filters.category}
               onChange={(e) => set("category", e.target.value)}
@@ -989,10 +1005,8 @@ function FiltersPanel({
             </select>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="block text-[11px] font-semibold tracking-wider text-(--text-muted) uppercase">
-              Priority
-            </label>
+          <div className="space-y-1">
+            <label className="sr-only">Priority</label>
             <select
               value={filters.priority}
               onChange={(e) => set("priority", e.target.value)}
@@ -1006,11 +1020,9 @@ function FiltersPanel({
             </select>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="block text-[11px] font-semibold tracking-wider text-(--text-muted) uppercase">
-              Quick filters
-            </label>
-            <div className="flex flex-col gap-2 pt-1">
+          <div className="space-y-1">
+            <label className="sr-only">Quick filters</label>
+            <div className="flex h-9 flex-row items-center gap-4">
               <label className="flex cursor-pointer items-center gap-2 text-sm text-(--text-secondary) transition-colors hover:text-(--text-primary)">
                 <input
                   type="checkbox"
@@ -1035,25 +1047,27 @@ function FiltersPanel({
       </div>
 
       <div className="border-t border-(--border-subtle)">
-        <button
-          type="button"
-          onClick={() => setShowAdvanced((v) => !v)}
-          className="flex w-full cursor-pointer items-center justify-between px-4 py-2.5 text-xs font-medium text-(--text-muted) transition-colors hover:text-(--text-primary)"
-        >
-          <span className="flex items-center gap-2">
-            <span>Advanced filters</span>
-            {hasAdvancedFilters ? (
-              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-(--color-primary) text-[9px] font-bold text-white">
-                •
-              </span>
-            ) : null}
-          </span>
-          <span
-            className={`text-(--text-muted) transition-transform duration-200 ${showAdvanced ? "rotate-180" : ""}`}
+        <div className="flex items-center justify-between px-2.5 py-1.5">
+          <button
+            type="button"
+            onClick={() => setShowAdvanced((v) => !v)}
+            className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-(--text-muted) transition-colors hover:text-(--text-primary)"
           >
-            ▾
-          </span>
-        </button>
+            <span className="flex items-center gap-2">
+              <span>Advanced filters</span>
+              {hasAdvancedFilters ? (
+                <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-(--color-primary) text-[9px] font-bold text-white">
+                  •
+                </span>
+              ) : null}
+            </span>
+            <span
+              className={`text-(--text-muted) transition-transform duration-200 ${showAdvanced ? "rotate-180" : ""}`}
+            >
+              ▾
+            </span>
+          </button>
+        </div>
 
         {showAdvanced ? (
           <div className="space-y-3 px-4 pb-4">
@@ -1064,7 +1078,7 @@ function FiltersPanel({
                   : "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
               }
             >
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <label className="block text-[11px] font-semibold tracking-wider text-(--text-muted) uppercase">
                   Min amount
                 </label>
@@ -1076,7 +1090,7 @@ function FiltersPanel({
                   placeholder="0"
                 />
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <label className="block text-[11px] font-semibold tracking-wider text-(--text-muted) uppercase">
                   Max amount
                 </label>
@@ -1088,7 +1102,7 @@ function FiltersPanel({
                   placeholder="∞"
                 />
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <label className="block text-[11px] font-semibold tracking-wider text-(--text-muted) uppercase">
                   Currency
                 </label>
@@ -1099,7 +1113,7 @@ function FiltersPanel({
                   placeholder="Any currency"
                 />
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <label className="block text-[11px] font-semibold tracking-wider text-(--text-muted) uppercase">
                   Needed by (from)
                 </label>
@@ -1109,7 +1123,7 @@ function FiltersPanel({
                   onChange={(e) => set("neededByFrom", e.target.value)}
                 />
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <label className="block text-[11px] font-semibold tracking-wider text-(--text-muted) uppercase">
                   Needed by (to)
                 </label>
@@ -1121,7 +1135,7 @@ function FiltersPanel({
               </div>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <label className="block text-[11px] font-semibold tracking-wider text-(--text-muted) uppercase">
                   Created from
                 </label>
@@ -1131,7 +1145,7 @@ function FiltersPanel({
                   onChange={(e) => set("dateFrom", e.target.value)}
                 />
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <label className="block text-[11px] font-semibold tracking-wider text-(--text-muted) uppercase">
                   Created to
                 </label>
@@ -1142,7 +1156,7 @@ function FiltersPanel({
         ) : null}
       </div>
 
-      <div className="flex items-center justify-between border-t border-(--border-subtle) px-4 py-2.5">
+      <div className="flex items-center justify-between border-t border-(--border-subtle) px-2.5 py-1.5">
         <p className="text-xs text-(--text-muted)">
           {countActiveFilters(filters) > 0
             ? `${countActiveFilters(filters)} filter${countActiveFilters(filters) === 1 ? "" : "s"} active`
