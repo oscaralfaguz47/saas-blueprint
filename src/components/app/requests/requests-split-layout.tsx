@@ -119,7 +119,7 @@ export function RequestsSplitLayout({
   // On mobile: render only the list (detail is a separate page)
   if (isMobile) {
     return (
-      <div className="px-3 py-4">
+      <div className="h-full min-h-0 w-full overflow-y-auto px-3 py-4">
         <RequestsListClient
           key={`requests-list-${listResetKey}`}
           canCreate={canCreate}
@@ -127,6 +127,7 @@ export function RequestsSplitLayout({
           workspaceCurrency={workspaceCurrency}
           onNavigate={handleSelectRecord}
           onCreated={handleCreated}
+          heightConstrained={false}
         />
       </div>
     );

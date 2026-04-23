@@ -152,6 +152,11 @@ type Props = {
   selectedId?: string;
   /** Split-view: compact mode hides metric cards grid labels, reduces padding */
   compact?: boolean;
+  /**
+   * When true, uses flex h-full layout with a sticky chrome and scrollable rows.
+   * Set false when the parent scroll container handles scrolling (e.g. mobile list).
+   */
+  heightConstrained?: boolean;
   /** Split-view: called after a new request is created — payload used for optimistic insert */
   onCreated?: (payload: CreatedRecordPayload) => void;
 };
@@ -276,6 +281,7 @@ export function RequestsListClient({
   onNavigate: onNavigateOverride,
   selectedId,
   compact = false,
+  heightConstrained = true,
   onCreated,
 }: Props) {
   const { openCreateRequestModal } = useCreateRequestModal();
@@ -552,7 +558,11 @@ export function RequestsListClient({
   const dash = "—";
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div
+      className={
+        heightConstrained ? "flex h-full flex-col overflow-hidden" : "space-y-4"
+      }
+    >
       <div className="shrink-0 space-y-3">
         {!compact && (
         <>
@@ -636,9 +646,17 @@ export function RequestsListClient({
       <Tabs
         value={tab}
         onValueChange={handleTabChange}
-        className="flex min-h-0 flex-1 flex-col"
+        className={
+          heightConstrained ? "flex min-h-0 flex-1 flex-col" : undefined
+        }
       >
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
+        <div
+          className={
+            heightConstrained
+              ? "flex min-h-0 flex-1 flex-col gap-3 overflow-hidden"
+              : "space-y-3"
+          }
+        >
           <div
             className="shrink-0 bg-(--bg-main) py-1"
             style={
@@ -739,14 +757,33 @@ export function RequestsListClient({
                     ].join(" ")}
                     style={
                       compact && filterContainerRef.current
-                        ? {
-                            top: filterContainerRef.current.getBoundingClientRect().bottom + 4,
-                            left: filterContainerRef.current.getBoundingClientRect().left,
-                            right: "auto",
-                            width: "min(calc(100vw - 24px), 380px)",
-                          }
+                        ? (() => {
+                            const isMobileView =
+                              typeof window !== "undefined" &&
+                              window.innerWidth < 640;
+                            const rect =
+                              filterContainerRef.current.getBoundingClientRect();
+                            return isMobileView
+                              ? {
+                                  top: rect.bottom + 4,
+                                  left: 8,
+                                  right: 8,
+                                  width: "auto",
+                                }
+                              : {
+                                  top: rect.bottom + 4,
+                                  left: rect.left,
+                                  right: "auto",
+                                  width: "min(calc(100vw - 24px), 380px)",
+                                };
+                          })()
                         : compact
-                          ? { top: 120, left: 8, width: "min(calc(100vw - 24px), 380px)" }
+                          ? {
+                              top: 120,
+                              left: 8,
+                              right: 8,
+                              width: "auto",
+                            }
                           : undefined
                     }
                   >
@@ -789,11 +826,19 @@ export function RequestsListClient({
           </div>
 
           <div
-            className="min-h-0 flex-1 overflow-y-auto pb-4"
-            style={{
-              scrollbarWidth: "thin",
-              scrollbarColor: "var(--border-subtle) transparent",
-            }}
+            className={
+              heightConstrained
+                ? "min-h-0 flex-1 overflow-y-auto pb-4"
+                : "pb-4"
+            }
+            style={
+              heightConstrained
+                ? {
+                    scrollbarWidth: "thin",
+                    scrollbarColor: "var(--border-subtle) transparent",
+                  }
+                : undefined
+            }
           >
           {tabSpecs.map((t) => (
             <TabsContent
@@ -961,7 +1006,7 @@ function FiltersPanel({
         <div
           className={
             compact
-              ? "grid grid-cols-2 gap-1.5"
+              ? "grid grid-cols-1 gap-1.5 sm:grid-cols-2"
               : "grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5"
           }
         >
