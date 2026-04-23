@@ -141,7 +141,7 @@ export function RequestsSplitLayout({
           "transition-all duration-200",
           selectedId
             ? "w-[380px] min-w-[320px] max-w-[420px]"
-            : "w-full max-w-[1280px] mx-auto px-4 sm:px-8",
+            : "w-full",
         ].join(" ")}
       >
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-4">

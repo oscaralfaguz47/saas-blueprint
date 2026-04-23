@@ -92,7 +92,7 @@ export default function AppLayoutClient({
           onMenuClick={isMobile ? () => setSidebarOpen(true) : undefined}
         />
         <main className="min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto text-(--text-primary)">
-          <div className="mx-auto w-full max-w-[1440px] px-3 py-4 sm:px-6 sm:py-6">
+          <div className="w-full px-3 py-4 sm:px-6 sm:py-6">
             {children}
           </div>
         </main>

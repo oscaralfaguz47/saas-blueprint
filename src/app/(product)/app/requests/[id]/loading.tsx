@@ -4,7 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function RequestDetailLoading() {
   return (
     <Container>
-      <div className="space-y-6">
+      <div className="space-y-6 px-4 py-4 sm:px-6">
         {/* Breadcrumb */}
         <div className="flex items-center gap-2">
           <Skeleton className="h-4 w-4 rounded" />

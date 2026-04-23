@@ -321,13 +321,15 @@ export function RequestDetailClient({
     <div className={stickyHeader ? "flex h-full flex-col overflow-hidden" : "space-y-6"}>
       <div className={stickyHeader ? "shrink-0 space-y-3 px-4 pt-4 sm:px-6" : "space-y-3"}>
         <div className="flex items-center justify-between gap-3">
-          <Link
-            href="/app/requests"
-            className="inline-flex items-center gap-1.5 text-sm text-(--text-muted) transition-colors hover:text-(--text-primary)"
-          >
-            <IconChevronLeft size={14} />
-            Back to requests
-          </Link>
+          {!stickyHeader && (
+            <Link
+              href="/app/requests"
+              className="inline-flex items-center gap-1.5 text-sm text-(--text-muted) transition-colors hover:text-(--text-primary)"
+            >
+              <IconChevronLeft size={14} />
+              Back to requests
+            </Link>
+          )}
           <RequestKeyboardNav currentId={recordId} onNavigate={onNavigate} />
         </div>
 
@@ -2438,7 +2440,7 @@ function RemovePaymentEvidenceButton({
 
 function RequestDetailSkeleton() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-4 py-4 sm:px-6">
       <Skeleton className="h-4 w-24" />
       <div className="space-y-2">
         <Skeleton className="h-8 w-2/3" />

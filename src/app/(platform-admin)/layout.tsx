@@ -103,7 +103,7 @@ export default async function PlatformAdminLayout({ children }: { children: Reac
       pendingInvitationsCount={0}
       canAccessPlatformAdmin={true}
     >
-      <div className="mx-auto w-full max-w-6xl px-4 py-6">
+        <div className="w-full max-w-6xl px-4 py-6">
         <AdminSubnav
           canManageAdminUsers={canManageAdminUsers}
           canViewSupport={canViewSupport}

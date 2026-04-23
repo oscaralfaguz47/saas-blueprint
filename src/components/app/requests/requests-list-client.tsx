@@ -650,8 +650,23 @@ export function RequestsListClient({
         className={compact ? "flex min-h-0 flex-1 flex-col" : undefined}
       >
         <div className={compact ? "flex min-h-0 flex-1 flex-col gap-2" : "space-y-4"}>
-          <div className={compact ? "shrink-0 bg-(--bg-main) py-1" : ""}>
-            <TabsList>
+          <div
+            className={compact ? "shrink-0 bg-(--bg-main) py-1" : ""}
+            style={
+              compact
+                ? {
+                    overflowX: "auto",
+                    scrollbarWidth: "thin",
+                    scrollbarColor: "var(--border-subtle) transparent",
+                  }
+                : undefined
+            }
+          >
+            <TabsList
+              className={
+                compact ? "w-max min-w-full !overflow-x-visible scrollbar-none" : undefined
+              }
+            >
               {tabSpecs.map((t) => (
                 <TabsTrigger key={t.value} value={t.value}>
                   <span className="flex items-center gap-1.5">
@@ -739,7 +754,17 @@ export function RequestsListClient({
           </div>
 
           {showFilters ? (
-            <div className={compact ? "shrink-0 max-h-64 overflow-y-auto" : undefined}>
+            <div
+              className={compact ? "shrink-0 max-h-64 overflow-y-auto" : undefined}
+              style={
+                compact
+                  ? {
+                      scrollbarWidth: "thin",
+                      scrollbarColor: "var(--border-subtle) transparent",
+                    }
+                  : undefined
+              }
+            >
               <FiltersPanel
                 filters={filters}
                 onChange={setFilters}
@@ -1288,14 +1313,14 @@ function RecordRow({
         onClick();
       }}
       className={
-        "group block w-full cursor-pointer rounded-xl border border-(--border-subtle) bg-(--bg-surface) px-4 py-4 text-left transition-all hover:border-(--border-strong) hover:bg-(--bg-surface-hover) hover:shadow-sm animate-in fade-in duration-150 " +
+        "group block w-full cursor-pointer rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2.5 text-left transition-all hover:border-(--border-strong) hover:bg-(--bg-surface-hover) hover:shadow-sm animate-in fade-in duration-150 " +
         (isFocused ? "ring-2 ring-(--color-primary) ring-offset-1 " : "") +
         (isSelected ? "border-(--color-primary) bg-(--color-primary-soft) " : "") +
         priorityAccentClass(record.priority)
       }
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           <Badge variant={RECORD_STATUS_BADGE[record.status]} className="shrink-0">
             {RECORD_STATUS_LABELS[record.status]}
           </Badge>
@@ -1308,14 +1333,14 @@ function RecordRow({
         </span>
       </div>
 
-      <div className="mt-2.5 flex flex-wrap items-start justify-between gap-2">
+      <div className="mt-1.5 flex items-center justify-between gap-2">
         <span className="min-w-0 flex-1 text-sm leading-snug font-semibold text-(--text-primary) transition-colors group-hover:text-(--color-primary)">
           {record.title}
         </span>
         <NeededByLine neededByDate={record.neededByDate} />
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-(--text-muted)">
+      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-(--text-muted)">
         {record.recordKey ? (
           <span
             role="button"
