@@ -320,8 +320,8 @@ export function RequestDetailClient({
   return (
     <div className={stickyHeader ? "flex h-full flex-col overflow-hidden" : "space-y-6"}>
       <div className={stickyHeader ? "shrink-0 space-y-3 px-4 pt-4 sm:px-6" : "space-y-3"}>
-        <div className="flex items-center justify-between gap-3">
-          {!stickyHeader && (
+        {!stickyHeader && (
+          <div className="flex items-center justify-between gap-3">
             <Link
               href="/app/requests"
               className="inline-flex items-center gap-1.5 text-sm text-(--text-muted) transition-colors hover:text-(--text-primary)"
@@ -329,11 +329,11 @@ export function RequestDetailClient({
               <IconChevronLeft size={14} />
               Back to requests
             </Link>
-          )}
-          <RequestKeyboardNav currentId={recordId} onNavigate={onNavigate} />
-        </div>
+            <RequestKeyboardNav currentId={recordId} onNavigate={onNavigate} />
+          </div>
+        )}
 
-        <header className="space-y-4 rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev) p-4 sm:p-6 animate-in fade-in slide-in-from-top-1 duration-200">
+        <header className="space-y-2.5 rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev) p-3 sm:p-4 animate-in fade-in slide-in-from-top-1 duration-200">
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -357,21 +357,21 @@ export function RequestDetailClient({
           {rec.overdue && (
             <Badge variant="destructive">Overdue</Badge>
           )}
+          <span className="text-xs text-(--text-muted)">
+            Created {formatDate(rec.createdAt)} by {createdByLabel}
+          </span>
         </div>
         <h1 className="break-words text-2xl font-semibold tracking-tight text-(--text-primary)">
           {rec.title}
         </h1>
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-(--text-muted)">
-          <span>
-            Created {formatDate(rec.createdAt)} by {createdByLabel}
-          </span>
-          {rec.neededByDate && (
-            <span className={neededByPast ? "font-medium text-(--color-warning)" : ""}>
+        {rec.neededByDate && (
+          <div className="text-sm">
+            <span className={neededByPast ? "font-medium text-(--color-warning)" : "text-(--text-muted)"}>
               Needed by: {formatDate(rec.neededByDate)}
               {neededByPast ? " · URGENT" : ""}
             </span>
-          )}
-        </div>
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-3 text-sm">
           {(rec.requestedAmount != null || rec.amount != null) && (
             <span className="font-medium text-(--text-primary)">
@@ -386,7 +386,7 @@ export function RequestDetailClient({
           </span>
         </div>
 
-        <div className="flex flex-wrap gap-2 border-t border-(--border-subtle) pt-4">
+        <div className="flex flex-wrap gap-2 border-t border-(--border-subtle) pt-3">
           {showSubmitForApproval && (
             <button
               type="button"

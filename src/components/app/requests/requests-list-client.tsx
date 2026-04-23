@@ -750,9 +750,9 @@ export function RequestsListClient({
                 {showFilters && (
                   <div
                     className={[
-                      "z-[200] mt-1 animate-in fade-in slide-in-from-top-1 duration-150",
+                      "z-[200] mt-1 animate-in fade-in slide-in-from-top-1 duration-150 overflow-y-auto",
                       compact
-                        ? "fixed top-auto"
+                        ? "fixed top-auto max-h-[70vh]"
                         : "absolute left-0 top-full w-[min(calc(100vw-280px),860px)]",
                     ].join(" ")}
                     style={
@@ -977,7 +977,7 @@ function FiltersPanel({
   onClear: () => void;
   compact?: boolean;
 }) {
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(true);
 
   function set<K extends keyof Filters>(key: K, value: Filters[K]) {
     onChange({ ...filters, [key]: value });
