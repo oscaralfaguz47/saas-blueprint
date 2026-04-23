@@ -60,8 +60,22 @@ export default async function SignInPage({ searchParams }: Props) {
           where: { id: recentMismatch.id },
           data: { errorCode: null },
         });
+        // The Settings linking flow ALWAYS runs inside an OAuth popup whose
+        // callback URL is `/auth/popup-callback`. Sending the popup to `/app/**`
+        // would (a) load a full app render in the popup and (b) trip COOP
+        // (`Cross-Origin-Opener-Policy: same-origin-allow-popups` on `/app`),
+        // blocking `window.close()`.
+        //
+        // Routing to `/auth/popup-callback` instead lets the popup forward the
+        // error via `postMessage` and close itself; the parent tab
+        // (`security-tab.tsx`) already handles `result.errorCode === "link_email_mismatch"`
+        // and shows the same "Account not linked" banner copy (verified).
+        //
+        // The unauthenticated `AccessDenied` branch below (redirect to
+        // `/api/link/pending`) is intentionally NOT changed — that path is the
+        // first-time sign-in conflict flow and is handled separately.
         redirect(
-          `/app/account?tab=security&error=link_email_mismatch&provider=${encodeURIComponent(recentMismatch.targetProvider)}`
+          `/auth/popup-callback?error=link_email_mismatch&provider=${encodeURIComponent(recentMismatch.targetProvider)}`
         );
       }
     }

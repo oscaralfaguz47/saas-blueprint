@@ -488,6 +488,13 @@ export const authOptions: NextAuthOptions = {
       // signIn still enforces intent email match, mismatch deny, and Azure-specific
       // AuthLinkChallenge — Google fresh sign-ins merge by email only when allowed below.
       allowDangerousEmailAccountLinking: true,
+      // Always show the Google account picker (never silently reuse the active session).
+      // Required for two flows:
+      //   1) Sign-in: user must be able to pick which Google account to authenticate with.
+      //   2) Settings linking: user must be able to pick the SECOND Google account to link.
+      authorization: {
+        params: { prompt: "select_account" },
+      },
     }),
 
     // Microsoft Entra ID (organizations only). Uses azure-ad provider; callback id is "azure-ad".
@@ -503,7 +510,12 @@ export const authOptions: NextAuthOptions = {
       // through the verified magic-link linking flow before the adapter links anything.
       allowDangerousEmailAccountLinking: true,
       authorization: {
-        params: { scope: "openid profile email User.Read" },
+        // `prompt: "select_account"`: always show the Microsoft account picker (never silently
+        // reuse the active SSO session). Required for two flows:
+        //   1) Sign-in: user must be able to pick which Microsoft account to authenticate with.
+        //   2) Settings linking: user must be able to pick the SECOND Microsoft account to link.
+        // Without this, Microsoft Identity Platform silently uses the cached SSO session.
+        params: { scope: "openid profile email User.Read", prompt: "select_account" },
       },
       profile(profile) {
         const normalizedEmail = normalizeMicrosoftEmail(profile);
