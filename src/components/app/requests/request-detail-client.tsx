@@ -680,6 +680,112 @@ export function RequestDetailClient({
                   )}
                   {rec.isRecurring && <Badge variant="secondary">Recurring</Badge>}
                 </div>
+                {rec.taxAmount != null && (
+                  <div className="mt-4 border-t border-(--border-subtle) pt-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div>
+                        <p className="text-xs font-medium text-(--text-muted)">Tax amount</p>
+                        <p className="mt-1 text-sm font-semibold tabular-nums text-(--text-primary)">
+                          {formatAmount(rec.taxAmount, rec.currencyCode ?? rec.currency)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-(--text-muted)">Tax treatment</p>
+                        <p className="mt-1 text-sm text-(--text-primary)">
+                          {rec.taxIncluded === true
+                            ? "Included in amount"
+                            : rec.taxIncluded === false
+                              ? "Excluded from amount"
+                              : "—"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {rec.isRecurring && rec.recurrenceNotes && (
+                  <div className="mt-3">
+                    <p className="text-xs font-medium text-(--text-muted)">Recurrence details</p>
+                    <p className="mt-1 text-sm text-(--text-secondary)">{rec.recurrenceNotes}</p>
+                  </div>
+                )}
+              </CardContent>
+            </CardRoot>
+          )}
+
+          {(rec.description || rec.businessJustification || (rec.hasPolicyException && rec.policyExceptionReason)) && (
+            <CardRoot>
+              <CardHeader>
+                <h2 className="text-sm font-semibold text-(--text-primary)">Request details</h2>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {rec.description && (
+                  <div>
+                    <p className="text-xs font-medium text-(--text-muted)">Description</p>
+                    <p className="mt-1 text-sm leading-relaxed text-(--text-secondary) whitespace-pre-wrap">
+                      {rec.description}
+                    </p>
+                  </div>
+                )}
+                {rec.businessJustification && (
+                  <div>
+                    <p className="text-xs font-medium text-(--text-muted)">Business justification</p>
+                    <p className="mt-1 text-sm leading-relaxed text-(--text-secondary) whitespace-pre-wrap">
+                      {rec.businessJustification}
+                    </p>
+                  </div>
+                )}
+                {rec.hasPolicyException && rec.policyExceptionReason && (
+                  <div className="rounded-lg border border-(--color-warning-soft) bg-(--color-warning-soft) px-3 py-2.5">
+                    <p className="text-xs font-semibold text-(--color-warning)">
+                      ⚠ Policy exception reason
+                    </p>
+                    <p className="mt-1 text-sm leading-relaxed text-(--color-warning) whitespace-pre-wrap">
+                      {rec.policyExceptionReason}
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </CardRoot>
+          )}
+
+          {(rec.vendorName || rec.payeeName || rec.invoiceNumber || rec.contractReference || rec.purchaseOrderRef) && (
+            <CardRoot>
+              <CardHeader>
+                <h2 className="text-sm font-semibold text-(--text-primary)">Vendor & payment</h2>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {rec.vendorName && (
+                    <div>
+                      <p className="text-xs font-medium text-(--text-muted)">Vendor / Supplier</p>
+                      <p className="mt-1 text-sm font-medium text-(--text-primary)">{rec.vendorName}</p>
+                    </div>
+                  )}
+                  {rec.payeeName && (
+                    <div>
+                      <p className="text-xs font-medium text-(--text-muted)">Payee / Beneficiary</p>
+                      <p className="mt-1 text-sm font-medium text-(--text-primary)">{rec.payeeName}</p>
+                    </div>
+                  )}
+                  {rec.invoiceNumber && (
+                    <div>
+                      <p className="text-xs font-medium text-(--text-muted)">Invoice number</p>
+                      <p className="mt-1 text-sm font-mono text-(--text-primary)">{rec.invoiceNumber}</p>
+                    </div>
+                  )}
+                  {rec.contractReference && (
+                    <div>
+                      <p className="text-xs font-medium text-(--text-muted)">Contract reference</p>
+                      <p className="mt-1 text-sm font-mono text-(--text-primary)">{rec.contractReference}</p>
+                    </div>
+                  )}
+                  {rec.purchaseOrderRef && (
+                    <div>
+                      <p className="text-xs font-medium text-(--text-muted)">Purchase order ref</p>
+                      <p className="mt-1 text-sm font-mono text-(--text-primary)">{rec.purchaseOrderRef}</p>
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </CardRoot>
           )}
@@ -794,6 +900,65 @@ export function RequestDetailClient({
               </div>
             </CardContent>
           </CardRoot>
+
+          {(rec.department ?? rec.costCenter ?? rec.riskLevel) && (
+            <CardRoot>
+              <CardHeader>
+                <h2 className="text-sm font-semibold text-(--text-primary)">Organizational context</h2>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {rec.department && (
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-xs font-medium text-(--text-muted)">Department</p>
+                    <p className="text-xs text-right font-medium text-(--text-primary)">
+                      {rec.department.name}
+                      {rec.department.code ? (
+                        <span className="ml-1.5 font-normal text-(--text-muted)">
+                          ({rec.department.code})
+                        </span>
+                      ) : null}
+                    </p>
+                  </div>
+                )}
+                {rec.costCenter && (
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-xs font-medium text-(--text-muted)">Cost center</p>
+                    <p className="text-xs text-right font-medium text-(--text-primary)">
+                      {rec.costCenter.name}
+                      <span className="ml-1.5 font-normal text-(--text-muted)">
+                        ({rec.costCenter.code})
+                      </span>
+                    </p>
+                  </div>
+                )}
+                {rec.costCenter?.department && !rec.department && (
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-xs font-medium text-(--text-muted)">Department</p>
+                    <p className="text-xs text-right font-medium text-(--text-primary)">
+                      {rec.costCenter.department.name}
+                    </p>
+                  </div>
+                )}
+                {rec.riskLevel && (
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-xs font-medium text-(--text-muted)">Risk level</p>
+                    <span
+                      className={[
+                        "rounded-md px-2 py-0.5 text-[11px] font-semibold",
+                        rec.riskLevel === "HIGH" || rec.riskLevel === "CRITICAL"
+                          ? "bg-(--color-danger-soft) text-(--color-danger)"
+                          : rec.riskLevel === "MEDIUM"
+                            ? "bg-(--color-warning-soft) text-(--color-warning)"
+                            : "bg-(--bg-surface-elev) text-(--text-muted)",
+                      ].join(" ")}
+                    >
+                      {rec.riskLevel.charAt(0) + rec.riskLevel.slice(1).toLowerCase()}
+                    </span>
+                  </div>
+                )}
+              </CardContent>
+            </CardRoot>
+          )}
 
           {record.requestedAmount != null && record.requestedAmount > 0 && (
             <PaymentSection
