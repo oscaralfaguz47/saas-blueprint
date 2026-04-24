@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { useRouter } from "next/navigation";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -17,7 +25,7 @@ import {
   IconAlertCircle,
   IconFilter,
   IconClock,
-  IconDollarSign,
+  IconTrendingUp,
   IconShield,
   IconX,
 } from "@/components/ui/icons";
@@ -647,7 +655,7 @@ export function RequestsListClient({
                     />
                     <MetricCard
                       label="Total open value"
-                      icon={<IconDollarSign size={18} className="text-(--text-muted)" />}
+                      icon={<IconTrendingUp size={18} className="text-(--text-muted)" />}
                       tone="neutral"
                       customValue={
                         !displaySummary ? (
@@ -655,31 +663,13 @@ export function RequestsListClient({
                             {dash}
                           </p>
                         ) : isMultiCurrency ? (
-                          <div
-                            className="mt-1 max-h-[4.5rem] overflow-y-auto space-y-0.5 pr-1"
-                            style={{
-                              scrollbarWidth: "thin",
-                              scrollbarColor: "var(--border-subtle) transparent",
-                            }}
-                          >
-                            {currencyEntries.map(([code, amount]) => (
-                              <p
-                                key={code}
-                                className="text-sm leading-snug font-bold tabular-nums text-(--text-primary)"
-                              >
-                                {formatAmount(amount, code)}{" "}
-                                <span className="text-[11px] font-medium text-(--text-muted)">
-                                  {code}
-                                </span>
-                              </p>
-                            ))}
-                          </div>
+                          <MultiCurrencyScroll entries={currencyEntries} />
                         ) : currencyEntries.length === 1 ? (
-                          <p className="text-2xl leading-none font-bold tabular-nums text-(--text-primary)">
+                          <p className="text-2xl leading-none font-bold tabular-nums text-(--text-primary) mt-auto">
                             {formatAmount(currencyEntries[0]![1], currencyEntries[0]![0])}
                           </p>
                         ) : (
-                          <p className="text-2xl leading-none font-bold tabular-nums text-(--text-primary)">
+                          <p className="text-2xl leading-none font-bold tabular-nums text-(--text-primary) mt-auto">
                             {dash}
                           </p>
                         )
@@ -891,71 +881,253 @@ export function RequestsListClient({
             )}
           </div>
 
-          <div
-            className={
-              heightConstrained
-                ? "min-h-0 flex-1 overflow-y-auto pb-4"
-                : "pb-4"
-            }
-            style={
-              heightConstrained
-                ? {
-                    scrollbarWidth: "thin",
-                    scrollbarColor: "var(--border-subtle) transparent",
-                  }
-                : undefined
-            }
-          >
-          {tabSpecs.map((t) => (
-            <TabsContent
-              key={t.value}
-              value={t.value}
-              className="-mt-0 rounded-none border-0 bg-transparent p-0 shadow-none"
+          {heightConstrained ? (
+            <ScrollFadeContainer
+              className="min-h-0 flex-1 overflow-y-auto pb-4"
+              style={{
+                scrollbarWidth: "thin",
+                scrollbarColor: "var(--border-subtle) transparent",
+              }}
             >
-              <RecordsList
-                records={records}
-                loading={loading}
-                loadingMore={loadingMore}
-                error={error}
-                hasMore={hasMore}
-                onLoadMore={handleLoadMore}
-                uiTab={t.value}
-                canCreate={canCreate}
-                isFilteredOrSearch={isFilteredOrSearch}
-                focusedIndex={focusedIndex}
-                selectedId={selectedId}
-                onNavigate={(id) => {
-                  try {
-                    sessionStorage.setItem(
-                      "rlt_request_nav_list",
-                      JSON.stringify(records.map((r) => r.id))
-                    );
-                  } catch {
-                    // ignore
-                  }
-                  if (onNavigateOverride) {
-                    onNavigateOverride(id);
-                  } else {
-                    router.push(`/app/requests/${id}`);
-                  }
-                }}
-                onClearFilters={clearAllFiltersAndSearch}
-                onNewRequest={
-                  canCreate
-                    ? () =>
-                        openCreateRequestModal({
-                          workspaceCurrency: workspaceCurrency ?? "USD",
-                          onCreated: handleOptimisticCreate,
-                        })
-                    : undefined
-                }
-                compact={compact}
-              />
-            </TabsContent>
-          ))}
-          </div>
+              {tabSpecs.map((t) => (
+                <TabsContent
+                  key={t.value}
+                  value={t.value}
+                  className="-mt-0 rounded-none border-0 bg-transparent p-0 shadow-none"
+                >
+                  <RecordsList
+                    records={records}
+                    loading={loading}
+                    loadingMore={loadingMore}
+                    error={error}
+                    hasMore={hasMore}
+                    onLoadMore={handleLoadMore}
+                    uiTab={t.value}
+                    canCreate={canCreate}
+                    isFilteredOrSearch={isFilteredOrSearch}
+                    focusedIndex={focusedIndex}
+                    selectedId={selectedId}
+                    onNavigate={(id) => {
+                      try {
+                        sessionStorage.setItem(
+                          "rlt_request_nav_list",
+                          JSON.stringify(records.map((r) => r.id))
+                        );
+                      } catch {
+                        // ignore
+                      }
+                      if (onNavigateOverride) {
+                        onNavigateOverride(id);
+                      } else {
+                        router.push(`/app/requests/${id}`);
+                      }
+                    }}
+                    onClearFilters={clearAllFiltersAndSearch}
+                    onNewRequest={
+                      canCreate
+                        ? () =>
+                            openCreateRequestModal({
+                              workspaceCurrency: workspaceCurrency ?? "USD",
+                              onCreated: handleOptimisticCreate,
+                            })
+                        : undefined
+                    }
+                    compact={compact}
+                  />
+                </TabsContent>
+              ))}
+            </ScrollFadeContainer>
+          ) : (
+            <div className="pb-4">
+              {tabSpecs.map((t) => (
+                <TabsContent
+                  key={t.value}
+                  value={t.value}
+                  className="-mt-0 rounded-none border-0 bg-transparent p-0 shadow-none"
+                >
+                  <RecordsList
+                    records={records}
+                    loading={loading}
+                    loadingMore={loadingMore}
+                    error={error}
+                    hasMore={hasMore}
+                    onLoadMore={handleLoadMore}
+                    uiTab={t.value}
+                    canCreate={canCreate}
+                    isFilteredOrSearch={isFilteredOrSearch}
+                    focusedIndex={focusedIndex}
+                    selectedId={selectedId}
+                    onNavigate={(id) => {
+                      try {
+                        sessionStorage.setItem(
+                          "rlt_request_nav_list",
+                          JSON.stringify(records.map((r) => r.id))
+                        );
+                      } catch {
+                        // ignore
+                      }
+                      if (onNavigateOverride) {
+                        onNavigateOverride(id);
+                      } else {
+                        router.push(`/app/requests/${id}`);
+                      }
+                    }}
+                    onClearFilters={clearAllFiltersAndSearch}
+                    onNewRequest={
+                      canCreate
+                        ? () =>
+                            openCreateRequestModal({
+                              workspaceCurrency: workspaceCurrency ?? "USD",
+                              onCreated: handleOptimisticCreate,
+                            })
+                        : undefined
+                    }
+                    compact={compact}
+                  />
+                </TabsContent>
+              ))}
+            </div>
+          )}
         </div>
       </Tabs>
+    </div>
+  );
+}
+
+function ScrollFadeContainer({
+  children,
+  className,
+  style,
+}: {
+  children: ReactNode;
+  className?: string;
+  style?: CSSProperties;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [showTopFade, setShowTopFade] = useState(false);
+  const [showBottomFade, setShowBottomFade] = useState(false);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    function update() {
+      if (!el) return;
+      const { scrollTop, scrollHeight, clientHeight } = el;
+      setShowTopFade(scrollTop > 2);
+      setShowBottomFade(scrollTop + clientHeight < scrollHeight - 2);
+    }
+
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", update);
+      ro.disconnect();
+    };
+  }, []);
+
+  return (
+    <div className="relative min-h-0 flex-1 flex flex-col">
+      {/* Top fade */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute top-0 left-0 right-0 h-6 z-10 transition-opacity duration-200"
+        style={{
+          opacity: showTopFade ? 1 : 0,
+          background: "linear-gradient(to top, transparent, var(--bg-main))",
+        }}
+      />
+      {/* Bottom fade */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute bottom-0 left-0 right-0 h-6 z-10 transition-opacity duration-200"
+        style={{
+          opacity: showBottomFade ? 1 : 0,
+          background: "linear-gradient(to bottom, transparent, var(--bg-main))",
+        }}
+      />
+      <div
+        ref={scrollRef}
+        className={className}
+        style={style}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function MultiCurrencyScroll({
+  entries,
+}: {
+  entries: [string, number][];
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [showTopFade, setShowTopFade] = useState(false);
+  const [showBottomFade, setShowBottomFade] = useState(false);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    function update() {
+      if (!el) return;
+      const { scrollTop, scrollHeight, clientHeight } = el;
+      setShowTopFade(scrollTop > 2);
+      setShowBottomFade(scrollTop + clientHeight < scrollHeight - 2);
+    }
+
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    // Also re-check when entries change (ResizeObserver would be overkill here)
+    return () => el.removeEventListener("scroll", update);
+  }, [entries]);
+
+  return (
+    <div className="relative mt-auto">
+      {/* Top fade */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute top-0 left-0 right-0 h-4 rounded-t-sm z-10 transition-opacity duration-200"
+        style={{
+          opacity: showTopFade ? 1 : 0,
+          background: "linear-gradient(to top, transparent, var(--bg-surface))",
+        }}
+      />
+      {/* Bottom fade */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute bottom-0 left-0 right-0 h-4 rounded-b-sm z-10 transition-opacity duration-200"
+        style={{
+          opacity: showBottomFade ? 1 : 0,
+          background: "linear-gradient(to bottom, transparent, var(--bg-surface))",
+        }}
+      />
+      <div
+        ref={scrollRef}
+        className="max-h-[3.75rem] overflow-y-auto space-y-0.5 pr-2"
+        style={{
+          scrollbarWidth: "thin",
+          scrollbarColor: "var(--border-subtle) transparent",
+        }}
+      >
+        {entries.map(([code, amount], i) => (
+          <div
+            key={code}
+            className="flex items-baseline justify-between gap-2 animate-in fade-in slide-in-from-bottom-1 duration-200"
+            style={{ animationDelay: `${i * 40}ms`, animationFillMode: "both" }}
+          >
+            <span className="text-sm font-bold tabular-nums text-(--text-primary) leading-snug">
+              {formatAmount(amount, code)}
+            </span>
+            <span className="shrink-0 rounded-md border border-(--border-subtle) bg-(--bg-surface-elev) px-1.5 py-0.5 text-[10px] font-semibold text-(--text-muted) tabular-nums tracking-wide">
+              {code}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -990,7 +1162,7 @@ function MetricCard({
         : "text-(--text-muted)";
 
   const inner = (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2 flex-1">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[11px] leading-none font-semibold tracking-widest text-(--text-muted) uppercase">
           {label}
@@ -1005,7 +1177,7 @@ function MetricCard({
 
   const baseClass = [
     "rounded-xl border border-(--border-subtle) ",
-    "bg-(--bg-surface) px-4 py-4 text-left ",
+    "bg-(--bg-surface) px-4 py-4 text-left min-h-[5.5rem] flex flex-col justify-between ",
     "transition-all duration-150 ",
     onClick
       ? "cursor-pointer hover:border-(--border-strong) " +

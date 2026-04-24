@@ -134,12 +134,24 @@ export function formatAmount(
   if (amount == null) return "—";
   const curr = currency ?? "USD";
   try {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: curr,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
+    try {
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: curr,
+        currencyDisplay: "narrowSymbol",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(amount);
+    } catch {
+      // narrowSymbol not supported in all environments, fall back to symbol
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: curr,
+        currencyDisplay: "symbol",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(amount);
+    }
   } catch {
     return `${curr} ${amount.toFixed(2)}`;
   }
