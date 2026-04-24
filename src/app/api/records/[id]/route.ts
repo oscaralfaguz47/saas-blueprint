@@ -176,6 +176,12 @@ export const GET = withErrorHandler(async (
         respondedAt: true,
         responseReason: true,
         createdAt: true,
+        user: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
       },
     }),
 
@@ -269,6 +275,12 @@ export const GET = withErrorHandler(async (
   const missingProof =
     payment?.status === "PAID" && (payment.evidence?.length ?? 0) === 0;
 
+  const resolvedParticipants = participants.map(({ user, ...p }) => ({
+    ...p,
+    name: p.name ?? user?.name ?? null,
+    email: p.email ?? user?.email ?? null,
+  }));
+
   const r = record;
   const normalizedRecord = {
     id: r.id,
@@ -335,7 +347,7 @@ export const GET = withErrorHandler(async (
       evidenceCategory: e.evidenceCategory ?? null,
       isRequired: e.isRequired,
     })),
-    participants,
+    participants: resolvedParticipants,
     timeline: events.map(({ actorUser, ...e }) => ({
       ...e,
       actorName: actorUser?.name ?? null,

@@ -155,6 +155,18 @@ export function RequestDetailClient({
     [stickyHeader]
   );
 
+  const scrollToSection = useCallback((sectionId: string) => {
+    const container = scrollContainerRef.current;
+    const target = document.getElementById(sectionId);
+    if (!target) return;
+    if (container && container.contains(target)) {
+      const offsetTop = target.offsetTop - 16;
+      container.scrollTo({ top: offsetTop, behavior: "smooth" });
+    } else {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, []);
+
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
@@ -176,14 +188,16 @@ export function RequestDetailClient({
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   const [closeReason, setCloseReason] = useState<string>("APPROVED_AND_COMPLETED");
   const [closeNotes, setCloseNotes] = useState("");
+  const [approvalActionLoading, setApprovalActionLoading] = useState<string | null>(null);
+  const [bannerRejectModalOpen, setBannerRejectModalOpen] = useState(false);
+  const [bannerRejectTargetId, setBannerRejectTargetId] = useState<string | null>(null);
+  const [bannerRejectSubmitting, setBannerRejectSubmitting] = useState(false);
 
   const canClose = permissions.includes("tenant.requests.close");
   const canComment = permissions.includes("tenant.requests.comment");
   const canExport = permissions.includes("tenant.requests.export");
   const canAddEvidence = permissions.includes("tenant.evidence.add");
   const canRemoveEvidence = permissions.includes("tenant.evidence.remove");
-  const canAssignInternal = permissions.includes("tenant.approvals.assign_internal");
-  const canAssignExternal = permissions.includes("tenant.approvals.assign_external");
   const canRemind = permissions.includes("tenant.approvals.remind");
   const canManagePayment = permissions.includes("tenant.payments.manage");
   const canLink = permissions.includes("tenant.requests.link");
@@ -220,6 +234,40 @@ export function RequestDetailClient({
       setLoading(false);
     }
   }, [recordId]); // apiFetch via stable ref — recordId is the only meaningful dep
+
+  const handleParticipantAction = useCallback(
+    async (
+      participantId: string,
+      action: "APPROVE" | "REJECT",
+      comment?: string
+    ): Promise<boolean> => {
+      setApprovalActionLoading(participantId);
+      try {
+        const res = await apiFetch(`/api/records/${recordId}/participants/${participantId}/action`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action, comment }),
+          showToastOnError: false,
+        });
+        if (!res.ok) {
+          const json = (await res.json().catch(() => ({}))) as {
+            error?: { message?: string };
+          };
+          toast.addToast("error", json.error?.message ?? "Action failed.");
+          return false;
+        }
+        toast.addToast("success", action === "APPROVE" ? "Approved." : "Rejected.");
+        await load();
+        return true;
+      } catch {
+        toast.addToast("error", "Network error.");
+        return false;
+      } finally {
+        setApprovalActionLoading(null);
+      }
+    },
+    [apiFetch, recordId, toast, load]
+  );
 
   useEffect(() => {
     // Small debounce prevents double-fetch when selectedId is set twice
@@ -309,6 +357,9 @@ export function RequestDetailClient({
   const { record, evidence, participants, timeline, comments, links, payment, missingProof } =
     data;
   const rec = record as RecordDetailExtended;
+  const isRequestCreator = rec.createdByUserId === currentUserId;
+  const canAssignInternal = isRequestCreator;
+  const canAssignExternal = isRequestCreator;
   const isClosed = rec.status === "CLOSED";
   const catConfig = RECORD_CATEGORY_CONFIG[rec.type];
   const approverParticipants = participants.filter((p) => p.participantRole === "APPROVER");
@@ -362,7 +413,7 @@ export function RequestDetailClient({
 
   return (
     <div className={stickyHeader ? "flex h-full flex-col overflow-hidden" : "space-y-6"}>
-      <div className={stickyHeader ? "shrink-0 space-y-3 px-4 pt-4 sm:px-6" : "space-y-3"}>
+      <div className={stickyHeader ? "shrink-0 space-y-3 px-4 pt-4 pb-0 sm:px-6" : "space-y-3"}>
         {!stickyHeader && (
           <div className="flex items-center justify-between gap-3">
             <Link
@@ -376,7 +427,7 @@ export function RequestDetailClient({
           </div>
         )}
 
-        <header className="space-y-2.5 rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev) p-3 sm:p-4 animate-in fade-in slide-in-from-top-1 duration-200">
+        <header className="space-y-2.5 rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev) p-3 sm:pl-4 sm:pr-4 sm:pt-4 sm:pb-4 animate-in fade-in slide-in-from-top-1 duration-200">
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -439,14 +490,6 @@ export function RequestDetailClient({
               Submit for approval
             </button>
           )}
-          {canAddEvidence && !isClosed && (
-            <a
-              href="#section-evidence"
-              className="inline-flex h-9 items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm text-(--text-secondary) hover:bg-(--bg-surface-hover)"
-            >
-              Add evidence
-            </a>
-          )}
           {canAssignInternal && !isClosed && (
             <button
               type="button"
@@ -480,18 +523,6 @@ export function RequestDetailClient({
           {record.status === "DRAFT" && record.createdByUserId === currentUserId && (
             <SubmitDraftButton recordId={recordId} onSuccess={load} />
           )}
-          {rec.status === "OPEN" && rec.createdByUserId === currentUserId && !isClosed && (
-              <button
-                type="button"
-                onClick={() => {
-                  setCloseReason("CANCELED");
-                  setCloseDialogOpen(true);
-                }}
-                className="inline-flex h-9 items-center rounded-lg px-3 text-sm text-(--text-muted) hover:text-(--text-secondary)"
-              >
-                Cancel request
-              </button>
-            )}
         </div>
 
         {closeDialogOpen && (
@@ -588,7 +619,7 @@ export function RequestDetailClient({
           }
         >
       <div className="mt-2">
-        <NextActionBanner
+        <AllActionBanners
           rec={rec}
           participants={participants}
           evidence={evidence}
@@ -597,6 +628,13 @@ export function RequestDetailClient({
           canAssignExternal={canAssignExternal}
           canAddEvidence={canAddEvidence}
           onOpenAssignInternal={() => setAssignApproverOpen(true)}
+          onApprove={(participantId) => void handleParticipantAction(participantId, "APPROVE")}
+          onReject={(participantId) => {
+            setBannerRejectTargetId(participantId);
+            setBannerRejectModalOpen(true);
+          }}
+          actionLoading={approvalActionLoading}
+          onScrollToSection={scrollToSection}
         />
       </div>
 
@@ -745,14 +783,22 @@ export function RequestDetailClient({
               </ul>
               <div className="flex flex-wrap gap-2 pt-2">
                 {evidence.length === 0 && (
-                  <a href="#section-evidence" className="text-xs text-(--color-primary) hover:underline">
+                  <button
+                    type="button"
+                    onClick={() => scrollToSection("section-evidence")}
+                    className="cursor-pointer text-xs text-(--color-primary) hover:underline"
+                  >
                     Add evidence
-                  </a>
+                  </button>
                 )}
                 {approverParticipants.length === 0 && (
-                  <a href="#section-approvers" className="text-xs text-(--color-primary) hover:underline">
+                  <button
+                    type="button"
+                    onClick={() => scrollToSection("section-approvers")}
+                    className="cursor-pointer text-xs text-(--color-primary) hover:underline"
+                  >
                     Assign approvers
-                  </a>
+                  </button>
                 )}
               </div>
             </CardContent>
@@ -780,6 +826,7 @@ export function RequestDetailClient({
         onClose={() => setAssignApproverOpen(false)}
         recordId={recordId}
         onSuccess={load}
+        currentUserId={currentUserId}
       />
       <AssignExternalApproverModal
         open={assignExternalOpen}
@@ -801,6 +848,27 @@ export function RequestDetailClient({
         onClose={() => setLinkRecordOpen(false)}
         recordId={recordId}
         onSuccess={load}
+      />
+      <RejectApprovalModal
+        open={bannerRejectModalOpen}
+        onClose={() => {
+          setBannerRejectModalOpen(false);
+          setBannerRejectTargetId(null);
+        }}
+        submitting={bannerRejectSubmitting}
+        onConfirm={async (reason) => {
+          if (!bannerRejectTargetId) return;
+          setBannerRejectSubmitting(true);
+          try {
+            const ok = await handleParticipantAction(bannerRejectTargetId, "REJECT", reason);
+            if (ok) {
+              setBannerRejectModalOpen(false);
+              setBannerRejectTargetId(null);
+            }
+          } finally {
+            setBannerRejectSubmitting(false);
+          }
+        }}
       />
     </div>
   );
@@ -1162,6 +1230,7 @@ function ParticipantsSection({
                   assignedUserIds={approvers
                     .filter((p) => p.userId != null)
                     .map((p) => p.userId!)}
+                  currentUserId={currentUserId}
                 />
               )}
             </div>
@@ -1181,6 +1250,7 @@ function ParticipantsSection({
                     recordId={recordId}
                     onSuccess={onRefresh}
                     assignedUserIds={[]}
+                    currentUserId={currentUserId}
                   />
                 )}
                 {canAssignExternal && (
@@ -1219,7 +1289,7 @@ function ParticipantsSection({
                   <div className="min-w-0 pl-1">
                     <p className="text-sm font-medium text-(--text-primary)">
                       {p.participantType === "INTERNAL"
-                        ? (p.name ?? p.userId ?? "Internal user")
+                        ? (p.name ?? p.email ?? "Internal user")
                         : (p.email ?? "External approver")}
                     </p>
                     <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
@@ -2458,10 +2528,10 @@ function RequestDetailSkeleton() {
 }
 
 /**
- * NextActionBanner — shows the single most important action the current user
- * should take on this request right now. Contextual, not decorative.
+ * AllActionBanners — shows ALL applicable action banners simultaneously
+ * so the user can see everything that needs attention at once.
  */
-function NextActionBanner({
+function AllActionBanners({
   rec,
   participants,
   evidence,
@@ -2470,6 +2540,10 @@ function NextActionBanner({
   canAssignExternal,
   canAddEvidence,
   onOpenAssignInternal,
+  onApprove,
+  onReject,
+  actionLoading,
+  onScrollToSection,
 }: {
   rec: RecordDetailExtended;
   participants: RecordParticipant[];
@@ -2479,12 +2553,15 @@ function NextActionBanner({
   canAssignExternal: boolean;
   canAddEvidence: boolean;
   onOpenAssignInternal: () => void;
+  onApprove: (participantId: string) => void;
+  onReject: (participantId: string) => void;
+  actionLoading: string | null;
+  onScrollToSection: (sectionId: string) => void;
 }) {
-  // Don't show banner on closed/canceled/approved/rejected requests
   if (["CLOSED", "CANCELED", "APPROVED", "REJECTED"].includes(rec.status)) return null;
 
   const approverParticipants = participants.filter((p) => p.participantRole === "APPROVER");
-  const myPendingApproval = participants.find(
+  const myPendingApprovals = participants.filter(
     (p) =>
       p.participantRole === "APPROVER" &&
       p.status === "PENDING" &&
@@ -2492,39 +2569,47 @@ function NextActionBanner({
       p.userId === currentUserId
   );
 
-  // Priority 1: I need to approve this
-  if (myPendingApproval) {
-    return (
-      <BannerShell tone="primary" icon="⏳">
+  const banners: ReactNode[] = [];
+
+  for (const pendingApproval of myPendingApprovals) {
+    banners.push(
+      <BannerShell key={`approval-${pendingApproval.id}`} tone="primary" icon="⏳">
         <span className="font-semibold text-(--color-primary)">Your approval is needed.</span>
-        <span className="text-(--text-secondary)">
-          {" "}
-          Scroll down to the approval workflow section to approve or reject.
-        </span>
-        <a
-          href="#section-approvers"
-          className="ml-auto shrink-0 rounded-lg bg-(--color-primary) px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-(--color-primary-hover)"
-        >
-          Review →
-        </a>
+        <span className="text-(--text-secondary)"> Approve or reject this request.</span>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            disabled={actionLoading === pendingApproval.id}
+            onClick={() => onApprove(pendingApproval.id)}
+            className="cursor-pointer rounded bg-(--color-success-soft) px-3 py-1.5 text-xs font-semibold text-(--color-success) transition-opacity hover:opacity-80 disabled:opacity-50"
+          >
+            {actionLoading === pendingApproval.id ? "..." : "Approve"}
+          </button>
+          <button
+            type="button"
+            disabled={actionLoading === pendingApproval.id}
+            onClick={() => onReject(pendingApproval.id)}
+            className="cursor-pointer rounded bg-(--color-danger-soft) px-3 py-1.5 text-xs font-semibold text-(--color-danger) transition-opacity hover:opacity-80 disabled:opacity-50"
+          >
+            Reject
+          </button>
+        </div>
       </BannerShell>
     );
   }
 
-  // Priority 2: DRAFT — needs to be submitted
   if (rec.status === "DRAFT" && rec.createdByUserId === currentUserId) {
-    return (
-      <BannerShell tone="warning" icon="📝">
+    banners.push(
+      <BannerShell key="draft" tone="warning" icon="📝">
         <span className="font-semibold text-(--color-warning)">This is a draft.</span>
         <span className="text-(--text-secondary)"> Submit it to start the approval process.</span>
       </BannerShell>
     );
   }
 
-  // Priority 3: AWAITING_INFO
   if (rec.status === "AWAITING_INFO") {
-    return (
-      <BannerShell tone="warning" icon="💬">
+    banners.push(
+      <BannerShell key="awaiting-info" tone="warning" icon="💬">
         <span className="font-semibold text-(--color-warning)">Awaiting additional information.</span>
         <span className="text-(--text-secondary)"> Check the comments section for what&apos;s needed.</span>
         <a
@@ -2537,20 +2622,19 @@ function NextActionBanner({
     );
   }
 
-  // Priority 4: No approvers assigned and I can assign
   if (
     approverParticipants.length === 0 &&
     rec.status === "OPEN" &&
     (canAssignInternal || canAssignExternal)
   ) {
-    return (
-      <BannerShell tone="neutral" icon="👤">
+    banners.push(
+      <BannerShell key="no-approvers" tone="neutral" icon="👤">
         <span className="font-semibold text-(--text-primary)">No approvers assigned yet.</span>
         <span className="text-(--text-secondary)"> Assign someone to move this request forward.</span>
         <button
           type="button"
           onClick={onOpenAssignInternal}
-          className="ml-auto shrink-0 rounded-lg border border-(--border-strong) bg-(--bg-surface) px-3 py-1.5 text-xs font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-hover)"
+          className="ml-auto shrink-0 cursor-pointer rounded-lg border border-(--border-strong) bg-(--bg-surface) px-3 py-1.5 text-xs font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-hover)"
         >
           Assign approver →
         </button>
@@ -2558,52 +2642,54 @@ function NextActionBanner({
     );
   }
 
-  // Priority 5: No evidence and I can add it
   if (evidence.length === 0 && canAddEvidence && rec.status === "OPEN") {
-    return (
-      <BannerShell tone="neutral" icon="📎">
+    banners.push(
+      <BannerShell key="no-evidence" tone="neutral" icon="📎">
         <span className="font-semibold text-(--text-primary)">No supporting evidence yet.</span>
-        <span className="text-(--text-secondary)">
-          {" "}
-          Attach files or links to strengthen this request.
-        </span>
-        <a
-          href="#section-evidence"
-          className="ml-auto shrink-0 rounded-lg border border-(--border-strong) bg-(--bg-surface) px-3 py-1.5 text-xs font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-hover)"
+        <span className="text-(--text-secondary)"> Attach files or links to strengthen this request.</span>
+        <button
+          type="button"
+          onClick={() => onScrollToSection("section-evidence")}
+          className="ml-auto shrink-0 cursor-pointer rounded-lg border border-(--border-strong) bg-(--bg-surface) px-3 py-1.5 text-xs font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-hover)"
         >
           Add evidence →
-        </a>
+        </button>
       </BannerShell>
     );
   }
 
-  // Priority 6: Overdue
   if (rec.overdue && rec.status === "OPEN") {
-    return (
-      <BannerShell tone="destructive" icon="🔴">
+    banners.push(
+      <BannerShell key="overdue" tone="destructive" icon="🔴">
         <span className="font-semibold text-(--color-danger)">This request is overdue.</span>
         <span className="text-(--text-secondary)"> The needed-by date has passed.</span>
       </BannerShell>
     );
   }
 
-  // Priority 7: Waiting for someone else's approval — show progress, no action
-  if (approverParticipants.some((p) => p.status === "PENDING")) {
+  if (
+    myPendingApprovals.length === 0 &&
+    approverParticipants.some((p) => p.status === "PENDING")
+  ) {
     const pending = approverParticipants.filter((p) => p.status === "PENDING");
     const name = pending[0]?.name ?? pending[0]?.email ?? "approver";
-    return (
-      <BannerShell tone="neutral" icon="⏳">
+    banners.push(
+      <BannerShell key="waiting" tone="neutral" icon="⏳">
         <span className="text-(--text-secondary)">
           Waiting for approval from{" "}
           <span className="font-semibold text-(--text-primary)">{name}</span>
-          {pending.length > 1 ? ` and ${pending.length - 1} other${pending.length - 1 > 1 ? "s" : ""}` : ""}
+          {pending.length > 1
+            ? ` and ${pending.length - 1} other${pending.length - 1 > 1 ? "s" : ""}`
+            : ""}
           .
         </span>
       </BannerShell>
     );
   }
 
-  return null;
+  if (banners.length === 0) return null;
+
+  return <div className="space-y-2">{banners}</div>;
 }
 
 function BannerShell({

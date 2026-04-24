@@ -5,7 +5,6 @@ import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
 import { requireFullSession } from "@/server/require-full-session";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
-import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { canAccessRequest } from "@/server/security/request-authorization";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { env } from "@/lib/env";
@@ -80,7 +79,7 @@ export const GET = withErrorHandler(async (
 /**
  * POST /api/records/[id]/participants
  * E1 — Assign an internal participant (approver or viewer).
- * Requires C1 access + tenant.approvals.assign_internal.
+ * Requires C1 access; only the request creator may assign.
  * Blocked if record is CLOSED.
  * Idempotent: same userId+role returns existing record without error.
  */
@@ -114,18 +113,15 @@ export const POST = withErrorHandler(async (
   });
   if (!hasAccess) return ApiErrors.NOT_FOUND("Record");
 
-  const canAssign = await hasTenantPermission({
-    userId: session.user.id,
-    tenantId,
-    permission: "tenant.approvals.assign_internal",
-  });
-  if (!canAssign) return ApiErrors.FORBIDDEN();
-
   const record = await prisma.record.findFirst({
     where: { id: recordId, tenantId },
-    select: { status: true },
+    select: { status: true, createdByUserId: true },
   });
   if (!record) return ApiErrors.NOT_FOUND("Record");
+
+  const isCreator = record.createdByUserId === session.user.id;
+  if (!isCreator) return ApiErrors.FORBIDDEN();
+
   if (record.status === "CLOSED") {
     return ApiErrors.CONFLICT("Cannot assign approvers to a closed record.");
   }
@@ -137,6 +133,10 @@ export const POST = withErrorHandler(async (
     return ApiErrors.VALIDATION_ERROR("Validation failed", bodyResult.error.flatten());
   }
   const { userId: targetUserId, participantRole } = bodyResult.data;
+
+  if (targetUserId === session.user.id) {
+    return ApiErrors.VALIDATION_ERROR("You cannot assign yourself as an approver or viewer.");
+  }
 
   const targetMembership = await prisma.tenantMembership.findUnique({
     where: { tenantId_userId: { tenantId, userId: targetUserId } },
