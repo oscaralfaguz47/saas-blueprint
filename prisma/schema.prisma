@@ -1649,6 +1649,8 @@ model RecordParticipant {
 
   @@unique([recordId, userId, participantRole])
   @@index([tenantId, recordId, createdAt])
+  @@index([tenantId, recordId, participantRole, status, revokedAt])
+  @@index([tenantId, userId, participantRole, status])
   @@index([tenantId, userId, status, createdAt])
   @@index([tenantId, email])
 }

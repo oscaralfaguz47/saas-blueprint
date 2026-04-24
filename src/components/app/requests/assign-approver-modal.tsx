@@ -17,9 +17,16 @@ type Props = {
   onClose: () => void;
   recordId: string;
   onSuccess: () => void;
+  currentUserId: string;
 };
 
-export function AssignApproverModal({ open, onClose, recordId, onSuccess }: Props) {
+export function AssignApproverModal({
+  open,
+  onClose,
+  recordId,
+  onSuccess,
+  currentUserId,
+}: Props) {
   const apiFetch = useApiFetch();
   const toast = useToast();
 
@@ -51,7 +58,7 @@ export function AssignApproverModal({ open, onClose, recordId, onSuccess }: Prop
   }
 
   const userOptions = users
-    .filter((u) => u.user.id)
+    .filter((u) => u.user.id && u.user.id !== currentUserId)
     .map((u) => ({
       value: u.user.id,
       label: u.user.name

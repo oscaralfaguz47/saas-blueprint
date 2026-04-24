@@ -5,7 +5,6 @@ import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
 import { requireFullSession } from "@/server/require-full-session";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
-import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { canAccessRequest } from "@/server/security/request-authorization";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { env } from "@/lib/env";
@@ -38,7 +37,7 @@ const assignExternalSchema = z.object({
  * E3 — Assign an external approver.
  * Generates a secure token, stores only the SHA-256 hash.
  * Returns the plain token ONCE for embedding in the email link.
- * Requires tenant.approvals.assign_external.
+ * Only the request creator may assign.
  */
 export const POST = withErrorHandler(async (
   req: Request,
@@ -51,7 +50,7 @@ export const POST = withErrorHandler(async (
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { isPlatformBlocked: true },
+    select: { isPlatformBlocked: true, email: true },
   });
   if (!user || user.isPlatformBlocked) return ApiErrors.FORBIDDEN();
 
@@ -70,18 +69,15 @@ export const POST = withErrorHandler(async (
   });
   if (!hasAccess) return ApiErrors.NOT_FOUND("Record");
 
-  const canAssign = await hasTenantPermission({
-    userId: session.user.id,
-    tenantId,
-    permission: "tenant.approvals.assign_external",
-  });
-  if (!canAssign) return ApiErrors.FORBIDDEN();
-
   const record = await prisma.record.findFirst({
     where: { id: recordId, tenantId },
-    select: { status: true },
+    select: { status: true, createdByUserId: true },
   });
   if (!record) return ApiErrors.NOT_FOUND("Record");
+
+  const isCreator = record.createdByUserId === session.user.id;
+  if (!isCreator) return ApiErrors.FORBIDDEN();
+
   if (record.status === "CLOSED") {
     return ApiErrors.CONFLICT("Cannot assign approvers to a closed record.");
   }
@@ -93,6 +89,10 @@ export const POST = withErrorHandler(async (
     return ApiErrors.VALIDATION_ERROR("Validation failed", bodyResult.error.flatten());
   }
   const { email, name, expiresInHours } = bodyResult.data;
+
+  if (user.email && email === user.email.toLowerCase()) {
+    return ApiErrors.VALIDATION_ERROR("You cannot assign yourself as an external approver.");
+  }
 
   const plainToken = randomBytes(32).toString("hex");
   const tokenHash = createHash("sha256").update(plainToken).digest("hex");

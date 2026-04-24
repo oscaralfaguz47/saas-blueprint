@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { Prisma } from "@prisma/client";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
@@ -33,6 +34,13 @@ export const GET = withErrorHandler(async () => {
 
   const accessFilter = buildRecordAccessFilter({ tenantId, userId, canReadAll });
 
+  const openAmountWhere: Prisma.RecordWhereInput = {
+    tenantId,
+    status: { in: ["OPEN", "IN_REVIEW", "PENDING_APPROVAL", "AWAITING_INFO"] },
+    requestedAmount: { not: null },
+    ...accessFilter,
+  };
+
   const [
     openCount,
     pendingMyApprovalCount,
@@ -40,6 +48,7 @@ export const GET = withErrorHandler(async () => {
     awaitingInfoCount,
     hasPolicyExceptionCount,
     openAmountAgg,
+    openAmountByCurrency,
   ] = await Promise.all([
     prisma.record.count({
       where: {
@@ -91,19 +100,30 @@ export const GET = withErrorHandler(async () => {
     }),
 
     prisma.record.aggregate({
+      where: openAmountWhere,
+      _sum: { requestedAmount: true },
+    }),
+
+    prisma.record.groupBy({
+      by: ["currencyCode"],
       where: {
-        tenantId,
-        status: { in: ["OPEN", "IN_REVIEW", "PENDING_APPROVAL", "AWAITING_INFO"] },
-        requestedAmount: { not: null },
-        ...accessFilter,
+        ...openAmountWhere,
+        currencyCode: { not: null },
       },
       _sum: { requestedAmount: true },
     }),
   ]);
 
-  const totalOpenAmount = openAmountAgg._sum.requestedAmount
+  const totalOpenAmount = openAmountAgg._sum?.requestedAmount
     ? Number(openAmountAgg._sum.requestedAmount)
     : null;
+
+  const totalOpenAmountByCurrency: Record<string, number> = {};
+  for (const row of openAmountByCurrency) {
+    if (row.currencyCode && row._sum?.requestedAmount != null) {
+      totalOpenAmountByCurrency[row.currencyCode] = Number(row._sum.requestedAmount);
+    }
+  }
 
   return apiSuccess({
     openCount,
@@ -112,5 +132,6 @@ export const GET = withErrorHandler(async () => {
     awaitingInfoCount,
     hasPolicyExceptionCount,
     totalOpenAmount,
+    totalOpenAmountByCurrency,
   });
 });

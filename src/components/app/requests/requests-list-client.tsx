@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { useRouter } from "next/navigation";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -17,8 +25,9 @@ import {
   IconAlertCircle,
   IconFilter,
   IconClock,
-  IconDollarSign,
+  IconTrendingUp,
   IconShield,
+  IconX,
 } from "@/components/ui/icons";
 import {
   formatAmount,
@@ -38,7 +47,7 @@ import {
 } from "./create-request-modal-context";
 
 type ApiTab = "my" | "inbox" | "mentioned" | "shared" | "all";
-type UiTab = "my" | "inbox" | "awaiting_approval" | "mentioned" | "shared" | "all";
+type UiTab = "my" | "awaiting_approval" | "mentioned" | "shared" | "all";
 
 type SortOption =
   | "newest"
@@ -55,6 +64,7 @@ type SummaryPayload = {
   awaitingInfoCount: number;
   hasPolicyExceptionCount: number;
   totalOpenAmount: number | null;
+  totalOpenAmountByCurrency: Record<string, number>;
 };
 
 type Filters = {
@@ -136,7 +146,6 @@ type TabSpec = { value: UiTab; label: string; apiTab: ApiTab; inboxBadge?: boole
 
 const BASE_TAB_SPECS: TabSpec[] = [
   { value: "my", label: "My Requests", apiTab: "my" },
-  { value: "inbox", label: "Inbox", apiTab: "inbox", inboxBadge: true },
   { value: "awaiting_approval", label: "Awaiting my approval", apiTab: "inbox", inboxBadge: true },
   { value: "mentioned", label: "Mentioned", apiTab: "mentioned" },
   { value: "shared", label: "Shared with me", apiTab: "shared" },
@@ -293,11 +302,14 @@ export function RequestsListClient({
   }, [apiFetch]);
 
   const tabSpecs = useMemo<TabSpec[]>(
-    () => (canReadAll ? [...BASE_TAB_SPECS, { value: "all", label: "All", apiTab: "all" }] : BASE_TAB_SPECS),
+    () =>
+      canReadAll
+        ? [{ value: "all", label: "All", apiTab: "all" }, ...BASE_TAB_SPECS]
+        : BASE_TAB_SPECS,
     [canReadAll]
   );
 
-  const [tab, setTab] = useState<UiTab>("my");
+  const [tab, setTab] = useState<UiTab>(canReadAll ? "all" : "my");
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [sort, setSort] = useState<SortOption>("newest");
@@ -348,7 +360,10 @@ export function RequestsListClient({
         }
         const json = (await res.json()) as { data: SummaryPayload };
         if (controller.signal.aborted) return;
-        setSummary(json.data);
+        setSummary({
+          ...json.data,
+          totalOpenAmountByCurrency: json.data.totalOpenAmountByCurrency ?? {},
+        });
         setSummaryFailed(false);
       } catch (e) {
         if (e instanceof Error && e.name === "AbortError") return;
@@ -466,6 +481,34 @@ export function RequestsListClient({
           ];
         });
       }
+
+      // Optimistically update summary cards — no fetch needed
+      setSummary((prev) => {
+        if (!prev) return prev;
+        const isOpen =
+          payload.status === "OPEN" ||
+          payload.status === "IN_REVIEW" ||
+          payload.status === "PENDING_APPROVAL" ||
+          payload.status === "AWAITING_INFO";
+        if (!isOpen) return prev;
+
+        const updatedByCurrency = { ...prev.totalOpenAmountByCurrency };
+        if (payload.requestedAmount != null && payload.currencyCode) {
+          updatedByCurrency[payload.currencyCode] =
+            (updatedByCurrency[payload.currencyCode] ?? 0) + payload.requestedAmount;
+        }
+
+        return {
+          ...prev,
+          openCount: prev.openCount + 1,
+          totalOpenAmount:
+            payload.requestedAmount != null
+              ? (prev.totalOpenAmount ?? 0) + payload.requestedAmount
+              : prev.totalOpenAmount,
+          totalOpenAmountByCurrency: updatedByCurrency,
+        };
+      });
+
       onCreated?.(payload);
     },
     [tab, onCreated]
@@ -566,11 +609,11 @@ export function RequestsListClient({
       <div className="shrink-0 space-y-3">
         {!compact && (
         <>
-          {/* Attention banner — only shown when not already on inbox tab */}
-          {tab !== "inbox" && tab !== "awaiting_approval" && displaySummary && displaySummary.pendingMyApprovalCount > 0 ? (
+          {/* Attention banner — only shown when not already on awaiting approval tab */}
+          {tab !== "awaiting_approval" && displaySummary && displaySummary.pendingMyApprovalCount > 0 ? (
             <AttentionBanner
               pendingApprovalCount={displaySummary.pendingMyApprovalCount}
-              onGoToInbox={() => setTab("inbox")}
+              onGoToInbox={() => setTab("awaiting_approval")}
             />
           ) : null}
 
@@ -582,61 +625,87 @@ export function RequestsListClient({
                 ))}
               </>
             ) : (
-              <>
-                <MetricCard
-                  label="Open requests"
-                  value={displaySummary ? String(displaySummary.openCount) : dash}
-                  icon={<IconFileText size={18} className="text-(--text-muted)" />}
-                  tone="neutral"
-                />
-                <MetricCard
-                  label="Pending my approval"
-                  value={displaySummary ? String(displaySummary.pendingMyApprovalCount) : dash}
-                  icon={<IconClock size={18} className="text-(--text-muted)" />}
-                  tone={
-                    displaySummary && displaySummary.pendingMyApprovalCount > 0 ? "warning" : "neutral"
-                  }
-                  onClick={() => {
-                    setFilters(EMPTY_FILTERS);
-                    setTab("inbox");
-                    setShowFilters(false);
-                  }}
-                />
-                <MetricCard
-                  label="Total open value"
-                  value={
-                    displaySummary && displaySummary.totalOpenAmount != null
-                      ? formatAmount(displaySummary.totalOpenAmount, "USD")
-                      : dash
-                  }
-                  icon={<IconDollarSign size={18} className="text-(--text-muted)" />}
-                  tone="neutral"
-                />
-                <MetricCard
-                  label="Overdue"
-                  value={displaySummary ? String(displaySummary.overdueCount) : dash}
-                  icon={<IconAlertCircle size={18} className="text-(--text-muted)" />}
-                  tone={displaySummary && displaySummary.overdueCount > 0 ? "destructive" : "neutral"}
-                  onClick={() => {
-                    setFilters({ ...EMPTY_FILTERS, overdueOnly: true });
-                    setShowFilters(true);
-                    setTab(canReadAll ? "all" : "my");
-                  }}
-                />
-                <MetricCard
-                  label="Policy exceptions"
-                  value={displaySummary ? String(displaySummary.hasPolicyExceptionCount) : dash}
-                  icon={<IconShield size={18} className="text-(--text-muted)" />}
-                  tone={
-                    displaySummary && displaySummary.hasPolicyExceptionCount > 0 ? "warning" : "neutral"
-                  }
-                  onClick={() => {
-                    setFilters({ ...EMPTY_FILTERS, policyExceptionOnly: true });
-                    setShowFilters(true);
-                    setTab(canReadAll ? "all" : "my");
-                  }}
-                />
-              </>
+              (() => {
+                const currencyEntries = displaySummary
+                  ? Object.entries(displaySummary.totalOpenAmountByCurrency ?? {})
+                  : [];
+                const isMultiCurrency = currencyEntries.length > 1;
+                return (
+                  <>
+                    <MetricCard
+                      label="Open requests"
+                      value={displaySummary ? String(displaySummary.openCount) : dash}
+                      icon={<IconFileText size={18} className="text-(--text-muted)" />}
+                      tone="neutral"
+                    />
+                    <MetricCard
+                      label="Pending my approval"
+                      value={displaySummary ? String(displaySummary.pendingMyApprovalCount) : dash}
+                      icon={<IconClock size={18} className="text-(--text-muted)" />}
+                      tone={
+                        displaySummary && displaySummary.pendingMyApprovalCount > 0
+                          ? "warning"
+                          : "neutral"
+                      }
+                      onClick={() => {
+                        setFilters(EMPTY_FILTERS);
+                        setTab("awaiting_approval");
+                        setShowFilters(false);
+                      }}
+                    />
+                    <MetricCard
+                      label="Total open value"
+                      icon={<IconTrendingUp size={18} className="text-(--text-muted)" />}
+                      tone="neutral"
+                      customValue={
+                        !displaySummary ? (
+                          <p className="text-2xl leading-none font-bold tabular-nums text-(--text-primary)">
+                            {dash}
+                          </p>
+                        ) : isMultiCurrency ? (
+                          <MultiCurrencyScroll entries={currencyEntries} />
+                        ) : currencyEntries.length === 1 ? (
+                          <p className="text-2xl leading-none font-bold tabular-nums text-(--text-primary) mt-auto">
+                            {formatAmount(currencyEntries[0]![1], currencyEntries[0]![0])}
+                          </p>
+                        ) : (
+                          <p className="text-2xl leading-none font-bold tabular-nums text-(--text-primary) mt-auto">
+                            {dash}
+                          </p>
+                        )
+                      }
+                    />
+                    <MetricCard
+                      label="Overdue"
+                      value={displaySummary ? String(displaySummary.overdueCount) : dash}
+                      icon={<IconAlertCircle size={18} className="text-(--text-muted)" />}
+                      tone={
+                        displaySummary && displaySummary.overdueCount > 0 ? "destructive" : "neutral"
+                      }
+                      onClick={() => {
+                        setFilters({ ...EMPTY_FILTERS, overdueOnly: true });
+                        setShowFilters(true);
+                        setTab(canReadAll ? "all" : "my");
+                      }}
+                    />
+                    <MetricCard
+                      label="Policy exceptions"
+                      value={displaySummary ? String(displaySummary.hasPolicyExceptionCount) : dash}
+                      icon={<IconShield size={18} className="text-(--text-muted)" />}
+                      tone={
+                        displaySummary && displaySummary.hasPolicyExceptionCount > 0
+                          ? "warning"
+                          : "neutral"
+                      }
+                      onClick={() => {
+                        setFilters({ ...EMPTY_FILTERS, policyExceptionOnly: true });
+                        setShowFilters(true);
+                        setTab(canReadAll ? "all" : "my");
+                      }}
+                    />
+                  </>
+                );
+              })()
             )}
           </section>
         </>
@@ -753,23 +822,16 @@ export function RequestsListClient({
                       "z-[200] mt-1 animate-in fade-in slide-in-from-top-1 duration-150 overflow-y-auto",
                       compact
                         ? "fixed top-auto max-h-[70vh]"
-                        : "absolute left-0 top-full w-[min(calc(100vw-280px),860px)]",
+                        : "absolute left-0 top-full w-[min(calc(100vw-2rem),860px)] max-sm:relative max-sm:left-auto max-sm:top-auto max-sm:w-full max-sm:max-h-none",
                     ].join(" ")}
                     style={
                       compact && filterContainerRef.current
                         ? (() => {
                             const isMobileView =
-                              typeof window !== "undefined" &&
-                              window.innerWidth < 640;
-                            const rect =
-                              filterContainerRef.current.getBoundingClientRect();
+                              typeof window !== "undefined" && window.innerWidth < 640;
+                            const rect = filterContainerRef.current.getBoundingClientRect();
                             return isMobileView
-                              ? {
-                                  top: rect.bottom + 4,
-                                  left: 8,
-                                  right: 8,
-                                  width: "auto",
-                                }
+                              ? { top: rect.bottom + 4, left: 8, right: 8, width: "auto" }
                               : {
                                   top: rect.bottom + 4,
                                   left: rect.left,
@@ -778,12 +840,7 @@ export function RequestsListClient({
                                 };
                           })()
                         : compact
-                          ? {
-                              top: 120,
-                              left: 8,
-                              right: 8,
-                              width: "auto",
-                            }
+                          ? { top: 120, left: 8, right: 8, width: "auto" }
                           : undefined
                     }
                   >
@@ -796,16 +853,15 @@ export function RequestsListClient({
                   </div>
                 )}
               </div>
-              {!compact && (
-                <span
-                  title="Keyboard shortcuts: J/K to move between rows, Enter to open"
-                  className="hidden cursor-default select-none items-center gap-1 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-2.5 py-1.5 text-[11px] font-medium text-(--text-muted) sm:inline-flex"
+              {activeFilterCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setFilters(EMPTY_FILTERS)}
+                  className={`inline-flex ${compact ? "h-8" : "h-10"} cursor-pointer items-center gap-1.5 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 ${compact ? "text-xs" : "text-sm"} text-(--text-secondary) transition-colors hover:border-(--color-danger) hover:bg-(--color-danger-soft) hover:text-(--color-danger)`}
                 >
-                  <kbd className="font-mono">J</kbd>
-                  <span>/</span>
-                  <kbd className="font-mono">K</kbd>
-                  <span className="ml-1 opacity-60">navigate</span>
-                </span>
+                  <IconX size={13} />
+                  Clear filters
+                </button>
               )}
             </div>
             {canCreate && !compact && (
@@ -817,7 +873,7 @@ export function RequestsListClient({
                     onCreated: handleOptimisticCreate,
                   })
                 }
-                className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-(--color-primary-hover) sm:ml-auto"
+                className="inline-flex h-9 w-auto shrink-0 cursor-pointer items-center gap-2 self-end rounded-lg bg-(--color-primary) px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-(--color-primary-hover) sm:ml-auto"
               >
                 <IconPlus size={15} />
                 New request
@@ -825,71 +881,253 @@ export function RequestsListClient({
             )}
           </div>
 
-          <div
-            className={
-              heightConstrained
-                ? "min-h-0 flex-1 overflow-y-auto pb-4"
-                : "pb-4"
-            }
-            style={
-              heightConstrained
-                ? {
-                    scrollbarWidth: "thin",
-                    scrollbarColor: "var(--border-subtle) transparent",
-                  }
-                : undefined
-            }
-          >
-          {tabSpecs.map((t) => (
-            <TabsContent
-              key={t.value}
-              value={t.value}
-              className="-mt-0 rounded-none border-0 bg-transparent p-0 shadow-none"
+          {heightConstrained ? (
+            <ScrollFadeContainer
+              className="min-h-0 flex-1 overflow-y-auto pb-4"
+              style={{
+                scrollbarWidth: "thin",
+                scrollbarColor: "var(--border-subtle) transparent",
+              }}
             >
-              <RecordsList
-                records={records}
-                loading={loading}
-                loadingMore={loadingMore}
-                error={error}
-                hasMore={hasMore}
-                onLoadMore={handleLoadMore}
-                uiTab={t.value}
-                canCreate={canCreate}
-                isFilteredOrSearch={isFilteredOrSearch}
-                focusedIndex={focusedIndex}
-                selectedId={selectedId}
-                onNavigate={(id) => {
-                  try {
-                    sessionStorage.setItem(
-                      "rlt_request_nav_list",
-                      JSON.stringify(records.map((r) => r.id))
-                    );
-                  } catch {
-                    // ignore
-                  }
-                  if (onNavigateOverride) {
-                    onNavigateOverride(id);
-                  } else {
-                    router.push(`/app/requests/${id}`);
-                  }
-                }}
-                onClearFilters={clearAllFiltersAndSearch}
-                onNewRequest={
-                  canCreate
-                    ? () =>
-                        openCreateRequestModal({
-                          workspaceCurrency: workspaceCurrency ?? "USD",
-                          onCreated: handleOptimisticCreate,
-                        })
-                    : undefined
-                }
-                compact={compact}
-              />
-            </TabsContent>
-          ))}
-          </div>
+              {tabSpecs.map((t) => (
+                <TabsContent
+                  key={t.value}
+                  value={t.value}
+                  className="-mt-0 rounded-none border-0 bg-transparent p-0 shadow-none"
+                >
+                  <RecordsList
+                    records={records}
+                    loading={loading}
+                    loadingMore={loadingMore}
+                    error={error}
+                    hasMore={hasMore}
+                    onLoadMore={handleLoadMore}
+                    uiTab={t.value}
+                    canCreate={canCreate}
+                    isFilteredOrSearch={isFilteredOrSearch}
+                    focusedIndex={focusedIndex}
+                    selectedId={selectedId}
+                    onNavigate={(id) => {
+                      try {
+                        sessionStorage.setItem(
+                          "rlt_request_nav_list",
+                          JSON.stringify(records.map((r) => r.id))
+                        );
+                      } catch {
+                        // ignore
+                      }
+                      if (onNavigateOverride) {
+                        onNavigateOverride(id);
+                      } else {
+                        router.push(`/app/requests/${id}`);
+                      }
+                    }}
+                    onClearFilters={clearAllFiltersAndSearch}
+                    onNewRequest={
+                      canCreate
+                        ? () =>
+                            openCreateRequestModal({
+                              workspaceCurrency: workspaceCurrency ?? "USD",
+                              onCreated: handleOptimisticCreate,
+                            })
+                        : undefined
+                    }
+                    compact={compact}
+                  />
+                </TabsContent>
+              ))}
+            </ScrollFadeContainer>
+          ) : (
+            <div className="pb-4">
+              {tabSpecs.map((t) => (
+                <TabsContent
+                  key={t.value}
+                  value={t.value}
+                  className="-mt-0 rounded-none border-0 bg-transparent p-0 shadow-none"
+                >
+                  <RecordsList
+                    records={records}
+                    loading={loading}
+                    loadingMore={loadingMore}
+                    error={error}
+                    hasMore={hasMore}
+                    onLoadMore={handleLoadMore}
+                    uiTab={t.value}
+                    canCreate={canCreate}
+                    isFilteredOrSearch={isFilteredOrSearch}
+                    focusedIndex={focusedIndex}
+                    selectedId={selectedId}
+                    onNavigate={(id) => {
+                      try {
+                        sessionStorage.setItem(
+                          "rlt_request_nav_list",
+                          JSON.stringify(records.map((r) => r.id))
+                        );
+                      } catch {
+                        // ignore
+                      }
+                      if (onNavigateOverride) {
+                        onNavigateOverride(id);
+                      } else {
+                        router.push(`/app/requests/${id}`);
+                      }
+                    }}
+                    onClearFilters={clearAllFiltersAndSearch}
+                    onNewRequest={
+                      canCreate
+                        ? () =>
+                            openCreateRequestModal({
+                              workspaceCurrency: workspaceCurrency ?? "USD",
+                              onCreated: handleOptimisticCreate,
+                            })
+                        : undefined
+                    }
+                    compact={compact}
+                  />
+                </TabsContent>
+              ))}
+            </div>
+          )}
         </div>
       </Tabs>
+    </div>
+  );
+}
+
+function ScrollFadeContainer({
+  children,
+  className,
+  style,
+}: {
+  children: ReactNode;
+  className?: string;
+  style?: CSSProperties;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [showTopFade, setShowTopFade] = useState(false);
+  const [showBottomFade, setShowBottomFade] = useState(false);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    function update() {
+      if (!el) return;
+      const { scrollTop, scrollHeight, clientHeight } = el;
+      setShowTopFade(scrollTop > 2);
+      setShowBottomFade(scrollTop + clientHeight < scrollHeight - 2);
+    }
+
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", update);
+      ro.disconnect();
+    };
+  }, []);
+
+  return (
+    <div className="relative min-h-0 flex-1 flex flex-col">
+      {/* Top fade */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute top-0 left-0 right-0 h-6 z-10 transition-opacity duration-200"
+        style={{
+          opacity: showTopFade ? 1 : 0,
+          background: "linear-gradient(to top, transparent, var(--bg-main))",
+        }}
+      />
+      {/* Bottom fade */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute bottom-0 left-0 right-0 h-6 z-10 transition-opacity duration-200"
+        style={{
+          opacity: showBottomFade ? 1 : 0,
+          background: "linear-gradient(to bottom, transparent, var(--bg-main))",
+        }}
+      />
+      <div
+        ref={scrollRef}
+        className={className}
+        style={style}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function MultiCurrencyScroll({
+  entries,
+}: {
+  entries: [string, number][];
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [showTopFade, setShowTopFade] = useState(false);
+  const [showBottomFade, setShowBottomFade] = useState(false);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    function update() {
+      if (!el) return;
+      const { scrollTop, scrollHeight, clientHeight } = el;
+      setShowTopFade(scrollTop > 2);
+      setShowBottomFade(scrollTop + clientHeight < scrollHeight - 2);
+    }
+
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    // Also re-check when entries change (ResizeObserver would be overkill here)
+    return () => el.removeEventListener("scroll", update);
+  }, [entries]);
+
+  return (
+    <div className="relative mt-auto">
+      {/* Top fade */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute top-0 left-0 right-0 h-4 rounded-t-sm z-10 transition-opacity duration-200"
+        style={{
+          opacity: showTopFade ? 1 : 0,
+          background: "linear-gradient(to top, transparent, var(--bg-surface))",
+        }}
+      />
+      {/* Bottom fade */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute bottom-0 left-0 right-0 h-4 rounded-b-sm z-10 transition-opacity duration-200"
+        style={{
+          opacity: showBottomFade ? 1 : 0,
+          background: "linear-gradient(to bottom, transparent, var(--bg-surface))",
+        }}
+      />
+      <div
+        ref={scrollRef}
+        className="max-h-[3.75rem] overflow-y-auto space-y-0.5 pr-2"
+        style={{
+          scrollbarWidth: "thin",
+          scrollbarColor: "var(--border-subtle) transparent",
+        }}
+      >
+        {entries.map(([code, amount], i) => (
+          <div
+            key={code}
+            className="flex items-baseline justify-between gap-2 animate-in fade-in slide-in-from-bottom-1 duration-200"
+            style={{ animationDelay: `${i * 40}ms`, animationFillMode: "both" }}
+          >
+            <span className="text-sm font-bold tabular-nums text-(--text-primary) leading-snug">
+              {formatAmount(amount, code)}
+            </span>
+            <span className="shrink-0 rounded-md border border-(--border-subtle) bg-(--bg-surface-elev) px-1.5 py-0.5 text-[10px] font-semibold text-(--text-muted) tabular-nums tracking-wide">
+              {code}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -900,12 +1138,14 @@ function MetricCard({
   icon,
   tone,
   onClick,
+  customValue,
 }: {
   label: string;
-  value: string;
+  value?: string;
   icon: ReactNode;
   tone: "neutral" | "warning" | "destructive";
   onClick?: () => void;
+  customValue?: ReactNode;
 }) {
   const valueColor =
     tone === "warning"
@@ -922,20 +1162,22 @@ function MetricCard({
         : "text-(--text-muted)";
 
   const inner = (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2 flex-1">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[11px] leading-none font-semibold tracking-widest text-(--text-muted) uppercase">
           {label}
         </p>
         <span className={iconColor}>{icon}</span>
       </div>
-      <p className={`text-2xl leading-none font-bold tabular-nums ${valueColor}`}>{value}</p>
+      {customValue ?? (
+        <p className={`text-2xl leading-none font-bold tabular-nums ${valueColor}`}>{value}</p>
+      )}
     </div>
   );
 
   const baseClass = [
     "rounded-xl border border-(--border-subtle) ",
-    "bg-(--bg-surface) px-4 py-4 text-left ",
+    "bg-(--bg-surface) px-4 py-4 text-left min-h-[5.5rem] flex flex-col justify-between ",
     "transition-all duration-150 ",
     onClick
       ? "cursor-pointer hover:border-(--border-strong) " +
@@ -1007,7 +1249,7 @@ function FiltersPanel({
           className={
             compact
               ? "grid grid-cols-1 gap-1.5"
-              : "grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5"
+              : "grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5"
           }
         >
           <div className="space-y-1">
@@ -1296,7 +1538,6 @@ function RecordsList({
     }
 
     const tabMessages: Partial<Record<UiTab, string>> = {
-      inbox: "No pending approvals. You're all caught up.",
       awaiting_approval: "No pending approvals. You're all caught up.",
       mentioned: "No unread mentions.",
       shared: "No requests have been shared with you.",

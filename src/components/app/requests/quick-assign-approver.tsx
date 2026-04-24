@@ -15,6 +15,7 @@ type Props = {
   onSuccess: () => void | Promise<void>;
   /** Already-assigned user ids — these are filtered out from suggestions */
   assignedUserIds?: string[];
+  currentUserId: string;
 };
 
 /**
@@ -22,7 +23,12 @@ type Props = {
  * Type to search, click or press Enter to assign as APPROVER.
  * Falls back gracefully: if assignment fails, shows inline error.
  */
-export function QuickAssignApprover({ recordId, onSuccess, assignedUserIds = [] }: Props) {
+export function QuickAssignApprover({
+  recordId,
+  onSuccess,
+  assignedUserIds = [],
+  currentUserId,
+}: Props) {
   const apiFetch = useApiFetch();
   const toast = useToast();
 
@@ -65,6 +71,7 @@ export function QuickAssignApprover({ recordId, onSuccess, assignedUserIds = [] 
   }, [open]);
 
   const filtered = users
+    .filter((u) => u.user.id !== currentUserId)
     .filter((u) => !assignedUserIds.includes(u.user.id))
     .filter((u) => {
       if (!query.trim()) return true;
