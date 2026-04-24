@@ -180,6 +180,7 @@ export const GET = withErrorHandler(async (
           select: {
             name: true,
             email: true,
+            image: true,
           },
         },
       },
@@ -279,6 +280,7 @@ export const GET = withErrorHandler(async (
     ...p,
     name: p.name ?? user?.name ?? null,
     email: p.email ?? user?.email ?? null,
+    image: user?.image ?? null,
   }));
 
   const r = record;
