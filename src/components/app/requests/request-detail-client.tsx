@@ -114,7 +114,46 @@ export function RequestDetailClient({
   }, [apiFetch]);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const fadeCleanupRef = useRef<(() => void) | null>(null);
+
+  const [showDetailTopFade, setShowDetailTopFade] = useState(false);
+  const [showDetailBottomFade, setShowDetailBottomFade] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+
+  const scrollCallbackRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      // Cleanup previous node if any
+      fadeCleanupRef.current?.();
+      fadeCleanupRef.current = null;
+
+      if (!el || !stickyHeader) {
+        // Keep scrollContainerRef in sync for the isScrolled effect
+        scrollContainerRef.current = null;
+        return;
+      }
+
+      scrollContainerRef.current = el;
+
+      function updateFades() {
+        const { scrollTop, scrollHeight, clientHeight } = el!;
+        setShowDetailTopFade(scrollTop > 2);
+        setShowDetailBottomFade(scrollTop + clientHeight < scrollHeight - 2);
+      }
+
+      // Initial evaluation after layout
+      const frame = requestAnimationFrame(updateFades);
+      el.addEventListener("scroll", updateFades, { passive: true });
+      const ro = new ResizeObserver(updateFades);
+      ro.observe(el);
+
+      fadeCleanupRef.current = () => {
+        cancelAnimationFrame(frame);
+        el.removeEventListener("scroll", updateFades);
+        ro.disconnect();
+      };
+    },
+    [stickyHeader]
+  );
 
   useEffect(() => {
     const el = scrollContainerRef.current;
@@ -513,18 +552,41 @@ export function RequestDetailClient({
       </div>
 
       <div
-        ref={scrollContainerRef}
-        className={
-          stickyHeader
-            ? "min-h-0 flex-1 space-y-6 overflow-y-auto px-4 pb-6 sm:px-6"
-            : "contents"
-        }
-        style={
-          stickyHeader && isScrolled
-            ? { boxShadow: "inset 0 8px 8px -8px rgba(0,0,0,0.08)" }
-            : undefined
-        }
+        className={stickyHeader ? "relative min-h-0 flex-1 flex flex-col" : "contents"}
       >
+        {stickyHeader && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute top-0 left-0 right-0 h-8 z-10 transition-opacity duration-200"
+            style={{
+              opacity: showDetailTopFade ? 1 : 0,
+              background: "linear-gradient(to top, transparent, var(--bg-main))",
+            }}
+          />
+        )}
+        {stickyHeader && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 z-10 transition-opacity duration-200"
+            style={{
+              opacity: showDetailBottomFade ? 1 : 0,
+              background: "linear-gradient(to bottom, transparent, var(--bg-main))",
+            }}
+          />
+        )}
+        <div
+          ref={scrollCallbackRef}
+          className={
+            stickyHeader
+              ? "min-h-0 flex-1 space-y-6 overflow-y-auto px-4 pb-6 sm:px-6"
+              : "contents"
+          }
+          style={
+            stickyHeader && isScrolled
+              ? { boxShadow: "inset 0 8px 8px -8px rgba(0,0,0,0.08)" }
+              : undefined
+          }
+        >
       <div className="mt-2">
         <NextActionBanner
           rec={rec}
@@ -710,6 +772,7 @@ export function RequestDetailClient({
           )}
         </div>
       </div>
+        </div>
       </div>
 
       <AssignApproverModal
