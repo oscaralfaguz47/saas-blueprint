@@ -1,13 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  type CSSProperties,
+  type KeyboardEvent,
+} from "react";
 import { createPortal } from "react-dom";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { useToast } from "@/components/ui/toast";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
-import { IconPlus, IconSearch } from "@/components/ui/icons";
+import { IconPlus, IconSearch, IconSend } from "@/components/ui/icons";
 import type { RecordParticipant, ParticipantStatus } from "@/types/records";
 import type { BadgeVariant } from "@/lib/record-utils";
 
@@ -35,9 +42,32 @@ type Props = {
   currentUserId: string;
   canAssignInternal: boolean;
   canAssignExternal: boolean;
-  canRemind: boolean;
+  isRequestCreator: boolean;
   onRefresh: () => void | Promise<void>;
 };
+
+function IconExternalUser({ size = 14, className }: { size?: number; className?: string }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <circle cx="9" cy="7" r="3" />
+      <path d="M3 21v-2a6 6 0 0 1 9.29-5" />
+      <path d="M19 12v7" strokeOpacity="0" />
+      <path d="M15 15l5-5" />
+      <path d="M15 10h5v5" />
+    </svg>
+  );
+}
 
 // ─── Status badge map ─────────────────────────────────────────────────────────
 
@@ -153,11 +183,17 @@ function ParticipantRow({
         <span className="absolute -left-1 top-2 h-[calc(100%-16px)] w-1 rounded-full bg-(--color-primary)" />
       )}
       <div className="flex min-w-0 items-start gap-2.5 pl-1">
-        <UserAvatarWithFallback
-          name={p.name}
-          email={p.email}
-          image={p.image}
-        />
+        {p.participantType === "EXTERNAL" ? (
+          <div className="h-7 w-7 shrink-0 flex items-center justify-center rounded-full border border-dashed border-(--border-strong) bg-(--bg-surface-elev) text-(--text-muted)">
+            <IconExternalUser size={13} />
+          </div>
+        ) : (
+          <UserAvatarWithFallback
+            name={p.name}
+            email={p.email}
+            image={p.image}
+          />
+        )}
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-(--text-primary)">
             {displayName}
@@ -166,15 +202,22 @@ function ParticipantRow({
             <p className="truncate text-xs text-(--text-muted)">{subLabel}</p>
           )}
           <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-            <Badge variant="secondary" className="text-[10px]">
-              {p.participantType === "EXTERNAL" ? "External" : "Internal"}
-            </Badge>
+            {p.participantType === "EXTERNAL" ? (
+              <span className="inline-flex items-center gap-1 rounded-md border border-(--border-subtle) bg-(--bg-surface-elev) px-1.5 py-0.5 text-[10px] font-medium text-(--text-muted)">
+                <IconExternalUser size={11} className="text-(--text-muted)" />
+                External
+              </span>
+            ) : (
+              <Badge variant="secondary" className="text-[10px]">
+                Internal
+              </Badge>
+            )}
           </div>
-          <p className="mt-1 text-xs text-(--text-muted)">
-            {p.respondedAt
-              ? `Responded ${new Date(p.respondedAt).toLocaleDateString()}`
-              : "Awaiting response"}
-          </p>
+          {p.respondedAt && (
+            <p className="mt-1 text-xs text-(--text-muted)">
+              Responded {new Date(p.respondedAt).toLocaleDateString()}
+            </p>
+          )}
           {p.responseReason && (
             <p className="mt-1 text-xs italic text-(--text-secondary)">
               &ldquo;{p.responseReason}&rdquo;
@@ -389,24 +432,27 @@ function ParticipantSearchInput({
 
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
-  // All users loaded on first focus (or debounced type) — cached for session
   const [allUsers, setAllUsers] = useState<WorkspaceUser[] | null>(null);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [assigning, setAssigning] = useState<string | null>(null);
   const [externalEmail, setExternalEmail] = useState<string | null>(null);
   const [highlightIndex, setHighlightIndex] = useState(0);
-  const [dropdownPos, setDropdownPos] = useState<{
-    top: number;
-    left: number;
-    width: number;
-    visible: boolean;
-  } | null>(null);
+
+  const [portalStyle, setPortalStyle] = useState<CSSProperties>({
+    position: "fixed",
+    top: 0,
+    left: 0,
+    width: 0,
+    zIndex: 9999,
+    maxHeight: "320px",
+    overflowY: "auto",
+    scrollbarWidth: "thin",
+  });
 
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const rafRef = useRef<number | null>(null);
 
   const fetchUsers = useCallback(() => {
     if (allUsers !== null || loadingUsers) return;
@@ -425,32 +471,44 @@ function ParticipantSearchInput({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allUsers, loadingUsers, currentUserId]);
 
-  const syncUpdatePos = useCallback(() => {
-    if (!containerRef.current) return;
+  function getPositionStyle(): CSSProperties {
+    if (!containerRef.current)
+      return { position: "fixed", top: 0, left: 0, width: 0, zIndex: 9999 };
     const rect = containerRef.current.getBoundingClientRect();
-    const viewportHeight = window.innerHeight;
-    const visible = rect.bottom > 100 && rect.top < viewportHeight - 40;
-    setDropdownPos({
+    return {
+      position: "fixed",
       top: rect.bottom + 4,
       left: rect.left,
       width: rect.width,
-      visible,
-    });
-  }, []);
+      zIndex: 9999,
+      maxHeight: "320px",
+      overflowY: "auto",
+      scrollbarWidth: "thin",
+    };
+  }
 
-  // rAF batching for focus-driven updates (after layout)
-  const updatePos = useCallback(() => {
-    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-    rafRef.current = requestAnimationFrame(() => {
-      rafRef.current = null;
-      syncUpdatePos();
-    });
-  }, [syncUpdatePos]);
+  function syncDropdownPos() {
+    const dropdown = dropdownRef.current;
+    const container = containerRef.current;
+    if (!dropdown || !container) return;
+    const rect = container.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    if (rect.bottom <= 100 || rect.top >= viewportHeight - 40) {
+      dropdown.style.display = "none";
+      return;
+    }
+    dropdown.style.display = "";
+    dropdown.style.top = `${rect.bottom + 4}px`;
+    dropdown.style.left = `${rect.left}px`;
+    dropdown.style.width = `${rect.width}px`;
+  }
 
-  useEffect(() => {
-    if (!open) return;
-    syncUpdatePos();
-  }, [open, syncUpdatePos]);
+  function openDropdown() {
+    if (!open) {
+      setPortalStyle(getPositionStyle());
+      setOpen(true);
+    }
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -458,34 +516,27 @@ function ParticipantSearchInput({
     const scrollableAncestors: Element[] = [];
     let el: Element | null = containerRef.current?.parentElement ?? null;
     while (el) {
-      const style = window.getComputedStyle(el);
-      const overflow = style.overflow + style.overflowY;
-      if (/auto|scroll/.test(overflow)) {
+      const { overflow, overflowY } = window.getComputedStyle(el);
+      if (/auto|scroll/.test(overflow + overflowY)) {
         scrollableAncestors.push(el);
       }
       el = el.parentElement;
     }
 
-    if (rafRef.current !== null) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    }
-
     for (const ancestor of scrollableAncestors) {
-      ancestor.addEventListener("scroll", syncUpdatePos, { passive: true });
+      ancestor.addEventListener("scroll", syncDropdownPos, { passive: true });
     }
-    window.addEventListener("resize", syncUpdatePos, { passive: true });
+    window.addEventListener("resize", syncDropdownPos, { passive: true });
 
     return () => {
       for (const ancestor of scrollableAncestors) {
-        ancestor.removeEventListener("scroll", syncUpdatePos);
+        ancestor.removeEventListener("scroll", syncDropdownPos);
       }
-      window.removeEventListener("resize", syncUpdatePos);
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      window.removeEventListener("resize", syncDropdownPos);
     };
-  }, [open, syncUpdatePos]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
-  // Outside click — close dropdown
   useEffect(() => {
     if (!open) return;
     function handleClick(e: MouseEvent) {
@@ -502,11 +553,9 @@ function ParticipantSearchInput({
     return () => document.removeEventListener("mousedown", handleClick);
   }, [open]);
 
-  // Cleanup debounce on unmount
   useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     };
   }, []);
 
@@ -538,14 +587,10 @@ function ParticipantSearchInput({
   function handleQueryChange(value: string) {
     setQuery(value);
     setExternalEmail(null);
-    if (!open) setOpen(true);
-
-    // Debounced fetch — only fires once, caches result
+    openDropdown();
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (value.trim().length > 0 && allUsers === null) {
-      debounceRef.current = setTimeout(() => {
-        fetchUsers();
-      }, DEBOUNCE_MS);
+      debounceRef.current = setTimeout(fetchUsers, DEBOUNCE_MS);
     }
   }
 
@@ -583,7 +628,7 @@ function ParticipantSearchInput({
     }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+  function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setHighlightIndex((i) => Math.min(i + 1, filtered.length - 1));
@@ -603,8 +648,6 @@ function ParticipantSearchInput({
 
   if (!canAssign || isClosed) return null;
 
-  const showDropdown = open && !externalEmail && dropdownPos?.visible;
-
   return (
     <div ref={containerRef} className="relative">
       <div
@@ -622,11 +665,8 @@ function ParticipantSearchInput({
           value={query}
           onChange={(e) => handleQueryChange(e.target.value)}
           onFocus={() => {
-            setOpen(true);
-            updatePos();
-            if (allUsers === null && !loadingUsers) {
-              fetchUsers();
-            }
+            openDropdown();
+            if (allUsers === null && !loadingUsers) fetchUsers();
           }}
           onKeyDown={handleKeyDown}
           placeholder={
@@ -641,23 +681,13 @@ function ParticipantSearchInput({
         {(assigning || loadingUsers) && <Spinner size="sm" />}
       </div>
 
-      {/* Portal dropdown — fixed positioning, always above all content */}
-      {showDropdown &&
-        dropdownPos &&
+      {open &&
+        !externalEmail &&
         createPortal(
           <div
             ref={dropdownRef}
-            className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) shadow-xl animate-in fade-in slide-in-from-top-1 duration-150"
-            style={{
-              position: "fixed",
-              top: dropdownPos.top,
-              left: dropdownPos.left,
-              width: dropdownPos.width,
-              zIndex: 9999,
-              maxHeight: "320px",
-              overflowY: "auto",
-              scrollbarWidth: "thin",
-            }}
+            className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) shadow-xl"
+            style={portalStyle}
           >
             {loadingUsers ? (
               <div className="flex items-center gap-2 px-3 py-3 text-xs text-(--text-muted)">
@@ -951,10 +981,10 @@ function ParticipantListSection({
               type="button"
               onClick={() => void handleRemind()}
               disabled={reminding}
-              className="cursor-pointer inline-flex h-6 items-center gap-1 rounded border border-(--border-subtle) bg-(--bg-surface-elev) px-2 text-[11px] text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:opacity-60"
+              className="cursor-pointer inline-flex h-6 items-center gap-1.5 rounded border border-(--border-subtle) bg-(--bg-surface-elev) px-2 text-[11px] text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:opacity-60"
             >
-              {reminding ? <Spinner size="sm" /> : null}
-              {reminding ? "Sending…" : "Send reminder"}
+              {reminding ? <Spinner size="sm" /> : <IconSend size={11} />}
+              {reminding ? "Sending…" : "Remind pending approvers"}
             </button>
           )}
         </div>
@@ -1029,7 +1059,7 @@ export function ParticipantsPanel({
   currentUserId,
   canAssignInternal,
   canAssignExternal,
-  canRemind,
+  isRequestCreator,
   onRefresh,
 }: Props) {
   return (
@@ -1049,7 +1079,7 @@ export function ParticipantsPanel({
           currentUserId={currentUserId}
           canAssign={canAssignInternal || canAssignExternal}
           canAssignExternal={canAssignExternal}
-          canRemind={canRemind}
+          canRemind={isRequestCreator}
           onRefresh={onRefresh}
         />
 

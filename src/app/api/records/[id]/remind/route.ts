@@ -52,18 +52,22 @@ export const POST = withErrorHandler(async (
   });
   if (!hasAccess) return ApiErrors.NOT_FOUND("Record");
 
-  const canRemind = await hasTenantPermission({
-    userId: session.user.id,
-    tenantId,
-    permission: "tenant.approvals.remind",
-  });
-  if (!canRemind) return ApiErrors.FORBIDDEN();
-
   const record = await prisma.record.findFirst({
     where: { id: recordId, tenantId },
-    select: { status: true },
+    select: { status: true, createdByUserId: true },
   });
   if (!record) return ApiErrors.NOT_FOUND("Record");
+
+  const isCreator = record.createdByUserId === session.user.id;
+  const canRemind =
+    isCreator ||
+    (await hasTenantPermission({
+      userId: session.user.id,
+      tenantId,
+      permission: "tenant.approvals.remind",
+    }));
+  if (!canRemind) return ApiErrors.FORBIDDEN();
+
   if (record.status === "CLOSED") {
     return ApiErrors.CONFLICT("Cannot send reminders for a closed record.");
   }

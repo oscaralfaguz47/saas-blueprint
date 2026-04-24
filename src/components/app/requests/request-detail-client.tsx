@@ -192,7 +192,6 @@ export function RequestDetailClient({
   const canExport = permissions.includes("tenant.requests.export");
   const canAddEvidence = permissions.includes("tenant.evidence.add");
   const canRemoveEvidence = permissions.includes("tenant.evidence.remove");
-  const canRemind = permissions.includes("tenant.approvals.remind");
   const canManagePayment = permissions.includes("tenant.payments.manage");
   const canLink = permissions.includes("tenant.requests.link");
 
@@ -722,7 +721,7 @@ export function RequestDetailClient({
               currentUserId={currentUserId}
               canAssignInternal={canAssignInternal}
               canAssignExternal={canAssignExternal}
-              canRemind={canRemind}
+              isRequestCreator={isRequestCreator}
               onRefresh={load}
             />
           </div>
