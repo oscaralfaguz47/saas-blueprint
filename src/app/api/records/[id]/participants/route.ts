@@ -56,7 +56,7 @@ export const GET = withErrorHandler(async (
   if (!hasAccess) return ApiErrors.NOT_FOUND("Record");
 
   const participants = await prisma.recordParticipant.findMany({
-    where: { recordId, tenantId },
+    where: { recordId, tenantId, revokedAt: null },
     orderBy: { createdAt: "asc" },
     select: {
       id: true,
@@ -154,10 +154,55 @@ export const POST = withErrorHandler(async (
         participantRole,
       },
     },
-    select: { id: true, status: true },
+    select: { id: true, status: true, revokedAt: true },
   });
 
   if (existing) {
+    // If previously revoked, reactivate it instead of returning alreadyAssigned
+    if (existing.revokedAt) {
+      await prisma.$transaction(async (tx) => {
+        await tx.recordParticipant.update({
+          where: { id: existing.id },
+          data: {
+            revokedAt: null,
+            status: "PENDING",
+            respondedAt: null,
+            responseReason: null,
+          },
+        });
+
+        await tx.recordEvent.create({
+          data: {
+            tenantId,
+            recordId,
+            eventType: "APPROVAL_REQUESTED",
+            actorUserId: session.user.id,
+            metadata: {
+              participantId: existing.id,
+              approverUserId: targetUserId,
+              participantRole,
+              reactivated: true,
+            },
+          },
+        });
+
+        await tx.auditLog.create({
+          data: {
+            actorUserId: session.user.id,
+            actorContext: "TENANT",
+            tenantId,
+            action: "record.approval.internal_assigned",
+            targetType: "RecordParticipant",
+            targetId: existing.id,
+            metadata: { recordId, approverUserId: targetUserId, participantRole, reactivated: true },
+          },
+        });
+      });
+
+      return apiSuccess({ id: existing.id, reactivated: true }, 200);
+    }
+
+    // Not revoked — genuinely already assigned
     return apiSuccess({ id: existing.id, alreadyAssigned: true }, 200);
   }
 

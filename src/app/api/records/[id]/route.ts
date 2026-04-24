@@ -161,7 +161,7 @@ export const GET = withErrorHandler(async (
     }),
 
     prisma.recordParticipant.findMany({
-      where: { recordId, tenantId },
+      where: { recordId, tenantId, revokedAt: null },
       orderBy: { createdAt: "asc" },
       select: {
         id: true,

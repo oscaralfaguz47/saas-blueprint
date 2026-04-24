@@ -174,6 +174,15 @@ export function RequestDetailClient({
   const toast = useToast();
 
   const [data, setData] = useState<RecordDetailResponse["data"] | null>(null);
+  const updateParticipants = useCallback(
+    (updater: (prev: RecordParticipant[]) => RecordParticipant[]) => {
+      setData((prev) => {
+        if (!prev) return prev;
+        return { ...prev, participants: updater(prev.participants) };
+      });
+    },
+    []
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
@@ -406,175 +415,6 @@ export function RequestDetailClient({
 
   return (
     <div className={stickyHeader ? "flex h-full flex-col overflow-hidden" : "space-y-6"}>
-      <div className={stickyHeader ? "shrink-0 space-y-3 px-4 pt-4 pb-0 sm:px-6" : "space-y-3"}>
-        {!stickyHeader && (
-          <div className="flex items-center justify-between gap-3">
-            <Link
-              href="/app/requests"
-              className="inline-flex items-center gap-1.5 text-sm text-(--text-muted) transition-colors hover:text-(--text-primary)"
-            >
-              <IconChevronLeft size={14} />
-              Back to requests
-            </Link>
-            <RequestKeyboardNav currentId={recordId} onNavigate={onNavigate} />
-          </div>
-        )}
-
-        <header className="space-y-2.5 rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev) p-3 sm:pl-4 sm:pr-4 sm:pt-4 sm:pb-4 animate-in fade-in slide-in-from-top-1 duration-200">
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            title="Click to copy request ID"
-            onClick={() => {
-              void navigator.clipboard
-                .writeText(rec.recordKey ?? rec.id)
-                .catch(() => {});
-            }}
-            className="rounded-md border border-(--border-subtle) bg-(--bg-surface-elev) px-2 py-0.5 font-mono text-sm font-semibold text-(--text-primary) transition-colors hover:border-(--color-primary) hover:bg-(--color-primary-soft) hover:text-(--color-primary)"
-          >
-            {rec.recordKey ?? `#${rec.id.slice(0, 8)}`}
-          </button>
-          <Badge variant={RECORD_STATUS_BADGE[rec.status]}>
-            {RECORD_STATUS_LABELS[rec.status]}
-          </Badge>
-          <Badge variant="secondary">{RECORD_TYPE_LABELS[rec.type]}</Badge>
-          <Badge variant={RECORD_PRIORITY_BADGE[rec.priority] ?? "secondary"}>
-            {RECORD_PRIORITY_LABELS[rec.priority] ?? rec.priority}
-          </Badge>
-          {rec.overdue && (
-            <Badge variant="destructive">Overdue</Badge>
-          )}
-          <span className="text-xs text-(--text-muted)">
-            Created {formatDate(rec.createdAt)} by {createdByLabel}
-          </span>
-        </div>
-        <h1 className="break-words text-2xl font-semibold tracking-tight text-(--text-primary)">
-          {rec.title}
-        </h1>
-        {rec.neededByDate && (
-          <div className="text-sm">
-            <span className={neededByPast ? "font-medium text-(--color-warning)" : "text-(--text-muted)"}>
-              Needed by: {formatDate(rec.neededByDate)}
-              {neededByPast ? " · URGENT" : ""}
-            </span>
-          </div>
-        )}
-        <div className="flex flex-wrap items-center gap-3 text-sm">
-          {(rec.requestedAmount != null || rec.amount != null) && (
-            <span className="font-medium text-(--text-primary)">
-              {formatAmount(
-                rec.requestedAmount ?? rec.amount,
-                rec.currencyCode ?? rec.currency
-              )}
-            </span>
-          )}
-          <span className="text-(--text-secondary)">
-            Approval: {RECORD_APPROVAL_STATUS_LABELS[rec.approvalStatus] ?? rec.approvalStatus}
-          </span>
-        </div>
-
-        <div className="flex flex-wrap gap-2 border-t border-(--border-subtle) pt-3">
-          {showSubmitForApproval && (
-            <button
-              type="button"
-              onClick={() => scrollToSection("section-approvers")}
-              className="inline-flex h-9 items-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white shadow-sm hover:bg-(--color-primary-hover)"
-            >
-              Submit for approval
-            </button>
-          )}
-          {canAssignInternal && !isClosed && (
-            <button
-              type="button"
-              onClick={() => scrollToSection("section-approvers")}
-              className="inline-flex h-9 items-center rounded-lg border border-(--border-subtle) px-4 text-sm text-(--text-secondary) hover:bg-(--bg-surface-hover)"
-            >
-              Assign approver
-            </button>
-          )}
-          {canExport && (
-            <button
-              type="button"
-              onClick={() => void handleExportPdf()}
-              className="inline-flex h-9 items-center rounded-lg border border-(--border-subtle) px-4 text-sm text-(--text-secondary) hover:bg-(--bg-surface-hover)"
-            >
-              Export PDF
-            </button>
-          )}
-          {canClose && !isClosed && (
-            <button
-              type="button"
-              onClick={() => {
-                setCloseReason(closeReasonOptions[0]?.value ?? "APPROVED_AND_COMPLETED");
-                setCloseDialogOpen(true);
-              }}
-              className="inline-flex h-9 items-center rounded-lg border border-(--border-subtle) px-4 text-sm text-(--text-secondary) hover:bg-(--bg-surface-hover)"
-            >
-              Close request
-            </button>
-          )}
-          {record.status === "DRAFT" && record.createdByUserId === currentUserId && (
-            <SubmitDraftButton recordId={recordId} onSuccess={load} />
-          )}
-        </div>
-
-        {closeDialogOpen && (
-          <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface) p-4">
-            <p className="mb-3 text-sm font-medium text-(--text-primary)">Close request</p>
-            <div className="space-y-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-(--text-muted)">
-                  Reason for closing
-                </label>
-                <select
-                  value={closeReason}
-                  onChange={(e) => setCloseReason(e.target.value)}
-                  className="h-10 w-full max-w-md rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 text-sm text-(--text-primary)"
-                >
-                  {closeReasonOptions.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-(--text-muted)">
-                  Additional notes (optional)
-                </label>
-                <Textarea
-                  value={closeNotes}
-                  onChange={(e) => setCloseNotes(e.target.value)}
-                  maxLength={1000}
-                  rows={3}
-                  placeholder="Optional context for the audit log…"
-                />
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => void handleCloseRequest()}
-                  disabled={closing}
-                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white disabled:opacity-60"
-                >
-                  {closing && <Spinner size="sm" />}
-                  Close request
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCloseDialogOpen(false)}
-                  disabled={closing}
-                  className="inline-flex h-9 items-center rounded-lg border px-4 text-sm text-(--text-secondary)"
-                >
-                  Keep open
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </header>
-      </div>
-
       <div
         className={stickyHeader ? "relative min-h-0 flex-1 flex flex-col" : "contents"}
       >
@@ -602,7 +442,7 @@ export function RequestDetailClient({
           ref={scrollCallbackRef}
           className={
             stickyHeader
-              ? "min-h-0 flex-1 space-y-6 overflow-y-auto px-4 pb-6 sm:px-6"
+              ? "min-h-0 flex-1 overflow-y-auto px-4 pb-6 sm:px-6"
               : "contents"
           }
           style={
@@ -611,6 +451,175 @@ export function RequestDetailClient({
               : undefined
           }
         >
+          <div className={stickyHeader ? "pt-4 pb-0 space-y-3" : "space-y-3"}>
+            {!stickyHeader && (
+              <div className="flex items-center justify-between gap-3">
+                <Link
+                  href="/app/requests"
+                  className="inline-flex items-center gap-1.5 text-sm text-(--text-muted) transition-colors hover:text-(--text-primary)"
+                >
+                  <IconChevronLeft size={14} />
+                  Back to requests
+                </Link>
+                <RequestKeyboardNav currentId={recordId} onNavigate={onNavigate} />
+              </div>
+            )}
+            <header className="space-y-2.5 rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev) p-3 sm:pl-4 sm:pr-4 sm:pt-4 sm:pb-4 animate-in fade-in slide-in-from-top-1 duration-200">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  title="Click to copy request ID"
+                  onClick={() => {
+                    void navigator.clipboard
+                      .writeText(rec.recordKey ?? rec.id)
+                      .catch(() => {});
+                  }}
+                  className="rounded-md border border-(--border-subtle) bg-(--bg-surface-elev) px-2 py-0.5 font-mono text-sm font-semibold text-(--text-primary) transition-colors hover:border-(--color-primary) hover:bg-(--color-primary-soft) hover:text-(--color-primary)"
+                >
+                  {rec.recordKey ?? `#${rec.id.slice(0, 8)}`}
+                </button>
+                <Badge variant={RECORD_STATUS_BADGE[rec.status]}>
+                  {RECORD_STATUS_LABELS[rec.status]}
+                </Badge>
+                <Badge variant="secondary">{RECORD_TYPE_LABELS[rec.type]}</Badge>
+                <Badge variant={RECORD_PRIORITY_BADGE[rec.priority] ?? "secondary"}>
+                  {RECORD_PRIORITY_LABELS[rec.priority] ?? rec.priority}
+                </Badge>
+                {rec.overdue && (
+                  <Badge variant="destructive">Overdue</Badge>
+                )}
+                <span className="text-xs text-(--text-muted)">
+                  Created {formatDate(rec.createdAt)} by {createdByLabel}
+                </span>
+              </div>
+              <h1 className="break-words text-2xl font-semibold tracking-tight text-(--text-primary)">
+                {rec.title}
+              </h1>
+              {rec.neededByDate && (
+                <div className="text-sm">
+                  <span className={neededByPast ? "font-medium text-(--color-warning)" : "text-(--text-muted)"}>
+                    Needed by: {formatDate(rec.neededByDate)}
+                    {neededByPast ? " · URGENT" : ""}
+                  </span>
+                </div>
+              )}
+              <div className="flex flex-wrap items-center gap-3 text-sm">
+                {(rec.requestedAmount != null || rec.amount != null) && (
+                  <span className="font-medium text-(--text-primary)">
+                    {formatAmount(
+                      rec.requestedAmount ?? rec.amount,
+                      rec.currencyCode ?? rec.currency
+                    )}
+                  </span>
+                )}
+                <span className="text-(--text-secondary)">
+                  Approval: {RECORD_APPROVAL_STATUS_LABELS[rec.approvalStatus] ?? rec.approvalStatus}
+                </span>
+              </div>
+
+              <div className="flex flex-wrap gap-2 border-t border-(--border-subtle) pt-3">
+                {showSubmitForApproval && (
+                  <button
+                    type="button"
+                    onClick={() => scrollToSection("section-approvers")}
+                    className="inline-flex h-9 items-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white shadow-sm hover:bg-(--color-primary-hover)"
+                  >
+                    Submit for approval
+                  </button>
+                )}
+                {canAssignInternal && !isClosed && (
+                  <button
+                    type="button"
+                    onClick={() => scrollToSection("section-approvers")}
+                    className="inline-flex h-9 items-center rounded-lg border border-(--border-subtle) px-4 text-sm text-(--text-secondary) hover:bg-(--bg-surface-hover)"
+                  >
+                    Assign approver
+                  </button>
+                )}
+                {canExport && (
+                  <button
+                    type="button"
+                    onClick={() => void handleExportPdf()}
+                    className="inline-flex h-9 items-center rounded-lg border border-(--border-subtle) px-4 text-sm text-(--text-secondary) hover:bg-(--bg-surface-hover)"
+                  >
+                    Export PDF
+                  </button>
+                )}
+                {canClose && !isClosed && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCloseReason(closeReasonOptions[0]?.value ?? "APPROVED_AND_COMPLETED");
+                      setCloseDialogOpen(true);
+                    }}
+                    className="inline-flex h-9 items-center rounded-lg border border-(--border-subtle) px-4 text-sm text-(--text-secondary) hover:bg-(--bg-surface-hover)"
+                  >
+                    Close request
+                  </button>
+                )}
+                {record.status === "DRAFT" && record.createdByUserId === currentUserId && (
+                  <SubmitDraftButton recordId={recordId} onSuccess={load} />
+                )}
+              </div>
+
+              {closeDialogOpen && (
+                <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface) p-4">
+                  <p className="mb-3 text-sm font-medium text-(--text-primary)">Close request</p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-(--text-muted)">
+                        Reason for closing
+                      </label>
+                      <select
+                        value={closeReason}
+                        onChange={(e) => setCloseReason(e.target.value)}
+                        className="h-10 w-full max-w-md rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 text-sm text-(--text-primary)"
+                      >
+                        {closeReasonOptions.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-(--text-muted)">
+                        Additional notes (optional)
+                      </label>
+                      <Textarea
+                        value={closeNotes}
+                        onChange={(e) => setCloseNotes(e.target.value)}
+                        maxLength={1000}
+                        rows={3}
+                        placeholder="Optional context for the audit log…"
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleCloseRequest()}
+                        disabled={closing}
+                        className="inline-flex h-9 items-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white disabled:opacity-60"
+                      >
+                        {closing && <Spinner size="sm" />}
+                        Close request
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCloseDialogOpen(false)}
+                        disabled={closing}
+                        className="inline-flex h-9 items-center rounded-lg border px-4 text-sm text-(--text-secondary)"
+                      >
+                        Keep open
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </header>
+          </div>
+
+          <div className="mt-4 space-y-6">
       <div className="mt-2">
         <AllActionBanners
           rec={rec}
@@ -829,6 +838,7 @@ export function RequestDetailClient({
               canAssignExternal={canAssignExternal}
               isRequestCreator={isRequestCreator}
               onRefresh={load}
+              onParticipantsChange={updateParticipants}
             />
           </div>
 
@@ -945,7 +955,7 @@ export function RequestDetailClient({
                     <span
                       className={[
                         "rounded-md px-2 py-0.5 text-[11px] font-semibold",
-                        rec.riskLevel === "HIGH" || rec.riskLevel === "CRITICAL"
+                        rec.riskLevel === "HIGH"
                           ? "bg-(--color-danger-soft) text-(--color-danger)"
                           : rec.riskLevel === "MEDIUM"
                             ? "bg-(--color-warning-soft) text-(--color-warning)"
@@ -974,6 +984,7 @@ export function RequestDetailClient({
           )}
         </div>
       </div>
+          </div>
         </div>
       </div>
 
