@@ -11,12 +11,20 @@ import {
 import { createPortal } from "react-dom";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { useToast } from "@/components/ui/toast";
-import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
-import { IconPlus, IconSearch, IconSend } from "@/components/ui/icons";
-import type { RecordParticipant, ParticipantStatus } from "@/types/records";
-import type { BadgeVariant } from "@/lib/record-utils";
+import {
+  IconPlus,
+  IconSearch,
+  IconSend,
+  IconX,
+  IconCheckCircleFilled,
+  IconXCircleFilled,
+  IconHourglass,
+  IconEye,
+  IconEyeOff,
+} from "@/components/ui/icons";
+import type { RecordParticipant } from "@/types/records";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -44,6 +52,7 @@ type Props = {
   canAssignExternal: boolean;
   isRequestCreator: boolean;
   onRefresh: () => void | Promise<void>;
+  onParticipantsChange?: (updater: (prev: RecordParticipant[]) => RecordParticipant[]) => void;
 };
 
 function IconExternalUser({ size = 14, className }: { size?: number; className?: string }) {
@@ -68,14 +77,6 @@ function IconExternalUser({ size = 14, className }: { size?: number; className?:
     </svg>
   );
 }
-
-// ─── Status badge map ─────────────────────────────────────────────────────────
-
-const STATUS_BADGE: Record<ParticipantStatus, BadgeVariant> = {
-  PENDING: "warning",
-  APPROVED: "success",
-  REJECTED: "destructive",
-};
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 
@@ -147,95 +148,167 @@ function UserAvatarWithFallback({
 
 function ParticipantRow({
   p,
-  isBlocking,
+  role,
   isMyApproval,
   isClosed,
+  canRemove,
   actionLoading,
+  removeLoading,
   onApprove,
   onReject,
+  onRemove,
 }: {
   p: RecordParticipant;
-  isBlocking: boolean;
+  role: "APPROVER" | "VIEWER";
   isMyApproval: boolean;
   isClosed: boolean;
+  canRemove: boolean;
   actionLoading: string | null;
+  removeLoading: boolean;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
+  onRemove: (id: string) => void;
 }) {
   const displayName =
     p.participantType === "INTERNAL"
       ? (p.name ?? p.email ?? "Internal user")
       : (p.name ?? p.email ?? "External approver");
 
-  const subLabel =
-    p.participantType === "EXTERNAL" && p.name && p.email ? p.email : null;
+  // Row border style by type and role
+  const rowClass = [
+    "relative flex items-center gap-2.5 rounded-lg border px-2.5 py-2 transition-colors",
+    role === "VIEWER"
+      ? "border-(--border-subtle) bg-(--bg-surface-elev) opacity-80"
+      : p.participantType === "EXTERNAL"
+        ? "border-(--color-warning-soft) bg-(--color-warning-soft)/20"
+        : "border-(--border-subtle) bg-(--bg-surface-elev)",
+  ].join(" ");
+
+  // Status icon — role and view-aware
+  const hasViewed = p.lastUsedAt != null;
+
+  const statusIcon = (() => {
+    if (role === "VIEWER") {
+      if (hasViewed) {
+        return (
+          <span title="Viewer has seen this request">
+            <IconEye
+              size={14}
+              className="shrink-0 text-[#4fc3f7]"
+              aria-label="Seen"
+            />
+          </span>
+        );
+      }
+      return (
+        <span title="Viewer has not seen this request yet">
+          <IconEyeOff
+            size={14}
+            className="shrink-0 text-(--text-muted)"
+            aria-label="Not seen yet"
+          />
+        </span>
+      );
+    }
+
+    // Approvers
+    if (p.status === "APPROVED") {
+      return (
+        <span title="Approved">
+          <IconCheckCircleFilled
+            size={14}
+            className="shrink-0 text-(--color-success)"
+            aria-label="Approved"
+          />
+        </span>
+      );
+    }
+    if (p.status === "REJECTED") {
+      return (
+        <span title="Rejected">
+          <IconXCircleFilled
+            size={14}
+            className="shrink-0 text-(--color-danger)"
+            aria-label="Rejected"
+          />
+        </span>
+      );
+    }
+    // PENDING
+    if (hasViewed) {
+      return (
+        <span title="Approver has seen this request — awaiting their decision">
+          <IconHourglass
+            size={14}
+            className="shrink-0 text-[#4fc3f7]"
+            aria-label="Seen — pending decision"
+          />
+        </span>
+      );
+    }
+    return (
+      <span title="Approver has not opened this request yet">
+        <IconHourglass
+          size={14}
+          className="shrink-0 text-(--text-muted)"
+          aria-label="Not opened yet"
+        />
+      </span>
+    );
+  })();
 
   return (
-    <li
-      className={[
-        "relative flex flex-wrap items-start justify-between gap-3 rounded-lg border bg-(--bg-surface-elev) px-3 py-2.5 transition-colors",
-        isBlocking
-          ? "border-(--color-primary) ring-1 ring-(--color-primary-soft)"
-          : "border-(--border-subtle)",
-      ].join(" ")}
-    >
-      {isBlocking && (
-        <span className="absolute -left-1 top-2 h-[calc(100%-16px)] w-1 rounded-full bg-(--color-primary)" />
-      )}
-      <div className="flex min-w-0 items-start gap-2.5 pl-1">
+    <li className={rowClass}>
+      {/* Avatar */}
+      <div className="shrink-0">
         {p.participantType === "EXTERNAL" ? (
-          <div className="h-7 w-7 shrink-0 flex items-center justify-center rounded-full border border-dashed border-(--border-strong) bg-(--bg-surface-elev) text-(--text-muted)">
-            <IconExternalUser size={13} />
+          <div className="h-6 w-6 flex items-center justify-center rounded-full border border-dashed border-(--border-strong) bg-(--bg-surface) text-(--text-muted)">
+            <IconExternalUser size={11} />
           </div>
         ) : (
-          <UserAvatarWithFallback
-            name={p.name}
-            email={p.email}
-            image={p.image}
-          />
-        )}
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-(--text-primary)">
-            {displayName}
-          </p>
-          {subLabel && (
-            <p className="truncate text-xs text-(--text-muted)">{subLabel}</p>
-          )}
-          <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-            {p.participantType === "EXTERNAL" ? (
-              <span className="inline-flex items-center gap-1 rounded-md border border-(--border-subtle) bg-(--bg-surface-elev) px-1.5 py-0.5 text-[10px] font-medium text-(--text-muted)">
-                <IconExternalUser size={11} className="text-(--text-muted)" />
-                External
-              </span>
-            ) : (
-              <Badge variant="secondary" className="text-[10px]">
-                Internal
-              </Badge>
-            )}
+          <div
+            className={[
+              "h-6 w-6 shrink-0 flex items-center justify-center rounded-full text-[10px] font-semibold",
+              role === "VIEWER"
+                ? "bg-(--bg-surface) text-(--text-muted) border border-(--border-subtle)"
+                : "bg-(--color-primary-soft) text-(--color-primary)",
+            ].join(" ")}
+          >
+            {(p.name ?? p.email ?? "?")[0]?.toUpperCase() ?? "?"}
           </div>
-          {p.respondedAt && (
-            <p className="mt-1 text-xs text-(--text-muted)">
-              Responded {new Date(p.respondedAt).toLocaleDateString()}
-            </p>
-          )}
-          {p.responseReason && (
-            <p className="mt-1 text-xs italic text-(--text-secondary)">
-              &ldquo;{p.responseReason}&rdquo;
-            </p>
-          )}
-        </div>
+        )}
       </div>
-      <div className="flex shrink-0 items-center gap-2">
-        <Badge variant={STATUS_BADGE[p.status] ?? "default"}>
-          {p.status.charAt(0) + p.status.slice(1).toLowerCase()}
-        </Badge>
+
+      {/* Name + meta */}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-xs font-medium text-(--text-primary) leading-tight">
+          {displayName}
+        </p>
+        {p.participantType === "EXTERNAL" && p.name && p.email && (
+          <p className="truncate text-[10px] text-(--text-muted)">{p.email}</p>
+        )}
+        {p.respondedAt && (
+          <p className="text-[10px] text-(--text-muted)">
+            {new Date(p.respondedAt).toLocaleDateString()}
+          </p>
+        )}
+        {p.responseReason && (
+          <p className="text-[10px] italic text-(--text-muted) truncate">
+            &ldquo;{p.responseReason}&rdquo;
+          </p>
+        )}
+      </div>
+
+      {/* Right side: status icon + actions */}
+      <div className="flex shrink-0 items-center gap-1.5">
+        {statusIcon}
         {p.status === "PENDING" && !isClosed && isMyApproval && (
-          <div className="flex gap-1.5">
+          <>
             <button
               type="button"
               disabled={actionLoading === p.id}
               onClick={() => onApprove(p.id)}
-              className="cursor-pointer rounded bg-(--color-success-soft) px-2 py-1 text-xs font-medium text-(--color-success) transition-opacity hover:opacity-80 disabled:opacity-50"
+              className="cursor-pointer rounded bg-(--color-success-soft) px-2 py-0.5 text-[10px] font-medium text-(--color-success) transition-opacity hover:opacity-80 disabled:opacity-50"
             >
               {actionLoading === p.id ? <Spinner size="sm" /> : "Approve"}
             </button>
@@ -243,29 +316,44 @@ function ParticipantRow({
               type="button"
               disabled={actionLoading === p.id}
               onClick={() => onReject(p.id)}
-              className="cursor-pointer rounded bg-(--color-danger-soft) px-2 py-1 text-xs font-medium text-(--color-danger) transition-opacity hover:opacity-80 disabled:opacity-50"
+              className="cursor-pointer rounded bg-(--color-danger-soft) px-2 py-0.5 text-[10px] font-medium text-(--color-danger) transition-opacity hover:opacity-80 disabled:opacity-50"
             >
               Reject
             </button>
-          </div>
+          </>
+        )}
+        {canRemove && p.status === "PENDING" && !isClosed && (
+          <button
+            type="button"
+            disabled={removeLoading}
+            onClick={() => onRemove(p.id)}
+            title="Remove participant"
+            className="cursor-pointer ml-0.5 flex h-5 w-5 items-center justify-center rounded text-(--text-muted) transition-colors hover:bg-(--color-danger-soft) hover:text-(--color-danger) disabled:opacity-50"
+          >
+            {removeLoading ? <Spinner size="sm" /> : <IconX size={11} />}
+          </button>
         )}
       </div>
     </li>
   );
 }
 
-// ─── Inline external approver form ───────────────────────────────────────────
+// ─── Inline external participant form (approver or viewer) ───────────────────
 
-function ExternalApproverInlineForm({
+function ExternalInlineForm({
   recordId,
   email,
+  role,
   onSuccess,
   onCancel,
+  onParticipantsChange,
 }: {
   recordId: string;
   email: string;
+  role: "APPROVER" | "VIEWER";
   onSuccess: () => void | Promise<void>;
   onCancel: () => void;
+  onParticipantsChange?: (updater: (prev: RecordParticipant[]) => RecordParticipant[]) => void;
 }) {
   const apiFetch = useApiFetch();
   const toast = useToast();
@@ -285,11 +373,17 @@ function ExternalApproverInlineForm({
           email: email.trim().toLowerCase(),
           name: form.name.trim() || undefined,
           expiresInHours: Number(form.expiresInHours),
+          participantRole: role,
         }),
         showToastOnError: false,
       });
       const json = (await res.json().catch(() => ({}))) as {
-        data?: { approvalToken?: string; approvalLinkBase?: string };
+        data?: {
+          participantId?: string;
+          approvalToken?: string;
+          approvalLinkBase?: string;
+          expiresAt?: string;
+        };
         error?: { message?: string };
       };
       if (!res.ok) {
@@ -304,8 +398,31 @@ function ExternalApproverInlineForm({
           ? new URL(`/api/v1/external/approvals/${token}`, window.location.origin).href
           : null;
       setCreatedLink(link);
-      toast.addToast("success", "External approver assigned.");
-      await onSuccess();
+      const roleLabel = role === "APPROVER" ? "External approver" : "External viewer";
+      toast.addToast("success", `${roleLabel} assigned.`);
+
+      const participantId = json.data?.participantId;
+      if (participantId && onParticipantsChange) {
+        const newParticipant: RecordParticipant = {
+          id: participantId,
+          participantType: "EXTERNAL" as const,
+          participantRole: role,
+          status: "PENDING" as const,
+          userId: null,
+          email: email.trim().toLowerCase(),
+          name: form.name.trim() || null,
+          image: null,
+          expiresAt: json.data?.expiresAt != null ? String(json.data.expiresAt) : null,
+          revokedAt: null,
+          lastUsedAt: null,
+          respondedAt: null,
+          responseReason: null,
+          createdAt: new Date().toISOString(),
+        };
+        onParticipantsChange((prev) => [...prev, newParticipant]);
+      } else {
+        await onSuccess();
+      }
     } catch {
       setError("Network error. Please try again.");
     } finally {
@@ -315,89 +432,114 @@ function ExternalApproverInlineForm({
 
   if (createdLink) {
     return (
-      <div className="mt-2 space-y-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) p-3 animate-in fade-in duration-150">
-        <p className="text-xs font-medium text-(--text-primary)">
-          Approval link created — copy and share it:
-        </p>
-        <p className="break-all rounded border border-(--border-subtle) bg-(--bg-surface) px-2 py-1.5 font-mono text-[11px] text-(--text-secondary)">
-          {createdLink}
-        </p>
-        <p className="text-[11px] text-(--color-warning)">This link will not be shown again.</p>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => void navigator.clipboard.writeText(createdLink)}
-            className="cursor-pointer rounded-lg bg-(--color-primary) px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-(--color-primary-hover)"
-          >
-            Copy link
-          </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="cursor-pointer rounded-lg border border-(--border-subtle) px-3 py-1.5 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)"
-          >
-            Done
-          </button>
+      <div className="mt-2 rounded-lg border border-(--color-success-soft) bg-(--color-success-soft) overflow-hidden animate-in fade-in duration-150">
+        <div className="px-3 py-2.5 space-y-2">
+          <p className="text-xs font-semibold text-(--color-success)">
+            ✓ {role === "APPROVER" ? "External approver" : "External viewer"} assigned
+          </p>
+          <p className="text-[11px] text-(--text-secondary)">
+            Share this link — expires in {form.expiresInHours === "24" ? "24 hours" : form.expiresInHours === "72" ? "3 days" : "7 days"}.
+          </p>
+          <div className="rounded border border-(--border-subtle) bg-(--bg-surface) px-2 py-1.5">
+            <p className="break-all font-mono text-[10px] text-(--text-secondary) leading-relaxed">
+              {createdLink}
+            </p>
+          </div>
+          <p className="text-[10px] text-(--color-warning)">⚠ This link will not be shown again.</p>
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              onClick={() => void navigator.clipboard.writeText(createdLink)}
+              className="cursor-pointer flex-1 inline-flex h-7 items-center justify-center gap-1.5 rounded-lg bg-(--color-primary) text-xs font-medium text-white transition-colors hover:bg-(--color-primary-hover)"
+            >
+              Copy link
+            </button>
+            <button
+              type="button"
+              onClick={onCancel}
+              className="cursor-pointer inline-flex h-7 items-center rounded-lg border border-(--border-subtle) px-3 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)"
+            >
+              Done
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="mt-2 space-y-3 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) p-3 animate-in fade-in duration-150">
-      <p className="text-xs font-medium text-(--text-primary)">
-        Assign <span className="text-(--color-primary)">{email}</span> as external approver
-      </p>
-      {error && (
-        <p className="rounded bg-(--color-danger-soft) px-2 py-1 text-xs text-(--color-danger)">{error}</p>
-      )}
-      <div className="space-y-1">
-        <label className="text-[11px] font-medium text-(--text-muted)">Name (optional)</label>
-        <Input
-          value={form.name}
-          onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-          placeholder="Jane Smith"
-          disabled={submitting}
-          className="h-8 text-sm"
-        />
-      </div>
-      <div className="space-y-1">
-        <label className="text-[11px] font-medium text-(--text-muted)">Link expires in</label>
-        <div className="flex gap-1.5">
-          {(["24", "72", "168"] as const).map((h) => (
-            <button
-              key={h}
-              type="button"
-              onClick={() => setForm((f) => ({ ...f, expiresInHours: h }))}
-              className={[
-                "rounded-lg border px-2.5 py-1 text-xs transition-colors cursor-pointer",
-                form.expiresInHours === h
-                  ? "border-(--color-primary) bg-(--color-primary-soft) text-(--color-primary)"
-                  : "border-(--border-subtle) bg-(--bg-surface) text-(--text-secondary) hover:bg-(--bg-surface-hover)",
-              ].join(" ")}
-            >
-              {h === "24" ? "24h" : h === "72" ? "3 days" : "7 days"}
-            </button>
-          ))}
+    <div className="mt-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) overflow-hidden animate-in fade-in duration-150">
+      <div className="flex items-center gap-2 border-b border-(--border-subtle) px-3 py-2">
+        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-dashed border-(--border-strong) bg-(--bg-surface) text-(--text-muted)">
+          <IconExternalUser size={11} />
         </div>
-      </div>
-      <div className="flex gap-2">
-        <button
-          type="button"
-          disabled={submitting}
-          onClick={() => void handleAssign()}
-          className="cursor-pointer inline-flex h-8 items-center gap-1.5 rounded-lg bg-(--color-primary) px-3 text-xs font-medium text-white transition-colors hover:bg-(--color-primary-hover) disabled:opacity-60"
-        >
-          {submitting && <Spinner size="sm" />}
-          {submitting ? "Assigning…" : "Assign external approver"}
-        </button>
+        <p className="min-w-0 flex-1 truncate text-xs font-medium text-(--text-primary)">
+          <span className="text-(--color-primary)">{email}</span>
+          <span className="ml-1 font-normal text-(--text-muted)">
+            · {role === "APPROVER" ? "external approver" : "external viewer"}
+          </span>
+        </p>
         <button
           type="button"
           onClick={onCancel}
           disabled={submitting}
-          className="cursor-pointer inline-flex h-8 items-center rounded-lg border border-(--border-subtle) px-3 text-xs text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:opacity-60"
+          className="cursor-pointer flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--text-muted) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--text-primary) disabled:opacity-40"
         >
-          Cancel
+          <IconX size={11} />
+        </button>
+      </div>
+
+      <div className="space-y-2.5 px-3 py-2.5">
+        {error && (
+          <p className="rounded bg-(--color-danger-soft) px-2 py-1 text-xs text-(--color-danger)">
+            {error}
+          </p>
+        )}
+
+        <div className="space-y-1">
+          <label className="text-[11px] font-medium text-(--text-muted)">Name (optional)</label>
+          <Input
+            value={form.name}
+            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            placeholder="Jane Smith"
+            disabled={submitting}
+            className="h-7 text-xs"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[11px] font-medium text-(--text-muted)">Link expires in</label>
+          <div className="flex gap-1">
+            {(["24", "72", "168"] as const).map((h) => (
+              <button
+                key={h}
+                type="button"
+                onClick={() => setForm((f) => ({ ...f, expiresInHours: h }))}
+                className={[
+                  "flex-1 rounded border py-1 text-[11px] font-medium transition-colors cursor-pointer",
+                  form.expiresInHours === h
+                    ? "border-(--color-primary) bg-(--color-primary-soft) text-(--color-primary)"
+                    : "border-(--border-subtle) bg-(--bg-surface) text-(--text-secondary) hover:bg-(--bg-surface-hover)",
+                ].join(" ")}
+              >
+                {h === "24" ? "24h" : h === "72" ? "3d" : "7d"}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          disabled={submitting}
+          onClick={() => void handleAssign()}
+          className="cursor-pointer w-full inline-flex h-7 items-center justify-center gap-1.5 rounded-lg bg-(--color-primary) text-xs font-medium text-white transition-colors hover:bg-(--color-primary-hover) disabled:opacity-60"
+        >
+          {submitting && <Spinner size="sm" />}
+          {submitting
+            ? "Assigning…"
+            : role === "APPROVER"
+              ? "Assign external approver"
+              : "Assign external viewer"}
         </button>
       </div>
     </div>
@@ -413,19 +555,23 @@ function ParticipantSearchInput({
   role,
   currentUserId,
   assignedUserIds,
+  assignedExternalEmails,
   isClosed,
   canAssign,
   canAssignExternal,
   onSuccess,
+  onParticipantsChange,
 }: {
   recordId: string;
   role: "APPROVER" | "VIEWER";
   currentUserId: string;
   assignedUserIds: string[];
+  assignedExternalEmails: Set<string>;
   isClosed: boolean;
   canAssign: boolean;
   canAssignExternal: boolean;
   onSuccess: () => void | Promise<void>;
+  onParticipantsChange?: (updater: (prev: RecordParticipant[]) => RecordParticipant[]) => void;
 }) {
   const apiFetch = useApiFetch();
   const toast = useToast();
@@ -574,11 +720,11 @@ function ParticipantSearchInput({
     .slice(0, 8);
 
   const showExternalOption =
-    role === "APPROVER" &&
     canAssignExternal &&
     query.trim().length > 0 &&
     isValidEmail(query) &&
-    filtered.length === 0;
+    filtered.length === 0 &&
+    !assignedExternalEmails.has(query.trim().toLowerCase());
 
   useEffect(() => {
     setHighlightIndex(0);
@@ -605,22 +751,95 @@ function ParticipantSearchInput({
         showToastOnError: false,
       });
       const json = (await res.json().catch(() => ({}))) as {
-        data?: { alreadyAssigned?: boolean };
+        data?: {
+          id?: string;
+          alreadyAssigned?: boolean;
+          reactivated?: boolean;
+          participantType?: string;
+          participantRole?: string;
+          status?: string;
+          createdAt?: string;
+        };
         error?: { message?: string };
       };
       if (!res.ok) {
         toast.addToast("error", json.error?.message ?? "Failed to assign.");
         return;
       }
-      toast.addToast(
-        "success",
-        json.data?.alreadyAssigned
-          ? "Already assigned."
-          : `${role === "APPROVER" ? "Approver" : "Viewer"} assigned.`
-      );
+
+      const isAlreadyAssigned = json.data?.alreadyAssigned === true;
+      const isReactivated = json.data?.reactivated === true;
+      const newId = json.data?.id;
+
+      if (isAlreadyAssigned) {
+        toast.addToast("success", "Already assigned.");
+      }
       setOpen(false);
       setQuery("");
-      await onSuccess();
+
+      if (!isAlreadyAssigned && newId && onParticipantsChange) {
+        if (isReactivated) {
+          onParticipantsChange((prev) =>
+            prev.map((p) =>
+              p.id === newId
+                ? {
+                    ...p,
+                    status: "PENDING" as const,
+                    respondedAt: null,
+                    responseReason: null,
+                    revokedAt: null,
+                    lastUsedAt: null,
+                  }
+                : p
+            )
+          );
+          onParticipantsChange((prev) => {
+            const exists = prev.some((p) => p.id === newId);
+            if (exists) return prev;
+            const assignedUser = allUsers?.find((u) => u.user.id === userId);
+            const appended: RecordParticipant = {
+              id: newId,
+              participantType: "INTERNAL",
+              participantRole: role,
+              status: "PENDING",
+              userId: userId,
+              email: assignedUser?.user.email ?? null,
+              name: assignedUser?.user.name ?? null,
+              image: assignedUser?.user.image ?? null,
+              expiresAt: null,
+              revokedAt: null,
+              lastUsedAt: null,
+              respondedAt: null,
+              responseReason: null,
+              createdAt: new Date().toISOString(),
+            };
+            return [...prev, appended];
+          });
+        } else {
+          const assignedUser = allUsers?.find((u) => u.user.id === userId);
+          onParticipantsChange((prev) => [
+            ...prev,
+            {
+              id: newId,
+              participantType: "INTERNAL" as const,
+              participantRole: role,
+              status: "PENDING" as const,
+              userId: userId,
+              email: assignedUser?.user.email ?? null,
+              name: assignedUser?.user.name ?? null,
+              image: assignedUser?.user.image ?? null,
+              expiresAt: null,
+              revokedAt: null,
+              lastUsedAt: null,
+              respondedAt: null,
+              responseReason: null,
+              createdAt: new Date().toISOString(),
+            },
+          ]);
+        }
+      } else if (!isAlreadyAssigned) {
+        await onSuccess();
+      }
     } catch {
       toast.addToast("error", "Network error.");
     } finally {
@@ -652,7 +871,7 @@ function ParticipantSearchInput({
     <div ref={containerRef} className="relative">
       <div
         className={[
-          "flex items-center gap-2 rounded-lg border px-3 py-2 transition-colors",
+          "flex items-center gap-2 rounded-lg border px-2.5 py-1.5 transition-colors",
           open
             ? "border-(--color-primary) bg-(--bg-surface) ring-2 ring-(--color-primary-soft)"
             : "border-(--border-subtle) bg-(--bg-surface)",
@@ -674,7 +893,7 @@ function ParticipantSearchInput({
               ? "Search and assign an approver…"
               : "Search and assign a viewer…"
           }
-          className="min-w-0 flex-1 bg-transparent text-sm text-(--text-primary) outline-none placeholder:text-(--text-muted)"
+          className="min-w-0 flex-1 bg-transparent text-xs text-(--text-primary) outline-none placeholder:text-(--text-muted)"
           autoComplete="off"
           spellCheck={false}
         />
@@ -755,7 +974,7 @@ function ParticipantSearchInput({
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-(--text-primary)">
-                      Assign external approver
+                      {role === "APPROVER" ? "Assign external approver" : "Assign external viewer"}
                     </p>
                     <p className="truncate text-xs text-(--text-muted)">{query.trim()}</p>
                   </div>
@@ -766,6 +985,11 @@ function ParticipantSearchInput({
             <div className="border-t border-(--border-subtle) px-3 py-1.5">
               <p className="text-[10px] text-(--text-muted)">
                 ↑↓ navigate · Enter assign · Esc close
+                {canAssignExternal && !showExternalOption && (
+                  <span className="ml-2 opacity-60">
+                    · type an email to invite externally
+                  </span>
+                )}
               </p>
             </div>
           </div>,
@@ -773,9 +997,11 @@ function ParticipantSearchInput({
         )}
 
       {externalEmail && (
-        <ExternalApproverInlineForm
+        <ExternalInlineForm
           recordId={recordId}
           email={externalEmail}
+          role={role}
+          onParticipantsChange={onParticipantsChange}
           onSuccess={async () => {
             setExternalEmail(null);
             setQuery("");
@@ -857,7 +1083,9 @@ function ParticipantListSection({
   canAssign,
   canAssignExternal,
   canRemind,
+  canRemove,
   onRefresh,
+  onParticipantsChange,
 }: {
   title: string;
   role: "APPROVER" | "VIEWER";
@@ -868,7 +1096,9 @@ function ParticipantListSection({
   canAssign: boolean;
   canAssignExternal: boolean;
   canRemind: boolean;
+  canRemove: boolean;
   onRefresh: () => void | Promise<void>;
+  onParticipantsChange?: (updater: (prev: RecordParticipant[]) => RecordParticipant[]) => void;
 }) {
   const apiFetch = useApiFetch();
   const toast = useToast();
@@ -879,17 +1109,22 @@ function ParticipantListSection({
     participantId: string | null;
     submitting: boolean;
   }>({ open: false, participantId: null, submitting: false });
+  const [removeLoading, setRemoveLoading] = useState<string | null>(null);
 
   const roleParticipants = participants.filter((p) => p.participantRole === role);
   const hasPending = roleParticipants.some((p) => p.status === "PENDING");
-  const blockingId =
-    role === "APPROVER"
-      ? roleParticipants.find((p) => p.status === "PENDING")?.id ?? null
-      : null;
 
-  const assignedUserIds = roleParticipants
+  // Exclude users already assigned in ANY role (approver or viewer)
+  const assignedUserIds = participants
     .filter((p) => p.userId != null)
     .map((p) => p.userId!);
+
+  // Exclude external emails already assigned in ANY role
+  const assignedExternalEmails = new Set(
+    participants
+      .filter((p) => p.participantType === "EXTERNAL" && p.email != null)
+      .map((p) => p.email!.toLowerCase())
+  );
 
   async function handleApprove(participantId: string) {
     setActionLoading(participantId);
@@ -958,11 +1193,35 @@ function ParticipantListSection({
         toast.addToast("error", json.error?.message ?? "Failed to send reminders.");
         return;
       }
-      toast.addToast("success", "Reminders sent.");
     } catch {
       toast.addToast("error", "Network error.");
     } finally {
       setReminding(false);
+    }
+  }
+
+  async function handleRemove(participantId: string) {
+    setRemoveLoading(participantId);
+    try {
+      const res = await apiFetch(
+        `/api/records/${recordId}/participants/${participantId}`,
+        {
+          method: "DELETE",
+          showToastOnError: false,
+        }
+      );
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as {
+          error?: { message?: string };
+        };
+        toast.addToast("error", json.error?.message ?? "Failed to remove participant.");
+        return;
+      }
+      onParticipantsChange?.((prev) => prev.filter((p) => p.id !== participantId));
+    } catch {
+      toast.addToast("error", "Network error.");
+    } finally {
+      setRemoveLoading(null);
     }
   }
 
@@ -981,10 +1240,10 @@ function ParticipantListSection({
               type="button"
               onClick={() => void handleRemind()}
               disabled={reminding}
-              className="cursor-pointer inline-flex h-6 items-center gap-1.5 rounded border border-(--border-subtle) bg-(--bg-surface-elev) px-2 text-[11px] text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:opacity-60"
+              title="Remind pending approvers"
+              className="cursor-pointer inline-flex h-6 w-6 items-center justify-center rounded border border-(--border-subtle) bg-(--bg-surface-elev) text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--color-primary) hover:border-(--color-primary) disabled:opacity-60"
             >
               {reminding ? <Spinner size="sm" /> : <IconSend size={11} />}
-              {reminding ? "Sending…" : "Remind pending approvers"}
             </button>
           )}
         </div>
@@ -994,19 +1253,21 @@ function ParticipantListSection({
           role={role}
           currentUserId={currentUserId}
           assignedUserIds={assignedUserIds}
+          assignedExternalEmails={assignedExternalEmails}
           isClosed={isClosed}
           canAssign={canAssign}
           canAssignExternal={canAssignExternal}
           onSuccess={onRefresh}
+          onParticipantsChange={onParticipantsChange}
         />
 
         <div
           className={[
             "mt-2 space-y-2",
-            roleParticipants.length > 3 ? "max-h-[13rem] overflow-y-auto pr-1" : "",
+            roleParticipants.length > 4 ? "max-h-[14rem] overflow-y-auto pr-1" : "",
           ].join(" ")}
           style={
-            roleParticipants.length > 3
+            roleParticipants.length > 4
               ? { scrollbarWidth: "thin", scrollbarColor: "var(--border-subtle) transparent" }
               : undefined
           }
@@ -1021,18 +1282,22 @@ function ParticipantListSection({
                 <ParticipantRow
                   key={p.id}
                   p={p}
-                  isBlocking={p.id === blockingId}
+                  role={role}
                   isMyApproval={
                     p.participantType === "INTERNAL" &&
+                    p.participantRole === "APPROVER" &&
                     p.userId === currentUserId &&
                     p.status === "PENDING"
                   }
                   isClosed={isClosed}
+                  canRemove={canRemove}
                   actionLoading={actionLoading}
+                  removeLoading={removeLoading === p.id}
                   onApprove={handleApprove}
                   onReject={(id) =>
                     setRejectModal({ open: true, participantId: id, submitting: false })
                   }
+                  onRemove={handleRemove}
                 />
               ))}
             </ul>
@@ -1061,9 +1326,10 @@ export function ParticipantsPanel({
   canAssignExternal,
   isRequestCreator,
   onRefresh,
+  onParticipantsChange,
 }: Props) {
   return (
-    <div className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-4">
+    <div className="rounded-xl border border-(--border-subtle) bg-(--bg-surface) p-3">
       <h2 className="mb-4 text-sm font-semibold text-(--text-primary)">
         Shared with{" "}
         <span className="font-normal text-(--text-muted)">({participants.length})</span>
@@ -1080,7 +1346,9 @@ export function ParticipantsPanel({
           canAssign={canAssignInternal || canAssignExternal}
           canAssignExternal={canAssignExternal}
           canRemind={isRequestCreator}
+          canRemove={isRequestCreator}
           onRefresh={onRefresh}
+          onParticipantsChange={onParticipantsChange}
         />
 
         <div className="border-t border-(--border-subtle)" />
@@ -1093,9 +1361,11 @@ export function ParticipantsPanel({
           isClosed={isClosed}
           currentUserId={currentUserId}
           canAssign={canAssignInternal}
-          canAssignExternal={false}
+          canAssignExternal={canAssignExternal}
           canRemind={false}
+          canRemove={isRequestCreator}
           onRefresh={onRefresh}
+          onParticipantsChange={onParticipantsChange}
         />
       </div>
     </div>

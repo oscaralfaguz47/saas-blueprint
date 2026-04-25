@@ -75,6 +75,7 @@ export const POST = withErrorHandler(async (
       recordId,
       tenantId,
       participantType: "INTERNAL",
+      participantRole: "APPROVER",
       userId: session.user.id,
     },
     select: { id: true, status: true },

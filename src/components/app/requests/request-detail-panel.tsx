@@ -1,53 +1,68 @@
 "use client";
 
 import Link from "next/link";
-import { IconX } from "@/components/ui/icons";
+import { IconX, IconMaximize } from "@/components/ui/icons";
 import { RequestDetailClient, RequestKeyboardNav } from "./request-detail-client";
 
 type Props = {
   recordId: string;
   currentUserId: string;
+  currentUserName?: string | null;
+  currentUserEmail?: string | null;
   permissions: string[];
   onClose: () => void;
-  onNavigate?: (id: string) => void;
+  onNavigate?: (id: string, key?: string | null) => void;
 };
 
 export function RequestDetailPanel({
   recordId,
   currentUserId,
+  currentUserName,
+  currentUserEmail,
   permissions,
   onClose,
   onNavigate,
 }: Props) {
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      {/* Section 1: Panel chrome — keyboard nav + Open full page + close */}
-      <div className="flex shrink-0 items-center justify-between border-b border-(--border-subtle) bg-(--bg-surface) px-4 py-2">
-        <RequestKeyboardNav currentId={recordId} onNavigate={onNavigate} />
-        <div className="flex items-center gap-3">
+      {/* Panel chrome */}
+      <div className="flex shrink-0 items-center border-b border-(--border-subtle) bg-(--bg-surface) px-3 py-2">
+        {/* Left: spacer to balance right side */}
+        <div className="w-16 shrink-0" />
+
+        {/* Center: keyboard nav */}
+        <div className="flex flex-1 items-center justify-center">
+          <RequestKeyboardNav currentId={recordId} onNavigate={onNavigate} />
+        </div>
+
+        {/* Right: actions */}
+        <div className="flex w-16 shrink-0 items-center justify-end gap-1">
           <Link
             href={`/app/requests/${recordId}`}
             prefetch={false}
-            className="text-xs font-medium text-(--text-muted) transition-colors hover:text-(--color-primary)"
+            title="Open full page"
+            className="cursor-pointer flex h-7 w-7 items-center justify-center rounded-lg text-(--text-muted) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--text-primary)"
           >
-            Open full page ↗
+            <IconMaximize size={14} />
           </Link>
           <button
             type="button"
             onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-(--text-muted) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--text-primary)"
+            className="cursor-pointer flex h-7 w-7 items-center justify-center rounded-lg text-(--text-muted) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--text-primary)"
             aria-label="Close detail panel"
           >
-            <IconX size={15} />
+            <IconX size={14} />
           </button>
         </div>
       </div>
 
-      {/* Section 2 + 3: RequestDetailClient fills the rest and manages its own scroll */}
+      {/* Content */}
       <div className="min-h-0 flex-1 overflow-hidden">
         <RequestDetailClient
           recordId={recordId}
           currentUserId={currentUserId}
+          currentUserName={currentUserName}
+          currentUserEmail={currentUserEmail}
           permissions={permissions}
           onNavigate={onNavigate}
           stickyHeader

@@ -11,6 +11,8 @@ type Props = {
   canReadAll: boolean;
   workspaceCurrency: string;
   currentUserId: string;
+  currentUserName?: string | null;
+  currentUserEmail?: string | null;
   permissions: string[];
 };
 
@@ -19,6 +21,8 @@ export function RequestsSplitLayout({
   canReadAll,
   workspaceCurrency,
   currentUserId,
+  currentUserName,
+  currentUserEmail,
   permissions,
 }: Props) {
   const router = useRouter();
@@ -91,7 +95,7 @@ export function RequestsSplitLayout({
   }, []);
 
   const handleSelectRecord = useCallback(
-    (id: string) => {
+    (id: string, _key?: string | null) => {
       if (isMobile) {
         router.push(`/app/requests/${id}`);
         return;
@@ -167,6 +171,8 @@ export function RequestsSplitLayout({
               key={selectedId}
               recordId={selectedId}
               currentUserId={currentUserId}
+              currentUserName={currentUserName}
+              currentUserEmail={currentUserEmail}
               permissions={permissions}
               onClose={handleCloseDetail}
               onNavigate={handleSelectRecord}

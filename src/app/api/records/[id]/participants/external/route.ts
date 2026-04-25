@@ -30,6 +30,7 @@ const assignExternalSchema = z.object({
     .transform((s) => s.toLowerCase()),
   name: z.string().max(120).trim().optional(),
   expiresInHours: z.number().int().min(1).max(720).default(72),
+  participantRole: z.enum(["APPROVER", "VIEWER"]).default("APPROVER"),
 });
 
 /**
@@ -88,10 +89,29 @@ export const POST = withErrorHandler(async (
   if (!bodyResult.success) {
     return ApiErrors.VALIDATION_ERROR("Validation failed", bodyResult.error.flatten());
   }
-  const { email, name, expiresInHours } = bodyResult.data;
+  const { email, name, expiresInHours, participantRole } = bodyResult.data;
 
   if (user.email && email === user.email.toLowerCase()) {
     return ApiErrors.VALIDATION_ERROR("You cannot assign yourself as an external approver.");
+  }
+
+  // Check for existing non-revoked participant with same email + role
+  const existingExternal = await prisma.recordParticipant.findFirst({
+    where: {
+      recordId,
+      tenantId,
+      participantType: "EXTERNAL",
+      participantRole,
+      email,
+      revokedAt: null,
+    },
+    select: { id: true },
+  });
+
+  if (existingExternal) {
+    return ApiErrors.CONFLICT(
+      `This email has already been assigned as an external ${participantRole === "APPROVER" ? "approver" : "viewer"} for this request.`
+    );
   }
 
   const plainToken = randomBytes(32).toString("hex");
@@ -104,7 +124,7 @@ export const POST = withErrorHandler(async (
         tenantId,
         recordId,
         participantType: "EXTERNAL",
-        participantRole: "APPROVER",
+        participantRole,
         email,
         name: name ?? null,
         tokenHash,
@@ -125,6 +145,7 @@ export const POST = withErrorHandler(async (
           participantId: p.id,
           participantType: "EXTERNAL",
           approverEmail: email,
+          participantRole,
         },
       },
     });
@@ -137,7 +158,7 @@ export const POST = withErrorHandler(async (
         action: "record.approval.external_sent",
         targetType: "RecordParticipant",
         targetId: p.id,
-        metadata: { recordId, approverEmail: email },
+        metadata: { recordId, approverEmail: email, participantRole },
       },
     });
 

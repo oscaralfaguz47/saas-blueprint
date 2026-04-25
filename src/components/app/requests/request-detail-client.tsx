@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useApiFetch } from "@/hooks/use-api-fetch";
@@ -18,6 +26,8 @@ import {
   IconAlertCircle,
   IconPlus,
   IconUpload,
+  IconDot,
+  IconX,
 } from "@/components/ui/icons";
 import { RejectApprovalModal } from "./reject-approval-modal";
 import { ParticipantsPanel } from "./participants-panel";
@@ -32,7 +42,6 @@ import {
   RECORD_EVENT_LABELS,
   PAYMENT_STATUS_LABELS,
   PAYMENT_STATUS_BADGE,
-  RECORD_PRIORITY_BADGE,
   RECORD_PRIORITY_LABELS,
   RECORD_APPROVAL_STATUS_LABELS,
   RECORD_CLOSE_REASON_LABELS,
@@ -59,7 +68,7 @@ type Props = {
   currentUserEmail?: string | null;
   permissions: string[];
   /** Split-view: override navigation so prev/next stays within the panel */
-  onNavigate?: (id: string) => void;
+  onNavigate?: (id: string, key?: string | null) => void;
   /** Split-view: makes the request header sticky within the panel scroll container */
   stickyHeader?: boolean;
 };
@@ -174,18 +183,83 @@ export function RequestDetailClient({
   const toast = useToast();
 
   const [data, setData] = useState<RecordDetailResponse["data"] | null>(null);
+  const updateParticipants = useCallback(
+    (updater: (prev: RecordParticipant[]) => RecordParticipant[]) => {
+      setData((prev) => {
+        if (!prev) return prev;
+        return { ...prev, participants: updater(prev.participants) };
+      });
+    },
+    []
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
   const [setPaymentOpen, setSetPaymentOpen] = useState(false);
   const [linkRecordOpen, setLinkRecordOpen] = useState(false);
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+  const [closePanelStyle, setClosePanelStyle] = useState<CSSProperties>({
+    position: "fixed",
+    top: 0,
+    left: 0,
+    width: 0,
+    zIndex: 50,
+    visibility: "hidden" as const,
+  });
   const [closeReason, setCloseReason] = useState<string>("APPROVED_AND_COMPLETED");
   const [closeNotes, setCloseNotes] = useState("");
   const [approvalActionLoading, setApprovalActionLoading] = useState<string | null>(null);
   const [bannerRejectModalOpen, setBannerRejectModalOpen] = useState(false);
   const [bannerRejectTargetId, setBannerRejectTargetId] = useState<string | null>(null);
   const [bannerRejectSubmitting, setBannerRejectSubmitting] = useState(false);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const closePanelRef = useRef<HTMLDivElement>(null);
+
+  const updateClosePanelPos = useCallback(() => {
+    const panel = closePanelRef.current;
+    const button = closeButtonRef.current;
+    if (!panel || !button) return;
+    const margin = 8;
+    const panelWidth = Math.min(window.innerWidth - margin * 2, 420);
+    const rect = button.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const left = Math.max(margin, Math.min(rect.left, window.innerWidth - panelWidth - margin));
+    if (rect.bottom < 0 || rect.top > window.innerHeight) {
+      panel.style.visibility = "hidden";
+      return;
+    }
+    panel.style.visibility = "visible";
+    panel.style.width = `${panelWidth}px`;
+    panel.style.left = `${left}px`;
+    panel.style.right = "auto";
+    if (spaceBelow >= 280 || spaceBelow >= spaceAbove) {
+      panel.style.top = `${rect.bottom + 6}px`;
+      panel.style.bottom = "auto";
+    } else {
+      panel.style.bottom = `${window.innerHeight - rect.top + 6}px`;
+      panel.style.top = "auto";
+    }
+  }, []);
+
+  function getClosePanelStyle(): CSSProperties {
+    const button = closeButtonRef.current;
+    const margin = 8;
+    const panelWidth = Math.min(window.innerWidth - margin * 2, 420);
+    if (!button) {
+      return { position: "fixed", top: 120, left: margin, width: panelWidth, zIndex: 50 };
+    }
+    const rect = button.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const left = Math.max(margin, Math.min(rect.left, window.innerWidth - panelWidth - margin));
+    const base: CSSProperties = { position: "fixed", width: panelWidth, left, zIndex: 50 };
+    if (spaceBelow >= 280 || spaceBelow >= spaceAbove) {
+      return { ...base, top: rect.bottom + 6 };
+    } else {
+      return { ...base, bottom: window.innerHeight - rect.top + 6 };
+    }
+  }
 
   const canClose = permissions.includes("tenant.requests.close");
   const canComment = permissions.includes("tenant.requests.comment");
@@ -194,6 +268,44 @@ export function RequestDetailClient({
   const canRemoveEvidence = permissions.includes("tenant.evidence.remove");
   const canManagePayment = permissions.includes("tenant.payments.manage");
   const canLink = permissions.includes("tenant.requests.link");
+
+  const markParticipantViewed = useCallback(
+    async (loadedParticipants: RecordParticipant[]) => {
+      const myParticipant = loadedParticipants.find(
+        (p) =>
+          p.participantType === "INTERNAL" &&
+          p.userId === currentUserId &&
+          p.lastUsedAt === null &&
+          p.revokedAt === null
+      );
+      if (!myParticipant) return;
+
+      try {
+        await apiFetchRef.current(
+          `/api/records/${recordId}/participants/${myParticipant.id}/viewed`,
+          {
+            method: "POST",
+            showToastOnError: false,
+          }
+        );
+        // Optimistically update lastUsedAt in local state
+        setData((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            participants: prev.participants.map((p) =>
+              p.id === myParticipant.id
+                ? { ...p, lastUsedAt: new Date().toISOString() }
+                : p
+            ),
+          };
+        });
+      } catch {
+        // Silent fail — non-critical
+      }
+    },
+    [currentUserId, recordId]
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -221,12 +333,14 @@ export function RequestDetailClient({
         };
       };
       setData(normalizeDetailData(json.data));
+      // Fire-and-forget view tracking for internal participants
+      void markParticipantViewed(json.data.participants as RecordParticipant[]);
     } catch {
       setError("Failed to load request.");
     } finally {
       setLoading(false);
     }
-  }, [recordId]); // apiFetch via stable ref — recordId is the only meaningful dep
+  }, [recordId, markParticipantViewed]); // apiFetch via stable ref — recordId is the only meaningful dep
 
   const handleParticipantAction = useCallback(
     async (
@@ -281,6 +395,51 @@ export function RequestDetailClient({
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [closeDialogOpen]);
+
+  useEffect(() => {
+    if (!closeDialogOpen) return;
+    function handleClickOutside(e: MouseEvent | TouchEvent) {
+      const target = e.target as Node;
+      const insideButton = closeButtonRef.current?.contains(target) ?? false;
+      const insidePanel = closePanelRef.current?.contains(target) ?? false;
+      if (!insideButton && !insidePanel && !closing) {
+        setCloseDialogOpen(false);
+      }
+    }
+    // Use capture phase so it runs before any stopPropagation
+    document.addEventListener("mousedown", handleClickOutside, { capture: true });
+    document.addEventListener("touchstart", handleClickOutside, { capture: true, passive: true });
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside, { capture: true });
+      document.removeEventListener("touchstart", handleClickOutside, { capture: true });
+    };
+  }, [closeDialogOpen, closing]);
+
+  useEffect(() => {
+    if (!closeDialogOpen) return;
+    updateClosePanelPos();
+    const scrollableAncestors: Element[] = [];
+    let el: Element | null = closeButtonRef.current?.parentElement ?? null;
+    while (el) {
+      const { overflow, overflowY } = window.getComputedStyle(el);
+      if (/auto|scroll/.test(overflow + overflowY)) {
+        scrollableAncestors.push(el);
+      }
+      el = el.parentElement;
+    }
+    for (const ancestor of scrollableAncestors) {
+      ancestor.addEventListener("scroll", updateClosePanelPos, { passive: true });
+    }
+    window.addEventListener("scroll", updateClosePanelPos, { passive: true });
+    window.addEventListener("resize", updateClosePanelPos, { passive: true });
+    return () => {
+      for (const ancestor of scrollableAncestors) {
+        ancestor.removeEventListener("scroll", updateClosePanelPos);
+      }
+      window.removeEventListener("scroll", updateClosePanelPos);
+      window.removeEventListener("resize", updateClosePanelPos);
+    };
+  }, [closeDialogOpen, updateClosePanelPos]);
 
   async function handleCloseRequest() {
     if (!data || closing) return;
@@ -363,8 +522,10 @@ export function RequestDetailClient({
     !isClosed;
   const createdByLabel =
     rec.createdByUserId === currentUserId
-      ? currentUserName || currentUserEmail || "You"
-      : "Teammate";
+      ? currentUserName || currentUserEmail || "you"
+      : rec.createdByUserId
+        ? "a teammate"
+        : "unknown";
   const neededByPast =
     rec.neededByDate &&
     !isClosed &&
@@ -406,175 +567,6 @@ export function RequestDetailClient({
 
   return (
     <div className={stickyHeader ? "flex h-full flex-col overflow-hidden" : "space-y-6"}>
-      <div className={stickyHeader ? "shrink-0 space-y-3 px-4 pt-4 pb-0 sm:px-6" : "space-y-3"}>
-        {!stickyHeader && (
-          <div className="flex items-center justify-between gap-3">
-            <Link
-              href="/app/requests"
-              className="inline-flex items-center gap-1.5 text-sm text-(--text-muted) transition-colors hover:text-(--text-primary)"
-            >
-              <IconChevronLeft size={14} />
-              Back to requests
-            </Link>
-            <RequestKeyboardNav currentId={recordId} onNavigate={onNavigate} />
-          </div>
-        )}
-
-        <header className="space-y-2.5 rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev) p-3 sm:pl-4 sm:pr-4 sm:pt-4 sm:pb-4 animate-in fade-in slide-in-from-top-1 duration-200">
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            title="Click to copy request ID"
-            onClick={() => {
-              void navigator.clipboard
-                .writeText(rec.recordKey ?? rec.id)
-                .catch(() => {});
-            }}
-            className="rounded-md border border-(--border-subtle) bg-(--bg-surface-elev) px-2 py-0.5 font-mono text-sm font-semibold text-(--text-primary) transition-colors hover:border-(--color-primary) hover:bg-(--color-primary-soft) hover:text-(--color-primary)"
-          >
-            {rec.recordKey ?? `#${rec.id.slice(0, 8)}`}
-          </button>
-          <Badge variant={RECORD_STATUS_BADGE[rec.status]}>
-            {RECORD_STATUS_LABELS[rec.status]}
-          </Badge>
-          <Badge variant="secondary">{RECORD_TYPE_LABELS[rec.type]}</Badge>
-          <Badge variant={RECORD_PRIORITY_BADGE[rec.priority] ?? "secondary"}>
-            {RECORD_PRIORITY_LABELS[rec.priority] ?? rec.priority}
-          </Badge>
-          {rec.overdue && (
-            <Badge variant="destructive">Overdue</Badge>
-          )}
-          <span className="text-xs text-(--text-muted)">
-            Created {formatDate(rec.createdAt)} by {createdByLabel}
-          </span>
-        </div>
-        <h1 className="break-words text-2xl font-semibold tracking-tight text-(--text-primary)">
-          {rec.title}
-        </h1>
-        {rec.neededByDate && (
-          <div className="text-sm">
-            <span className={neededByPast ? "font-medium text-(--color-warning)" : "text-(--text-muted)"}>
-              Needed by: {formatDate(rec.neededByDate)}
-              {neededByPast ? " · URGENT" : ""}
-            </span>
-          </div>
-        )}
-        <div className="flex flex-wrap items-center gap-3 text-sm">
-          {(rec.requestedAmount != null || rec.amount != null) && (
-            <span className="font-medium text-(--text-primary)">
-              {formatAmount(
-                rec.requestedAmount ?? rec.amount,
-                rec.currencyCode ?? rec.currency
-              )}
-            </span>
-          )}
-          <span className="text-(--text-secondary)">
-            Approval: {RECORD_APPROVAL_STATUS_LABELS[rec.approvalStatus] ?? rec.approvalStatus}
-          </span>
-        </div>
-
-        <div className="flex flex-wrap gap-2 border-t border-(--border-subtle) pt-3">
-          {showSubmitForApproval && (
-            <button
-              type="button"
-              onClick={() => scrollToSection("section-approvers")}
-              className="inline-flex h-9 items-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white shadow-sm hover:bg-(--color-primary-hover)"
-            >
-              Submit for approval
-            </button>
-          )}
-          {canAssignInternal && !isClosed && (
-            <button
-              type="button"
-              onClick={() => scrollToSection("section-approvers")}
-              className="inline-flex h-9 items-center rounded-lg border border-(--border-subtle) px-4 text-sm text-(--text-secondary) hover:bg-(--bg-surface-hover)"
-            >
-              Assign approver
-            </button>
-          )}
-          {canExport && (
-            <button
-              type="button"
-              onClick={() => void handleExportPdf()}
-              className="inline-flex h-9 items-center rounded-lg border border-(--border-subtle) px-4 text-sm text-(--text-secondary) hover:bg-(--bg-surface-hover)"
-            >
-              Export PDF
-            </button>
-          )}
-          {canClose && !isClosed && (
-            <button
-              type="button"
-              onClick={() => {
-                setCloseReason(closeReasonOptions[0]?.value ?? "APPROVED_AND_COMPLETED");
-                setCloseDialogOpen(true);
-              }}
-              className="inline-flex h-9 items-center rounded-lg border border-(--border-subtle) px-4 text-sm text-(--text-secondary) hover:bg-(--bg-surface-hover)"
-            >
-              Close request
-            </button>
-          )}
-          {record.status === "DRAFT" && record.createdByUserId === currentUserId && (
-            <SubmitDraftButton recordId={recordId} onSuccess={load} />
-          )}
-        </div>
-
-        {closeDialogOpen && (
-          <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface) p-4">
-            <p className="mb-3 text-sm font-medium text-(--text-primary)">Close request</p>
-            <div className="space-y-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-(--text-muted)">
-                  Reason for closing
-                </label>
-                <select
-                  value={closeReason}
-                  onChange={(e) => setCloseReason(e.target.value)}
-                  className="h-10 w-full max-w-md rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 text-sm text-(--text-primary)"
-                >
-                  {closeReasonOptions.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-(--text-muted)">
-                  Additional notes (optional)
-                </label>
-                <Textarea
-                  value={closeNotes}
-                  onChange={(e) => setCloseNotes(e.target.value)}
-                  maxLength={1000}
-                  rows={3}
-                  placeholder="Optional context for the audit log…"
-                />
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => void handleCloseRequest()}
-                  disabled={closing}
-                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white disabled:opacity-60"
-                >
-                  {closing && <Spinner size="sm" />}
-                  Close request
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCloseDialogOpen(false)}
-                  disabled={closing}
-                  className="inline-flex h-9 items-center rounded-lg border px-4 text-sm text-(--text-secondary)"
-                >
-                  Keep open
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </header>
-      </div>
-
       <div
         className={stickyHeader ? "relative min-h-0 flex-1 flex flex-col" : "contents"}
       >
@@ -602,7 +594,7 @@ export function RequestDetailClient({
           ref={scrollCallbackRef}
           className={
             stickyHeader
-              ? "min-h-0 flex-1 space-y-6 overflow-y-auto px-4 pb-6 sm:px-6"
+              ? "min-h-0 flex-1 overflow-y-auto px-4 pb-6 sm:px-6"
               : "contents"
           }
           style={
@@ -611,6 +603,146 @@ export function RequestDetailClient({
               : undefined
           }
         >
+          <div className={stickyHeader ? "pt-4 pb-0 space-y-3" : "space-y-3"}>
+            {!stickyHeader && (
+              <div className="flex items-center justify-between gap-3">
+                <Link
+                  href="/app/requests"
+                  className="inline-flex items-center gap-1.5 text-sm text-(--text-muted) transition-colors hover:text-(--text-primary)"
+                >
+                  <IconChevronLeft size={14} />
+                  Back to requests
+                </Link>
+                <RequestKeyboardNav currentId={recordId} onNavigate={onNavigate} />
+              </div>
+            )}
+            <header className="space-y-2.5 rounded-xl border border-(--border-subtle) bg-(--bg-surface-elev) p-3 sm:pl-4 sm:pr-4 sm:pt-4 sm:pb-4 animate-in fade-in slide-in-from-top-1 duration-200">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  title="Click to copy request ID"
+                  onClick={() => {
+                    void navigator.clipboard
+                      .writeText(rec.recordKey ?? rec.id)
+                      .catch(() => {});
+                  }}
+                  className="rounded-md border border-(--border-subtle) bg-(--bg-surface-elev) px-2 py-0.5 font-mono text-sm font-semibold text-(--text-primary) transition-colors hover:border-(--color-primary) hover:bg-(--color-primary-soft) hover:text-(--color-primary)"
+                >
+                  {rec.recordKey ?? `#${rec.id.slice(0, 8)}`}
+                </button>
+                <Badge variant={RECORD_STATUS_BADGE[rec.status]}>
+                  {RECORD_STATUS_LABELS[rec.status]}
+                </Badge>
+                <Badge variant="secondary">{RECORD_TYPE_LABELS[rec.type]}</Badge>
+                <span
+                  className={[
+                    "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium",
+                    rec.priority === "URGENT"
+                      ? "border-(--color-danger-soft) bg-(--color-danger-soft) text-(--color-danger)"
+                      : rec.priority === "HIGH"
+                        ? "border-(--color-warning-soft) bg-(--color-warning-soft) text-(--color-warning)"
+                        : rec.priority === "MEDIUM"
+                          ? "border-(--border-subtle) bg-(--bg-surface-elev) text-(--text-secondary)"
+                          : "border-(--border-subtle) bg-(--bg-surface-elev) text-(--text-muted)",
+                  ].join(" ")}
+                >
+                  <IconDot
+                    size={8}
+                    className={
+                      rec.priority === "URGENT"
+                        ? "text-(--color-danger)"
+                        : rec.priority === "HIGH"
+                          ? "text-(--color-warning)"
+                          : rec.priority === "MEDIUM"
+                            ? "text-(--color-primary)"
+                            : "text-(--text-muted)"
+                    }
+                  />
+                  <span className="text-(--text-muted) font-normal">Priority:</span>
+                  {RECORD_PRIORITY_LABELS[rec.priority] ?? rec.priority}
+                </span>
+                {rec.overdue && (
+                  <Badge variant="destructive">Overdue</Badge>
+                )}
+                <span className="text-xs text-(--text-muted)">
+                  Created {formatDate(rec.createdAt)} by {createdByLabel}
+                </span>
+              </div>
+              <h1 className="break-words text-2xl font-semibold tracking-tight text-(--text-primary)">
+                {rec.title}
+              </h1>
+              {rec.neededByDate && (
+                <div className="text-sm">
+                  <span className={neededByPast ? "font-medium text-(--color-warning)" : "text-(--text-muted)"}>
+                    Needed by: {formatDate(rec.neededByDate)}
+                    {neededByPast ? " · URGENT" : ""}
+                  </span>
+                </div>
+              )}
+              <div className="flex flex-wrap items-center gap-3 text-sm">
+                {(rec.requestedAmount != null || rec.amount != null) && (
+                  <span className="font-medium text-(--text-primary)">
+                    {formatAmount(
+                      rec.requestedAmount ?? rec.amount,
+                      rec.currencyCode ?? rec.currency
+                    )}
+                  </span>
+                )}
+                <span className="text-(--text-secondary)">
+                  Approval: {RECORD_APPROVAL_STATUS_LABELS[rec.approvalStatus] ?? rec.approvalStatus}
+                </span>
+              </div>
+
+              <div className="flex flex-wrap gap-2 border-t border-(--border-subtle) pt-3">
+                {showSubmitForApproval && (
+                  <button
+                    type="button"
+                    onClick={() => scrollToSection("section-approvers")}
+                    className="cursor-pointer inline-flex h-9 items-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white shadow-sm hover:bg-(--color-primary-hover)"
+                  >
+                    Submit for approval
+                  </button>
+                )}
+                {canAssignInternal && !isClosed && (
+                  <button
+                    type="button"
+                    onClick={() => scrollToSection("section-approvers")}
+                    className="cursor-pointer inline-flex h-9 items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-secondary) transition-colors hover:border-(--border-strong) hover:text-(--text-primary)"
+                  >
+                    Assign approver
+                  </button>
+                )}
+                {canExport && (
+                  <button
+                    type="button"
+                    onClick={() => void handleExportPdf()}
+                    className="cursor-pointer inline-flex h-9 items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-secondary) transition-colors hover:border-(--border-strong) hover:text-(--text-primary)"
+                  >
+                    Export PDF
+                  </button>
+                )}
+                {canClose && !isClosed && (
+                  <button
+                    ref={closeButtonRef}
+                    type="button"
+                    onClick={() => {
+                      setCloseReason(closeReasonOptions[0]?.value ?? "APPROVED_AND_COMPLETED");
+                      setClosePanelStyle(getClosePanelStyle());
+                      setCloseDialogOpen(true);
+                    }}
+                    className="cursor-pointer inline-flex h-9 items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-secondary) transition-colors hover:border-(--color-danger-soft) hover:bg-(--color-danger-soft) hover:text-(--color-danger)"
+                  >
+                    Close request
+                  </button>
+                )}
+                {record.status === "DRAFT" && record.createdByUserId === currentUserId && (
+                  <SubmitDraftButton recordId={recordId} onSuccess={load} />
+                )}
+              </div>
+            </header>
+          </div>
+
+          <div className="mt-4 space-y-6">
       <div className="mt-2">
         <AllActionBanners
           rec={rec}
@@ -680,6 +812,112 @@ export function RequestDetailClient({
                   )}
                   {rec.isRecurring && <Badge variant="secondary">Recurring</Badge>}
                 </div>
+                {rec.taxAmount != null && (
+                  <div className="mt-4 border-t border-(--border-subtle) pt-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div>
+                        <p className="text-xs font-medium text-(--text-muted)">Tax amount</p>
+                        <p className="mt-1 text-sm font-semibold tabular-nums text-(--text-primary)">
+                          {formatAmount(rec.taxAmount, rec.currencyCode ?? rec.currency)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-(--text-muted)">Tax treatment</p>
+                        <p className="mt-1 text-sm text-(--text-primary)">
+                          {rec.taxIncluded === true
+                            ? "Included in amount"
+                            : rec.taxIncluded === false
+                              ? "Excluded from amount"
+                              : "—"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {rec.isRecurring && rec.recurrenceNotes && (
+                  <div className="mt-3">
+                    <p className="text-xs font-medium text-(--text-muted)">Recurrence details</p>
+                    <p className="mt-1 text-sm text-(--text-secondary)">{rec.recurrenceNotes}</p>
+                  </div>
+                )}
+              </CardContent>
+            </CardRoot>
+          )}
+
+          {(rec.description || rec.businessJustification || (rec.hasPolicyException && rec.policyExceptionReason)) && (
+            <CardRoot>
+              <CardHeader>
+                <h2 className="text-sm font-semibold text-(--text-primary)">Request details</h2>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {rec.description && (
+                  <div>
+                    <p className="text-xs font-medium text-(--text-muted)">Description</p>
+                    <p className="mt-1 text-sm leading-relaxed text-(--text-secondary) whitespace-pre-wrap">
+                      {rec.description}
+                    </p>
+                  </div>
+                )}
+                {rec.businessJustification && (
+                  <div>
+                    <p className="text-xs font-medium text-(--text-muted)">Business justification</p>
+                    <p className="mt-1 text-sm leading-relaxed text-(--text-secondary) whitespace-pre-wrap">
+                      {rec.businessJustification}
+                    </p>
+                  </div>
+                )}
+                {rec.hasPolicyException && rec.policyExceptionReason && (
+                  <div className="rounded-lg border border-(--color-warning-soft) bg-(--color-warning-soft) px-3 py-2.5">
+                    <p className="text-xs font-semibold text-(--color-warning)">
+                      ⚠ Policy exception reason
+                    </p>
+                    <p className="mt-1 text-sm leading-relaxed text-(--color-warning) whitespace-pre-wrap">
+                      {rec.policyExceptionReason}
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </CardRoot>
+          )}
+
+          {(rec.vendorName || rec.payeeName || rec.invoiceNumber || rec.contractReference || rec.purchaseOrderRef) && (
+            <CardRoot>
+              <CardHeader>
+                <h2 className="text-sm font-semibold text-(--text-primary)">Vendor & payment</h2>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {rec.vendorName && (
+                    <div>
+                      <p className="text-xs font-medium text-(--text-muted)">Vendor / Supplier</p>
+                      <p className="mt-1 text-sm font-medium text-(--text-primary)">{rec.vendorName}</p>
+                    </div>
+                  )}
+                  {rec.payeeName && (
+                    <div>
+                      <p className="text-xs font-medium text-(--text-muted)">Payee / Beneficiary</p>
+                      <p className="mt-1 text-sm font-medium text-(--text-primary)">{rec.payeeName}</p>
+                    </div>
+                  )}
+                  {rec.invoiceNumber && (
+                    <div>
+                      <p className="text-xs font-medium text-(--text-muted)">Invoice number</p>
+                      <p className="mt-1 text-sm font-mono text-(--text-primary)">{rec.invoiceNumber}</p>
+                    </div>
+                  )}
+                  {rec.contractReference && (
+                    <div>
+                      <p className="text-xs font-medium text-(--text-muted)">Contract reference</p>
+                      <p className="mt-1 text-sm font-mono text-(--text-primary)">{rec.contractReference}</p>
+                    </div>
+                  )}
+                  {rec.purchaseOrderRef && (
+                    <div>
+                      <p className="text-xs font-medium text-(--text-muted)">Purchase order ref</p>
+                      <p className="mt-1 text-sm font-mono text-(--text-primary)">{rec.purchaseOrderRef}</p>
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </CardRoot>
           )}
@@ -723,6 +961,7 @@ export function RequestDetailClient({
               canAssignExternal={canAssignExternal}
               isRequestCreator={isRequestCreator}
               onRefresh={load}
+              onParticipantsChange={updateParticipants}
             />
           </div>
 
@@ -795,6 +1034,65 @@ export function RequestDetailClient({
             </CardContent>
           </CardRoot>
 
+          {(rec.department ?? rec.costCenter ?? rec.riskLevel) && (
+            <CardRoot>
+              <CardHeader>
+                <h2 className="text-sm font-semibold text-(--text-primary)">Organizational context</h2>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {rec.department && (
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-xs font-medium text-(--text-muted)">Department</p>
+                    <p className="text-xs text-right font-medium text-(--text-primary)">
+                      {rec.department.name}
+                      {rec.department.code ? (
+                        <span className="ml-1.5 font-normal text-(--text-muted)">
+                          ({rec.department.code})
+                        </span>
+                      ) : null}
+                    </p>
+                  </div>
+                )}
+                {rec.costCenter && (
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-xs font-medium text-(--text-muted)">Cost center</p>
+                    <p className="text-xs text-right font-medium text-(--text-primary)">
+                      {rec.costCenter.name}
+                      <span className="ml-1.5 font-normal text-(--text-muted)">
+                        ({rec.costCenter.code})
+                      </span>
+                    </p>
+                  </div>
+                )}
+                {rec.costCenter?.department && !rec.department && (
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-xs font-medium text-(--text-muted)">Department</p>
+                    <p className="text-xs text-right font-medium text-(--text-primary)">
+                      {rec.costCenter.department.name}
+                    </p>
+                  </div>
+                )}
+                {rec.riskLevel && (
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-xs font-medium text-(--text-muted)">Risk level</p>
+                    <span
+                      className={[
+                        "rounded-md px-2 py-0.5 text-[11px] font-semibold",
+                        rec.riskLevel === "HIGH"
+                          ? "bg-(--color-danger-soft) text-(--color-danger)"
+                          : rec.riskLevel === "MEDIUM"
+                            ? "bg-(--color-warning-soft) text-(--color-warning)"
+                            : "bg-(--bg-surface-elev) text-(--text-muted)",
+                      ].join(" ")}
+                    >
+                      {rec.riskLevel.charAt(0) + rec.riskLevel.slice(1).toLowerCase()}
+                    </span>
+                  </div>
+                )}
+              </CardContent>
+            </CardRoot>
+          )}
+
           {record.requestedAmount != null && record.requestedAmount > 0 && (
             <PaymentSection
               payment={payment}
@@ -809,6 +1107,7 @@ export function RequestDetailClient({
           )}
         </div>
       </div>
+          </div>
         </div>
       </div>
 
@@ -848,6 +1147,85 @@ export function RequestDetailClient({
           }
         }}
       />
+      {closeDialogOpen &&
+        typeof window !== "undefined" &&
+        createPortal(
+          <div
+            ref={closePanelRef}
+            className="z-50"
+            style={closePanelStyle}
+          >
+            <div className="overflow-hidden rounded-xl border border-(--border-subtle) bg-(--bg-surface) shadow-xl ring-1 ring-black/5">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-(--border-subtle) px-4 py-3">
+                <p className="text-sm font-semibold text-(--text-primary)">Close request</p>
+                <button
+                  type="button"
+                  onClick={() => setCloseDialogOpen(false)}
+                  disabled={closing}
+                  className="cursor-pointer flex h-6 w-6 items-center justify-center rounded text-(--text-muted) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--text-primary) disabled:opacity-40"
+                >
+                  <IconX size={13} />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="space-y-3 px-4 py-3">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-medium text-(--text-muted)">
+                    Reason for closing
+                  </label>
+                  <select
+                    value={closeReason}
+                    onChange={(e) => setCloseReason(e.target.value)}
+                    className="h-9 w-full rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 text-sm text-(--text-primary) focus:ring-2 focus:ring-(--color-focus-ring) focus:outline-none"
+                  >
+                    {closeReasonOptions.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-medium text-(--text-muted)">
+                    Notes{" "}
+                    <span className="font-normal opacity-60">(optional)</span>
+                  </label>
+                  <Textarea
+                    value={closeNotes}
+                    onChange={(e) => setCloseNotes(e.target.value)}
+                    maxLength={1000}
+                    rows={3}
+                    placeholder="Optional context for the audit log…"
+                  />
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-end gap-2 border-t border-(--border-subtle) px-4 py-3">
+                <button
+                  type="button"
+                  onClick={() => setCloseDialogOpen(false)}
+                  disabled={closing}
+                  className="cursor-pointer inline-flex h-8 items-center rounded-lg border border-(--border-subtle) px-3 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleCloseRequest()}
+                  disabled={closing}
+                  className="cursor-pointer inline-flex h-8 items-center gap-2 rounded-lg bg-(--color-danger) px-3 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:opacity-60"
+                >
+                  {closing && <Spinner size="sm" />}
+                  Close request
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
@@ -1114,7 +1492,9 @@ function TimelineSection({
                             : "text-(--text-primary)",
                         ].join(" ")}
                       >
-                        {RECORD_EVENT_LABELS[ev.eventType] ?? ev.eventType}
+                        {ev.eventType === "APPROVAL_REQUESTED" && ev.metadata?.action === "participant_removed"
+                          ? "Participant removed"
+                          : RECORD_EVENT_LABELS[ev.eventType] ?? ev.eventType}
                         {ev.eventType === "EVIDENCE_FILE_ADDED" &&
                         ev.metadata?.fileName != null &&
                         ev.metadata.fileName !== "" ? (
@@ -1146,6 +1526,40 @@ function TimelineSection({
                         (ev.metadata?.fileName != null || ev.metadata?.label != null) ? (
                           <span className="ml-1 font-normal text-(--text-muted)">
                             — {String(ev.metadata?.fileName ?? ev.metadata?.label ?? "")}
+                          </span>
+                        ) : null}
+                        {/* Participant assigned — show role and name */}
+                        {ev.eventType === "APPROVAL_REQUESTED" &&
+                        ev.metadata?.action !== "participant_removed" &&
+                        (ev.metadata?.participantName != null ||
+                          ev.metadata?.participantEmail != null) ? (
+                          <span className="ml-1 font-normal text-(--text-muted)">
+                            {ev.metadata?.participantRole === "VIEWER" ? "viewer" : "approver"}
+                            {" — "}
+                            {String(
+                              ev.metadata?.participantName ?? ev.metadata?.participantEmail ?? ""
+                            )}
+                          </span>
+                        ) : null}
+
+                        {/* Participant removed — show role and name */}
+                        {ev.eventType === "APPROVAL_REQUESTED" &&
+                        ev.metadata?.action === "participant_removed" ? (
+                          <span className="ml-1 font-normal text-(--text-muted)">
+                            {ev.metadata?.participantRole === "VIEWER"
+                              ? "viewer removed"
+                              : "approver removed"}
+                            {ev.metadata?.removedName != null || ev.metadata?.removedEmail != null
+                              ? ` — ${String(ev.metadata?.removedName ?? ev.metadata?.removedEmail ?? "")}`
+                              : ""}
+                          </span>
+                        ) : null}
+
+                        {/* Participant viewed */}
+                        {ev.eventType === "PARTICIPANT_VIEWED" &&
+                        ev.metadata?.participantRole != null ? (
+                          <span className="ml-1 font-normal text-(--text-muted)">
+                            {ev.metadata.participantRole === "VIEWER" ? "by viewer" : "by approver"}
                           </span>
                         ) : null}
                       </span>
@@ -2411,7 +2825,7 @@ export function RequestKeyboardNav({
   onNavigate,
 }: {
   currentId: string;
-  onNavigate?: (id: string) => void;
+  onNavigate?: (id: string, key?: string | null) => void;
 }) {
   const router = useRouter();
   const [navList, setNavList] = useState<string[]>([]);

@@ -30,6 +30,11 @@ export default async function RequestsListPage() {
     select: { currency: true },
   });
 
+  const currentUser = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { name: true, email: true },
+  });
+
   return (
     <Suspense fallback={<RequestsPageSkeleton />}>
       <RequestsSplitLayout
@@ -37,6 +42,8 @@ export default async function RequestsListPage() {
         canReadAll={canReadAll}
         workspaceCurrency={tenantCurrency?.currency ?? "USD"}
         currentUserId={session.user.id}
+        currentUserName={currentUser?.name ?? null}
+        currentUserEmail={currentUser?.email ?? null}
         permissions={permissions}
       />
     </Suspense>

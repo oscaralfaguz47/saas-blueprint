@@ -156,7 +156,7 @@ type Props = {
   canReadAll: boolean;
   workspaceCurrency?: string;
   /** Split-view: called instead of router.push when set */
-  onNavigate?: (id: string) => void;
+  onNavigate?: (id: string, recordKey?: string | null) => void;
   /** Split-view: currently selected record id (highlights the row) */
   selectedId?: string;
   /** Split-view: compact mode hides metric cards grid labels, reduces padding */
@@ -547,7 +547,7 @@ export function RequestsListClient({
           // ignore
         }
         if (onNavigateOverride) {
-          onNavigateOverride(id);
+          onNavigateOverride(id, records[focusedIndex]?.recordKey ?? null);
         } else {
           router.push(`/app/requests/${id}`);
         }
@@ -907,7 +907,7 @@ export function RequestsListClient({
                     isFilteredOrSearch={isFilteredOrSearch}
                     focusedIndex={focusedIndex}
                     selectedId={selectedId}
-                    onNavigate={(id) => {
+                    onNavigate={(id, key) => {
                       try {
                         sessionStorage.setItem(
                           "rlt_request_nav_list",
@@ -917,7 +917,7 @@ export function RequestsListClient({
                         // ignore
                       }
                       if (onNavigateOverride) {
-                        onNavigateOverride(id);
+                        onNavigateOverride(id, key);
                       } else {
                         router.push(`/app/requests/${id}`);
                       }
@@ -957,7 +957,7 @@ export function RequestsListClient({
                     isFilteredOrSearch={isFilteredOrSearch}
                     focusedIndex={focusedIndex}
                     selectedId={selectedId}
-                    onNavigate={(id) => {
+                    onNavigate={(id, key) => {
                       try {
                         sessionStorage.setItem(
                           "rlt_request_nav_list",
@@ -967,7 +967,7 @@ export function RequestsListClient({
                         // ignore
                       }
                       if (onNavigateOverride) {
-                        onNavigateOverride(id);
+                        onNavigateOverride(id, key);
                       } else {
                         router.push(`/app/requests/${id}`);
                       }
@@ -1489,7 +1489,7 @@ function RecordsList({
   isFilteredOrSearch: boolean;
   focusedIndex: number;
   selectedId?: string;
-  onNavigate: (id: string) => void;
+  onNavigate: (id: string, recordKey?: string | null) => void;
   onClearFilters: () => void;
   onNewRequest?: () => void;
   compact?: boolean;
@@ -1558,7 +1558,7 @@ function RecordsList({
         <RecordRow
           key={r.id}
           record={r}
-          onClick={() => onNavigate(r.id)}
+          onClick={() => onNavigate(r.id, r.recordKey ?? null)}
           isFocused={focusedIndex === idx}
           isSelected={selectedId === r.id}
           href={`/app/requests/${r.id}`}

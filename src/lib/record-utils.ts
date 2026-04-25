@@ -168,9 +168,9 @@ export function formatDate(iso: string): string {
 export const RECORD_EVENT_LABELS: Record<string, string> = {
   RECORD_CREATED: "Request created",
   RECORD_CLOSED: "Request closed",
-  APPROVAL_REQUESTED: "Approver assigned",
-  APPROVAL_APPROVED: "Approved",
-  APPROVAL_REJECTED: "Rejected",
+  APPROVAL_REQUESTED: "Participant assigned",
+  APPROVAL_APPROVED: "Request approved",
+  APPROVAL_REJECTED: "Request rejected",
   APPROVAL_LINK_OPENED: "Approval link opened",
   EVIDENCE_FILE_ADDED: "File added",
   EVIDENCE_FILE_REMOVED: "File removed",
@@ -184,9 +184,10 @@ export const RECORD_EVENT_LABELS: Record<string, string> = {
   PAYMENT_STATUS_SET: "Payment status updated",
   PAYMENT_EVIDENCE_ADDED: "Payment proof added",
   PAYMENT_EVIDENCE_REMOVED: "Payment proof removed",
-  REMINDER_SENT: "Reminder sent",
+  REMINDER_SENT: "Reminder sent to approvers",
   EXPORT_PDF_GENERATED: "PDF exported",
   EXPORT_BUNDLE_GENERATED: "Bundle exported",
+  PARTICIPANT_VIEWED: "Request viewed",
 };
 
 export const PAYMENT_STATUS_LABELS: Record<string, string> = {
