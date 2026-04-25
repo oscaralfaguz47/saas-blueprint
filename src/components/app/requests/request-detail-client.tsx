@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useApiFetch } from "@/hooks/use-api-fetch";
@@ -18,6 +19,8 @@ import {
   IconAlertCircle,
   IconPlus,
   IconUpload,
+  IconDot,
+  IconX,
 } from "@/components/ui/icons";
 import { RejectApprovalModal } from "./reject-approval-modal";
 import { ParticipantsPanel } from "./participants-panel";
@@ -32,7 +35,6 @@ import {
   RECORD_EVENT_LABELS,
   PAYMENT_STATUS_LABELS,
   PAYMENT_STATUS_BADGE,
-  RECORD_PRIORITY_BADGE,
   RECORD_PRIORITY_LABELS,
   RECORD_APPROVAL_STATUS_LABELS,
   RECORD_CLOSE_REASON_LABELS,
@@ -59,7 +61,7 @@ type Props = {
   currentUserEmail?: string | null;
   permissions: string[];
   /** Split-view: override navigation so prev/next stays within the panel */
-  onNavigate?: (id: string) => void;
+  onNavigate?: (id: string, key?: string | null) => void;
   /** Split-view: makes the request header sticky within the panel scroll container */
   stickyHeader?: boolean;
 };
@@ -195,6 +197,7 @@ export function RequestDetailClient({
   const [bannerRejectModalOpen, setBannerRejectModalOpen] = useState(false);
   const [bannerRejectTargetId, setBannerRejectTargetId] = useState<string | null>(null);
   const [bannerRejectSubmitting, setBannerRejectSubmitting] = useState(false);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   const canClose = permissions.includes("tenant.requests.close");
   const canComment = permissions.includes("tenant.requests.comment");
@@ -372,8 +375,10 @@ export function RequestDetailClient({
     !isClosed;
   const createdByLabel =
     rec.createdByUserId === currentUserId
-      ? currentUserName || currentUserEmail || "You"
-      : "Teammate";
+      ? currentUserName || currentUserEmail || "you"
+      : rec.createdByUserId
+        ? "a teammate"
+        : "unknown";
   const neededByPast =
     rec.neededByDate &&
     !isClosed &&
@@ -482,9 +487,33 @@ export function RequestDetailClient({
                   {RECORD_STATUS_LABELS[rec.status]}
                 </Badge>
                 <Badge variant="secondary">{RECORD_TYPE_LABELS[rec.type]}</Badge>
-                <Badge variant={RECORD_PRIORITY_BADGE[rec.priority] ?? "secondary"}>
+                <span
+                  className={[
+                    "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium",
+                    rec.priority === "URGENT"
+                      ? "border-(--color-danger-soft) bg-(--color-danger-soft) text-(--color-danger)"
+                      : rec.priority === "HIGH"
+                        ? "border-(--color-warning-soft) bg-(--color-warning-soft) text-(--color-warning)"
+                        : rec.priority === "MEDIUM"
+                          ? "border-(--border-subtle) bg-(--bg-surface-elev) text-(--text-secondary)"
+                          : "border-(--border-subtle) bg-(--bg-surface-elev) text-(--text-muted)",
+                  ].join(" ")}
+                >
+                  <IconDot
+                    size={8}
+                    className={
+                      rec.priority === "URGENT"
+                        ? "text-(--color-danger)"
+                        : rec.priority === "HIGH"
+                          ? "text-(--color-warning)"
+                          : rec.priority === "MEDIUM"
+                            ? "text-(--color-primary)"
+                            : "text-(--text-muted)"
+                    }
+                  />
+                  <span className="text-(--text-muted) font-normal">Priority:</span>
                   {RECORD_PRIORITY_LABELS[rec.priority] ?? rec.priority}
-                </Badge>
+                </span>
                 {rec.overdue && (
                   <Badge variant="destructive">Overdue</Badge>
                 )}
@@ -522,7 +551,7 @@ export function RequestDetailClient({
                   <button
                     type="button"
                     onClick={() => scrollToSection("section-approvers")}
-                    className="inline-flex h-9 items-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white shadow-sm hover:bg-(--color-primary-hover)"
+                    className="cursor-pointer inline-flex h-9 items-center rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white shadow-sm hover:bg-(--color-primary-hover)"
                   >
                     Submit for approval
                   </button>
@@ -531,7 +560,7 @@ export function RequestDetailClient({
                   <button
                     type="button"
                     onClick={() => scrollToSection("section-approvers")}
-                    className="inline-flex h-9 items-center rounded-lg border border-(--border-subtle) px-4 text-sm text-(--text-secondary) hover:bg-(--bg-surface-hover)"
+                    className="cursor-pointer inline-flex h-9 items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-secondary) transition-colors hover:border-(--border-strong) hover:text-(--text-primary)"
                   >
                     Assign approver
                   </button>
@@ -540,19 +569,20 @@ export function RequestDetailClient({
                   <button
                     type="button"
                     onClick={() => void handleExportPdf()}
-                    className="inline-flex h-9 items-center rounded-lg border border-(--border-subtle) px-4 text-sm text-(--text-secondary) hover:bg-(--bg-surface-hover)"
+                    className="cursor-pointer inline-flex h-9 items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-secondary) transition-colors hover:border-(--border-strong) hover:text-(--text-primary)"
                   >
                     Export PDF
                   </button>
                 )}
                 {canClose && !isClosed && (
                   <button
+                    ref={closeButtonRef}
                     type="button"
                     onClick={() => {
                       setCloseReason(closeReasonOptions[0]?.value ?? "APPROVED_AND_COMPLETED");
                       setCloseDialogOpen(true);
                     }}
-                    className="inline-flex h-9 items-center rounded-lg border border-(--border-subtle) px-4 text-sm text-(--text-secondary) hover:bg-(--bg-surface-hover)"
+                    className="cursor-pointer inline-flex h-9 items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-secondary) transition-colors hover:border-(--color-danger-soft) hover:bg-(--color-danger-soft) hover:text-(--color-danger)"
                   >
                     Close request
                   </button>
@@ -561,61 +591,6 @@ export function RequestDetailClient({
                   <SubmitDraftButton recordId={recordId} onSuccess={load} />
                 )}
               </div>
-
-              {closeDialogOpen && (
-                <div className="rounded-lg border border-(--border-subtle) bg-(--bg-surface) p-4">
-                  <p className="mb-3 text-sm font-medium text-(--text-primary)">Close request</p>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="mb-1 block text-xs font-medium text-(--text-muted)">
-                        Reason for closing
-                      </label>
-                      <select
-                        value={closeReason}
-                        onChange={(e) => setCloseReason(e.target.value)}
-                        className="h-10 w-full max-w-md rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 text-sm text-(--text-primary)"
-                      >
-                        {closeReasonOptions.map((o) => (
-                          <option key={o.value} value={o.value}>
-                            {o.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-medium text-(--text-muted)">
-                        Additional notes (optional)
-                      </label>
-                      <Textarea
-                        value={closeNotes}
-                        onChange={(e) => setCloseNotes(e.target.value)}
-                        maxLength={1000}
-                        rows={3}
-                        placeholder="Optional context for the audit log…"
-                      />
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void handleCloseRequest()}
-                        disabled={closing}
-                        className="inline-flex h-9 items-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white disabled:opacity-60"
-                      >
-                        {closing && <Spinner size="sm" />}
-                        Close request
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCloseDialogOpen(false)}
-                        disabled={closing}
-                        className="inline-flex h-9 items-center rounded-lg border px-4 text-sm text-(--text-secondary)"
-                      >
-                        Keep open
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
             </header>
           </div>
 
@@ -1024,6 +999,133 @@ export function RequestDetailClient({
           }
         }}
       />
+      {closeDialogOpen &&
+        typeof window !== "undefined" &&
+        createPortal(
+          <>
+            {/* Backdrop — only catches clicks, does NOT block scroll */}
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => !closing && setCloseDialogOpen(false)}
+              aria-hidden
+              style={{ pointerEvents: "auto", touchAction: "none" }}
+            />
+
+            {/* Panel */}
+            <div
+              className="fixed z-50 animate-in fade-in duration-150"
+              style={(() => {
+                const margin = 8;
+                const panelWidth = Math.min(window.innerWidth - margin * 2, 420);
+
+                if (!closeButtonRef.current) {
+                  return {
+                    bottom: 16,
+                    left: margin,
+                    right: margin,
+                    width: "auto",
+                  };
+                }
+
+                const rect = closeButtonRef.current.getBoundingClientRect();
+                const spaceBelow = window.innerHeight - rect.bottom;
+                const spaceAbove = rect.top;
+
+                // Horizontal: align left edge with button, clamp to viewport
+                const left = Math.max(
+                  margin,
+                  Math.min(rect.left, window.innerWidth - panelWidth - margin)
+                );
+
+                if (spaceBelow >= 280 || spaceBelow >= spaceAbove) {
+                  // Open below button
+                  return {
+                    top: rect.bottom + 6,
+                    left,
+                    width: panelWidth,
+                  };
+                } else {
+                  // Open above button
+                  return {
+                    bottom: window.innerHeight - rect.top + 6,
+                    left,
+                    width: panelWidth,
+                  };
+                }
+              })()}
+            >
+              <div className="overflow-hidden rounded-xl border border-(--border-subtle) bg-(--bg-surface) shadow-xl ring-1 ring-black/5">
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-(--border-subtle) px-4 py-3">
+                  <p className="text-sm font-semibold text-(--text-primary)">Close request</p>
+                  <button
+                    type="button"
+                    onClick={() => setCloseDialogOpen(false)}
+                    disabled={closing}
+                    className="cursor-pointer flex h-6 w-6 items-center justify-center rounded text-(--text-muted) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--text-primary) disabled:opacity-40"
+                  >
+                    <IconX size={13} />
+                  </button>
+                </div>
+
+                {/* Body */}
+                <div className="space-y-3 px-4 py-3">
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-medium text-(--text-muted)">
+                      Reason for closing
+                    </label>
+                    <select
+                      value={closeReason}
+                      onChange={(e) => setCloseReason(e.target.value)}
+                      className="h-9 w-full rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 text-sm text-(--text-primary) focus:ring-2 focus:ring-(--color-focus-ring) focus:outline-none"
+                    >
+                      {closeReasonOptions.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-medium text-(--text-muted)">
+                      Notes{" "}
+                      <span className="font-normal opacity-60">(optional)</span>
+                    </label>
+                    <Textarea
+                      value={closeNotes}
+                      onChange={(e) => setCloseNotes(e.target.value)}
+                      maxLength={1000}
+                      rows={3}
+                      placeholder="Optional context for the audit log…"
+                    />
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center justify-end gap-2 border-t border-(--border-subtle) px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => setCloseDialogOpen(false)}
+                    disabled={closing}
+                    className="cursor-pointer inline-flex h-8 items-center rounded-lg border border-(--border-subtle) px-3 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:opacity-60"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleCloseRequest()}
+                    disabled={closing}
+                    className="cursor-pointer inline-flex h-8 items-center gap-2 rounded-lg bg-(--color-danger) px-3 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:opacity-60"
+                  >
+                    {closing && <Spinner size="sm" />}
+                    Close request
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>,
+          document.body
+        )}
     </div>
   );
 }
@@ -2587,7 +2689,7 @@ export function RequestKeyboardNav({
   onNavigate,
 }: {
   currentId: string;
-  onNavigate?: (id: string) => void;
+  onNavigate?: (id: string, key?: string | null) => void;
 }) {
   const router = useRouter();
   const [navList, setNavList] = useState<string[]>([]);

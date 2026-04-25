@@ -11,12 +11,18 @@ import {
 import { createPortal } from "react-dom";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { useToast } from "@/components/ui/toast";
-import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
-import { IconPlus, IconSearch, IconSend, IconX } from "@/components/ui/icons";
-import type { RecordParticipant, ParticipantStatus } from "@/types/records";
-import type { BadgeVariant } from "@/lib/record-utils";
+import {
+  IconPlus,
+  IconSearch,
+  IconSend,
+  IconX,
+  IconClockPending,
+  IconCheckCircleFilled,
+  IconXCircleFilled,
+} from "@/components/ui/icons";
+import type { RecordParticipant } from "@/types/records";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -69,14 +75,6 @@ function IconExternalUser({ size = 14, className }: { size?: number; className?:
     </svg>
   );
 }
-
-// ─── Status badge map ─────────────────────────────────────────────────────────
-
-const STATUS_BADGE: Record<ParticipantStatus, BadgeVariant> = {
-  PENDING: "warning",
-  APPROVED: "success",
-  REJECTED: "destructive",
-};
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 
@@ -148,7 +146,7 @@ function UserAvatarWithFallback({
 
 function ParticipantRow({
   p,
-  isBlocking,
+  role,
   isMyApproval,
   isClosed,
   canRemove,
@@ -159,7 +157,7 @@ function ParticipantRow({
   onRemove,
 }: {
   p: RecordParticipant;
-  isBlocking: boolean;
+  role: "APPROVER" | "VIEWER";
   isMyApproval: boolean;
   isClosed: boolean;
   canRemove: boolean;
@@ -174,31 +172,61 @@ function ParticipantRow({
       ? (p.name ?? p.email ?? "Internal user")
       : (p.name ?? p.email ?? "External approver");
 
-  return (
-    <li
-      className={[
-        "relative flex items-center gap-2.5 rounded-lg border px-2.5 py-2 transition-colors",
-        isBlocking
-          ? "border-(--color-primary) bg-(--color-primary-soft)/30 ring-1 ring-(--color-primary-soft)"
-          : "border-(--border-subtle) bg-(--bg-surface-elev)",
-      ].join(" ")}
-    >
-      {isBlocking && (
-        <span className="absolute -left-px top-2 h-[calc(100%-16px)] w-0.5 rounded-full bg-(--color-primary)" />
-      )}
+  // Row border style by type and role
+  const rowClass = [
+    "relative flex items-center gap-2.5 rounded-lg border px-2.5 py-2 transition-colors",
+    role === "VIEWER"
+      ? "border-(--border-subtle) bg-(--bg-surface-elev) opacity-80"
+      : p.participantType === "EXTERNAL"
+        ? "border-(--color-warning-soft) bg-(--color-warning-soft)/20"
+        : "border-(--border-subtle) bg-(--bg-surface-elev)",
+  ].join(" ");
 
+  // Status icon
+  const statusIcon =
+    p.status === "APPROVED" ? (
+      <IconCheckCircleFilled
+        size={14}
+        className="shrink-0 text-(--color-success)"
+        aria-label="Approved"
+      />
+    ) : p.status === "REJECTED" ? (
+      <IconXCircleFilled
+        size={14}
+        className="shrink-0 text-(--color-danger)"
+        aria-label="Rejected"
+      />
+    ) : (
+      <IconClockPending
+        size={14}
+        className="shrink-0 text-(--text-muted)"
+        aria-label="Pending"
+      />
+    );
+
+  return (
+    <li className={rowClass}>
+      {/* Avatar */}
       <div className="shrink-0">
         {p.participantType === "EXTERNAL" ? (
           <div className="h-6 w-6 flex items-center justify-center rounded-full border border-dashed border-(--border-strong) bg-(--bg-surface) text-(--text-muted)">
             <IconExternalUser size={11} />
           </div>
         ) : (
-          <div className="h-6 w-6 shrink-0 flex items-center justify-center rounded-full bg-(--color-primary-soft) text-[10px] font-semibold text-(--color-primary)">
+          <div
+            className={[
+              "h-6 w-6 shrink-0 flex items-center justify-center rounded-full text-[10px] font-semibold",
+              role === "VIEWER"
+                ? "bg-(--bg-surface) text-(--text-muted) border border-(--border-subtle)"
+                : "bg-(--color-primary-soft) text-(--color-primary)",
+            ].join(" ")}
+          >
             {(p.name ?? p.email ?? "?")[0]?.toUpperCase() ?? "?"}
           </div>
         )}
       </div>
 
+      {/* Name + meta */}
       <div className="min-w-0 flex-1">
         <p className="truncate text-xs font-medium text-(--text-primary) leading-tight">
           {displayName}
@@ -218,10 +246,9 @@ function ParticipantRow({
         )}
       </div>
 
+      {/* Right side: status icon + actions */}
       <div className="flex shrink-0 items-center gap-1.5">
-        <Badge variant={STATUS_BADGE[p.status] ?? "default"} className="text-[10px] !px-1.5 !py-0.5">
-          {p.status.charAt(0) + p.status.slice(1).toLowerCase()}
-        </Badge>
+        {statusIcon}
         {p.status === "PENDING" && !isClosed && isMyApproval && (
           <>
             <button
@@ -1029,10 +1056,6 @@ function ParticipantListSection({
 
   const roleParticipants = participants.filter((p) => p.participantRole === role);
   const hasPending = roleParticipants.some((p) => p.status === "PENDING");
-  const blockingId =
-    role === "APPROVER"
-      ? roleParticipants.find((p) => p.status === "PENDING")?.id ?? null
-      : null;
 
   // Exclude users already assigned in ANY role (approver or viewer)
   const assignedUserIds = participants
@@ -1202,9 +1225,10 @@ function ParticipantListSection({
                 <ParticipantRow
                   key={p.id}
                   p={p}
-                  isBlocking={p.id === blockingId}
+                  role={role}
                   isMyApproval={
                     p.participantType === "INTERNAL" &&
+                    p.participantRole === "APPROVER" &&
                     p.userId === currentUserId &&
                     p.status === "PENDING"
                   }
