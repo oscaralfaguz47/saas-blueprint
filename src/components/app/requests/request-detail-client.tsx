@@ -269,6 +269,44 @@ export function RequestDetailClient({
   const canManagePayment = permissions.includes("tenant.payments.manage");
   const canLink = permissions.includes("tenant.requests.link");
 
+  const markParticipantViewed = useCallback(
+    async (loadedParticipants: RecordParticipant[]) => {
+      const myParticipant = loadedParticipants.find(
+        (p) =>
+          p.participantType === "INTERNAL" &&
+          p.userId === currentUserId &&
+          p.lastUsedAt === null &&
+          p.revokedAt === null
+      );
+      if (!myParticipant) return;
+
+      try {
+        await apiFetchRef.current(
+          `/api/records/${recordId}/participants/${myParticipant.id}/viewed`,
+          {
+            method: "POST",
+            showToastOnError: false,
+          }
+        );
+        // Optimistically update lastUsedAt in local state
+        setData((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            participants: prev.participants.map((p) =>
+              p.id === myParticipant.id
+                ? { ...p, lastUsedAt: new Date().toISOString() }
+                : p
+            ),
+          };
+        });
+      } catch {
+        // Silent fail — non-critical
+      }
+    },
+    [currentUserId, recordId]
+  );
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -295,12 +333,14 @@ export function RequestDetailClient({
         };
       };
       setData(normalizeDetailData(json.data));
+      // Fire-and-forget view tracking for internal participants
+      void markParticipantViewed(json.data.participants as RecordParticipant[]);
     } catch {
       setError("Failed to load request.");
     } finally {
       setLoading(false);
     }
-  }, [recordId]); // apiFetch via stable ref — recordId is the only meaningful dep
+  }, [recordId, markParticipantViewed]); // apiFetch via stable ref — recordId is the only meaningful dep
 
   const handleParticipantAction = useCallback(
     async (
@@ -1452,7 +1492,9 @@ function TimelineSection({
                             : "text-(--text-primary)",
                         ].join(" ")}
                       >
-                        {RECORD_EVENT_LABELS[ev.eventType] ?? ev.eventType}
+                        {ev.eventType === "APPROVAL_REQUESTED" && ev.metadata?.action === "participant_removed"
+                          ? "Participant removed"
+                          : RECORD_EVENT_LABELS[ev.eventType] ?? ev.eventType}
                         {ev.eventType === "EVIDENCE_FILE_ADDED" &&
                         ev.metadata?.fileName != null &&
                         ev.metadata.fileName !== "" ? (
@@ -1484,6 +1526,40 @@ function TimelineSection({
                         (ev.metadata?.fileName != null || ev.metadata?.label != null) ? (
                           <span className="ml-1 font-normal text-(--text-muted)">
                             — {String(ev.metadata?.fileName ?? ev.metadata?.label ?? "")}
+                          </span>
+                        ) : null}
+                        {/* Participant assigned — show role and name */}
+                        {ev.eventType === "APPROVAL_REQUESTED" &&
+                        ev.metadata?.action !== "participant_removed" &&
+                        (ev.metadata?.participantName != null ||
+                          ev.metadata?.participantEmail != null) ? (
+                          <span className="ml-1 font-normal text-(--text-muted)">
+                            {ev.metadata?.participantRole === "VIEWER" ? "viewer" : "approver"}
+                            {" — "}
+                            {String(
+                              ev.metadata?.participantName ?? ev.metadata?.participantEmail ?? ""
+                            )}
+                          </span>
+                        ) : null}
+
+                        {/* Participant removed — show role and name */}
+                        {ev.eventType === "APPROVAL_REQUESTED" &&
+                        ev.metadata?.action === "participant_removed" ? (
+                          <span className="ml-1 font-normal text-(--text-muted)">
+                            {ev.metadata?.participantRole === "VIEWER"
+                              ? "viewer removed"
+                              : "approver removed"}
+                            {ev.metadata?.removedName != null || ev.metadata?.removedEmail != null
+                              ? ` — ${String(ev.metadata?.removedName ?? ev.metadata?.removedEmail ?? "")}`
+                              : ""}
+                          </span>
+                        ) : null}
+
+                        {/* Participant viewed */}
+                        {ev.eventType === "PARTICIPANT_VIEWED" &&
+                        ev.metadata?.participantRole != null ? (
+                          <span className="ml-1 font-normal text-(--text-muted)">
+                            {ev.metadata.participantRole === "VIEWER" ? "by viewer" : "by approver"}
                           </span>
                         ) : null}
                       </span>

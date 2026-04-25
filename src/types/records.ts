@@ -214,6 +214,7 @@ export type RecordParticipant = {
   image: string | null;
   expiresAt: string | null;
   revokedAt: string | null;
+  lastUsedAt: string | null;
   respondedAt: string | null;
   responseReason: string | null;
   createdAt: string;

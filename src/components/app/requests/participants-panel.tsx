@@ -18,9 +18,11 @@ import {
   IconSearch,
   IconSend,
   IconX,
-  IconClockPending,
   IconCheckCircleFilled,
   IconXCircleFilled,
+  IconHourglass,
+  IconEye,
+  IconEyeOff,
 } from "@/components/ui/icons";
 import type { RecordParticipant } from "@/types/records";
 
@@ -182,27 +184,78 @@ function ParticipantRow({
         : "border-(--border-subtle) bg-(--bg-surface-elev)",
   ].join(" ");
 
-  // Status icon
-  const statusIcon =
-    p.status === "APPROVED" ? (
-      <IconCheckCircleFilled
-        size={14}
-        className="shrink-0 text-(--color-success)"
-        aria-label="Approved"
-      />
-    ) : p.status === "REJECTED" ? (
-      <IconXCircleFilled
-        size={14}
-        className="shrink-0 text-(--color-danger)"
-        aria-label="Rejected"
-      />
-    ) : (
-      <IconClockPending
-        size={14}
-        className="shrink-0 text-(--text-muted)"
-        aria-label="Pending"
-      />
+  // Status icon — role and view-aware
+  const hasViewed = p.lastUsedAt != null;
+
+  const statusIcon = (() => {
+    if (role === "VIEWER") {
+      if (hasViewed) {
+        return (
+          <span title="Viewer has seen this request">
+            <IconEye
+              size={14}
+              className="shrink-0 text-[#4fc3f7]"
+              aria-label="Seen"
+            />
+          </span>
+        );
+      }
+      return (
+        <span title="Viewer has not seen this request yet">
+          <IconEyeOff
+            size={14}
+            className="shrink-0 text-(--text-muted)"
+            aria-label="Not seen yet"
+          />
+        </span>
+      );
+    }
+
+    // Approvers
+    if (p.status === "APPROVED") {
+      return (
+        <span title="Approved">
+          <IconCheckCircleFilled
+            size={14}
+            className="shrink-0 text-(--color-success)"
+            aria-label="Approved"
+          />
+        </span>
+      );
+    }
+    if (p.status === "REJECTED") {
+      return (
+        <span title="Rejected">
+          <IconXCircleFilled
+            size={14}
+            className="shrink-0 text-(--color-danger)"
+            aria-label="Rejected"
+          />
+        </span>
+      );
+    }
+    // PENDING
+    if (hasViewed) {
+      return (
+        <span title="Approver has seen this request — awaiting their decision">
+          <IconHourglass
+            size={14}
+            className="shrink-0 text-[#4fc3f7]"
+            aria-label="Seen — pending decision"
+          />
+        </span>
+      );
+    }
+    return (
+      <span title="Approver has not opened this request yet">
+        <IconHourglass
+          size={14}
+          className="shrink-0 text-(--text-muted)"
+          aria-label="Not opened yet"
+        />
+      </span>
     );
+  })();
 
   return (
     <li className={rowClass}>
@@ -361,6 +414,7 @@ function ExternalInlineForm({
           image: null,
           expiresAt: json.data?.expiresAt != null ? String(json.data.expiresAt) : null,
           revokedAt: null,
+          lastUsedAt: null,
           respondedAt: null,
           responseReason: null,
           createdAt: new Date().toISOString(),
@@ -734,6 +788,7 @@ function ParticipantSearchInput({
                     respondedAt: null,
                     responseReason: null,
                     revokedAt: null,
+                    lastUsedAt: null,
                   }
                 : p
             )
@@ -753,6 +808,7 @@ function ParticipantSearchInput({
               image: assignedUser?.user.image ?? null,
               expiresAt: null,
               revokedAt: null,
+              lastUsedAt: null,
               respondedAt: null,
               responseReason: null,
               createdAt: new Date().toISOString(),
@@ -774,6 +830,7 @@ function ParticipantSearchInput({
               image: assignedUser?.user.image ?? null,
               expiresAt: null,
               revokedAt: null,
+              lastUsedAt: null,
               respondedAt: null,
               responseReason: null,
               createdAt: new Date().toISOString(),

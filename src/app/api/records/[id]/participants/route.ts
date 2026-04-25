@@ -146,6 +146,11 @@ export const POST = withErrorHandler(async (
     return ApiErrors.VALIDATION_ERROR("User is not an active member of this workspace.");
   }
 
+  const targetUser = await prisma.user.findUnique({
+    where: { id: targetUserId },
+    select: { name: true, email: true },
+  });
+
   const existing = await prisma.recordParticipant.findUnique({
     where: {
       recordId_userId_participantRole: {
@@ -235,6 +240,8 @@ export const POST = withErrorHandler(async (
         metadata: {
           participantId: p.id,
           approverUserId: targetUserId,
+          participantName: targetUser?.name ?? null,
+          participantEmail: targetUser?.email ?? null,
           participantRole,
         },
       },

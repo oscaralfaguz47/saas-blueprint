@@ -70,6 +70,7 @@ export const DELETE = withErrorHandler(async (
         participantType: true,
         userId: true,
         email: true,
+        name: true,
       },
     }),
   ]);
@@ -97,6 +98,16 @@ export const DELETE = withErrorHandler(async (
     return apiSuccess({ participantId, alreadyRevoked: true });
   }
 
+  // Get display name for internal participants
+  let removedDisplayName: string | null = participant.name ?? participant.email ?? null;
+  if (participant.participantType === "INTERNAL" && participant.userId) {
+    const removedUser = await prisma.user.findUnique({
+      where: { id: participant.userId },
+      select: { name: true, email: true },
+    });
+    removedDisplayName = removedUser?.name ?? removedUser?.email ?? removedDisplayName;
+  }
+
   await prisma.$transaction(async (tx) => {
     await tx.recordParticipant.update({
       where: { id: participantId },
@@ -107,7 +118,7 @@ export const DELETE = withErrorHandler(async (
       data: {
         tenantId,
         recordId,
-        eventType: "APPROVAL_REQUESTED", // closest available — no dedicated revoke event type
+        eventType: "APPROVAL_REQUESTED",
         actorUserId: session.user.id,
         metadata: {
           action: "participant_removed",
@@ -116,6 +127,7 @@ export const DELETE = withErrorHandler(async (
           participantType: participant.participantType,
           removedUserId: participant.userId ?? null,
           removedEmail: participant.email ?? null,
+          removedName: removedDisplayName,
         },
       },
     });
