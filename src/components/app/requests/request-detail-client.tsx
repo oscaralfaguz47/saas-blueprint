@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -191,6 +198,14 @@ export function RequestDetailClient({
   const [setPaymentOpen, setSetPaymentOpen] = useState(false);
   const [linkRecordOpen, setLinkRecordOpen] = useState(false);
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+  const [closePanelStyle, setClosePanelStyle] = useState<CSSProperties>({
+    position: "fixed",
+    top: 0,
+    left: 0,
+    width: 0,
+    zIndex: 50,
+    visibility: "hidden" as const,
+  });
   const [closeReason, setCloseReason] = useState<string>("APPROVED_AND_COMPLETED");
   const [closeNotes, setCloseNotes] = useState("");
   const [approvalActionLoading, setApprovalActionLoading] = useState<string | null>(null);
@@ -198,6 +213,53 @@ export function RequestDetailClient({
   const [bannerRejectTargetId, setBannerRejectTargetId] = useState<string | null>(null);
   const [bannerRejectSubmitting, setBannerRejectSubmitting] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const closePanelRef = useRef<HTMLDivElement>(null);
+
+  const updateClosePanelPos = useCallback(() => {
+    const panel = closePanelRef.current;
+    const button = closeButtonRef.current;
+    if (!panel || !button) return;
+    const margin = 8;
+    const panelWidth = Math.min(window.innerWidth - margin * 2, 420);
+    const rect = button.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const left = Math.max(margin, Math.min(rect.left, window.innerWidth - panelWidth - margin));
+    if (rect.bottom < 0 || rect.top > window.innerHeight) {
+      panel.style.visibility = "hidden";
+      return;
+    }
+    panel.style.visibility = "visible";
+    panel.style.width = `${panelWidth}px`;
+    panel.style.left = `${left}px`;
+    panel.style.right = "auto";
+    if (spaceBelow >= 280 || spaceBelow >= spaceAbove) {
+      panel.style.top = `${rect.bottom + 6}px`;
+      panel.style.bottom = "auto";
+    } else {
+      panel.style.bottom = `${window.innerHeight - rect.top + 6}px`;
+      panel.style.top = "auto";
+    }
+  }, []);
+
+  function getClosePanelStyle(): CSSProperties {
+    const button = closeButtonRef.current;
+    const margin = 8;
+    const panelWidth = Math.min(window.innerWidth - margin * 2, 420);
+    if (!button) {
+      return { position: "fixed", top: 120, left: margin, width: panelWidth, zIndex: 50 };
+    }
+    const rect = button.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const left = Math.max(margin, Math.min(rect.left, window.innerWidth - panelWidth - margin));
+    const base: CSSProperties = { position: "fixed", width: panelWidth, left, zIndex: 50 };
+    if (spaceBelow >= 280 || spaceBelow >= spaceAbove) {
+      return { ...base, top: rect.bottom + 6 };
+    } else {
+      return { ...base, bottom: window.innerHeight - rect.top + 6 };
+    }
+  }
 
   const canClose = permissions.includes("tenant.requests.close");
   const canComment = permissions.includes("tenant.requests.comment");
@@ -293,6 +355,51 @@ export function RequestDetailClient({
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [closeDialogOpen]);
+
+  useEffect(() => {
+    if (!closeDialogOpen) return;
+    function handleClickOutside(e: MouseEvent | TouchEvent) {
+      const target = e.target as Node;
+      const insideButton = closeButtonRef.current?.contains(target) ?? false;
+      const insidePanel = closePanelRef.current?.contains(target) ?? false;
+      if (!insideButton && !insidePanel && !closing) {
+        setCloseDialogOpen(false);
+      }
+    }
+    // Use capture phase so it runs before any stopPropagation
+    document.addEventListener("mousedown", handleClickOutside, { capture: true });
+    document.addEventListener("touchstart", handleClickOutside, { capture: true, passive: true });
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside, { capture: true });
+      document.removeEventListener("touchstart", handleClickOutside, { capture: true });
+    };
+  }, [closeDialogOpen, closing]);
+
+  useEffect(() => {
+    if (!closeDialogOpen) return;
+    updateClosePanelPos();
+    const scrollableAncestors: Element[] = [];
+    let el: Element | null = closeButtonRef.current?.parentElement ?? null;
+    while (el) {
+      const { overflow, overflowY } = window.getComputedStyle(el);
+      if (/auto|scroll/.test(overflow + overflowY)) {
+        scrollableAncestors.push(el);
+      }
+      el = el.parentElement;
+    }
+    for (const ancestor of scrollableAncestors) {
+      ancestor.addEventListener("scroll", updateClosePanelPos, { passive: true });
+    }
+    window.addEventListener("scroll", updateClosePanelPos, { passive: true });
+    window.addEventListener("resize", updateClosePanelPos, { passive: true });
+    return () => {
+      for (const ancestor of scrollableAncestors) {
+        ancestor.removeEventListener("scroll", updateClosePanelPos);
+      }
+      window.removeEventListener("scroll", updateClosePanelPos);
+      window.removeEventListener("resize", updateClosePanelPos);
+    };
+  }, [closeDialogOpen, updateClosePanelPos]);
 
   async function handleCloseRequest() {
     if (!data || closing) return;
@@ -580,6 +687,7 @@ export function RequestDetailClient({
                     type="button"
                     onClick={() => {
                       setCloseReason(closeReasonOptions[0]?.value ?? "APPROVED_AND_COMPLETED");
+                      setClosePanelStyle(getClosePanelStyle());
                       setCloseDialogOpen(true);
                     }}
                     className="cursor-pointer inline-flex h-9 items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-secondary) transition-colors hover:border-(--color-danger-soft) hover:bg-(--color-danger-soft) hover:text-(--color-danger)"
@@ -1002,128 +1110,80 @@ export function RequestDetailClient({
       {closeDialogOpen &&
         typeof window !== "undefined" &&
         createPortal(
-          <>
-            {/* Backdrop — only catches clicks, does NOT block scroll */}
-            <div
-              className="fixed inset-0 z-40"
-              onClick={() => !closing && setCloseDialogOpen(false)}
-              aria-hidden
-              style={{ pointerEvents: "auto", touchAction: "none" }}
-            />
+          <div
+            ref={closePanelRef}
+            className="z-50"
+            style={closePanelStyle}
+          >
+            <div className="overflow-hidden rounded-xl border border-(--border-subtle) bg-(--bg-surface) shadow-xl ring-1 ring-black/5">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-(--border-subtle) px-4 py-3">
+                <p className="text-sm font-semibold text-(--text-primary)">Close request</p>
+                <button
+                  type="button"
+                  onClick={() => setCloseDialogOpen(false)}
+                  disabled={closing}
+                  className="cursor-pointer flex h-6 w-6 items-center justify-center rounded text-(--text-muted) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--text-primary) disabled:opacity-40"
+                >
+                  <IconX size={13} />
+                </button>
+              </div>
 
-            {/* Panel */}
-            <div
-              className="fixed z-50 animate-in fade-in duration-150"
-              style={(() => {
-                const margin = 8;
-                const panelWidth = Math.min(window.innerWidth - margin * 2, 420);
-
-                if (!closeButtonRef.current) {
-                  return {
-                    bottom: 16,
-                    left: margin,
-                    right: margin,
-                    width: "auto",
-                  };
-                }
-
-                const rect = closeButtonRef.current.getBoundingClientRect();
-                const spaceBelow = window.innerHeight - rect.bottom;
-                const spaceAbove = rect.top;
-
-                // Horizontal: align left edge with button, clamp to viewport
-                const left = Math.max(
-                  margin,
-                  Math.min(rect.left, window.innerWidth - panelWidth - margin)
-                );
-
-                if (spaceBelow >= 280 || spaceBelow >= spaceAbove) {
-                  // Open below button
-                  return {
-                    top: rect.bottom + 6,
-                    left,
-                    width: panelWidth,
-                  };
-                } else {
-                  // Open above button
-                  return {
-                    bottom: window.innerHeight - rect.top + 6,
-                    left,
-                    width: panelWidth,
-                  };
-                }
-              })()}
-            >
-              <div className="overflow-hidden rounded-xl border border-(--border-subtle) bg-(--bg-surface) shadow-xl ring-1 ring-black/5">
-                {/* Header */}
-                <div className="flex items-center justify-between border-b border-(--border-subtle) px-4 py-3">
-                  <p className="text-sm font-semibold text-(--text-primary)">Close request</p>
-                  <button
-                    type="button"
-                    onClick={() => setCloseDialogOpen(false)}
-                    disabled={closing}
-                    className="cursor-pointer flex h-6 w-6 items-center justify-center rounded text-(--text-muted) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--text-primary) disabled:opacity-40"
+              {/* Body */}
+              <div className="space-y-3 px-4 py-3">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-medium text-(--text-muted)">
+                    Reason for closing
+                  </label>
+                  <select
+                    value={closeReason}
+                    onChange={(e) => setCloseReason(e.target.value)}
+                    className="h-9 w-full rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 text-sm text-(--text-primary) focus:ring-2 focus:ring-(--color-focus-ring) focus:outline-none"
                   >
-                    <IconX size={13} />
-                  </button>
+                    {closeReasonOptions.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-
-                {/* Body */}
-                <div className="space-y-3 px-4 py-3">
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-medium text-(--text-muted)">
-                      Reason for closing
-                    </label>
-                    <select
-                      value={closeReason}
-                      onChange={(e) => setCloseReason(e.target.value)}
-                      className="h-9 w-full rounded-lg border border-(--border-subtle) bg-(--bg-surface-elev) px-3 text-sm text-(--text-primary) focus:ring-2 focus:ring-(--color-focus-ring) focus:outline-none"
-                    >
-                      {closeReasonOptions.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-medium text-(--text-muted)">
-                      Notes{" "}
-                      <span className="font-normal opacity-60">(optional)</span>
-                    </label>
-                    <Textarea
-                      value={closeNotes}
-                      onChange={(e) => setCloseNotes(e.target.value)}
-                      maxLength={1000}
-                      rows={3}
-                      placeholder="Optional context for the audit log…"
-                    />
-                  </div>
-                </div>
-
-                {/* Footer */}
-                <div className="flex items-center justify-end gap-2 border-t border-(--border-subtle) px-4 py-3">
-                  <button
-                    type="button"
-                    onClick={() => setCloseDialogOpen(false)}
-                    disabled={closing}
-                    className="cursor-pointer inline-flex h-8 items-center rounded-lg border border-(--border-subtle) px-3 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:opacity-60"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleCloseRequest()}
-                    disabled={closing}
-                    className="cursor-pointer inline-flex h-8 items-center gap-2 rounded-lg bg-(--color-danger) px-3 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:opacity-60"
-                  >
-                    {closing && <Spinner size="sm" />}
-                    Close request
-                  </button>
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-medium text-(--text-muted)">
+                    Notes{" "}
+                    <span className="font-normal opacity-60">(optional)</span>
+                  </label>
+                  <Textarea
+                    value={closeNotes}
+                    onChange={(e) => setCloseNotes(e.target.value)}
+                    maxLength={1000}
+                    rows={3}
+                    placeholder="Optional context for the audit log…"
+                  />
                 </div>
               </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-end gap-2 border-t border-(--border-subtle) px-4 py-3">
+                <button
+                  type="button"
+                  onClick={() => setCloseDialogOpen(false)}
+                  disabled={closing}
+                  className="cursor-pointer inline-flex h-8 items-center rounded-lg border border-(--border-subtle) px-3 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleCloseRequest()}
+                  disabled={closing}
+                  className="cursor-pointer inline-flex h-8 items-center gap-2 rounded-lg bg-(--color-danger) px-3 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:opacity-60"
+                >
+                  {closing && <Spinner size="sm" />}
+                  Close request
+                </button>
+              </div>
             </div>
-          </>,
+          </div>,
           document.body
         )}
     </div>
