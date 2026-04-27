@@ -121,13 +121,13 @@ export const POST = withErrorHandler(async (
 
   const targetRecord = await prisma.record.findFirst({
     where: { id: toRecordId, tenantId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, recordKey: true, title: true },
   });
   if (!targetRecord) return ApiErrors.NOT_FOUND("Target record");
 
   const sourceRecord = await prisma.record.findFirst({
     where: { id: recordId, tenantId },
-    select: { status: true },
+    select: { status: true, recordKey: true, title: true },
   });
   if (!sourceRecord) return ApiErrors.NOT_FOUND("Record");
   if (sourceRecord.status === "CLOSED" || targetRecord.status === "CLOSED") {
@@ -184,6 +184,14 @@ export const POST = withErrorHandler(async (
           linkType,
           fromRecordId,
           toRecordId: resolvedToRecordId,
+          linkedRecordKey:
+            resolvedToRecordId === toRecordId
+              ? (targetRecord?.recordKey ?? null)
+              : (sourceRecord?.recordKey ?? null),
+          linkedRecordTitle:
+            resolvedToRecordId === toRecordId
+              ? (targetRecord?.title ?? null)
+              : (sourceRecord?.title ?? null),
         },
       },
     });

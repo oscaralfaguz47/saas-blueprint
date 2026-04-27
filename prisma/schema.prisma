@@ -1677,9 +1677,13 @@ model RecordAccess {
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
 
+  isViewed Boolean   @default(false)
+  viewedAt DateTime? @db.Timestamptz(6)
+
   @@unique([recordId, userId])
   @@index([tenantId, userId])
   @@index([tenantId, recordId])
+  @@index([tenantId, userId, isViewed])
 }
 
 model RecordComment {

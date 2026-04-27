@@ -176,6 +176,26 @@ export const POST = withErrorHandler(async (
           },
         });
 
+        // Grant RecordAccess for VIEWER participants so they appear in "Shared with me" tab
+        if (participantRole === "VIEWER") {
+          await tx.recordAccess.upsert({
+            where: { recordId_userId: { recordId, userId: targetUserId } },
+            create: {
+              tenantId,
+              recordId,
+              userId: targetUserId,
+              accessType: "VIEW",
+              reason: "MANUAL_SHARE",
+              grantedByUserId: session.user.id,
+              grantedBySystem: false,
+            },
+            update: {
+              accessType: "VIEW",
+              grantedByUserId: session.user.id,
+            },
+          });
+        }
+
         await tx.recordEvent.create({
           data: {
             tenantId,
@@ -230,6 +250,26 @@ export const POST = withErrorHandler(async (
         createdAt: true,
       },
     });
+
+    // Grant RecordAccess for VIEWER participants so they appear in "Shared with me" tab
+    if (participantRole === "VIEWER") {
+      await tx.recordAccess.upsert({
+        where: { recordId_userId: { recordId, userId: targetUserId } },
+        create: {
+          tenantId,
+          recordId,
+          userId: targetUserId,
+          accessType: "VIEW",
+          reason: "MANUAL_SHARE",
+          grantedByUserId: session.user.id,
+          grantedBySystem: false,
+        },
+        update: {
+          accessType: "VIEW",
+          grantedByUserId: session.user.id,
+        },
+      });
+    }
 
     await tx.recordEvent.create({
       data: {

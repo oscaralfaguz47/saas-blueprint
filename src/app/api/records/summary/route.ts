@@ -44,9 +44,11 @@ export const GET = withErrorHandler(async () => {
   const [
     openCount,
     pendingMyApprovalCount,
+    unreadMentionCount,
     overdueCount,
     awaitingInfoCount,
     hasPolicyExceptionCount,
+    sharedWithMeCount,
     openAmountAgg,
     openAmountByCurrency,
   ] = await Promise.all([
@@ -73,6 +75,14 @@ export const GET = withErrorHandler(async () => {
       },
     }),
 
+    prisma.recordCommentMention.count({
+      where: {
+        tenantId,
+        mentionedUserId: userId,
+        isRead: false,
+      },
+    }),
+
     prisma.record.count({
       where: {
         tenantId,
@@ -96,6 +106,19 @@ export const GET = withErrorHandler(async () => {
         hasPolicyException: true,
         status: { notIn: ["CLOSED", "CANCELED"] },
         ...accessFilter,
+      },
+    }),
+
+    prisma.record.count({
+      where: {
+        tenantId,
+        access: {
+          some: {
+            userId,
+            isViewed: false,
+          },
+        },
+        NOT: { createdByUserId: userId },
       },
     }),
 
@@ -128,6 +151,8 @@ export const GET = withErrorHandler(async () => {
   return apiSuccess({
     openCount,
     pendingMyApprovalCount,
+    unreadMentionCount,
+    sharedWithMeCount,
     overdueCount,
     awaitingInfoCount,
     hasPolicyExceptionCount,

@@ -114,6 +114,17 @@ export const DELETE = withErrorHandler(async (
       data: { revokedAt: new Date() },
     });
 
+    // Remove RecordAccess for VIEWER participants when revoked
+    if (participant.participantRole === "VIEWER" && participant.userId) {
+      await tx.recordAccess.deleteMany({
+        where: {
+          recordId,
+          userId: participant.userId,
+          reason: "MANUAL_SHARE",
+        },
+      });
+    }
+
     await tx.recordEvent.create({
       data: {
         tenantId,
