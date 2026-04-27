@@ -165,6 +165,17 @@ export function formatDate(iso: string): string {
   });
 }
 
+export function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
 export const RECORD_EVENT_LABELS: Record<string, string> = {
   RECORD_CREATED: "Request created",
   RECORD_CLOSED: "Request closed",

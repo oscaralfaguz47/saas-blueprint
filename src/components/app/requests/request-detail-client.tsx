@@ -1460,6 +1460,141 @@ function TimelineSection({
     (a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime()
   );
 
+  // Group events by calendar date
+  const groupedByDate: { date: string; events: RecordEventItem[] }[] = [];
+  for (const ev of sortedEvents) {
+    const dateKey = new Date(ev.occurredAt).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+    const last = groupedByDate[groupedByDate.length - 1];
+    if (last && last.date === dateKey) {
+      last.events.push(ev);
+    } else {
+      groupedByDate.push({ date: dateKey, events: [ev] });
+    }
+  }
+
+  // Semantic icon per event type
+  function getEventIcon(eventType: string, metadata: Record<string, unknown> | null): string {
+    if (eventType === "APPROVAL_REQUESTED" && metadata?.action === "participant_removed")
+      return "✕";
+    switch (eventType) {
+      case "RECORD_CREATED":
+        return "✦";
+      case "RECORD_CLOSED":
+        return "◼";
+      case "APPROVAL_REQUESTED":
+        return "+";
+      case "APPROVAL_APPROVED":
+        return "✓";
+      case "APPROVAL_REJECTED":
+        return "✕";
+      case "APPROVAL_LINK_OPENED":
+        return "↗";
+      case "PARTICIPANT_VIEWED":
+        return "◎";
+      case "EVIDENCE_FILE_ADDED":
+      case "EVIDENCE_LINK_ADDED":
+        return "⊕";
+      case "EVIDENCE_FILE_REMOVED":
+      case "EVIDENCE_LINK_REMOVED":
+        return "⊖";
+      case "COMMENT_ADDED":
+      case "USER_MENTIONED":
+        return "◉";
+      case "REMINDER_SENT":
+        return "↺";
+      case "EXPORT_PDF_GENERATED":
+      case "EXPORT_BUNDLE_GENERATED":
+        return "⬡";
+      case "PAYMENT_STATUS_SET":
+      case "PAYMENT_EVIDENCE_ADDED":
+      case "PAYMENT_EVIDENCE_REMOVED":
+        return "$";
+      default:
+        return "·";
+    }
+  }
+
+  function getEventIconColor(
+    eventType: string,
+    metadata: Record<string, unknown> | null
+  ): string {
+    if (eventType === "APPROVAL_REQUESTED" && metadata?.action === "participant_removed")
+      return "text-(--color-danger) border-(--color-danger-soft) bg-(--color-danger-soft)";
+    switch (eventType) {
+      case "RECORD_CREATED":
+        return "text-(--color-primary) border-(--color-primary-soft) bg-(--color-primary-soft)";
+      case "APPROVAL_APPROVED":
+        return "text-(--color-success) border-(--color-success-soft) bg-(--color-success-soft)";
+      case "APPROVAL_REJECTED":
+        return "text-(--color-danger) border-(--color-danger-soft) bg-(--color-danger-soft)";
+      case "APPROVAL_REQUESTED":
+        return "text-(--color-primary) border-(--color-primary-soft) bg-(--color-primary-soft)";
+      case "COMMENT_ADDED":
+      case "USER_MENTIONED":
+        return "text-(--text-secondary) border-(--border-subtle) bg-(--bg-surface-elev)";
+      case "REMINDER_SENT":
+        return "text-(--color-warning) border-(--color-warning-soft) bg-(--color-warning-soft)";
+      default:
+        return "text-(--text-muted) border-(--border-subtle) bg-(--bg-surface-elev)";
+    }
+  }
+
+  // Build human-readable event label
+  function getEventLabel(ev: RecordEventItem): { primary: string; secondary: string | null } {
+    const m = ev.metadata;
+
+    if (ev.eventType === "APPROVAL_REQUESTED" && m?.action === "participant_removed") {
+      const role = m?.participantRole === "VIEWER" ? "Viewer" : "Approver";
+      const name = (m?.removedName ?? m?.removedEmail) as string | null;
+      return {
+        primary: `${role} removed`,
+        secondary: name ?? null,
+      };
+    }
+
+    if (ev.eventType === "APPROVAL_REQUESTED") {
+      const role = m?.participantRole === "VIEWER" ? "Viewer" : "Approver";
+      const name = (m?.participantName ?? m?.participantEmail) as string | null;
+      return {
+        primary: `${role} assigned`,
+        secondary: name ?? null,
+      };
+    }
+
+    if (ev.eventType === "PARTICIPANT_VIEWED") {
+      const role = m?.participantRole === "VIEWER" ? "Viewer" : "Approver";
+      return {
+        primary: `${role} viewed this request`,
+        secondary: null,
+      };
+    }
+
+    if (ev.eventType === "EVIDENCE_FILE_ADDED" && m?.fileName) {
+      return { primary: "File added", secondary: String(m.fileName) };
+    }
+    if (ev.eventType === "EVIDENCE_LINK_ADDED" && m?.label) {
+      return { primary: "Link added", secondary: String(m.label) };
+    }
+    if (ev.eventType === "EVIDENCE_FILE_REMOVED" && (m?.fileName ?? m?.label)) {
+      return { primary: "File removed", secondary: String(m?.fileName ?? m?.label ?? "") };
+    }
+    if (ev.eventType === "EVIDENCE_LINK_REMOVED" && m?.label) {
+      return { primary: "Link removed", secondary: String(m.label) };
+    }
+    if (ev.eventType === "PAYMENT_EVIDENCE_REMOVED" && (m?.fileName ?? m?.label)) {
+      return { primary: "Payment proof removed", secondary: String(m?.fileName ?? m?.label ?? "") };
+    }
+
+    return {
+      primary: RECORD_EVENT_LABELS[ev.eventType] ?? ev.eventType,
+      secondary: null,
+    };
+  }
+
   return (
     <CardRoot>
       <CardHeader>
@@ -1469,123 +1604,112 @@ function TimelineSection({
         {sortedEvents.length === 0 ? (
           <p className="text-sm text-(--text-muted)">No activity recorded yet.</p>
         ) : (
-          <ol className="space-y-4">
-            {sortedEvents.map((ev) => {
-              const commentId =
-                ev.eventType === "COMMENT_ADDED"
-                  ? (ev.metadata?.commentId as string | undefined)
-                  : undefined;
-              const comment = commentId ? commentMap.get(commentId) : undefined;
+          <div className="space-y-4">
+            {groupedByDate.map((group) => (
+              <div key={group.date}>
+                {/* Date group header */}
+                <div className="mb-3 flex items-center gap-2">
+                  <div className="h-px flex-1 bg-(--border-subtle)" />
+                  <span className="text-[11px] font-medium text-(--text-muted) uppercase tracking-wider">
+                    {group.date}
+                  </span>
+                  <div className="h-px flex-1 bg-(--border-subtle)" />
+                </div>
 
-              return (
-                <li key={ev.id} className="flex gap-3">
-                  <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-(--border-subtle) bg-(--bg-surface-elev)">
-                    <span className="h-1.5 w-1.5 rounded-full bg-(--text-muted)" />
-                  </div>
-                  <div className="min-w-0 flex-1 border-b border-(--border-subtle) pb-4 last:border-0 last:pb-0">
-                    <div className="flex flex-wrap items-baseline gap-2">
-                      <span
-                        className={[
-                          "text-sm font-medium",
-                          comment?.isCritical
-                            ? "text-(--color-danger)"
-                            : "text-(--text-primary)",
-                        ].join(" ")}
-                      >
-                        {ev.eventType === "APPROVAL_REQUESTED" && ev.metadata?.action === "participant_removed"
-                          ? "Participant removed"
-                          : RECORD_EVENT_LABELS[ev.eventType] ?? ev.eventType}
-                        {ev.eventType === "EVIDENCE_FILE_ADDED" &&
-                        ev.metadata?.fileName != null &&
-                        ev.metadata.fileName !== "" ? (
-                          <span className="ml-1 font-normal text-(--text-muted)">
-                            — {String(ev.metadata.fileName)}
-                          </span>
-                        ) : null}
-                        {ev.eventType === "EVIDENCE_LINK_ADDED" &&
-                        ev.metadata?.label != null &&
-                        ev.metadata.label !== "" ? (
-                          <span className="ml-1 font-normal text-(--text-muted)">
-                            — {String(ev.metadata.label)}
-                          </span>
-                        ) : null}
-                        {ev.eventType === "EVIDENCE_FILE_REMOVED" &&
-                        (ev.metadata?.fileName != null || ev.metadata?.label != null) ? (
-                          <span className="ml-1 font-normal text-(--text-muted)">
-                            — {String(ev.metadata?.fileName ?? ev.metadata?.label ?? "")}
-                          </span>
-                        ) : null}
-                        {ev.eventType === "EVIDENCE_LINK_REMOVED" &&
-                        ev.metadata?.label != null &&
-                        ev.metadata.label !== "" ? (
-                          <span className="ml-1 font-normal text-(--text-muted)">
-                            — {String(ev.metadata.label)}
-                          </span>
-                        ) : null}
-                        {ev.eventType === "PAYMENT_EVIDENCE_REMOVED" &&
-                        (ev.metadata?.fileName != null || ev.metadata?.label != null) ? (
-                          <span className="ml-1 font-normal text-(--text-muted)">
-                            — {String(ev.metadata?.fileName ?? ev.metadata?.label ?? "")}
-                          </span>
-                        ) : null}
-                        {/* Participant assigned — show role and name */}
-                        {ev.eventType === "APPROVAL_REQUESTED" &&
-                        ev.metadata?.action !== "participant_removed" &&
-                        (ev.metadata?.participantName != null ||
-                          ev.metadata?.participantEmail != null) ? (
-                          <span className="ml-1 font-normal text-(--text-muted)">
-                            {ev.metadata?.participantRole === "VIEWER" ? "viewer" : "approver"}
-                            {" — "}
-                            {String(
-                              ev.metadata?.participantName ?? ev.metadata?.participantEmail ?? ""
+                <ol className="space-y-3">
+                  {group.events.map((ev) => {
+                    const commentId =
+                      ev.eventType === "COMMENT_ADDED"
+                        ? (ev.metadata?.commentId as string | undefined)
+                        : undefined;
+                    const comment = commentId ? commentMap.get(commentId) : undefined;
+                    const { primary, secondary } = getEventLabel(ev);
+                    const iconChar = getEventIcon(ev.eventType, ev.metadata);
+                    const iconColor = getEventIconColor(ev.eventType, ev.metadata);
+                    const timeStr = new Date(ev.occurredAt).toLocaleTimeString("en-US", {
+                      hour: "numeric",
+                      minute: "2-digit",
+                      hour12: true,
+                    });
+
+                    // Actor display with email tooltip
+                    const actorName = ev.actorName;
+                    const actorEmail = ev.actorDisplayEmail;
+                    const showActor = actorName || actorEmail;
+                    const actorDisplay = actorName ?? actorEmail;
+                    const showEmailTooltip = actorName && actorEmail && actorName !== actorEmail;
+
+                    return (
+                      <li key={ev.id} className="flex gap-3">
+                        {/* Semantic icon */}
+                        <div
+                          className={[
+                            "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[9px] font-bold",
+                            iconColor,
+                          ].join(" ")}
+                        >
+                          {iconChar}
+                        </div>
+
+                        {/* Content */}
+                        <div className="min-w-0 flex-1 border-b border-(--border-subtle) pb-3 last:border-0 last:pb-0">
+                          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                            <span
+                              className={[
+                                "text-sm font-medium",
+                                comment?.isCritical
+                                  ? "text-(--color-danger)"
+                                  : "text-(--text-primary)",
+                              ].join(" ")}
+                            >
+                              {primary}
+                              {secondary && (
+                                <span className="ml-1 font-normal text-(--text-muted)">
+                                  — {secondary}
+                                </span>
+                              )}
+                            </span>
+                            {comment?.isCritical && (
+                              <span className="flex items-center gap-1 text-xs text-(--color-danger)">
+                                <IconAlertCircle size={11} />
+                                Action required
+                              </span>
                             )}
-                          </span>
-                        ) : null}
+                            {/* Time */}
+                            <span className="text-xs text-(--text-muted)">{timeStr}</span>
+                          </div>
 
-                        {/* Participant removed — show role and name */}
-                        {ev.eventType === "APPROVAL_REQUESTED" &&
-                        ev.metadata?.action === "participant_removed" ? (
-                          <span className="ml-1 font-normal text-(--text-muted)">
-                            {ev.metadata?.participantRole === "VIEWER"
-                              ? "viewer removed"
-                              : "approver removed"}
-                            {ev.metadata?.removedName != null || ev.metadata?.removedEmail != null
-                              ? ` — ${String(ev.metadata?.removedName ?? ev.metadata?.removedEmail ?? "")}`
-                              : ""}
-                          </span>
-                        ) : null}
+                          {/* Actor */}
+                          {showActor && (
+                            <p className="mt-0.5 text-xs text-(--text-muted)">
+                              by{" "}
+                              {showEmailTooltip ? (
+                                <span
+                                  title={actorEmail ?? undefined}
+                                  className="cursor-default border-b border-dashed border-(--border-subtle)"
+                                >
+                                  {actorDisplay}
+                                </span>
+                              ) : (
+                                <span>{actorDisplay}</span>
+                              )}
+                            </p>
+                          )}
 
-                        {/* Participant viewed */}
-                        {ev.eventType === "PARTICIPANT_VIEWED" &&
-                        ev.metadata?.participantRole != null ? (
-                          <span className="ml-1 font-normal text-(--text-muted)">
-                            {ev.metadata.participantRole === "VIEWER" ? "by viewer" : "by approver"}
-                          </span>
-                        ) : null}
-                      </span>
-                      {comment?.isCritical && (
-                        <span className="flex items-center gap-1 text-xs text-(--color-danger)">
-                          <IconAlertCircle size={11} />
-                          Action required
-                        </span>
-                      )}
-                      <span className="text-xs text-(--text-muted)">{formatDate(ev.occurredAt)}</span>
-                    </div>
-                    {(ev.actorName || ev.actorDisplayEmail) && (
-                      <p className="mt-0.5 text-xs text-(--text-muted)">
-                        by {ev.actorName ?? ev.actorDisplayEmail}
-                      </p>
-                    )}
-                    {comment && (
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-(--text-secondary)">
-                        {comment.content}
-                      </p>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ol>
+                          {/* Comment body */}
+                          {comment && (
+                            <p className="mt-1 whitespace-pre-wrap text-sm text-(--text-secondary)">
+                              {comment.content}
+                            </p>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
+            ))}
+          </div>
         )}
       </CardContent>
     </CardRoot>
