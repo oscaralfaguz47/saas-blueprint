@@ -8,6 +8,7 @@ import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { canAccessRequest } from "@/server/security/request-authorization";
 import { processMentions } from "@/server/services/record-mentions";
+import { getPresignedGetUrlProfilePhoto, isR2Configured } from "@/server/services/r2-profile-photo";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { z } from "zod";
 
@@ -65,7 +66,51 @@ export const GET = withErrorHandler(async (
     },
   });
 
-  return apiSuccess({ comments });
+  // Batch fetch author data for internal comments
+  const authorIds = [
+    ...new Set(
+      comments
+        .filter((c) => c.authorType === "INTERNAL" && c.authorUserId)
+        .map((c) => c.authorUserId!)
+    ),
+  ];
+
+  const authors =
+    authorIds.length > 0
+      ? await prisma.user.findMany({
+          where: { id: { in: authorIds } },
+          select: { id: true, name: true, email: true, image: true, profilePhotoObjectKey: true },
+        })
+      : [];
+
+  const authorMap = new Map(authors.map((u) => [u.id, u]));
+  const r2Available = isR2Configured();
+
+  const enriched = await Promise.all(
+    comments.map(async (c) => {
+      const author = c.authorUserId ? authorMap.get(c.authorUserId) : null;
+      let authorAvatarUrl: string | null = null;
+      if (author?.profilePhotoObjectKey && r2Available) {
+        authorAvatarUrl = await getPresignedGetUrlProfilePhoto(author.profilePhotoObjectKey);
+      }
+      if (!authorAvatarUrl) authorAvatarUrl = author?.image ?? null;
+
+      return {
+        id: c.id,
+        authorType: c.authorType,
+        authorUserId: c.authorUserId,
+        authorEmail: author?.email ?? c.authorEmail ?? null,
+        authorName: author?.name ?? null,
+        authorAvatarUrl,
+        commentScope: c.commentScope,
+        content: c.content,
+        isCritical: c.isCritical,
+        createdAt: c.createdAt.toISOString(),
+      };
+    })
+  );
+
+  return apiSuccess({ comments: enriched });
 });
 
 /**

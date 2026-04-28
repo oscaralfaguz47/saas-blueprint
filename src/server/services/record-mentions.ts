@@ -10,8 +10,17 @@ function parseMentionHandles(content: string): string[] {
   let match: RegExpExecArray | null;
   MENTION_REGEX.lastIndex = 0;
   while ((match = MENTION_REGEX.exec(content)) !== null) {
-    const h = match[1]?.trim();
-    if (h && h.length > 0) handles.add(h.toLowerCase());
+    const raw = match[1]?.trim();
+    if (!raw || raw.length === 0) continue;
+    // Add the full captured string
+    handles.add(raw.toLowerCase());
+    // Also add each prefix by removing trailing words one at a time.
+    // Handles the case where greedy capture includes post-mention words:
+    // "@Oscar Emilio Guzmán como" → also try "oscar emilio guzmán", "oscar emilio", "oscar"
+    const words = raw.split(/\s+/);
+    for (let i = words.length - 1; i >= 1; i--) {
+      handles.add(words.slice(0, i).join(" ").toLowerCase());
+    }
   }
   return Array.from(handles);
 }

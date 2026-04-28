@@ -1084,7 +1084,10 @@ export function RequestDetailClient({
               recordId={recordId}
               isClosed={isClosed}
               canComment={canComment}
-              onRefresh={load}
+              currentUserId={currentUserId}
+              currentUserName={currentUserName}
+              currentUserEmail={currentUserEmail}
+              onParticipantsChange={updateParticipants}
             />
           </div>
 
@@ -2145,45 +2148,166 @@ function SubmitDraftButton({
   );
 }
 
+type CommentWithAuthor = RecordComment & {
+  authorDisplayName: string;
+  authorImage: string | null;
+  isCurrentUser: boolean;
+};
+
 function CommentSection({
   recordId,
   isClosed,
   canComment,
-  onRefresh,
+  currentUserId,
+  currentUserName,
+  currentUserEmail,
+  onParticipantsChange,
 }: {
   recordId: string;
   isClosed: boolean;
   canComment: boolean;
-  onRefresh: () => void | Promise<void>;
+  currentUserId: string;
+  currentUserName?: string | null;
+  currentUserEmail?: string | null;
+  onParticipantsChange?: (updater: (prev: RecordParticipant[]) => RecordParticipant[]) => void;
 }) {
   const apiFetch = useApiFetch();
-  const toast = useToast();
+  const apiFetchRef = useRef(apiFetch);
+  useEffect(() => {
+    apiFetchRef.current = apiFetch;
+  }, [apiFetch]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
+  const [comments, setComments] = useState<CommentWithAuthor[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(true);
   const [content, setContent] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mentionSearch, setMentionSearch] = useState<string | null>(null);
   const [mentionOpen, setMentionOpen] = useState(false);
+  const [currentUserAvatarUrl, setCurrentUserAvatarUrl] = useState<string | null>(null);
   const [mentionUsers, setMentionUsers] = useState<
-    { user: { id: string; name: string | null; email: string | null } }[]
+    { user: { id: string; name: string | null; email: string | null; image: string | null } }[]
   >([]);
 
+  // Load comments independently — don't rely on main record load
+  const loadComments = useCallback(async () => {
+    try {
+      const res = await apiFetchRef.current(`/api/records/${recordId}/comments`, {
+        showToastOnError: false,
+      });
+      if (!res.ok) return;
+      const json = (await res.json()) as {
+        data?: { comments?: RecordComment[] };
+      };
+      const raw = json.data?.comments ?? [];
+      // Oldest first — newest appears near the input at bottom
+      const sorted = [...raw].sort(
+        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      );
+      setComments(
+        sorted.map((c) => ({
+          ...c,
+          authorDisplayName:
+            c.authorType === "EXTERNAL"
+              ? (c.authorEmail ?? "External")
+              : (c.authorName ?? c.authorEmail ?? "Team member"),
+          authorImage: c.authorAvatarUrl,
+          isCurrentUser: c.authorUserId === currentUserId,
+        }))
+      );
+      const myComment = sorted.find((c) => c.authorUserId === currentUserId);
+      if (myComment?.authorAvatarUrl) {
+        setCurrentUserAvatarUrl(myComment.authorAvatarUrl);
+      }
+      // Scroll to bottom to show newest after load
+      requestAnimationFrame(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+      });
+    } catch {
+      /* silent */
+    } finally {
+      setCommentsLoading(false);
+    }
+  }, [recordId, currentUserId]);
+
   useEffect(() => {
-    if (!mentionOpen) return;
-    apiFetch("/api/tenant/users?context=assignment", { showToastOnError: false })
+    const controller = new AbortController();
+    setCommentsLoading(true);
+    void (async () => {
+      try {
+        const res = await apiFetchRef.current(`/api/records/${recordId}/comments`, {
+          showToastOnError: false,
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+        if (!res.ok) return;
+        const json = (await res.json()) as { data?: { comments?: RecordComment[] } };
+        if (controller.signal.aborted) return;
+        const raw = json.data?.comments ?? [];
+        const sorted = [...raw].sort(
+          (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
+        setComments(
+          sorted.map((c) => ({
+            ...c,
+            authorDisplayName:
+              c.authorType === "EXTERNAL"
+                ? (c.authorEmail ?? "External")
+                : (c.authorName ?? c.authorEmail ?? "Team member"),
+            authorImage: c.authorAvatarUrl,
+            isCurrentUser: c.authorUserId === currentUserId,
+          }))
+        );
+        const myComment = sorted.find((c) => c.authorUserId === currentUserId);
+        if (myComment?.authorAvatarUrl) {
+          setCurrentUserAvatarUrl(myComment.authorAvatarUrl);
+        }
+        requestAnimationFrame(() => {
+          if (scrollRef.current) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+          }
+        });
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") return;
+      } finally {
+        if (!controller.signal.aborted) setCommentsLoading(false);
+      }
+    })();
+    return () => controller.abort();
+  }, [recordId, currentUserId]);
+
+  useEffect(() => {
+    if (!mentionOpen || mentionUsers.length > 0) return;
+    void apiFetchRef.current("/api/tenant/users?context=assignment", { showToastOnError: false })
       .then((r) => r.json())
       .then(
         (json: {
           data?: {
-            users?: { user: { id: string; name: string | null; email: string | null } }[];
+            users?: { user: { id: string; name: string | null; email: string | null; image: string | null } }[];
           };
         }) => {
           setMentionUsers(json.data?.users ?? []);
         }
       )
       .catch(() => {});
-  }, [mentionOpen, apiFetch]);
+  }, [mentionOpen, mentionUsers.length]);
+
+  // Auto-scroll to bottom when new comment added
+  const commentsLengthRef = useRef(0);
+  useEffect(() => {
+    if (comments.length > commentsLengthRef.current) {
+      commentsLengthRef.current = comments.length;
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      }
+    } else {
+      commentsLengthRef.current = comments.length;
+    }
+  }, [comments.length]);
 
   const filteredMentions = mentionUsers.filter((u) => {
     if (!mentionSearch) return true;
@@ -2199,9 +2323,9 @@ function CommentSection({
     setContent(val);
     const cursor = e.target.selectionStart ?? val.length;
     const before = val.slice(0, cursor);
-    const match = before.match(/@([a-zA-Z0-9._\-\s]*)$/);
+    const match = before.match(/@([a-zA-Z0-9._\-]*)$/);
     if (match) {
-      setMentionSearch(match[1]);
+      setMentionSearch(match[1] ?? "");
       setMentionOpen(true);
     } else {
       setMentionOpen(false);
@@ -2212,7 +2336,8 @@ function CommentSection({
   function insertMention(user: { name: string | null; email: string | null }) {
     const handle = user.name ?? user.email ?? "user";
     const cursor = textareaRef.current?.selectionStart ?? content.length;
-    const before = content.slice(0, cursor).replace(/@([a-zA-Z0-9._\-\s]*)$/, `@${handle} `);
+    // Replace only the @partial typed (no spaces — stops at last space boundary)
+    const before = content.slice(0, cursor).replace(/@([^\s]*)$/, `@${handle} `);
     const after = content.slice(cursor);
     setContent(before + after);
     setMentionOpen(false);
@@ -2220,95 +2345,418 @@ function CommentSection({
     setTimeout(() => textareaRef.current?.focus(), 0);
   }
 
-  if (!canComment || isClosed) return null;
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!content.trim()) return;
+    if (!content.trim() || submitting) return;
     setSubmitting(true);
     setError(null);
+
+    const optimisticId = `optimistic-${Date.now()}`;
+    const displayName = currentUserName ?? currentUserEmail ?? "You";
+    const optimisticComment: CommentWithAuthor = {
+      id: optimisticId,
+      authorType: "INTERNAL",
+      authorUserId: currentUserId,
+      authorEmail: currentUserEmail ?? null,
+      authorName: currentUserName ?? null,
+      authorAvatarUrl: currentUserAvatarUrl,
+      commentScope: "GENERAL",
+      content: content.trim(),
+      isCritical: false,
+      createdAt: new Date().toISOString(),
+      authorDisplayName: displayName,
+      authorImage: currentUserAvatarUrl,
+      isCurrentUser: true,
+    };
+
+    // Optimistic insert at bottom (oldest-first order)
+    setComments((prev) => [...prev, optimisticComment]);
+    const submittedContent = content.trim();
+    setContent("");
+
     try {
       const res = await apiFetch(`/api/records/${recordId}/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: content.trim(), commentScope: "GENERAL" }),
+        body: JSON.stringify({ content: submittedContent, commentScope: "GENERAL" }),
         showToastOnError: false,
       });
+
       if (!res.ok) {
-        const json = (await res.json().catch(() => ({}))) as {
-          error?: { message?: string };
-        };
+        // Revert optimistic insert on failure
+        setComments((prev) => prev.filter((c) => c.id !== optimisticId));
+        setContent(submittedContent);
+        const json = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
         setError(json.error?.message ?? "Failed to post comment.");
         return;
       }
-      setContent("");
-      toast.addToast("success", "Comment added.");
-      await onRefresh();
+
+      const json = (await res.json()) as {
+        data?: { id?: string; createdAt?: string };
+      };
+
+      // Replace optimistic comment with real one
+      if (json.data?.id) {
+        setComments((prev) =>
+          prev.map((c) =>
+            c.id === optimisticId
+              ? {
+                  ...c,
+                  id: json.data!.id!,
+                  createdAt: json.data!.createdAt ?? c.createdAt,
+                }
+              : c
+          )
+        );
+      }
+
+      const hasMention = /@\S+/.test(submittedContent);
+
+      // Optimistically add mentioned users as VIEWER participants in UI
+      if (hasMention && onParticipantsChange) {
+        // Same regex as server's parseMentionHandles — captures full name handles
+        const mentionRegex = /(?<![^\s,([])@([^@\n]+)(?=\s|$)/g;
+        let m: RegExpExecArray | null;
+        const mentionedHandles: string[] = [];
+        mentionRegex.lastIndex = 0;
+        while ((m = mentionRegex.exec(submittedContent)) !== null) {
+          const raw = m[1]?.trim();
+          if (!raw || raw.length === 0) continue;
+          mentionedHandles.push(raw.toLowerCase());
+          // Also add progressively shorter handles (matches server parseMentionHandles fix)
+          const words = raw.split(/\s+/);
+          for (let i = words.length - 1; i >= 1; i--) {
+            mentionedHandles.push(words.slice(0, i).join(" ").toLowerCase());
+          }
+        }
+
+        for (const handle of mentionedHandles) {
+          const matched = mentionUsers.find((u) => {
+            const nameHandle = u.user.name?.toLowerCase() ?? "";
+            const emailHandle = u.user.email?.toLowerCase() ?? "";
+            const h = handle.trim();
+            return (
+              nameHandle === h ||
+              emailHandle === h ||
+              nameHandle.startsWith(h) ||
+              h.startsWith(nameHandle) ||
+              emailHandle.startsWith(h) ||
+              h.startsWith(emailHandle)
+            );
+          });
+          if (matched) {
+            const userId = matched.user.id;
+            onParticipantsChange((prev) => {
+              // Don't add if already a non-revoked participant
+              const exists = prev.some((p) => p.userId === userId && p.revokedAt === null);
+              if (exists) return prev;
+              // Add optimistic VIEWER
+              return [
+                ...prev,
+                {
+                  id: `optimistic-viewer-${userId}`,
+                  participantType: "INTERNAL" as const,
+                  participantRole: "VIEWER" as const,
+                  status: "PENDING" as const,
+                  userId,
+                  email: matched.user.email ?? null,
+                  name: matched.user.name ?? null,
+                  image: null,
+                  expiresAt: null,
+                  revokedAt: null,
+                  lastUsedAt: null,
+                  respondedAt: null,
+                  responseReason: null,
+                  createdAt: new Date().toISOString(),
+                },
+              ];
+            });
+          }
+        }
+      }
     } catch {
+      setComments((prev) => prev.filter((c) => c.id !== optimisticId));
+      setContent(submittedContent);
       setError("Network error. Please try again.");
     } finally {
       setSubmitting(false);
     }
   }
 
+  // Avatar component — initials only, no image fetch
+  function Avatar({
+    name,
+    email,
+    image,
+    isCurrentUser,
+  }: {
+    name: string | null;
+    email: string | null;
+    image: string | null;
+    isCurrentUser: boolean;
+  }) {
+    const initial = (name ?? email ?? "?")[0]?.toUpperCase() ?? "?";
+    if (image) {
+      return (
+        <img
+          src={image}
+          alt={name ?? email ?? "User"}
+          className="h-7 w-7 shrink-0 rounded-full border border-(--border-subtle) object-cover"
+          loading="lazy"
+          onError={(e) => {
+            // Fallback to initials if image fails
+            const parent = e.currentTarget.parentElement;
+            if (parent) {
+              e.currentTarget.style.display = "none";
+            }
+          }}
+        />
+      );
+    }
+    return (
+      <div
+        className={[
+          "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold",
+          isCurrentUser
+            ? "bg-(--color-primary-soft) text-(--color-primary)"
+            : "bg-(--bg-surface-elev) text-(--text-secondary) border border-(--border-subtle)",
+        ].join(" ")}
+      >
+        {initial}
+      </div>
+    );
+  }
+
+  const hasComments = comments.length > 0;
+
   return (
     <CardRoot>
       <CardHeader>
-        <h2 className="text-sm font-semibold text-(--text-primary)">Add comment</h2>
+        <h2 className="text-sm font-semibold text-(--text-primary)">
+          Comments
+          {hasComments && (
+            <span className="ml-2 rounded-full bg-(--bg-surface-elev) px-1.5 py-0.5 text-[10px] font-medium text-(--text-muted)">
+              {comments.length}
+            </span>
+          )}
+        </h2>
       </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-3">
-          {error && <p className="text-xs text-(--color-danger)">{error}</p>}
+      <CardContent className="p-0">
+        {/* Comment list — scrollable, newest first */}
+        {commentsLoading ? (
+          <div className="flex items-center justify-center py-6">
+            <Spinner size="sm" />
+          </div>
+        ) : hasComments ? (
           <div className="relative">
-            <Textarea
-              ref={textareaRef}
-              value={content}
-              onChange={handleContentChange}
-              placeholder="Write a comment… Use @ to mention someone"
-              rows={3}
-              maxLength={5000}
-              disabled={submitting}
-            />
-            {mentionOpen && filteredMentions.length > 0 && (
-              <div className="absolute bottom-full left-0 z-20 mb-1 max-h-48 w-full overflow-y-auto rounded-lg border border-(--border-subtle) bg-(--bg-surface) shadow-lg">
-                {filteredMentions.slice(0, 8).map((u) => (
-                  <button
-                    key={u.user.id}
-                    type="button"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      insertMention(u.user);
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-(--bg-surface-elev)"
-                  >
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-(--bg-surface-elev) text-xs font-semibold text-(--text-muted) uppercase">
-                      {(u.user.name ?? u.user.email ?? "?")[0]}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm text-(--text-primary)">
-                        {u.user.name ?? u.user.email}
-                      </p>
-                      {u.user.name && u.user.email && (
-                        <p className="truncate text-xs text-(--text-muted)">{u.user.email}</p>
-                      )}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-(--text-muted)">Use @ to mention a team member</p>
-            <button
-              type="submit"
-              disabled={submitting || !content.trim()}
-              className="inline-flex h-9 items-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-(--color-primary-hover) disabled:opacity-60"
+            {/* Top shadow */}
+            <div className="pointer-events-none absolute top-0 left-0 right-0 z-10 h-5 bg-gradient-to-b from-(--bg-surface) to-transparent" />
+
+            <div
+              ref={scrollRef}
+              className="space-y-3 overflow-y-auto px-4 py-3"
+              style={{
+                maxHeight: "20rem",
+                scrollbarWidth: "thin",
+                scrollbarColor: "var(--border-subtle) transparent",
+              }}
             >
-              {submitting && <Spinner size="sm" />}
-              {submitting ? "Posting…" : "Post comment"}
-            </button>
+              {comments.map((comment) => {
+                const timeStr = new Date(comment.createdAt).toLocaleString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                  hour12: true,
+                });
+                const isOptimistic = comment.id.startsWith("optimistic-");
+
+                return (
+                  <div
+                    key={comment.id}
+                    className={[
+                      "flex gap-2.5 transition-opacity duration-200",
+                      isOptimistic ? "opacity-60" : "opacity-100",
+                    ].join(" ")}
+                  >
+                    <Avatar
+                      name={comment.authorName}
+                      email={comment.authorEmail}
+                      image={comment.authorImage}
+                      isCurrentUser={comment.isCurrentUser}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-baseline gap-1.5">
+                        {(() => {
+                          const displayName = comment.isCurrentUser
+                            ? (currentUserName ?? currentUserEmail ?? "You")
+                            : comment.authorDisplayName;
+                          const emailToShow = comment.isCurrentUser
+                            ? currentUserEmail
+                            : comment.authorEmail;
+                          const showTooltip = !!emailToShow && emailToShow !== displayName;
+
+                          return (
+                            <span
+                              className="relative"
+                              onMouseEnter={(e) => {
+                                if (!showTooltip) return;
+                                const tip = e.currentTarget.querySelector<HTMLElement>("[data-tooltip]");
+                                if (!tip) return;
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                const margin = 8;
+                                const tipWidth = 220;
+                                let left = rect.left + rect.width / 2;
+                                left = Math.max(
+                                  tipWidth / 2 + margin,
+                                  Math.min(left, window.innerWidth - tipWidth / 2 - margin)
+                                );
+                                tip.style.position = "fixed";
+                                tip.style.zIndex = "9999";
+                                tip.style.pointerEvents = "none";
+                                tip.style.left = `${left}px`;
+                                tip.style.transform = "translateX(-50%)";
+                                tip.style.top = "auto";
+                                tip.style.bottom = `${window.innerHeight - rect.top + 6}px`;
+                                tip.style.opacity = "1";
+                              }}
+                              onMouseLeave={(e) => {
+                                const tip = e.currentTarget.querySelector<HTMLElement>("[data-tooltip]");
+                                if (tip) tip.style.opacity = "0";
+                              }}
+                            >
+                              <span
+                                className={[
+                                  "text-xs font-semibold text-(--text-primary)",
+                                  showTooltip
+                                    ? "cursor-default border-b border-dashed border-(--border-subtle)"
+                                    : "",
+                                ].join(" ")}
+                              >
+                                {displayName}
+                              </span>
+                              {showTooltip && (
+                                <span
+                                  data-tooltip
+                                  style={{
+                                    opacity: 0,
+                                    pointerEvents: "none",
+                                    position: "fixed",
+                                    zIndex: 9999,
+                                    top: 0,
+                                    left: 0,
+                                    transition: "opacity 0.15s ease",
+                                  }}
+                                >
+                                  <span className="relative block">
+                                    <span className="block whitespace-nowrap rounded-md bg-(--bg-inverted) px-2.5 py-1.5 text-[11px] font-medium leading-none text-(--text-inverted) shadow-lg">
+                                      {emailToShow}
+                                    </span>
+                                    <span className="absolute -bottom-1 left-1/2 block h-2 w-2 -translate-x-1/2 rotate-45 bg-(--bg-inverted)" />
+                                  </span>
+                                </span>
+                              )}
+                            </span>
+                          );
+                        })()}
+                        {comment.authorType === "EXTERNAL" && (
+                          <span className="rounded bg-(--color-warning-soft) px-1 py-0.5 text-[9px] font-medium text-(--color-warning)">
+                            External
+                          </span>
+                        )}
+                        {comment.isCritical && (
+                          <span className="rounded bg-(--color-danger-soft) px-1 py-0.5 text-[9px] font-medium text-(--color-danger)">
+                            Action required
+                          </span>
+                        )}
+                        <span className="text-[10px] text-(--text-muted)">{timeStr}</span>
+                      </div>
+                      <CommentBody content={comment.content} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Bottom shadow */}
+            <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-10 h-5 bg-gradient-to-t from-(--bg-surface) to-transparent" />
           </div>
-        </form>
+        ) : !canComment && !isClosed ? (
+          <p className="px-4 py-3 text-sm text-(--text-muted)">No comments yet.</p>
+        ) : null}
+
+        {/* Comment form */}
+        {canComment && !isClosed && (
+          <div
+            className={["px-4 pb-4", hasComments ? "pt-2 border-t border-(--border-subtle)" : "pt-3"].join(
+              " "
+            )}
+          >
+            {error && <p className="mb-2 text-xs text-(--color-danger)">{error}</p>}
+            <form onSubmit={(e) => void handleSubmit(e)} className="space-y-2">
+              <div className="relative">
+                <Textarea
+                  ref={textareaRef}
+                  value={content}
+                  onChange={handleContentChange}
+                  placeholder="Write a comment… Use @ to mention someone"
+                  rows={2}
+                  maxLength={5000}
+                  disabled={submitting}
+                  className="resize-none text-sm"
+                />
+                {/* Mention dropdown */}
+                {mentionOpen && filteredMentions.length > 0 && (
+                  <div className="absolute bottom-full left-0 z-20 mb-1 max-h-44 w-full overflow-y-auto rounded-lg border border-(--border-subtle) bg-(--bg-surface) shadow-xl">
+                    {filteredMentions.slice(0, 8).map((u) => (
+                      <button
+                        key={u.user.id}
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          insertMention(u.user);
+                        }}
+                        className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-(--bg-surface-elev)"
+                      >
+                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-(--bg-surface-elev) text-[10px] font-semibold text-(--text-muted) uppercase border border-(--border-subtle)">
+                          {(u.user.name ?? u.user.email ?? "?")[0]?.toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-medium text-(--text-primary)">
+                            {u.user.name ?? u.user.email}
+                          </p>
+                          {u.user.name && u.user.email && (
+                            <p className="truncate text-[10px] text-(--text-muted)">{u.user.email}</p>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] text-(--text-muted)">
+                  Use{" "}
+                  <kbd className="rounded border border-(--border-subtle) px-1 text-[10px]">@</kbd>{" "}
+                  to mention
+                </p>
+                <button
+                  type="submit"
+                  disabled={submitting || !content.trim()}
+                  className="cursor-pointer inline-flex h-8 items-center gap-1.5 rounded-lg bg-(--color-primary) px-3 text-xs font-medium text-white transition-colors hover:bg-(--color-primary-hover) disabled:opacity-60"
+                >
+                  {submitting && <Spinner size="sm" />}
+                  {submitting ? "Posting…" : "Post comment"}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* Closed state */}
+        {isClosed && !hasComments && (
+          <p className="px-4 py-3 text-sm text-(--text-muted)">No comments on this request.</p>
+        )}
       </CardContent>
     </CardRoot>
   );

@@ -5,6 +5,7 @@ import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { prisma } from "@/server/db";
 import { requireFullSession } from "@/server/require-full-session";
 import { writeAuditLog } from "@/server/services/audit";
+import { getPresignedGetUrlProfilePhoto, isR2Configured } from "@/server/services/r2-profile-photo";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 
 export const GET = withErrorHandler(async (req: Request) => {
@@ -51,6 +52,7 @@ export const GET = withErrorHandler(async (req: Request) => {
           email: true,
           name: true,
           image: true,
+          profilePhotoObjectKey: true,
           createdAt: true,
           isPlatformBlocked: true,
         },
@@ -79,9 +81,21 @@ export const GET = withErrorHandler(async (req: Request) => {
     });
   }
 
+  const r2Available = isR2Configured();
+  const usersWithAvatars = await Promise.all(
+    rows.map(async (m) => {
+      let avatarUrl: string | null = null;
+      if (m.user.profilePhotoObjectKey && r2Available) {
+        avatarUrl = await getPresignedGetUrlProfilePhoto(m.user.profilePhotoObjectKey);
+      }
+      if (!avatarUrl) avatarUrl = m.user.image ?? null;
+      return { ...m, avatarUrl };
+    })
+  );
+
   return apiSuccess({
     tenant,
-    users: rows.map((m) => ({
+    users: usersWithAvatars.map((m) => ({
       membership: {
         id: m.id,
         status: m.status,
@@ -89,7 +103,14 @@ export const GET = withErrorHandler(async (req: Request) => {
         lastSeenAt: m.lastSeenAt,
         isDefaultTenant: m.isDefaultTenant,
       },
-      user: m.user,
+      user: {
+        id: m.user.id,
+        email: m.user.email,
+        name: m.user.name,
+        image: m.avatarUrl,
+        createdAt: m.user.createdAt,
+        isPlatformBlocked: m.user.isPlatformBlocked,
+      },
       roles: m.roles.map((r) => r.role.name),
     })),
   });

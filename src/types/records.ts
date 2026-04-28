@@ -251,6 +251,8 @@ export type RecordComment = {
   authorType: "INTERNAL" | "EXTERNAL";
   authorUserId: string | null;
   authorEmail: string | null;
+  authorName: string | null;
+  authorAvatarUrl: string | null;
   commentScope: "GENERAL" | "APPROVAL" | "PAYMENT" | "INTERNAL";
   content: string;
   isCritical: boolean;
