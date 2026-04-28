@@ -32,6 +32,7 @@ export function RequestsSplitLayout({
   const [listResetKey, setListResetKey] = useState(0);
   const [mentionsReadSinceLoad, setMentionsReadSinceLoad] = useState(0);
   const [sharedReadSinceLoad, setSharedReadSinceLoad] = useState(0);
+  const [approvalCompletedSinceLoad, setApprovalCompletedSinceLoad] = useState(0);
   const listMountTimeRef = useRef<number>(Date.now());
 
   const handleMentionsRead = useCallback(
@@ -94,6 +95,7 @@ export function RequestsSplitLayout({
       window.history.replaceState(null, "", "/app/requests");
       setMentionsReadSinceLoad(0);
       setSharedReadSinceLoad(0);
+      setApprovalCompletedSinceLoad(0);
       setListResetKey((k) => k + 1);
     }
     window.addEventListener("workspace-ready", handleWorkspaceReady);
@@ -165,6 +167,21 @@ export function RequestsSplitLayout({
     [handleSelectRecord]
   );
 
+  const handleSummaryRevalidated = useCallback(() => {
+    setMentionsReadSinceLoad(0);
+    setSharedReadSinceLoad(0);
+    setApprovalCompletedSinceLoad(0);
+  }, []);
+
+  const handleApprovalCompleted = useCallback(() => {
+    setApprovalCompletedSinceLoad((n) => n + 1);
+    if (selectedId) {
+      window.dispatchEvent(
+        new CustomEvent("record-approval-completed", { detail: { recordId: selectedId } })
+      );
+    }
+  }, [selectedId]);
+
   // On mobile: render only the list (detail is a separate page)
   if (isMobile) {
     return (
@@ -179,6 +196,8 @@ export function RequestsSplitLayout({
           heightConstrained={false}
           mentionsReadOffset={mentionsReadSinceLoad}
           sharedReadOffset={sharedReadSinceLoad}
+          approvalCompletedOffset={approvalCompletedSinceLoad}
+          onSummaryRevalidated={handleSummaryRevalidated}
         />
       </div>
     );
@@ -208,6 +227,8 @@ export function RequestsSplitLayout({
             onCreated={handleCreated}
             mentionsReadOffset={mentionsReadSinceLoad}
             sharedReadOffset={sharedReadSinceLoad}
+            approvalCompletedOffset={approvalCompletedSinceLoad}
+            onSummaryRevalidated={handleSummaryRevalidated}
           />
         </div>
       </div>
@@ -227,6 +248,7 @@ export function RequestsSplitLayout({
               onNavigate={handleSelectRecord}
               onMentionsRead={handleMentionsRead}
               onSharedViewed={handleSharedViewed}
+              onApprovalCompleted={handleApprovalCompleted}
             />
           </div>
         ) : (

@@ -52,6 +52,8 @@ type Props = {
   canAssignExternal: boolean;
   isRequestCreator: boolean;
   onRefresh: () => void | Promise<void>;
+  /** Called after approve/reject succeeds and onRefresh completes (split-view list/badge updates) */
+  onApprovalCompleted?: () => void;
   onParticipantsChange?: (updater: (prev: RecordParticipant[]) => RecordParticipant[]) => void;
 };
 
@@ -1085,6 +1087,7 @@ function ParticipantListSection({
   canRemind,
   canRemove,
   onRefresh,
+  onApprovalCompleted,
   onParticipantsChange,
 }: {
   title: string;
@@ -1098,6 +1101,7 @@ function ParticipantListSection({
   canRemind: boolean;
   canRemove: boolean;
   onRefresh: () => void | Promise<void>;
+  onApprovalCompleted?: () => void;
   onParticipantsChange?: (updater: (prev: RecordParticipant[]) => RecordParticipant[]) => void;
 }) {
   const apiFetch = useApiFetch();
@@ -1145,6 +1149,7 @@ function ParticipantListSection({
       }
       toast.addToast("success", "Approved.");
       await onRefresh();
+      onApprovalCompleted?.();
     } catch {
       toast.addToast("error", "Network error.");
     } finally {
@@ -1174,6 +1179,7 @@ function ParticipantListSection({
       toast.addToast("success", "Rejected.");
       setRejectModal({ open: false, participantId: null, submitting: false });
       await onRefresh();
+      onApprovalCompleted?.();
     } catch {
       toast.addToast("error", "Network error.");
     } finally {
@@ -1326,6 +1332,7 @@ export function ParticipantsPanel({
   canAssignExternal,
   isRequestCreator,
   onRefresh,
+  onApprovalCompleted,
   onParticipantsChange,
 }: Props) {
   return (
@@ -1348,6 +1355,7 @@ export function ParticipantsPanel({
           canRemind={isRequestCreator}
           canRemove={isRequestCreator}
           onRefresh={onRefresh}
+          onApprovalCompleted={onApprovalCompleted}
           onParticipantsChange={onParticipantsChange}
         />
 
@@ -1365,6 +1373,7 @@ export function ParticipantsPanel({
           canRemind={false}
           canRemove={isRequestCreator}
           onRefresh={onRefresh}
+          onApprovalCompleted={onApprovalCompleted}
           onParticipantsChange={onParticipantsChange}
         />
       </div>

@@ -183,8 +183,11 @@ type Props = {
   mentionsReadOffset?: number;
   /** Split-view: subtract from shared-with-me badge after PATCH /access-viewed succeeds (no refetch) */
   sharedReadOffset?: number;
+  /** Split-view: subtract from awaiting-approval badge after approve/reject in detail (until summary revalidates) */
+  approvalCompletedOffset?: number;
   onMarkMentionRead?: (recordId: string) => void;
   onMarkSharedRead?: (recordId: string) => void;
+  onSummaryRevalidated?: () => void;
 };
 
 function getApiTab(ui: UiTab): ApiTab {
@@ -311,8 +314,10 @@ export function RequestsListClient({
   onCreated,
   mentionsReadOffset = 0,
   sharedReadOffset = 0,
+  approvalCompletedOffset = 0,
   onMarkMentionRead,
   onMarkSharedRead,
+  onSummaryRevalidated,
 }: Props) {
   const { openCreateRequestModal } = useCreateRequestModal();
   const router = useRouter();
@@ -335,6 +340,7 @@ export function RequestsListClient({
   const [searchInput, setSearchInput] = useState("");
   const [sort, setSort] = useState<SortOption>("newest");
   const [records, setRecords] = useState<RecordListItem[]>([]);
+  const recordsRef = useRef<RecordListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -363,6 +369,13 @@ export function RequestsListClient({
   // Keyboard navigation: J = next record, K = previous record, Enter = open focused record
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
 
+  const summaryFetchedAtRef = useRef<number>(0);
+  const tabFetchedAtRef = useRef<Partial<Record<UiTab, number>>>({});
+  const lastTabRef = useRef<UiTab>(tab);
+  const lastSearchFiltersRef = useRef<string>("");
+  const SUMMARY_STALE_MS = 0; // always revalidate summary on visibility change
+  const RECORDS_STALE_MS = 0; // always revalidate records on visibility change
+
   useEffect(() => {
     const controller = new AbortController();
     setSummaryLoading(true);
@@ -387,6 +400,7 @@ export function RequestsListClient({
           totalOpenAmountByCurrency: json.data.totalOpenAmountByCurrency ?? {},
         });
         setSummaryFailed(false);
+        summaryFetchedAtRef.current = Date.now();
       } catch (e) {
         if (e instanceof Error && e.name === "AbortError") return;
         setSummary(null);
@@ -454,6 +468,9 @@ export function RequestsListClient({
         setRecords((prev) => (append ? [...prev, ...newRecords] : newRecords));
         setNextCursor(json.data.nextCursor);
         setHasMore(json.data.hasMore);
+        if (!append) {
+          tabFetchedAtRef.current = { ...tabFetchedAtRef.current, [activeUiTab]: Date.now() };
+        }
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") return;
         setError("Failed to load requests.");
@@ -466,6 +483,77 @@ export function RequestsListClient({
     },
     [] // eslint-disable-line react-hooks/exhaustive-deps — apiFetch via stable ref
   );
+
+  const revalidateSummary = useCallback(async () => {
+    try {
+      const res = await apiFetchRef.current("/api/records/summary", {
+        showToastOnError: false,
+      });
+      if (!res.ok) return;
+      const json = (await res.json()) as { data: SummaryPayload };
+      setSummary({
+        ...json.data,
+        unreadMentionCount: json.data.unreadMentionCount ?? 0,
+        totalOpenAmountByCurrency: json.data.totalOpenAmountByCurrency ?? {},
+      });
+      summaryFetchedAtRef.current = Date.now();
+      onSummaryRevalidated?.();
+    } catch {
+      /* silent */
+    }
+  }, [onSummaryRevalidated]);
+
+  const revalidateCurrentTab = useCallback(async (currentTab: UiTab, currentSearch: string) => {
+    try {
+      const f = filtersRef.current;
+      const apiTab = getApiTab(currentTab);
+      const params = new URLSearchParams({
+        tab: apiTab,
+        limit: "25",
+        sort: sortRef.current,
+      });
+      if (currentSearch) params.set("search", currentSearch);
+      if (f.status) params.set("status", f.status);
+      if (f.category) params.set("category", f.category);
+      if (f.priority) params.set("priority", f.priority);
+      if (f.overdueOnly) params.set("overdue", "true");
+      if (f.policyExceptionOnly) params.set("hasPolicyException", "true");
+      const minAmt = f.amountMin === "" ? NaN : Number(f.amountMin);
+      if (Number.isFinite(minAmt) && minAmt > 0) params.set("amountMin", String(minAmt));
+      const maxAmt = f.amountMax === "" ? NaN : Number(f.amountMax);
+      if (Number.isFinite(maxAmt) && maxAmt > 0) params.set("amountMax", String(maxAmt));
+      if (f.currency) params.set("currency", f.currency);
+      if (f.neededByFrom) params.set("neededByFrom", dateStartIso(f.neededByFrom));
+      if (f.neededByTo) params.set("neededByTo", dateEndIso(f.neededByTo));
+      if (f.dateFrom) params.set("dateFrom", dateStartIso(f.dateFrom));
+      if (f.dateTo) params.set("dateTo", dateEndIso(f.dateTo));
+
+      const res = await apiFetchRef.current(`/api/records?${params}`, {
+        showToastOnError: false,
+      });
+      if (!res.ok) return;
+      const json = (await res.json()) as {
+        data: {
+          records: (RecordListItem & { amount?: unknown; requestedAmount?: unknown })[];
+          nextCursor: string | null;
+          hasMore: boolean;
+        };
+      };
+      const newRecords = json.data.records.map(normalizeListItem);
+      setRecords((prev) => {
+        // Always replace with fresh server data — server is source of truth for
+        // hasUnreadMention, hasSharedUnviewed, status, etc.
+        // Only skip if arrays are referentially identical (shouldn't happen but guard anyway)
+        if (prev === newRecords) return prev;
+        return newRecords;
+      });
+      setNextCursor(json.data.nextCursor);
+      setHasMore(json.data.hasMore);
+      tabFetchedAtRef.current = { ...tabFetchedAtRef.current, [currentTab]: Date.now() };
+    } catch {
+      /* silent */
+    }
+  }, []);
 
   // Optimistic insert: prepend the newly created record to the list
   // without re-fetching. Only applies to the "my" tab since new records
@@ -581,10 +669,63 @@ export function RequestsListClient({
   }, []);
 
   useEffect(() => {
-    setRecords([]);
-    setNextCursor(null);
-    void fetchRecords(tab, search, null, false);
-  }, [tab, search, filters, sort, fetchRecords]);
+    function handleApprovalCompleted(e: Event) {
+      const recordId = (e as CustomEvent<{ recordId: string }>).detail?.recordId;
+      if (!recordId) return;
+      if (tab === "awaiting_approval") {
+        setRecords((prev) => prev.filter((r) => r.id !== recordId));
+      }
+    }
+    window.addEventListener("record-approval-completed", handleApprovalCompleted);
+    return () => window.removeEventListener("record-approval-completed", handleApprovalCompleted);
+  }, [tab]);
+
+  useEffect(() => {
+    const searchFiltersKey = `${search}\0${JSON.stringify(filters)}\0${sort}`;
+    const tabChanged = tab !== lastTabRef.current;
+    const searchFiltersChanged = searchFiltersKey !== lastSearchFiltersRef.current;
+    lastTabRef.current = tab;
+    lastSearchFiltersRef.current = searchFiltersKey;
+
+    const lastFetched = tabFetchedAtRef.current[tab] ?? 0;
+    const hasData = lastFetched > 0;
+    const isStale = Date.now() - lastFetched > RECORDS_STALE_MS;
+
+    if (!hasData) {
+      // Never loaded this tab — full fetch with loading state
+      setRecords([]);
+      setNextCursor(null);
+      void fetchRecords(tab, search, null, false);
+    } else if (searchFiltersChanged) {
+      // Search/filter/sort changed — full fetch regardless of tab
+      setRecords([]);
+      setNextCursor(null);
+      void fetchRecords(tab, search, null, false);
+    } else if (tabChanged || isStale) {
+      // Tab switched with existing data OR stale — silent revalidation
+      void revalidateCurrentTab(tab, search);
+    }
+    // hasData && !searchFiltersChanged && !tabChanged && !isStale → do nothing
+  }, [tab, search, filters, sort, fetchRecords, revalidateCurrentTab]);
+
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (document.hidden) return;
+      const now = Date.now();
+
+      if (now - summaryFetchedAtRef.current > SUMMARY_STALE_MS) {
+        void revalidateSummary();
+      }
+
+      const lastFetched = tabFetchedAtRef.current[tab] ?? 0;
+      if (now - lastFetched > RECORDS_STALE_MS) {
+        void revalidateCurrentTab(tab, search);
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [tab, search, revalidateSummary, revalidateCurrentTab]);
 
   useEffect(() => {
     const t = setTimeout(() => setSearch(searchInput), 300);
@@ -641,9 +782,12 @@ export function RequestsListClient({
   }, [showFilters]);
 
   function handleTabChange(value: string) {
-    setTab(value as UiTab);
+    const newTab = value as UiTab;
+    setTab(newTab);
     setSearchInput("");
     setSearch("");
+    // Always revalidate summary — lightweight, ensures fresh badge counts
+    void revalidateSummary();
   }
 
   function handleLoadMore() {
@@ -659,10 +803,11 @@ export function RequestsListClient({
   }
 
   const displaySummary = summaryFailed || !summary ? null : summary;
-  const pendingBadge =
-    displaySummary && displaySummary.pendingMyApprovalCount > 0
-      ? displaySummary.pendingMyApprovalCount
-      : null;
+  const pendingBadge = (() => {
+    const raw = displaySummary?.pendingMyApprovalCount ?? 0;
+    const adjusted = Math.max(0, raw - approvalCompletedOffset);
+    return adjusted > 0 ? adjusted : null;
+  })();
 
   const mentionBadge = (() => {
     const raw =
@@ -1730,36 +1875,41 @@ function RecordRow({
     if (markingRead) return;
     setMarkingRead(true);
     try {
-      if (uiTab === "mentioned") {
-        const res = await apiFetch(`/api/records/${record.id}/mentions`, {
+      const [mentionsRes, accessRes] = await Promise.all([
+        apiFetch(`/api/records/${record.id}/mentions`, {
           method: "PATCH",
           showToastOnError: false,
-        });
-        if (res.ok) {
-          const json = (await res.json()) as { data?: { markedRead?: number } };
-          onMarkMentionRead?.(record.id);
-          const marked = json.data?.markedRead ?? 1;
-          if (marked > 0) {
-            window.dispatchEvent(
-              new CustomEvent("mentions-marked-read", { detail: { delta: marked } })
-            );
-          }
-        }
-      } else if (uiTab === "shared") {
-        const res = await apiFetch(`/api/records/${record.id}/access-viewed`, {
+        }),
+        apiFetch(`/api/records/${record.id}/access-viewed`, {
           method: "PATCH",
           showToastOnError: false,
-        });
-        if (res.ok) {
-          const json = (await res.json()) as { data?: { markedViewed?: number } };
-          onMarkSharedRead?.(record.id);
-          const marked = json.data?.markedViewed ?? 1;
-          if (marked > 0) {
-            window.dispatchEvent(
-              new CustomEvent("shared-marked-read", { detail: { delta: marked } })
-            );
-          }
-        }
+        }),
+      ]);
+
+      const [mentionsJson, accessJson] = await Promise.all([
+        mentionsRes.ok
+          ? (mentionsRes.json() as Promise<{ data?: { markedRead?: number } }>).catch(() => null)
+          : Promise.resolve(null),
+        accessRes.ok
+          ? (accessRes.json() as Promise<{ data?: { markedViewed?: number } }>).catch(() => null)
+          : Promise.resolve(null),
+      ]);
+
+      onMarkMentionRead?.(record.id);
+      onMarkSharedRead?.(record.id);
+
+      const mentionDelta = mentionsJson?.data?.markedRead ?? 0;
+      const sharedDelta = accessJson?.data?.markedViewed ?? 0;
+
+      if (mentionDelta > 0) {
+        window.dispatchEvent(
+          new CustomEvent("mentions-marked-read", { detail: { delta: mentionDelta } })
+        );
+      }
+      if (sharedDelta > 0) {
+        window.dispatchEvent(
+          new CustomEvent("shared-marked-read", { detail: { delta: sharedDelta } })
+        );
       }
     } catch {
       /* ignore */

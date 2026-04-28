@@ -14,6 +14,7 @@ type Props = {
   onNavigate?: (id: string, key?: string | null) => void;
   onMentionsRead?: (markedReadCount?: number) => void;
   onSharedViewed?: (count?: number) => void;
+  onApprovalCompleted?: () => void;
 };
 
 export function RequestDetailPanel({
@@ -26,6 +27,7 @@ export function RequestDetailPanel({
   onNavigate,
   onMentionsRead,
   onSharedViewed,
+  onApprovalCompleted,
 }: Props) {
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -71,6 +73,7 @@ export function RequestDetailPanel({
           onNavigate={onNavigate}
           onMentionsRead={onMentionsRead}
           onSharedViewed={onSharedViewed}
+          onApprovalCompleted={onApprovalCompleted}
           stickyHeader
         />
       </div>

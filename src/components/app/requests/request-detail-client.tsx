@@ -90,6 +90,8 @@ type Props = {
   /** Split-view: after mentions PATCH succeeds — parent can optimistically decrement badge */
   onMentionsRead?: (markedReadCount?: number) => void;
   onSharedViewed?: (count?: number) => void;
+  /** Split-view: after approve/reject succeeds and detail reloads — parent can update list/summary offsets */
+  onApprovalCompleted?: () => void;
   /** Split-view: makes the request header sticky within the panel scroll container */
   stickyHeader?: boolean;
 };
@@ -133,6 +135,7 @@ export function RequestDetailClient({
   onNavigate,
   onMentionsRead,
   onSharedViewed,
+  onApprovalCompleted,
   stickyHeader = false,
 }: Props) {
   const apiFetch = useApiFetch();
@@ -419,40 +422,37 @@ export function RequestDetailClient({
       void markParticipantViewed(json.data.participants as RecordParticipant[]);
       // Load timeline independently (paginated, newest first)
       void loadTimeline();
-      // Mark mentions as read fire-and-forget — updates the "Mentioned" badge count
-      void apiFetchRef
-        .current(`/api/records/${recordId}/mentions`, {
+      // Mark mentions as read AND shared access as viewed — keep both badges in sync.
+      void Promise.all([
+        apiFetchRef.current(`/api/records/${recordId}/mentions`, {
           method: "PATCH",
           showToastOnError: false,
         })
-        .then(async (res) => {
-          if (!res.ok) return;
-          const json = (await res.json().catch(() => null)) as {
-            data?: { markedRead?: number };
-          } | null;
-          const marked = json?.data?.markedRead ?? 0;
-          if (marked > 0) onMentionsRead?.(marked);
-        })
-        .catch(() => {
-          /* silent */
-        });
-      // Mark shared access as viewed fire-and-forget
-      void apiFetchRef
-        .current(`/api/records/${recordId}/access-viewed`, {
+          .then(async (res): Promise<number> => {
+            if (!res.ok) return 0;
+            const json = (await res.json().catch(() => null)) as { data?: { markedRead?: number } } | null;
+            return json?.data?.markedRead ?? 0;
+          })
+          .catch((): number => 0),
+        apiFetchRef.current(`/api/records/${recordId}/access-viewed`, {
           method: "PATCH",
           showToastOnError: false,
         })
-        .then(async (res) => {
-          if (!res.ok) return;
-          const accessJson = (await res.json().catch(() => null)) as {
-            data?: { markedViewed?: number };
-          } | null;
-          const marked = accessJson?.data?.markedViewed ?? 0;
-          if (marked > 0) onSharedViewed?.(marked);
-        })
-        .catch(() => {
-          /* silent */
-        });
+          .then(async (res): Promise<number> => {
+            if (!res.ok) return 0;
+            const json = (await res.json().catch(() => null)) as { data?: { markedViewed?: number } } | null;
+            return json?.data?.markedViewed ?? 0;
+          })
+          .catch((): number => 0),
+      ]).then(([mentionMarked, sharedMarked]) => {
+        const wasUnread = mentionMarked + sharedMarked > 0;
+        if (wasUnread) {
+          onMentionsRead?.(mentionMarked > 0 ? mentionMarked : 1);
+          onSharedViewed?.(sharedMarked > 0 ? sharedMarked : 1);
+        }
+      }).catch(() => {
+        /* silent */
+      });
     } catch {
       setError("Failed to load request.");
     } finally {
@@ -483,6 +483,7 @@ export function RequestDetailClient({
         }
         toast.addToast("success", action === "APPROVE" ? "Approved." : "Rejected.");
         await load();
+        onApprovalCompleted?.();
         return true;
       } catch {
         toast.addToast("error", "Network error.");
@@ -491,7 +492,7 @@ export function RequestDetailClient({
         setApprovalActionLoading(null);
       }
     },
-    [apiFetch, recordId, toast, load]
+    [apiFetch, recordId, toast, load, onApprovalCompleted]
   );
 
   useEffect(() => {
@@ -1086,6 +1087,7 @@ export function RequestDetailClient({
               canAssignExternal={canAssignExternal}
               isRequestCreator={isRequestCreator}
               onRefresh={load}
+              onApprovalCompleted={onApprovalCompleted}
               onParticipantsChange={updateParticipants}
             />
           </div>

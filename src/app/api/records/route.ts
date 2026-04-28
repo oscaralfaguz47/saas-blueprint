@@ -147,6 +147,7 @@ export const GET = withErrorHandler(async (req: Request) => {
             participantType: "INTERNAL",
             participantRole: "APPROVER",
             status: "PENDING",
+            revokedAt: null,
           },
         },
       };
