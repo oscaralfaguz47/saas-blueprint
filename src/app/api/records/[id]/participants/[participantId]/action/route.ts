@@ -77,6 +77,7 @@ export const POST = withErrorHandler(async (
       participantType: "INTERNAL",
       participantRole: "APPROVER",
       userId: session.user.id,
+      revokedAt: null,
     },
     select: { id: true, status: true },
   });
@@ -147,6 +148,7 @@ export const POST = withErrorHandler(async (
         recordId,
         tenantId,
         status: "PENDING",
+        revokedAt: null,
       },
       data: {
         status: newStatus,

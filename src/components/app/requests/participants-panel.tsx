@@ -1143,6 +1143,11 @@ function ParticipantListSection({
         }
       );
       if (!res.ok) {
+        if (res.status === 404) {
+          // Participant was revoked — refresh to update UI silently
+          await onRefresh();
+          return;
+        }
         const json = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
         toast.addToast("error", json.error?.message ?? "Action failed.");
         return;
@@ -1172,6 +1177,12 @@ function ParticipantListSection({
         }
       );
       if (!res.ok) {
+        if (res.status === 404) {
+          // Participant was revoked — refresh and close modal
+          setRejectModal({ open: false, participantId: null, submitting: false });
+          await onRefresh();
+          return;
+        }
         const json = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
         toast.addToast("error", json.error?.message ?? "Rejection failed.");
         return;
@@ -1293,7 +1304,8 @@ function ParticipantListSection({
                     p.participantType === "INTERNAL" &&
                     p.participantRole === "APPROVER" &&
                     p.userId === currentUserId &&
-                    p.status === "PENDING"
+                    p.status === "PENDING" &&
+                    p.revokedAt === null
                   }
                   isClosed={isClosed}
                   canRemove={canRemove}

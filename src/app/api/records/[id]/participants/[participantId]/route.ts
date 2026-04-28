@@ -115,12 +115,13 @@ export const DELETE = withErrorHandler(async (
     });
 
     // Remove RecordAccess for VIEWER participants when revoked
+    // Delete ALL access reasons — if viewer is explicitly removed, they lose access
+    // regardless of how they were originally granted (manual share or mention auto-share)
     if (participant.participantRole === "VIEWER" && participant.userId) {
       await tx.recordAccess.deleteMany({
         where: {
           recordId,
           userId: participant.userId,
-          reason: "MANUAL_SHARE",
         },
       });
     }

@@ -13,10 +13,6 @@ import { hasTenantPermission } from "./tenant-authorization";
  * 3. They have an explicit RecordAccess entry
  * 4. They have permission tenant.requests.read_all
  *
- * Note: visibility=WORKSPACE is kept for backward compat with existing records
- * that were created before RecordAccess was introduced. New sharing uses
- * RecordAccess exclusively.
- *
  * Always returns false (not throws) — callers decide 403 vs 404.
  * Always tenant-scoped — never trust recordId alone.
  */
@@ -33,9 +29,8 @@ export async function canAccessRequest({
     where: { id: requestId, tenantId },
     select: {
       createdByUserId: true,
-      visibility: true,
       participants: {
-        where: { userId, participantType: "INTERNAL" },
+        where: { userId, participantType: "INTERNAL", revokedAt: null },
         select: { id: true },
         take: 1,
       },
@@ -58,10 +53,7 @@ export async function canAccessRequest({
   // 3. Explicit share (RecordAccess)
   if (record.access.length > 0) return true;
 
-  // 4. Backward compat: WORKSPACE visibility (existing records pre-C1)
-  if (record.visibility === "WORKSPACE") return true;
-
-  // 5. read_all permission
+  // 4. read_all permission
   const canReadAll = await hasTenantPermission({
     userId,
     tenantId,
@@ -97,7 +89,7 @@ export function buildRecordAccessFilter({
       { createdByUserId: userId },
       {
         participants: {
-          some: { userId, participantType: "INTERNAL" },
+          some: { userId, participantType: "INTERNAL", revokedAt: null },
         },
       },
       {
@@ -105,7 +97,6 @@ export function buildRecordAccessFilter({
           some: { userId },
         },
       },
-      { visibility: "WORKSPACE" },
     ],
   };
 }

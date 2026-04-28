@@ -400,7 +400,7 @@ export function RequestDetailClient({
         showToastOnError: false,
       });
       if (res.status === 404) {
-        setError("Request not found or you don't have access.");
+        setError("access_revoked");
         return;
       }
       if (!res.ok) {
@@ -475,6 +475,11 @@ export function RequestDetailClient({
           showToastOnError: false,
         });
         if (!res.ok) {
+          if (res.status === 404) {
+            // Participant was revoked or no longer exists — refresh to update UI
+            await load();
+            return false;
+          }
           const json = (await res.json().catch(() => ({}))) as {
             error?: { message?: string };
           };
@@ -607,18 +612,36 @@ export function RequestDetailClient({
   if (loading) return <RequestDetailSkeleton />;
 
   if (error) {
-    return (
-      <div className="space-y-4">
-        <Link
-          href="/app/requests"
-          className="inline-flex items-center gap-1.5 text-sm text-(--text-muted) transition-colors hover:text-(--text-primary)"
-        >
-          <IconChevronLeft size={14} />
-          Back to requests
-        </Link>
-        <div className="rounded-lg border border-(--color-danger-soft) bg-(--color-danger-soft) px-4 py-3 text-sm text-(--color-danger)">
-          {error}
+    if (error === "access_revoked") {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--color-warning-soft)">
+            <IconLockClosed size={22} className="text-(--color-warning)" />
+          </div>
+          <div className="max-w-xs space-y-1.5">
+            <p className="text-sm font-semibold text-(--text-primary)">
+              You don&apos;t have access to this request
+            </p>
+            <p className="text-xs text-(--text-muted) max-w-xs">
+              This request is private or your access has been removed. Contact the request owner if
+              you need access.
+            </p>
+          </div>
+          {onNavigate === undefined && (
+            <Link
+              href="/app/requests"
+              className="inline-flex h-8 items-center rounded-lg border border-(--border-subtle) px-4 text-xs font-medium text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)"
+            >
+              Back to requests
+            </Link>
+          )}
         </div>
+      );
+    }
+
+    return (
+      <div className="flex h-full items-center justify-center p-8 text-center">
+        <p className="text-sm text-(--color-danger)">{error}</p>
       </div>
     );
   }
@@ -3142,7 +3165,8 @@ function AllActionBanners({
       p.participantRole === "APPROVER" &&
       p.status === "PENDING" &&
       p.participantType === "INTERNAL" &&
-      p.userId === currentUserId
+      p.userId === currentUserId &&
+      p.revokedAt === null
   );
 
   const banners: ReactNode[] = [];

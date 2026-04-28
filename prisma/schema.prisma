@@ -1417,7 +1417,7 @@ model Record {
   amount   Decimal? @db.Decimal(12, 2)
   currency String?  @db.VarChar(10)
 
-  visibility RecordVisibility @default(WORKSPACE)
+  visibility RecordVisibility @default(RESTRICTED)
   isSensitive Boolean @default(false)
 
   status RecordStatus @default(OPEN)
