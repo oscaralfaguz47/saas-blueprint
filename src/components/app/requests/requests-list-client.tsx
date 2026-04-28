@@ -8,6 +8,7 @@ import {
   useState,
   type CSSProperties,
   type ReactNode,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import { useRouter } from "next/navigation";
 import { useApiFetch } from "@/hooks/use-api-fetch";
@@ -28,6 +29,8 @@ import {
   IconTrendingUp,
   IconShield,
   IconX,
+  IconEye,
+  IconEyeCheck,
 } from "@/components/ui/icons";
 import {
   formatAmount,
@@ -60,6 +63,7 @@ type SortOption =
 type SummaryPayload = {
   openCount: number;
   pendingMyApprovalCount: number;
+  unreadMentionCount: number;
   overdueCount: number;
   awaitingInfoCount: number;
   hasPolicyExceptionCount: number;
@@ -142,13 +146,20 @@ const PRIORITY_OPTIONS: { value: string; label: string }[] = [
   { value: "URGENT", label: "Urgent" },
 ];
 
-type TabSpec = { value: UiTab; label: string; apiTab: ApiTab; inboxBadge?: boolean };
+type TabSpec = {
+  value: UiTab;
+  label: string;
+  apiTab: ApiTab;
+  inboxBadge?: boolean;
+  mentionBadge?: boolean;
+  sharedBadge?: boolean;
+};
 
 const BASE_TAB_SPECS: TabSpec[] = [
   { value: "my", label: "My Requests", apiTab: "my" },
   { value: "awaiting_approval", label: "Awaiting my approval", apiTab: "inbox", inboxBadge: true },
-  { value: "mentioned", label: "Mentioned", apiTab: "mentioned" },
-  { value: "shared", label: "Shared with me", apiTab: "shared" },
+  { value: "mentioned", label: "Mentioned", apiTab: "mentioned", mentionBadge: true },
+  { value: "shared", label: "Shared with me", apiTab: "shared", sharedBadge: true },
 ];
 
 type Props = {
@@ -168,6 +179,15 @@ type Props = {
   heightConstrained?: boolean;
   /** Split-view: called after a new request is created — payload used for optimistic insert */
   onCreated?: (payload: CreatedRecordPayload) => void;
+  /** Split-view: subtract from unread mention badge after PATCH /mentions succeeds (no refetch) */
+  mentionsReadOffset?: number;
+  /** Split-view: subtract from shared-with-me badge after PATCH /access-viewed succeeds (no refetch) */
+  sharedReadOffset?: number;
+  /** Split-view: subtract from awaiting-approval badge after approve/reject in detail (until summary revalidates) */
+  approvalCompletedOffset?: number;
+  onMarkMentionRead?: (recordId: string) => void;
+  onMarkSharedRead?: (recordId: string) => void;
+  onSummaryRevalidated?: () => void;
 };
 
 function getApiTab(ui: UiTab): ApiTab {
@@ -292,6 +312,12 @@ export function RequestsListClient({
   compact = false,
   heightConstrained = true,
   onCreated,
+  mentionsReadOffset = 0,
+  sharedReadOffset = 0,
+  approvalCompletedOffset = 0,
+  onMarkMentionRead,
+  onMarkSharedRead,
+  onSummaryRevalidated,
 }: Props) {
   const { openCreateRequestModal } = useCreateRequestModal();
   const router = useRouter();
@@ -314,6 +340,7 @@ export function RequestsListClient({
   const [searchInput, setSearchInput] = useState("");
   const [sort, setSort] = useState<SortOption>("newest");
   const [records, setRecords] = useState<RecordListItem[]>([]);
+  const recordsRef = useRef<RecordListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -342,6 +369,13 @@ export function RequestsListClient({
   // Keyboard navigation: J = next record, K = previous record, Enter = open focused record
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
 
+  const summaryFetchedAtRef = useRef<number>(0);
+  const tabFetchedAtRef = useRef<Partial<Record<UiTab, number>>>({});
+  const lastTabRef = useRef<UiTab>(tab);
+  const lastSearchFiltersRef = useRef<string>("");
+  const SUMMARY_STALE_MS = 0; // always revalidate summary on visibility change
+  const RECORDS_STALE_MS = 0; // always revalidate records on visibility change
+
   useEffect(() => {
     const controller = new AbortController();
     setSummaryLoading(true);
@@ -362,9 +396,11 @@ export function RequestsListClient({
         if (controller.signal.aborted) return;
         setSummary({
           ...json.data,
+          unreadMentionCount: json.data.unreadMentionCount ?? 0,
           totalOpenAmountByCurrency: json.data.totalOpenAmountByCurrency ?? {},
         });
         setSummaryFailed(false);
+        summaryFetchedAtRef.current = Date.now();
       } catch (e) {
         if (e instanceof Error && e.name === "AbortError") return;
         setSummary(null);
@@ -432,6 +468,9 @@ export function RequestsListClient({
         setRecords((prev) => (append ? [...prev, ...newRecords] : newRecords));
         setNextCursor(json.data.nextCursor);
         setHasMore(json.data.hasMore);
+        if (!append) {
+          tabFetchedAtRef.current = { ...tabFetchedAtRef.current, [activeUiTab]: Date.now() };
+        }
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") return;
         setError("Failed to load requests.");
@@ -444,6 +483,77 @@ export function RequestsListClient({
     },
     [] // eslint-disable-line react-hooks/exhaustive-deps — apiFetch via stable ref
   );
+
+  const revalidateSummary = useCallback(async () => {
+    try {
+      const res = await apiFetchRef.current("/api/records/summary", {
+        showToastOnError: false,
+      });
+      if (!res.ok) return;
+      const json = (await res.json()) as { data: SummaryPayload };
+      setSummary({
+        ...json.data,
+        unreadMentionCount: json.data.unreadMentionCount ?? 0,
+        totalOpenAmountByCurrency: json.data.totalOpenAmountByCurrency ?? {},
+      });
+      summaryFetchedAtRef.current = Date.now();
+      onSummaryRevalidated?.();
+    } catch {
+      /* silent */
+    }
+  }, [onSummaryRevalidated]);
+
+  const revalidateCurrentTab = useCallback(async (currentTab: UiTab, currentSearch: string) => {
+    try {
+      const f = filtersRef.current;
+      const apiTab = getApiTab(currentTab);
+      const params = new URLSearchParams({
+        tab: apiTab,
+        limit: "25",
+        sort: sortRef.current,
+      });
+      if (currentSearch) params.set("search", currentSearch);
+      if (f.status) params.set("status", f.status);
+      if (f.category) params.set("category", f.category);
+      if (f.priority) params.set("priority", f.priority);
+      if (f.overdueOnly) params.set("overdue", "true");
+      if (f.policyExceptionOnly) params.set("hasPolicyException", "true");
+      const minAmt = f.amountMin === "" ? NaN : Number(f.amountMin);
+      if (Number.isFinite(minAmt) && minAmt > 0) params.set("amountMin", String(minAmt));
+      const maxAmt = f.amountMax === "" ? NaN : Number(f.amountMax);
+      if (Number.isFinite(maxAmt) && maxAmt > 0) params.set("amountMax", String(maxAmt));
+      if (f.currency) params.set("currency", f.currency);
+      if (f.neededByFrom) params.set("neededByFrom", dateStartIso(f.neededByFrom));
+      if (f.neededByTo) params.set("neededByTo", dateEndIso(f.neededByTo));
+      if (f.dateFrom) params.set("dateFrom", dateStartIso(f.dateFrom));
+      if (f.dateTo) params.set("dateTo", dateEndIso(f.dateTo));
+
+      const res = await apiFetchRef.current(`/api/records?${params}`, {
+        showToastOnError: false,
+      });
+      if (!res.ok) return;
+      const json = (await res.json()) as {
+        data: {
+          records: (RecordListItem & { amount?: unknown; requestedAmount?: unknown })[];
+          nextCursor: string | null;
+          hasMore: boolean;
+        };
+      };
+      const newRecords = json.data.records.map(normalizeListItem);
+      setRecords((prev) => {
+        // Always replace with fresh server data — server is source of truth for
+        // hasUnreadMention, hasSharedUnviewed, status, etc.
+        // Only skip if arrays are referentially identical (shouldn't happen but guard anyway)
+        if (prev === newRecords) return prev;
+        return newRecords;
+      });
+      setNextCursor(json.data.nextCursor);
+      setHasMore(json.data.hasMore);
+      tabFetchedAtRef.current = { ...tabFetchedAtRef.current, [currentTab]: Date.now() };
+    } catch {
+      /* silent */
+    }
+  }, []);
 
   // Optimistic insert: prepend the newly created record to the list
   // without re-fetching. Only applies to the "my" tab since new records
@@ -468,6 +578,7 @@ export function RequestsListClient({
         hasPolicyException: false,
         hasCriticalComment: false,
         hasUnreadMention: false,
+        hasSharedUnviewed: false,
         createdByUserId: "",
       };
       if (tab === "my") {
@@ -514,11 +625,107 @@ export function RequestsListClient({
     [tab, onCreated]
   );
 
+  const handleMarkMentionRead = useCallback(
+    (recordId: string) => {
+      setRecords((prev) =>
+        prev.map((r) => (r.id === recordId ? { ...r, hasUnreadMention: false } : r))
+      );
+      onMarkMentionRead?.(recordId);
+    },
+    [onMarkMentionRead]
+  );
+
+  const handleMarkSharedRead = useCallback(
+    (recordId: string) => {
+      setRecords((prev) =>
+        prev.map((r) => (r.id === recordId ? { ...r, hasSharedUnviewed: false } : r))
+      );
+      onMarkSharedRead?.(recordId);
+    },
+    [onMarkSharedRead]
+  );
+
   useEffect(() => {
-    setRecords([]);
-    setNextCursor(null);
-    void fetchRecords(tab, search, null, false);
-  }, [tab, search, filters, sort, fetchRecords]);
+    function handleMentionRead(e: Event) {
+      const recordId = (e as CustomEvent<{ recordId: string }>).detail?.recordId;
+      if (!recordId) return;
+      setRecords((prev) =>
+        prev.map((r) => (r.id === recordId ? { ...r, hasUnreadMention: false } : r))
+      );
+    }
+    function handleSharedRead(e: Event) {
+      const recordId = (e as CustomEvent<{ recordId: string }>).detail?.recordId;
+      if (!recordId) return;
+      setRecords((prev) =>
+        prev.map((r) => (r.id === recordId ? { ...r, hasSharedUnviewed: false } : r))
+      );
+    }
+    window.addEventListener("record-mention-read", handleMentionRead);
+    window.addEventListener("record-shared-read", handleSharedRead);
+    return () => {
+      window.removeEventListener("record-mention-read", handleMentionRead);
+      window.removeEventListener("record-shared-read", handleSharedRead);
+    };
+  }, []);
+
+  useEffect(() => {
+    function handleApprovalCompleted(e: Event) {
+      const recordId = (e as CustomEvent<{ recordId: string }>).detail?.recordId;
+      if (!recordId) return;
+      if (tab === "awaiting_approval") {
+        setRecords((prev) => prev.filter((r) => r.id !== recordId));
+      }
+    }
+    window.addEventListener("record-approval-completed", handleApprovalCompleted);
+    return () => window.removeEventListener("record-approval-completed", handleApprovalCompleted);
+  }, [tab]);
+
+  useEffect(() => {
+    const searchFiltersKey = `${search}\0${JSON.stringify(filters)}\0${sort}`;
+    const tabChanged = tab !== lastTabRef.current;
+    const searchFiltersChanged = searchFiltersKey !== lastSearchFiltersRef.current;
+    lastTabRef.current = tab;
+    lastSearchFiltersRef.current = searchFiltersKey;
+
+    const lastFetched = tabFetchedAtRef.current[tab] ?? 0;
+    const hasData = lastFetched > 0;
+    const isStale = Date.now() - lastFetched > RECORDS_STALE_MS;
+
+    if (!hasData) {
+      // Never loaded this tab — full fetch with loading state
+      setRecords([]);
+      setNextCursor(null);
+      void fetchRecords(tab, search, null, false);
+    } else if (searchFiltersChanged) {
+      // Search/filter/sort changed — full fetch regardless of tab
+      setRecords([]);
+      setNextCursor(null);
+      void fetchRecords(tab, search, null, false);
+    } else if (tabChanged || isStale) {
+      // Tab switched with existing data OR stale — silent revalidation
+      void revalidateCurrentTab(tab, search);
+    }
+    // hasData && !searchFiltersChanged && !tabChanged && !isStale → do nothing
+  }, [tab, search, filters, sort, fetchRecords, revalidateCurrentTab]);
+
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (document.hidden) return;
+      const now = Date.now();
+
+      if (now - summaryFetchedAtRef.current > SUMMARY_STALE_MS) {
+        void revalidateSummary();
+      }
+
+      const lastFetched = tabFetchedAtRef.current[tab] ?? 0;
+      if (now - lastFetched > RECORDS_STALE_MS) {
+        void revalidateCurrentTab(tab, search);
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [tab, search, revalidateSummary, revalidateCurrentTab]);
 
   useEffect(() => {
     const t = setTimeout(() => setSearch(searchInput), 300);
@@ -575,9 +782,12 @@ export function RequestsListClient({
   }, [showFilters]);
 
   function handleTabChange(value: string) {
-    setTab(value as UiTab);
+    const newTab = value as UiTab;
+    setTab(newTab);
     setSearchInput("");
     setSearch("");
+    // Always revalidate summary — lightweight, ensures fresh badge counts
+    void revalidateSummary();
   }
 
   function handleLoadMore() {
@@ -593,10 +803,25 @@ export function RequestsListClient({
   }
 
   const displaySummary = summaryFailed || !summary ? null : summary;
-  const pendingBadge =
-    displaySummary && displaySummary.pendingMyApprovalCount > 0
-      ? displaySummary.pendingMyApprovalCount
-      : null;
+  const pendingBadge = (() => {
+    const raw = displaySummary?.pendingMyApprovalCount ?? 0;
+    const adjusted = Math.max(0, raw - approvalCompletedOffset);
+    return adjusted > 0 ? adjusted : null;
+  })();
+
+  const mentionBadge = (() => {
+    const raw =
+      (displaySummary as { unreadMentionCount?: number } | null)?.unreadMentionCount ?? 0;
+    const adjusted = Math.max(0, raw - mentionsReadOffset);
+    return adjusted > 0 ? adjusted : null;
+  })();
+
+  const sharedBadge = (() => {
+    const raw =
+      (displaySummary as { sharedWithMeCount?: number } | null)?.sharedWithMeCount ?? 0;
+    const adjusted = Math.max(0, raw - sharedReadOffset);
+    return adjusted > 0 ? adjusted : null;
+  })();
 
   const dash = "—";
 
@@ -750,6 +975,16 @@ export function RequestsListClient({
                     {t.inboxBadge && pendingBadge != null ? (
                       <span className="rounded-full bg-(--color-warning-soft) px-1.5 py-0.5 text-[10px] font-semibold text-(--color-warning)">
                         {pendingBadge}
+                      </span>
+                    ) : null}
+                    {t.mentionBadge && mentionBadge != null ? (
+                      <span className="rounded-full bg-(--color-primary-soft) px-1.5 py-0.5 text-[10px] font-semibold text-(--color-primary)">
+                        {mentionBadge}
+                      </span>
+                    ) : null}
+                    {t.sharedBadge && sharedBadge != null ? (
+                      <span className="rounded-full bg-(--color-primary-soft) px-1.5 py-0.5 text-[10px] font-semibold text-(--color-primary)">
+                        {sharedBadge}
                       </span>
                     ) : null}
                   </span>
@@ -933,6 +1168,8 @@ export function RequestsListClient({
                         : undefined
                     }
                     compact={compact}
+                    onMarkMentionRead={handleMarkMentionRead}
+                    onMarkSharedRead={handleMarkSharedRead}
                   />
                 </TabsContent>
               ))}
@@ -983,6 +1220,8 @@ export function RequestsListClient({
                         : undefined
                     }
                     compact={compact}
+                    onMarkMentionRead={handleMarkMentionRead}
+                    onMarkSharedRead={handleMarkSharedRead}
                   />
                 </TabsContent>
               ))}
@@ -1477,6 +1716,8 @@ function RecordsList({
   onClearFilters,
   onNewRequest,
   compact: _compact = false,
+  onMarkMentionRead,
+  onMarkSharedRead,
 }: {
   records: RecordListItem[];
   loading: boolean;
@@ -1493,6 +1734,8 @@ function RecordsList({
   onClearFilters: () => void;
   onNewRequest?: () => void;
   compact?: boolean;
+  onMarkMentionRead?: (recordId: string) => void;
+  onMarkSharedRead?: (recordId: string) => void;
 }) {
   if (loading) {
     return (
@@ -1558,10 +1801,13 @@ function RecordsList({
         <RecordRow
           key={r.id}
           record={r}
+          uiTab={uiTab}
           onClick={() => onNavigate(r.id, r.recordKey ?? null)}
           isFocused={focusedIndex === idx}
           isSelected={selectedId === r.id}
           href={`/app/requests/${r.id}`}
+          onMarkMentionRead={onMarkMentionRead}
+          onMarkSharedRead={onMarkSharedRead}
         />
       ))}
       {!hasMore && records.length > 0 && (
@@ -1590,19 +1836,87 @@ function RecordsList({
 
 function RecordRow({
   record,
+  uiTab,
   onClick,
   isFocused,
   isSelected = false,
   href,
+  onMarkMentionRead,
+  onMarkSharedRead,
 }: {
   record: RecordListItem;
+  uiTab: UiTab;
   onClick: () => void;
   isFocused: boolean;
   isSelected?: boolean;
   href: string;
+  onMarkMentionRead?: (recordId: string) => void;
+  onMarkSharedRead?: (recordId: string) => void;
 }) {
+  const apiFetch = useApiFetch();
+  const [markingRead, setMarkingRead] = useState(false);
   const { amount, currency } = getBestAmount(record);
   const approval = record.approvalStatus;
+
+  const isUnread =
+    (uiTab === "awaiting_approval" &&
+      approval !== "FULLY_APPROVED" &&
+      approval !== "APPROVAL_REJECTED") ||
+    (uiTab === "mentioned" && record.hasUnreadMention) ||
+    (uiTab === "shared" && record.hasSharedUnviewed);
+
+  const dimmed =
+    (uiTab === "mentioned" && !record.hasUnreadMention) ||
+    (uiTab === "shared" && !record.hasSharedUnviewed);
+
+  async function handleMarkRead(e: ReactMouseEvent<HTMLButtonElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (markingRead) return;
+    setMarkingRead(true);
+    try {
+      const [mentionsRes, accessRes] = await Promise.all([
+        apiFetch(`/api/records/${record.id}/mentions`, {
+          method: "PATCH",
+          showToastOnError: false,
+        }),
+        apiFetch(`/api/records/${record.id}/access-viewed`, {
+          method: "PATCH",
+          showToastOnError: false,
+        }),
+      ]);
+
+      const [mentionsJson, accessJson] = await Promise.all([
+        mentionsRes.ok
+          ? (mentionsRes.json() as Promise<{ data?: { markedRead?: number } }>).catch(() => null)
+          : Promise.resolve(null),
+        accessRes.ok
+          ? (accessRes.json() as Promise<{ data?: { markedViewed?: number } }>).catch(() => null)
+          : Promise.resolve(null),
+      ]);
+
+      onMarkMentionRead?.(record.id);
+      onMarkSharedRead?.(record.id);
+
+      const mentionDelta = mentionsJson?.data?.markedRead ?? 0;
+      const sharedDelta = accessJson?.data?.markedViewed ?? 0;
+
+      if (mentionDelta > 0) {
+        window.dispatchEvent(
+          new CustomEvent("mentions-marked-read", { detail: { delta: mentionDelta } })
+        );
+      }
+      if (sharedDelta > 0) {
+        window.dispatchEvent(
+          new CustomEvent("shared-marked-read", { detail: { delta: sharedDelta } })
+        );
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setMarkingRead(false);
+    }
+  }
 
   return (
     <a
@@ -1612,14 +1926,24 @@ function RecordRow({
         e.preventDefault();
         onClick();
       }}
-      className={
-        "group block w-full cursor-pointer rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-3 py-2.5 text-left transition-all hover:border-(--border-strong) hover:bg-(--bg-surface-hover) hover:shadow-sm animate-in fade-in duration-150 " +
-        (isFocused ? "ring-2 ring-(--color-primary) ring-offset-1 " : "") +
-        (isSelected ? "border-(--color-primary) bg-(--color-primary-soft) " : "") +
-        priorityAccentClass(record.priority)
-      }
+      className={[
+        "group relative block w-full cursor-pointer rounded-lg border px-3 py-2.5 text-left transition-all animate-in fade-in duration-150",
+        isSelected
+          ? "border-(--color-primary) bg-(--color-primary-soft)"
+          : isUnread
+            ? "border-(--border-strong) bg-(--bg-surface) hover:border-(--color-primary) hover:shadow-sm"
+            : dimmed
+              ? "border-(--border-subtle) bg-(--bg-surface) opacity-60 hover:opacity-100 hover:border-(--border-strong)"
+              : "border-(--border-subtle) bg-(--bg-surface) hover:border-(--border-strong) hover:bg-(--bg-surface-hover) hover:shadow-sm",
+        isFocused ? "ring-2 ring-(--color-primary) ring-offset-1" : "",
+        priorityAccentClass(record.priority),
+      ].join(" ")}
     >
-      <div className="flex items-center justify-between gap-2">
+      {isUnread && !isSelected && (
+        <span className="absolute left-2 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-(--color-primary)" />
+      )}
+
+      <div className={`flex items-center justify-between gap-2 ${isUnread ? "pl-2" : ""}`}>
         <div className="flex flex-wrap items-center gap-1.5">
           <Badge variant={RECORD_STATUS_BADGE[record.status]} className="shrink-0">
             {RECORD_STATUS_LABELS[record.status]}
@@ -1628,19 +1952,120 @@ function RecordRow({
             {RECORD_TYPE_LABELS[record.type]}
           </span>
         </div>
-        <span className="shrink-0 text-sm font-bold tabular-nums text-(--text-primary)">
-          {formatAmount(amount, currency)}
-        </span>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="text-sm font-bold tabular-nums text-(--text-primary)">
+            {formatAmount(amount, currency)}
+          </span>
+          {(uiTab === "mentioned" || uiTab === "shared") &&
+            (() => {
+              const isAlreadyRead =
+                (uiTab === "mentioned" && !record.hasUnreadMention) ||
+                (uiTab === "shared" && !record.hasSharedUnviewed);
+
+              const tooltipText = isAlreadyRead
+                ? "Viewed"
+                : uiTab === "mentioned"
+                  ? "Mark mention as viewed"
+                  : "Mark as viewed";
+
+              return (
+                <div
+                  className="relative"
+                  onMouseEnter={(e) => {
+                    const tip = e.currentTarget.querySelector<HTMLElement>("[data-tooltip]");
+                    if (!tip) return;
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const margin = 8;
+
+                    tip.style.opacity = "0";
+                    tip.style.position = "fixed";
+                    tip.style.bottom = "auto";
+                    tip.style.top = "-9999px";
+                    tip.style.left = "0px";
+                    tip.style.transform = "none";
+                    tip.style.zIndex = "9999";
+                    tip.style.pointerEvents = "none";
+
+                    const tipRect = tip.getBoundingClientRect();
+                    const tipWidth = tipRect.width || 160;
+
+                    let left = rect.left + rect.width / 2;
+                    left = Math.max(tipWidth / 2 + margin, Math.min(left, window.innerWidth - tipWidth / 2 - margin));
+
+                    const top = rect.top - tipRect.height - 6;
+
+                    tip.style.top = `${top}px`;
+                    tip.style.left = `${left}px`;
+                    tip.style.transform = "translateX(-50%)";
+                    tip.style.opacity = "1";
+                  }}
+                  onMouseLeave={(e) => {
+                    const tip = e.currentTarget.querySelector<HTMLElement>("[data-tooltip]");
+                    if (tip) tip.style.opacity = "0";
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={handleMarkRead}
+                    disabled={markingRead || isAlreadyRead}
+                    className={[
+                      "flex h-6 w-6 shrink-0 items-center justify-center rounded border transition-colors",
+                      isAlreadyRead
+                        ? "cursor-default border-(--border-subtle) bg-(--bg-surface-elev) text-[#4fc3f7]"
+                        : "cursor-pointer border-(--border-subtle) bg-(--bg-surface-elev) text-(--text-muted) hover:border-(--color-primary) hover:bg-(--color-primary-soft) hover:text-(--color-primary)",
+                    ].join(" ")}
+                  >
+                    {markingRead ? (
+                      <Spinner size="sm" />
+                    ) : isAlreadyRead ? (
+                      <IconEyeCheck size={12} className="text-[#4fc3f7]" />
+                    ) : (
+                      <IconEye size={12} />
+                    )}
+                  </button>
+
+                  <div
+                    data-tooltip
+                    style={{
+                      opacity: 0,
+                      pointerEvents: "none",
+                      position: "fixed",
+                      zIndex: 9999,
+                      top: 0,
+                      left: 0,
+                      transition: "opacity 0.15s ease",
+                    }}
+                  >
+                    <div className="relative">
+                      <div className="whitespace-nowrap rounded-md bg-(--bg-inverted) px-2.5 py-1.5 text-[11px] font-medium leading-none text-(--text-inverted) shadow-lg">
+                        {tooltipText}
+                      </div>
+                      <div className="absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-(--bg-inverted)" />
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+        </div>
       </div>
 
-      <div className="mt-1.5 flex items-center justify-between gap-2">
-        <span className="min-w-0 flex-1 text-sm leading-snug font-semibold text-(--text-primary) transition-colors group-hover:text-(--color-primary)">
+      <div className={`mt-1.5 flex items-center justify-between gap-2 ${isUnread ? "pl-2" : ""}`}>
+        <span
+          className={[
+            "min-w-0 flex-1 text-sm leading-snug transition-colors group-hover:text-(--color-primary)",
+            isUnread
+              ? "font-semibold text-(--text-primary)"
+              : "font-medium text-(--text-primary)",
+          ].join(" ")}
+        >
           {record.title}
         </span>
         <NeededByLine neededByDate={record.neededByDate} />
       </div>
 
-      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-(--text-muted)">
+      <div
+        className={`mt-1 flex flex-wrap items-center gap-1.5 text-xs text-(--text-muted) ${isUnread ? "pl-2" : ""}`}
+      >
         {record.recordKey ? (
           <span
             role="button"
@@ -1668,10 +2093,7 @@ function RecordRow({
         approval !== "NOT_STARTED" &&
         approval !== "NO_APPROVERS_ASSIGNED" &&
         APPROVAL_STATUS_BADGE[approval] ? (
-          <Badge
-            variant={APPROVAL_STATUS_BADGE[approval]!}
-            className="!px-2 !py-0 text-[10px]"
-          >
+          <Badge variant={APPROVAL_STATUS_BADGE[approval]!} className="!px-2 !py-0 text-[10px]">
             {RECORD_APPROVAL_STATUS_LABELS[approval]}
           </Badge>
         ) : null}
@@ -1684,11 +2106,6 @@ function RecordRow({
           <Badge variant="warning" className="!px-2 !py-0 text-[10px]">
             Policy exception
           </Badge>
-        ) : null}
-        {record.hasUnreadMention ? (
-          <span className="rounded-md border border-(--color-warning-soft) bg-(--color-warning-soft) px-1.5 py-0.5 text-[10px] font-medium text-(--color-warning)">
-            Mention
-          </span>
         ) : null}
         {record.hasCriticalComment ? (
           <span

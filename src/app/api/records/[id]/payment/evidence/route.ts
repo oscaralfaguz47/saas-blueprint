@@ -157,6 +157,8 @@ export const POST = withErrorHandler(async (
           evidenceId: ev.id,
           evidenceType: body.evidenceType,
           versionNumber,
+          label: body.evidenceType !== "TEXT" ? body.label : (body.label ?? null),
+          contentText: body.evidenceType === "TEXT" ? body.contentText : null,
         },
       },
     });

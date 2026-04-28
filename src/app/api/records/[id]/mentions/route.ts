@@ -86,18 +86,34 @@ export const PATCH = withErrorHandler(async (
   });
   if (!hasAccess) return ApiErrors.NOT_FOUND("Record");
 
-  const result = await prisma.recordCommentMention.updateMany({
-    where: {
-      tenantId,
-      recordId,
-      mentionedUserId: session.user.id,
-      isRead: false,
-    },
-    data: {
-      isRead: true,
-      readAt: new Date(),
-    },
-  });
+  const now = new Date();
 
-  return apiSuccess({ markedRead: result.count });
+  const [mentionResult] = await prisma.$transaction([
+    prisma.recordCommentMention.updateMany({
+      where: {
+        tenantId,
+        recordId,
+        mentionedUserId: session.user.id,
+        isRead: false,
+      },
+      data: {
+        isRead: true,
+        readAt: now,
+      },
+    }),
+    prisma.recordAccess.updateMany({
+      where: {
+        tenantId,
+        recordId,
+        userId: session.user.id,
+        isViewed: false,
+      },
+      data: {
+        isViewed: true,
+        viewedAt: now,
+      },
+    }),
+  ]);
+
+  return apiSuccess({ markedRead: mentionResult.count });
 });

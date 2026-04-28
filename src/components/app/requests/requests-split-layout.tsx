@@ -30,7 +30,51 @@ export function RequestsSplitLayout({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [listResetKey, setListResetKey] = useState(0);
+  const [mentionsReadSinceLoad, setMentionsReadSinceLoad] = useState(0);
+  const [sharedReadSinceLoad, setSharedReadSinceLoad] = useState(0);
+  const [approvalCompletedSinceLoad, setApprovalCompletedSinceLoad] = useState(0);
   const listMountTimeRef = useRef<number>(Date.now());
+
+  const handleMentionsRead = useCallback(
+    (delta = 1) => {
+      setMentionsReadSinceLoad((n) => n + Math.max(0, delta));
+      if (selectedId) {
+        window.dispatchEvent(
+          new CustomEvent("record-mention-read", { detail: { recordId: selectedId } })
+        );
+      }
+    },
+    [selectedId]
+  );
+
+  const handleSharedViewed = useCallback(
+    (delta = 1) => {
+      setSharedReadSinceLoad((n) => n + Math.max(0, delta));
+      if (selectedId) {
+        window.dispatchEvent(
+          new CustomEvent("record-shared-read", { detail: { recordId: selectedId } })
+        );
+      }
+    },
+    [selectedId]
+  );
+
+  useEffect(() => {
+    function handleMentionsEvent(e: Event) {
+      const delta = (e as CustomEvent<{ delta: number }>).detail?.delta ?? 1;
+      handleMentionsRead(delta);
+    }
+    function handleSharedEvent(e: Event) {
+      const delta = (e as CustomEvent<{ delta: number }>).detail?.delta ?? 1;
+      handleSharedViewed(delta);
+    }
+    window.addEventListener("mentions-marked-read", handleMentionsEvent);
+    window.addEventListener("shared-marked-read", handleSharedEvent);
+    return () => {
+      window.removeEventListener("mentions-marked-read", handleMentionsEvent);
+      window.removeEventListener("shared-marked-read", handleSharedEvent);
+    };
+  }, [handleMentionsRead, handleSharedViewed]);
 
   // Detect mobile
   useEffect(() => {
@@ -49,6 +93,9 @@ export function RequestsSplitLayout({
       if (Date.now() - listMountTimeRef.current < 500) return;
       setSelectedId(null);
       window.history.replaceState(null, "", "/app/requests");
+      setMentionsReadSinceLoad(0);
+      setSharedReadSinceLoad(0);
+      setApprovalCompletedSinceLoad(0);
       setListResetKey((k) => k + 1);
     }
     window.addEventListener("workspace-ready", handleWorkspaceReady);
@@ -120,6 +167,21 @@ export function RequestsSplitLayout({
     [handleSelectRecord]
   );
 
+  const handleSummaryRevalidated = useCallback(() => {
+    setMentionsReadSinceLoad(0);
+    setSharedReadSinceLoad(0);
+    setApprovalCompletedSinceLoad(0);
+  }, []);
+
+  const handleApprovalCompleted = useCallback(() => {
+    setApprovalCompletedSinceLoad((n) => n + 1);
+    if (selectedId) {
+      window.dispatchEvent(
+        new CustomEvent("record-approval-completed", { detail: { recordId: selectedId } })
+      );
+    }
+  }, [selectedId]);
+
   // On mobile: render only the list (detail is a separate page)
   if (isMobile) {
     return (
@@ -132,6 +194,10 @@ export function RequestsSplitLayout({
           onNavigate={handleSelectRecord}
           onCreated={handleCreated}
           heightConstrained={false}
+          mentionsReadOffset={mentionsReadSinceLoad}
+          sharedReadOffset={sharedReadSinceLoad}
+          approvalCompletedOffset={approvalCompletedSinceLoad}
+          onSummaryRevalidated={handleSummaryRevalidated}
         />
       </div>
     );
@@ -159,6 +225,10 @@ export function RequestsSplitLayout({
             selectedId={selectedId ?? undefined}
             compact={!!selectedId}
             onCreated={handleCreated}
+            mentionsReadOffset={mentionsReadSinceLoad}
+            sharedReadOffset={sharedReadSinceLoad}
+            approvalCompletedOffset={approvalCompletedSinceLoad}
+            onSummaryRevalidated={handleSummaryRevalidated}
           />
         </div>
       </div>
@@ -176,6 +246,9 @@ export function RequestsSplitLayout({
               permissions={permissions}
               onClose={handleCloseDetail}
               onNavigate={handleSelectRecord}
+              onMentionsRead={handleMentionsRead}
+              onSharedViewed={handleSharedViewed}
+              onApprovalCompleted={handleApprovalCompleted}
             />
           </div>
         ) : (

@@ -147,6 +147,7 @@ export const GET = withErrorHandler(async (req: Request) => {
             participantType: "INTERNAL",
             participantRole: "APPROVER",
             status: "PENDING",
+            revokedAt: null,
           },
         },
       };
@@ -310,7 +311,7 @@ export const GET = withErrorHandler(async (req: Request) => {
 
   const recordIds = page.map((r) => r.id);
 
-  const [criticalGroups, unreadMentions] =
+  const [criticalGroups, unreadMentions, unviewedShared] =
     recordIds.length > 0
       ? await Promise.all([
           prisma.recordComment.groupBy({
@@ -331,11 +332,21 @@ export const GET = withErrorHandler(async (req: Request) => {
             },
             select: { recordId: true },
           }),
+          prisma.recordAccess.findMany({
+            where: {
+              tenantId,
+              recordId: { in: recordIds },
+              userId,
+              isViewed: false,
+            },
+            select: { recordId: true },
+          }),
         ])
-      : [[], []];
+      : [[], [], []];
 
   const criticalSet = new Set(criticalGroups.map((g) => g.recordId));
   const unreadMentionSet = new Set(unreadMentions.map((m) => m.recordId));
+  const unviewedSharedSet = new Set(unviewedShared.map((a) => a.recordId));
 
   const result = page.map((r) => ({
     ...r,
@@ -345,6 +356,7 @@ export const GET = withErrorHandler(async (req: Request) => {
     createdAt: r.createdAt.toISOString(),
     hasCriticalComment: criticalSet.has(r.id),
     hasUnreadMention: unreadMentionSet.has(r.id),
+    hasSharedUnviewed: unviewedSharedSet.has(r.id),
   }));
 
   return apiSuccess({ records: result, nextCursor, hasMore });

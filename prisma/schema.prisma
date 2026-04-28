@@ -1417,7 +1417,7 @@ model Record {
   amount   Decimal? @db.Decimal(12, 2)
   currency String?  @db.VarChar(10)
 
-  visibility RecordVisibility @default(WORKSPACE)
+  visibility RecordVisibility @default(RESTRICTED)
   isSensitive Boolean @default(false)
 
   status RecordStatus @default(OPEN)
@@ -1677,9 +1677,13 @@ model RecordAccess {
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
 
+  isViewed Boolean   @default(false)
+  viewedAt DateTime? @db.Timestamptz(6)
+
   @@unique([recordId, userId])
   @@index([tenantId, userId])
   @@index([tenantId, recordId])
+  @@index([tenantId, userId, isViewed])
 }
 
 model RecordComment {

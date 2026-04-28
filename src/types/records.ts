@@ -124,6 +124,7 @@ export type RecordListItem = {
   createdAt: string;
   hasCriticalComment: boolean;
   hasUnreadMention: boolean;
+  hasSharedUnviewed: boolean;
 };
 
 export type RecordDetail = {

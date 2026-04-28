@@ -52,6 +52,8 @@ type Props = {
   canAssignExternal: boolean;
   isRequestCreator: boolean;
   onRefresh: () => void | Promise<void>;
+  /** Called after approve/reject succeeds and onRefresh completes (split-view list/badge updates) */
+  onApprovalCompleted?: () => void;
   onParticipantsChange?: (updater: (prev: RecordParticipant[]) => RecordParticipant[]) => void;
 };
 
@@ -1085,6 +1087,7 @@ function ParticipantListSection({
   canRemind,
   canRemove,
   onRefresh,
+  onApprovalCompleted,
   onParticipantsChange,
 }: {
   title: string;
@@ -1098,6 +1101,7 @@ function ParticipantListSection({
   canRemind: boolean;
   canRemove: boolean;
   onRefresh: () => void | Promise<void>;
+  onApprovalCompleted?: () => void;
   onParticipantsChange?: (updater: (prev: RecordParticipant[]) => RecordParticipant[]) => void;
 }) {
   const apiFetch = useApiFetch();
@@ -1139,12 +1143,18 @@ function ParticipantListSection({
         }
       );
       if (!res.ok) {
+        if (res.status === 404) {
+          // Participant was revoked — refresh to update UI silently
+          await onRefresh();
+          return;
+        }
         const json = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
         toast.addToast("error", json.error?.message ?? "Action failed.");
         return;
       }
       toast.addToast("success", "Approved.");
       await onRefresh();
+      onApprovalCompleted?.();
     } catch {
       toast.addToast("error", "Network error.");
     } finally {
@@ -1167,6 +1177,12 @@ function ParticipantListSection({
         }
       );
       if (!res.ok) {
+        if (res.status === 404) {
+          // Participant was revoked — refresh and close modal
+          setRejectModal({ open: false, participantId: null, submitting: false });
+          await onRefresh();
+          return;
+        }
         const json = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
         toast.addToast("error", json.error?.message ?? "Rejection failed.");
         return;
@@ -1174,6 +1190,7 @@ function ParticipantListSection({
       toast.addToast("success", "Rejected.");
       setRejectModal({ open: false, participantId: null, submitting: false });
       await onRefresh();
+      onApprovalCompleted?.();
     } catch {
       toast.addToast("error", "Network error.");
     } finally {
@@ -1287,7 +1304,8 @@ function ParticipantListSection({
                     p.participantType === "INTERNAL" &&
                     p.participantRole === "APPROVER" &&
                     p.userId === currentUserId &&
-                    p.status === "PENDING"
+                    p.status === "PENDING" &&
+                    p.revokedAt === null
                   }
                   isClosed={isClosed}
                   canRemove={canRemove}
@@ -1326,6 +1344,7 @@ export function ParticipantsPanel({
   canAssignExternal,
   isRequestCreator,
   onRefresh,
+  onApprovalCompleted,
   onParticipantsChange,
 }: Props) {
   return (
@@ -1348,6 +1367,7 @@ export function ParticipantsPanel({
           canRemind={isRequestCreator}
           canRemove={isRequestCreator}
           onRefresh={onRefresh}
+          onApprovalCompleted={onApprovalCompleted}
           onParticipantsChange={onParticipantsChange}
         />
 
@@ -1365,6 +1385,7 @@ export function ParticipantsPanel({
           canRemind={false}
           canRemove={isRequestCreator}
           onRefresh={onRefresh}
+          onApprovalCompleted={onApprovalCompleted}
           onParticipantsChange={onParticipantsChange}
         />
       </div>

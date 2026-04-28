@@ -24,10 +24,28 @@ import {
   IconFileText,
   IconLink,
   IconAlertCircle,
+  IconCheck,
   IconPlus,
   IconUpload,
   IconDot,
   IconX,
+  IconSparkle,
+  IconLockClosed,
+  IconUserPlus,
+  IconUserMinus,
+  IconThumbsUp,
+  IconThumbsDown,
+  IconPaperclipEvidence,
+  IconLinkEvidence,
+  IconTrashEvidence,
+  IconMessageSquare,
+  IconGitMerge,
+  IconFileText2,
+  IconActivity,
+  IconCopy2,
+  IconDownload2,
+  IconCreditCard,
+  IconBell,
 } from "@/components/ui/icons";
 import { RejectApprovalModal } from "./reject-approval-modal";
 import { ParticipantsPanel } from "./participants-panel";
@@ -69,6 +87,11 @@ type Props = {
   permissions: string[];
   /** Split-view: override navigation so prev/next stays within the panel */
   onNavigate?: (id: string, key?: string | null) => void;
+  /** Split-view: after mentions PATCH succeeds — parent can optimistically decrement badge */
+  onMentionsRead?: (markedReadCount?: number) => void;
+  onSharedViewed?: (count?: number) => void;
+  /** Split-view: after approve/reject succeeds and detail reloads — parent can update list/summary offsets */
+  onApprovalCompleted?: () => void;
   /** Split-view: makes the request header sticky within the panel scroll container */
   stickyHeader?: boolean;
 };
@@ -110,6 +133,9 @@ export function RequestDetailClient({
   currentUserEmail = null,
   permissions,
   onNavigate,
+  onMentionsRead,
+  onSharedViewed,
+  onApprovalCompleted,
   stickyHeader = false,
 }: Props) {
   const apiFetch = useApiFetch();
@@ -183,6 +209,11 @@ export function RequestDetailClient({
   const toast = useToast();
 
   const [data, setData] = useState<RecordDetailResponse["data"] | null>(null);
+  const [timelineEvents, setTimelineEvents] = useState<RecordEventItem[]>([]);
+  const [timelineHasMore, setTimelineHasMore] = useState(false);
+  const [timelineNextCursor, setTimelineNextCursor] = useState<string | null>(null);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [timelineInitialized, setTimelineInitialized] = useState(false);
   const updateParticipants = useCallback(
     (updater: (prev: RecordParticipant[]) => RecordParticipant[]) => {
       setData((prev) => {
@@ -307,6 +338,60 @@ export function RequestDetailClient({
     [currentUserId, recordId]
   );
 
+  useEffect(() => {
+    setTimelineEvents([]);
+    setTimelineHasMore(false);
+    setTimelineNextCursor(null);
+    setTimelineInitialized(false);
+  }, [recordId]);
+
+  const loadTimeline = useCallback(
+    async (cursor?: string) => {
+      setTimelineLoading(true);
+      try {
+        const url = cursor
+          ? `/api/records/${recordId}/timeline?cursor=${encodeURIComponent(cursor)}`
+          : `/api/records/${recordId}/timeline`;
+        const res = await apiFetchRef.current(url, { showToastOnError: false });
+        if (!res.ok) {
+          if (!cursor) {
+            setTimelineEvents([]);
+            setTimelineHasMore(false);
+            setTimelineNextCursor(null);
+            setTimelineInitialized(true);
+          }
+          return;
+        }
+        const json = (await res.json()) as {
+          data?: {
+            events: RecordEventItem[];
+            hasMore: boolean;
+            nextCursor: string | null;
+          };
+        };
+        const { events = [], hasMore = false, nextCursor = null } = json.data ?? {};
+        if (cursor) {
+          setTimelineEvents((prev) => [...prev, ...events]);
+        } else {
+          setTimelineEvents(events);
+        }
+        setTimelineHasMore(hasMore);
+        setTimelineNextCursor(nextCursor);
+        setTimelineInitialized(true);
+      } catch {
+        if (!cursor) {
+          setTimelineEvents([]);
+          setTimelineHasMore(false);
+          setTimelineNextCursor(null);
+          setTimelineInitialized(true);
+        }
+      } finally {
+        setTimelineLoading(false);
+      }
+    },
+    [recordId]
+  );
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -315,7 +400,7 @@ export function RequestDetailClient({
         showToastOnError: false,
       });
       if (res.status === 404) {
-        setError("Request not found or you don't have access.");
+        setError("access_revoked");
         return;
       }
       if (!res.ok) {
@@ -335,12 +420,45 @@ export function RequestDetailClient({
       setData(normalizeDetailData(json.data));
       // Fire-and-forget view tracking for internal participants
       void markParticipantViewed(json.data.participants as RecordParticipant[]);
+      // Load timeline independently (paginated, newest first)
+      void loadTimeline();
+      // Mark mentions as read AND shared access as viewed — keep both badges in sync.
+      void Promise.all([
+        apiFetchRef.current(`/api/records/${recordId}/mentions`, {
+          method: "PATCH",
+          showToastOnError: false,
+        })
+          .then(async (res): Promise<number> => {
+            if (!res.ok) return 0;
+            const json = (await res.json().catch(() => null)) as { data?: { markedRead?: number } } | null;
+            return json?.data?.markedRead ?? 0;
+          })
+          .catch((): number => 0),
+        apiFetchRef.current(`/api/records/${recordId}/access-viewed`, {
+          method: "PATCH",
+          showToastOnError: false,
+        })
+          .then(async (res): Promise<number> => {
+            if (!res.ok) return 0;
+            const json = (await res.json().catch(() => null)) as { data?: { markedViewed?: number } } | null;
+            return json?.data?.markedViewed ?? 0;
+          })
+          .catch((): number => 0),
+      ]).then(([mentionMarked, sharedMarked]) => {
+        const wasUnread = mentionMarked + sharedMarked > 0;
+        if (wasUnread) {
+          onMentionsRead?.(mentionMarked > 0 ? mentionMarked : 1);
+          onSharedViewed?.(sharedMarked > 0 ? sharedMarked : 1);
+        }
+      }).catch(() => {
+        /* silent */
+      });
     } catch {
       setError("Failed to load request.");
     } finally {
       setLoading(false);
     }
-  }, [recordId, markParticipantViewed]); // apiFetch via stable ref — recordId is the only meaningful dep
+  }, [recordId, markParticipantViewed, loadTimeline, onMentionsRead, onSharedViewed]); // apiFetch via stable ref — recordId is the only meaningful dep
 
   const handleParticipantAction = useCallback(
     async (
@@ -357,6 +475,11 @@ export function RequestDetailClient({
           showToastOnError: false,
         });
         if (!res.ok) {
+          if (res.status === 404) {
+            // Participant was revoked or no longer exists — refresh to update UI
+            await load();
+            return false;
+          }
           const json = (await res.json().catch(() => ({}))) as {
             error?: { message?: string };
           };
@@ -365,6 +488,7 @@ export function RequestDetailClient({
         }
         toast.addToast("success", action === "APPROVE" ? "Approved." : "Rejected.");
         await load();
+        onApprovalCompleted?.();
         return true;
       } catch {
         toast.addToast("error", "Network error.");
@@ -373,7 +497,7 @@ export function RequestDetailClient({
         setApprovalActionLoading(null);
       }
     },
-    [apiFetch, recordId, toast, load]
+    [apiFetch, recordId, toast, load, onApprovalCompleted]
   );
 
   useEffect(() => {
@@ -488,26 +612,43 @@ export function RequestDetailClient({
   if (loading) return <RequestDetailSkeleton />;
 
   if (error) {
-    return (
-      <div className="space-y-4">
-        <Link
-          href="/app/requests"
-          className="inline-flex items-center gap-1.5 text-sm text-(--text-muted) transition-colors hover:text-(--text-primary)"
-        >
-          <IconChevronLeft size={14} />
-          Back to requests
-        </Link>
-        <div className="rounded-lg border border-(--color-danger-soft) bg-(--color-danger-soft) px-4 py-3 text-sm text-(--color-danger)">
-          {error}
+    if (error === "access_revoked") {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--color-warning-soft)">
+            <IconLockClosed size={22} className="text-(--color-warning)" />
+          </div>
+          <div className="max-w-xs space-y-1.5">
+            <p className="text-sm font-semibold text-(--text-primary)">
+              You don&apos;t have access to this request
+            </p>
+            <p className="text-xs text-(--text-muted) max-w-xs">
+              This request is private or your access has been removed. Contact the request owner if
+              you need access.
+            </p>
+          </div>
+          {onNavigate === undefined && (
+            <Link
+              href="/app/requests"
+              className="inline-flex h-8 items-center rounded-lg border border-(--border-subtle) px-4 text-xs font-medium text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)"
+            >
+              Back to requests
+            </Link>
+          )}
         </div>
+      );
+    }
+
+    return (
+      <div className="flex h-full items-center justify-center p-8 text-center">
+        <p className="text-sm text-(--color-danger)">{error}</p>
       </div>
     );
   }
 
   if (!data) return null;
 
-  const { record, evidence, participants, timeline, comments, links, payment, missingProof } =
-    data;
+  const { record, evidence, participants, comments, links, payment, missingProof } = data;
   const rec = record as RecordDetailExtended;
   const isRequestCreator = rec.createdByUserId === currentUserId;
   const canAssignInternal = isRequestCreator;
@@ -947,7 +1088,15 @@ export function RequestDetailClient({
             />
           </div>
 
-          <TimelineSection timeline={timeline} comments={comments} />
+          <TimelineSection
+            timeline={timelineEvents}
+            comments={comments}
+            recordId={recordId}
+            hasMore={timelineHasMore}
+            timelineLoading={timelineLoading}
+            timelineInitialized={timelineInitialized}
+            onLoadMore={() => timelineNextCursor && void loadTimeline(timelineNextCursor)}
+          />
         </div>
 
         <div className="space-y-6">
@@ -961,6 +1110,7 @@ export function RequestDetailClient({
               canAssignExternal={canAssignExternal}
               isRequestCreator={isRequestCreator}
               onRefresh={load}
+              onApprovalCompleted={onApprovalCompleted}
               onParticipantsChange={updateParticipants}
             />
           </div>
@@ -1447,146 +1597,500 @@ function RemoveEvidenceButton({
   );
 }
 
+const COMMENT_TRUNCATE_LENGTH = 200;
+
+function CommentBody({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = content.length > COMMENT_TRUNCATE_LENGTH;
+  const displayed = isLong && !expanded
+    ? content.slice(0, COMMENT_TRUNCATE_LENGTH).trimEnd() + "…"
+    : content;
+
+  return (
+    <div className="mt-1">
+      <p className="whitespace-pre-wrap text-sm text-(--text-secondary)">{displayed}</p>
+      {isLong && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="cursor-pointer mt-0.5 text-xs text-(--color-primary) hover:underline"
+        >
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function TimelineSection({
   timeline,
   comments,
+  recordId,
+  hasMore,
+  timelineLoading,
+  timelineInitialized,
+  onLoadMore,
 }: {
   timeline: RecordEventItem[];
   comments: RecordComment[];
+  recordId: string;
+  hasMore: boolean;
+  timelineLoading: boolean;
+  timelineInitialized: boolean;
+  onLoadMore: () => void;
 }) {
+  const apiFetch = useApiFetch();
   const commentMap = new Map(comments.map((c) => [c.id, c]));
+  const [copyStates, setCopyStates] = useState<Record<string, boolean>>({});
+  const [downloadingIds, setDownloadingIds] = useState<Set<string>>(new Set());
 
-  const sortedEvents = [...timeline].sort(
-    (a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime()
-  );
+  const SUPPRESSED_EVENT_TYPES = new Set(["USER_MENTIONED", "RECORD_SHARED"]);
+
+  const sortedEvents = [...timeline].filter((ev) => !SUPPRESSED_EVENT_TYPES.has(ev.eventType));
+
+  // Group by date (timeline is newest-first from API)
+  const groupedByDate: { date: string; events: RecordEventItem[] }[] = [];
+  for (const ev of sortedEvents) {
+    const dateKey = new Date(ev.occurredAt).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+    const last = groupedByDate[groupedByDate.length - 1];
+    if (last && last.date === dateKey) {
+      last.events.push(ev);
+    } else {
+      groupedByDate.push({ date: dateKey, events: [ev] });
+    }
+  }
+
+  async function handleCopy(key: string, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyStates((s) => ({ ...s, [key]: true }));
+      setTimeout(() => setCopyStates((s) => ({ ...s, [key]: false })), 2000);
+    } catch {
+      // ignore
+    }
+  }
+
+  async function handleDownload(
+    evidenceId: string,
+    fileName: string,
+    type: "evidence" | "payment" = "evidence"
+  ) {
+    if (downloadingIds.has(evidenceId)) return;
+    setDownloadingIds((s) => new Set(s).add(evidenceId));
+    try {
+      const endpoint =
+        type === "payment"
+          ? `/api/records/${recordId}/payment/evidence/${evidenceId}/download`
+          : `/api/records/${recordId}/evidence/${evidenceId}`;
+      const res = await apiFetch(endpoint, { showToastOnError: false });
+      if (!res.ok) return;
+      const json = (await res.json()) as { data?: { downloadUrl?: string; fileName?: string } };
+      const url = json.data?.downloadUrl;
+      if (!url) return;
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch {
+      // ignore
+    } finally {
+      setDownloadingIds((s) => {
+        const n = new Set(s);
+        n.delete(evidenceId);
+        return n;
+      });
+    }
+  }
+
+  // Icon component per event type
+  function EventIcon({
+    eventType,
+    metadata,
+  }: {
+    eventType: string;
+    metadata: Record<string, unknown> | null;
+  }) {
+    const isRemoval = metadata?.action === "participant_removed";
+    const isFileEvidence = eventType === "EVIDENCE_FILE_ADDED" || eventType === "EVIDENCE_FILE_REMOVED";
+    const isLinkEvidence = eventType === "EVIDENCE_LINK_ADDED" || eventType === "EVIDENCE_LINK_REMOVED";
+    const isRemoved =
+      eventType === "EVIDENCE_FILE_REMOVED" ||
+      eventType === "EVIDENCE_LINK_REMOVED" ||
+      eventType === "PAYMENT_EVIDENCE_REMOVED";
+
+    const iconProps = { size: 11 };
+
+    let icon: ReactNode;
+    let colorClass: string;
+
+    if (eventType === "RECORD_CREATED") {
+      icon = <IconSparkle {...iconProps} />;
+      colorClass = "text-(--color-primary) border-(--color-primary-soft) bg-(--color-primary-soft)";
+    } else if (eventType === "RECORD_CLOSED") {
+      icon = <IconLockClosed {...iconProps} />;
+      colorClass = "text-(--text-secondary) border-(--border-subtle) bg-(--bg-surface-elev)";
+    } else if (eventType === "APPROVAL_REQUESTED" && isRemoval) {
+      icon = <IconUserMinus {...iconProps} />;
+      colorClass = "text-(--color-danger) border-(--color-danger-soft) bg-(--color-danger-soft)";
+    } else if (eventType === "APPROVAL_REQUESTED") {
+      icon = <IconUserPlus {...iconProps} />;
+      colorClass = "text-(--color-primary) border-(--color-primary-soft) bg-(--color-primary-soft)";
+    } else if (eventType === "APPROVAL_APPROVED") {
+      icon = <IconThumbsUp {...iconProps} />;
+      colorClass = "text-(--color-success) border-(--color-success-soft) bg-(--color-success-soft)";
+    } else if (eventType === "APPROVAL_REJECTED") {
+      icon = <IconThumbsDown {...iconProps} />;
+      colorClass = "text-(--color-danger) border-(--color-danger-soft) bg-(--color-danger-soft)";
+    } else if (eventType === "APPROVAL_LINK_OPENED") {
+      icon = <IconActivity {...iconProps} />;
+      colorClass = "text-[#4fc3f7] border-[#4fc3f7]/30 bg-[#4fc3f7]/10";
+    } else if (eventType === "PARTICIPANT_VIEWED") {
+      icon = <IconActivity {...iconProps} />;
+      colorClass = "text-[#4fc3f7] border-[#4fc3f7]/30 bg-[#4fc3f7]/10";
+    } else if (isRemoved) {
+      icon = <IconTrashEvidence {...iconProps} />;
+      colorClass = "text-(--text-muted) border-(--border-subtle) bg-(--bg-surface-elev)";
+    } else if (isFileEvidence) {
+      icon = <IconPaperclipEvidence {...iconProps} />;
+      colorClass = "text-(--color-primary) border-(--color-primary-soft) bg-(--color-primary-soft)";
+    } else if (isLinkEvidence) {
+      icon = <IconLinkEvidence {...iconProps} />;
+      colorClass = "text-(--color-primary) border-(--color-primary-soft) bg-(--color-primary-soft)";
+    } else if (eventType === "COMMENT_ADDED" || eventType === "USER_MENTIONED") {
+      icon = <IconMessageSquare {...iconProps} />;
+      colorClass = "text-(--text-secondary) border-(--border-subtle) bg-(--bg-surface-elev)";
+    } else if (eventType === "REMINDER_SENT") {
+      icon = <IconBell {...iconProps} />;
+      colorClass = "text-(--color-warning) border-(--color-warning-soft) bg-(--color-warning-soft)";
+    } else if (eventType === "RECORD_LINKED" || eventType === "RECORD_UNLINKED") {
+      icon = <IconGitMerge {...iconProps} />;
+      colorClass = "text-(--text-secondary) border-(--border-subtle) bg-(--bg-surface-elev)";
+    } else if (eventType.startsWith("PAYMENT")) {
+      icon = <IconCreditCard {...iconProps} />;
+      colorClass = "text-(--color-success) border-(--color-success-soft) bg-(--color-success-soft)";
+    } else if (eventType.startsWith("EXPORT")) {
+      icon = <IconFileText2 {...iconProps} />;
+      colorClass = "text-(--text-secondary) border-(--border-subtle) bg-(--bg-surface-elev)";
+    } else {
+      icon = <span className="h-1.5 w-1.5 rounded-full bg-(--text-muted)" />;
+      colorClass = "border-(--border-subtle) bg-(--bg-surface-elev)";
+    }
+
+    return (
+      <div className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${colorClass}`}>
+        {icon}
+      </div>
+    );
+  }
+
+  // Build label + secondary context + actions
+  function getEventContent(ev: RecordEventItem): {
+    primary: string;
+    secondary: string | null;
+    noteContent: string | null;
+    actions: ReactNode;
+  } {
+    const m = ev.metadata;
+
+    // Copy action helper
+    const CopyBtn = ({ copyKey, text, title }: { copyKey: string; text: string; title: string }) => (
+      <button
+        type="button"
+        title={title}
+        onClick={() => void handleCopy(copyKey, text)}
+        className="cursor-pointer inline-flex h-5 w-5 items-center justify-center rounded text-(--text-muted) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--color-primary)"
+      >
+        {copyStates[copyKey] ? <IconCheck size={11} className="text-(--color-success)" /> : <IconCopy2 size={11} />}
+      </button>
+    );
+
+    // Download action helper
+    const DownloadBtn = ({
+      evidenceId,
+      fileName,
+      type = "evidence",
+    }: {
+      evidenceId: string;
+      fileName: string;
+      type?: "evidence" | "payment";
+    }) => (
+      <button
+        type="button"
+        title="Download file"
+        onClick={() => void handleDownload(evidenceId, fileName, type)}
+        disabled={downloadingIds.has(evidenceId)}
+        className="cursor-pointer inline-flex h-5 w-5 items-center justify-center rounded text-(--text-muted) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--color-primary) disabled:opacity-40"
+      >
+        {downloadingIds.has(evidenceId) ? <Spinner size="sm" /> : <IconDownload2 size={11} />}
+      </button>
+    );
+
+    if (ev.eventType === "APPROVAL_REQUESTED" && m?.action === "participant_removed") {
+      const role = m?.participantRole === "VIEWER" ? "Viewer" : "Approver";
+      const name = (m?.removedName ?? m?.removedEmail) as string | null;
+      return {
+        primary: `${role} removed`,
+        secondary: name,
+        noteContent: null,
+        actions: null,
+      };
+    }
+
+    if (ev.eventType === "APPROVAL_REQUESTED") {
+      const role = m?.participantRole === "VIEWER" ? "Viewer" : "Approver";
+      const name = (m?.participantName ?? m?.participantEmail) as string | null;
+      return {
+        primary: `${role} assigned`,
+        secondary: name,
+        noteContent: null,
+        actions: null,
+      };
+    }
+
+    if (ev.eventType === "PARTICIPANT_VIEWED") {
+      const role = m?.participantRole === "VIEWER" ? "Viewer" : "Approver";
+      return {
+        primary: `${role} viewed this request`,
+        secondary: null,
+        noteContent: null,
+        actions: null,
+      };
+    }
+
+    if (ev.eventType === "EVIDENCE_FILE_ADDED") {
+      const fileName = m?.fileName as string | null;
+      const evidenceId = m?.evidenceId as string | null;
+      return {
+        primary: "Evidence file added",
+        secondary: fileName ?? null,
+        noteContent: null,
+        actions:
+          evidenceId && fileName ? <DownloadBtn evidenceId={evidenceId} fileName={fileName} /> : null,
+      };
+    }
+
+    if (ev.eventType === "EVIDENCE_LINK_ADDED") {
+      const label = m?.label as string | null;
+      const url = m?.url as string | null;
+      return {
+        primary: "Evidence link added",
+        secondary: label ?? url ?? null,
+        noteContent: null,
+        actions: url ? <CopyBtn copyKey={`${ev.id}-url`} text={url} title="Copy link URL" /> : null,
+      };
+    }
+
+    if (ev.eventType === "EVIDENCE_FILE_REMOVED") {
+      const fileName = (m?.fileName ?? m?.label) as string | null;
+      return {
+        primary: "Evidence file removed",
+        secondary: fileName,
+        noteContent: null,
+        actions: null,
+      };
+    }
+
+    if (ev.eventType === "EVIDENCE_LINK_REMOVED") {
+      const label = m?.label as string | null;
+      return {
+        primary: "Evidence link removed",
+        secondary: label,
+        noteContent: null,
+        actions: null,
+      };
+    }
+
+    if (ev.eventType === "PAYMENT_STATUS_SET") {
+      const prev = m?.previousStatus as string | null;
+      const next = m?.newStatus as string | null;
+      const prevLabel = prev ? (PAYMENT_STATUS_LABELS[prev] ?? prev) : null;
+      const nextLabel = next ? (PAYMENT_STATUS_LABELS[next] ?? next) : null;
+      return {
+        primary: "Payment status updated",
+        secondary: prevLabel && nextLabel ? `${prevLabel} → ${nextLabel}` : (nextLabel ?? null),
+        noteContent: null,
+        actions: null,
+      };
+    }
+
+    if (ev.eventType === "PAYMENT_EVIDENCE_ADDED") {
+      const type = m?.evidenceType as string | null;
+      const fileName = m?.fileName as string | null;
+      const label = m?.label as string | null;
+      const contentText = m?.contentText as string | null;
+      const evidenceId = m?.evidenceId as string | null;
+      const displayName = fileName ?? label ?? null;
+      const typeLabel = type === "FILE" ? "file" : type === "LINK" ? "link" : type === "TEXT" ? "note" : null;
+      return {
+        primary: `Payment proof added${typeLabel ? ` (${typeLabel})` : ""}`,
+        secondary: type !== "TEXT" ? displayName : null,
+        noteContent: type === "TEXT" ? contentText : null,
+        actions:
+          type === "FILE" && evidenceId && displayName ? (
+            <DownloadBtn evidenceId={evidenceId} fileName={displayName} type="payment" />
+          ) : null,
+      };
+    }
+
+    if (ev.eventType === "PAYMENT_EVIDENCE_REMOVED") {
+      const type = m?.evidenceType as string | null;
+      const name = (m?.fileName ?? m?.label ?? m?.contentText) as string | null;
+      const typeLabel = type === "FILE" ? "file" : type === "LINK" ? "link" : type === "TEXT" ? "note" : null;
+      return {
+        primary: `Payment proof removed${typeLabel ? ` (${typeLabel})` : ""}`,
+        secondary: name ? String(name).slice(0, 60) : null,
+        noteContent: null,
+        actions: null,
+      };
+    }
+
+    if (ev.eventType === "RECORD_LINKED") {
+      const key = m?.linkedRecordKey as string | null;
+      const title = m?.linkedRecordTitle as string | null;
+      return {
+        primary: "Linked to request",
+        secondary: key ?? title ?? null,
+        noteContent: null,
+        actions: null,
+      };
+    }
+
+    if (ev.eventType === "RECORD_UNLINKED") {
+      return { primary: "Request link removed", secondary: null, noteContent: null, actions: null };
+    }
+
+    return {
+      primary: RECORD_EVENT_LABELS[ev.eventType] ?? ev.eventType,
+      secondary: null,
+      noteContent: null,
+      actions: null,
+    };
+  }
 
   return (
     <CardRoot>
       <CardHeader>
         <h2 className="text-sm font-semibold text-(--text-primary)">Timeline</h2>
       </CardHeader>
-      <CardContent>
-        {sortedEvents.length === 0 ? (
-          <p className="text-sm text-(--text-muted)">No activity recorded yet.</p>
-        ) : (
-          <ol className="space-y-4">
-            {sortedEvents.map((ev) => {
-              const commentId =
-                ev.eventType === "COMMENT_ADDED"
-                  ? (ev.metadata?.commentId as string | undefined)
-                  : undefined;
-              const comment = commentId ? commentMap.get(commentId) : undefined;
+      <CardContent className="p-0">
+        <div className="relative" style={{ maxHeight: "28rem" }}>
+          <div className="pointer-events-none absolute top-0 left-0 right-0 z-10 h-6 bg-gradient-to-b from-(--bg-surface) to-transparent" />
 
-              return (
-                <li key={ev.id} className="flex gap-3">
-                  <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-(--border-subtle) bg-(--bg-surface-elev)">
-                    <span className="h-1.5 w-1.5 rounded-full bg-(--text-muted)" />
-                  </div>
-                  <div className="min-w-0 flex-1 border-b border-(--border-subtle) pb-4 last:border-0 last:pb-0">
-                    <div className="flex flex-wrap items-baseline gap-2">
-                      <span
-                        className={[
-                          "text-sm font-medium",
-                          comment?.isCritical
-                            ? "text-(--color-danger)"
-                            : "text-(--text-primary)",
-                        ].join(" ")}
-                      >
-                        {ev.eventType === "APPROVAL_REQUESTED" && ev.metadata?.action === "participant_removed"
-                          ? "Participant removed"
-                          : RECORD_EVENT_LABELS[ev.eventType] ?? ev.eventType}
-                        {ev.eventType === "EVIDENCE_FILE_ADDED" &&
-                        ev.metadata?.fileName != null &&
-                        ev.metadata.fileName !== "" ? (
-                          <span className="ml-1 font-normal text-(--text-muted)">
-                            — {String(ev.metadata.fileName)}
-                          </span>
-                        ) : null}
-                        {ev.eventType === "EVIDENCE_LINK_ADDED" &&
-                        ev.metadata?.label != null &&
-                        ev.metadata.label !== "" ? (
-                          <span className="ml-1 font-normal text-(--text-muted)">
-                            — {String(ev.metadata.label)}
-                          </span>
-                        ) : null}
-                        {ev.eventType === "EVIDENCE_FILE_REMOVED" &&
-                        (ev.metadata?.fileName != null || ev.metadata?.label != null) ? (
-                          <span className="ml-1 font-normal text-(--text-muted)">
-                            — {String(ev.metadata?.fileName ?? ev.metadata?.label ?? "")}
-                          </span>
-                        ) : null}
-                        {ev.eventType === "EVIDENCE_LINK_REMOVED" &&
-                        ev.metadata?.label != null &&
-                        ev.metadata.label !== "" ? (
-                          <span className="ml-1 font-normal text-(--text-muted)">
-                            — {String(ev.metadata.label)}
-                          </span>
-                        ) : null}
-                        {ev.eventType === "PAYMENT_EVIDENCE_REMOVED" &&
-                        (ev.metadata?.fileName != null || ev.metadata?.label != null) ? (
-                          <span className="ml-1 font-normal text-(--text-muted)">
-                            — {String(ev.metadata?.fileName ?? ev.metadata?.label ?? "")}
-                          </span>
-                        ) : null}
-                        {/* Participant assigned — show role and name */}
-                        {ev.eventType === "APPROVAL_REQUESTED" &&
-                        ev.metadata?.action !== "participant_removed" &&
-                        (ev.metadata?.participantName != null ||
-                          ev.metadata?.participantEmail != null) ? (
-                          <span className="ml-1 font-normal text-(--text-muted)">
-                            {ev.metadata?.participantRole === "VIEWER" ? "viewer" : "approver"}
-                            {" — "}
-                            {String(
-                              ev.metadata?.participantName ?? ev.metadata?.participantEmail ?? ""
-                            )}
-                          </span>
-                        ) : null}
-
-                        {/* Participant removed — show role and name */}
-                        {ev.eventType === "APPROVAL_REQUESTED" &&
-                        ev.metadata?.action === "participant_removed" ? (
-                          <span className="ml-1 font-normal text-(--text-muted)">
-                            {ev.metadata?.participantRole === "VIEWER"
-                              ? "viewer removed"
-                              : "approver removed"}
-                            {ev.metadata?.removedName != null || ev.metadata?.removedEmail != null
-                              ? ` — ${String(ev.metadata?.removedName ?? ev.metadata?.removedEmail ?? "")}`
-                              : ""}
-                          </span>
-                        ) : null}
-
-                        {/* Participant viewed */}
-                        {ev.eventType === "PARTICIPANT_VIEWED" &&
-                        ev.metadata?.participantRole != null ? (
-                          <span className="ml-1 font-normal text-(--text-muted)">
-                            {ev.metadata.participantRole === "VIEWER" ? "by viewer" : "by approver"}
-                          </span>
-                        ) : null}
+          <div
+            className="overflow-y-auto px-4 py-4"
+            style={{
+              maxHeight: "28rem",
+              scrollbarWidth: "thin",
+              scrollbarColor: "var(--border-subtle) transparent",
+            }}
+          >
+            {!timelineInitialized || (timelineLoading && timeline.length === 0) ? (
+              <div className="flex items-center justify-center py-8">
+                <Spinner size="sm" />
+              </div>
+            ) : sortedEvents.length === 0 ? (
+              <p className="text-sm text-(--text-muted)">No activity recorded yet.</p>
+            ) : (
+              <div className="space-y-4">
+                {groupedByDate.map((group) => (
+                  <div key={group.date}>
+                    <div className="mb-3 flex items-center gap-2">
+                      <div className="h-px flex-1 bg-(--border-subtle)" />
+                      <span className="text-[11px] font-medium text-(--text-muted) uppercase tracking-wider">
+                        {group.date}
                       </span>
-                      {comment?.isCritical && (
-                        <span className="flex items-center gap-1 text-xs text-(--color-danger)">
-                          <IconAlertCircle size={11} />
-                          Action required
-                        </span>
-                      )}
-                      <span className="text-xs text-(--text-muted)">{formatDate(ev.occurredAt)}</span>
+                      <div className="h-px flex-1 bg-(--border-subtle)" />
                     </div>
-                    {(ev.actorName || ev.actorDisplayEmail) && (
-                      <p className="mt-0.5 text-xs text-(--text-muted)">
-                        by {ev.actorName ?? ev.actorDisplayEmail}
-                      </p>
-                    )}
-                    {comment && (
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-(--text-secondary)">
-                        {comment.content}
-                      </p>
-                    )}
+
+                    <ol className="space-y-3">
+                      {group.events.map((ev) => {
+                        const commentId =
+                          ev.eventType === "COMMENT_ADDED"
+                            ? (ev.metadata?.commentId as string | undefined)
+                            : undefined;
+                        const comment = commentId ? commentMap.get(commentId) : undefined;
+                        const { primary, secondary, actions, noteContent } = getEventContent(ev);
+                        const timeStr = new Date(ev.occurredAt).toLocaleTimeString("en-US", {
+                          hour: "numeric",
+                          minute: "2-digit",
+                          hour12: true,
+                        });
+                        const actorName = ev.actorName;
+                        const actorEmail = ev.actorDisplayEmail;
+                        const actorDisplay = actorName ?? actorEmail;
+                        const showEmailInline = actorEmail && actorEmail !== actorName;
+
+                        return (
+                          <li key={ev.id} className="flex gap-3">
+                            <EventIcon eventType={ev.eventType} metadata={ev.metadata} />
+                            <div className="min-w-0 flex-1 border-b border-(--border-subtle) pb-3 last:border-0 last:pb-0">
+                              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                                <span
+                                  className={[
+                                    "text-sm font-medium",
+                                    comment?.isCritical
+                                      ? "text-(--color-danger)"
+                                      : "text-(--text-primary)",
+                                  ].join(" ")}
+                                >
+                                  {primary}
+                                </span>
+                                {secondary && (
+                                  <span className="text-sm font-normal text-(--text-muted)">
+                                    — {secondary}
+                                  </span>
+                                )}
+                                {actions}
+                                {comment?.isCritical && (
+                                  <span className="flex items-center gap-1 text-xs text-(--color-danger)">
+                                    <IconAlertCircle size={11} />
+                                    Action required
+                                  </span>
+                                )}
+                                <span className="ml-auto text-xs text-(--text-muted) tabular-nums">
+                                  {timeStr}
+                                </span>
+                              </div>
+
+                              {actorDisplay && (
+                                <p className="mt-0.5 text-xs text-(--text-muted)">
+                                  by {actorDisplay}
+                                  {showEmailInline && (
+                                    <span className="ml-1 opacity-60">({actorEmail})</span>
+                                  )}
+                                </p>
+                              )}
+
+                              {noteContent && <CommentBody content={noteContent} />}
+                              {comment && <CommentBody content={comment.content} />}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ol>
                   </div>
-                </li>
-              );
-            })}
-          </ol>
-        )}
+                ))}
+
+                {hasMore && (
+                  <div className="flex justify-center pt-2">
+                    <button
+                      type="button"
+                      onClick={onLoadMore}
+                      disabled={timelineLoading}
+                      className="cursor-pointer inline-flex items-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 py-2 text-xs font-medium text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--text-primary) disabled:opacity-50"
+                    >
+                      {timelineLoading ? <Spinner size="sm" /> : null}
+                      {timelineLoading ? "Loading…" : "Load older activity"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-10 h-6 bg-gradient-to-t from-(--bg-surface) to-transparent" />
+        </div>
       </CardContent>
     </CardRoot>
   );
@@ -2661,7 +3165,8 @@ function AllActionBanners({
       p.participantRole === "APPROVER" &&
       p.status === "PENDING" &&
       p.participantType === "INTERNAL" &&
-      p.userId === currentUserId
+      p.userId === currentUserId &&
+      p.revokedAt === null
   );
 
   const banners: ReactNode[] = [];

@@ -107,6 +107,47 @@ export async function processMentions({
           });
         }
 
+        // Add as VIEWER participant (same as direct viewer assignment)
+        // Use upsert pattern: reactivate if previously revoked, create if new
+        const existingParticipant = await tx.recordParticipant.findFirst({
+          where: {
+            recordId,
+            tenantId,
+            userId,
+            participantRole: "VIEWER",
+          },
+          select: { id: true, revokedAt: true },
+        });
+
+        if (existingParticipant) {
+          if (existingParticipant.revokedAt) {
+            // Reactivate
+            await tx.recordParticipant.update({
+              where: { id: existingParticipant.id },
+              data: {
+                revokedAt: null,
+                status: "PENDING",
+                respondedAt: null,
+                responseReason: null,
+              },
+            });
+          }
+          // Already active — no action needed
+        } else {
+          // Create new VIEWER participant
+          await tx.recordParticipant.create({
+            data: {
+              tenantId,
+              recordId,
+              participantType: "INTERNAL",
+              participantRole: "VIEWER",
+              userId,
+              status: "PENDING",
+              createdByUserId: actorUserId,
+            },
+          });
+        }
+
         await tx.recordEvent.create({
           data: {
             tenantId,
@@ -116,6 +157,8 @@ export async function processMentions({
             metadata: {
               commentId,
               mentionedUserId: userId,
+              mentionedUserName: member.user.name ?? null,
+              mentionedUserEmail: member.user.email ?? null,
               autoAccessGranted: isNewShare,
             },
           },
