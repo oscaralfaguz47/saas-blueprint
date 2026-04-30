@@ -59,3 +59,10 @@ export {
   kbArticleCreateSchema,
   kbArticlePatchSchema,
 } from "./kb-admin";
+
+export {
+  financeTeamCreateSchema,
+  financeTeamPatchSchema,
+  financeTeamListQuerySchema,
+} from "./finance-team";
+export type { FinanceTeamCreateInput, FinanceTeamPatchInput } from "./finance-team";
