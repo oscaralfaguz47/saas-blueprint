@@ -43,5 +43,31 @@ export const financeTeamListQuerySchema = z.object({
   sortDir: z.enum(["asc", "desc"]).default("desc"),
 });
 
+export const financeTeamMemberAddSchema = z.object({
+  membershipId: z.string().cuid(),
+  weight: z.number().int().min(1).max(1000).optional(),
+  isLead: z.boolean().optional(),
+});
+
+export const financeTeamMemberPatchSchema = z
+  .object({
+    weight: z.number().int().min(1).max(1000).optional(),
+    isLead: z.boolean().optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, {
+    message: "At least one field must be provided",
+  });
+
+export const financeTeamMemberListQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(50).default(20),
+  cursor: z.string().optional(),
+  includeArchived: z
+    .union([z.literal("true"), z.literal("false")])
+    .optional()
+    .transform((v) => v === "true"),
+});
+
 export type FinanceTeamCreateInput = z.infer<typeof financeTeamCreateSchema>;
 export type FinanceTeamPatchInput = z.infer<typeof financeTeamPatchSchema>;
+export type FinanceTeamMemberAddInput = z.infer<typeof financeTeamMemberAddSchema>;
+export type FinanceTeamMemberPatchInput = z.infer<typeof financeTeamMemberPatchSchema>;

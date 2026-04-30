@@ -64,5 +64,13 @@ export {
   financeTeamCreateSchema,
   financeTeamPatchSchema,
   financeTeamListQuerySchema,
+  financeTeamMemberAddSchema,
+  financeTeamMemberPatchSchema,
+  financeTeamMemberListQuerySchema,
 } from "./finance-team";
-export type { FinanceTeamCreateInput, FinanceTeamPatchInput } from "./finance-team";
+export type {
+  FinanceTeamCreateInput,
+  FinanceTeamPatchInput,
+  FinanceTeamMemberAddInput,
+  FinanceTeamMemberPatchInput,
+} from "./finance-team";
