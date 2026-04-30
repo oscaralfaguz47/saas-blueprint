@@ -1,5 +1,4 @@
 import { getServerSession } from "next-auth";
-import { RoleKey } from "@prisma/client";
 import { authOptions } from "@/server/auth-options";
 import { requireAdminAuth } from "@/server/security/admin-route-auth";
 import { checkAdminUserSearchLimit } from "@/server/security/admin-rate-limit";
@@ -43,14 +42,7 @@ export const GET = withErrorHandler(async (req: Request) => {
           ],
         },
         ...(platformAdminsOnly
-          ? [
-              {
-                OR: [
-                  { role: { in: [RoleKey.ADMIN, RoleKey.MANAGER] } },
-                  { vendorUserRoles: { some: {} } },
-                ],
-              },
-            ]
+          ? [{ vendorUserRoles: { some: {} } }]
           : []),
         { isPlatformBlocked: false },
       ],

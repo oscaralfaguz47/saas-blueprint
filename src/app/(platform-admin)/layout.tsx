@@ -24,7 +24,6 @@ export default async function PlatformAdminLayout({ children }: { children: Reac
       image: true,
       profilePhotoObjectKey: true,
       appearance: true,
-      role: true,
       security: {
         select: { totpEnabled: true },
       },
@@ -40,7 +39,6 @@ export default async function PlatformAdminLayout({ children }: { children: Reac
 
   const canAccess = await hasVendorPermission({
     userId: fullSession.user.id,
-    legacyRole: user.role ?? undefined,
     permission: "admin.tenants.read",
   });
   if (!canAccess) redirect("/unauthorized");
@@ -54,22 +52,18 @@ export default async function PlatformAdminLayout({ children }: { children: Reac
   ] = await Promise.all([
     hasVendorPermission({
       userId: fullSession.user.id,
-      legacyRole: user.role ?? undefined,
       permission: "admin.support.read",
     }),
     hasVendorPermission({
       userId: fullSession.user.id,
-      legacyRole: user.role ?? undefined,
       permission: "admin.knowledge_base.read",
     }),
     hasVendorPermission({
       userId: fullSession.user.id,
-      legacyRole: user.role ?? undefined,
       permission: "admin.support.read",
     }),
     hasVendorPermission({
       userId: fullSession.user.id,
-      legacyRole: user.role ?? undefined,
       permission: "admin.tenants.read",
     }),
     prisma.vendorUserRole.findFirst({

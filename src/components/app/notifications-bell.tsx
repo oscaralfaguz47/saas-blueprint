@@ -7,10 +7,12 @@ import { IconBell } from "@/components/ui/icons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useApiFetch } from "@/hooks/use-api-fetch";
+import { NotificationType } from "@/lib/notification-type-constants";
 
 type NotificationItem = {
   id: string;
   notificationType: string;
+  category: string;
   title: string;
   body: string | null;
   entityType: string;
@@ -241,18 +243,21 @@ export function NotificationsBell({ initialUnreadCount = 0 }: Props) {
     setOpen(false);
 
     const isReplyNotification =
-      n.notificationType === "support.ticket.reply" ||
-      n.notificationType === "support.ticket.user_replied";
+      n.notificationType === NotificationType.SUPPORT_TICKET_REPLY ||
+      n.notificationType === NotificationType.SUPPORT_TICKET_USER_REPLIED;
 
     const destination = n.actionUrl ?? "/app/help/inbox";
 
-    // support.ticket.reply stores entityId = ticketId.
-    // support.ticket.user_replied stores entityId = messageId (idempotency); ticket id is on actionUrl.
+    // SUPPORT_TICKET_REPLY stores entityId = ticketId.
+    // SUPPORT_TICKET_USER_REPLIED stores entityId = messageId (idempotency); ticket id is on actionUrl.
     let refreshTicketId: string | null = null;
     if (isReplyNotification) {
-      if (n.notificationType === "support.ticket.reply" && n.entityId) {
+      if (n.notificationType === NotificationType.SUPPORT_TICKET_REPLY && n.entityId) {
         refreshTicketId = n.entityId;
-      } else if (n.notificationType === "support.ticket.user_replied" && n.actionUrl) {
+      } else if (
+        n.notificationType === NotificationType.SUPPORT_TICKET_USER_REPLIED &&
+        n.actionUrl
+      ) {
         try {
           refreshTicketId = new URL(n.actionUrl, window.location.origin).searchParams.get("ticketId");
         } catch {

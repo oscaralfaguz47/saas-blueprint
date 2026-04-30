@@ -1,7 +1,6 @@
 import "server-only";
 
 import { prisma } from "@/server/db";
-import type { RoleKey } from "@/types/next-auth";
 
 export type VendorPermission =
   | "admin.tenants.read"
@@ -22,11 +21,7 @@ export type VendorPermission =
 /**
  * Returns true if the user has the given vendor/platform permission.
  *
- * Source of truth:
- *  - VendorRole/VendorRolePermission/VendorUserRole (DB-driven RBAC)
- *
- * Transitional fallback:
- *  - legacy MANAGER (User.role) subset only — legacy ADMIN bypass removed (vendor RBAC + TOTP only).
+ * Source of truth: VendorRole/VendorRolePermission/VendorUserRole (DB-driven RBAC).
  *
  * IMPORTANT:
  *  - Supports multiple vendor roles per user.
@@ -34,12 +29,10 @@ export type VendorPermission =
  */
 export async function hasVendorPermission(params: {
   userId: string;
-  legacyRole?: RoleKey;
   permission: VendorPermission;
 }): Promise<boolean> {
-  const { userId, legacyRole, permission } = params;
+  const { userId, permission } = params;
 
-  // 0) Hard block (platform-level). Blocked users have no vendor permissions.
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { isPlatformBlocked: true },
@@ -47,18 +40,6 @@ export async function hasVendorPermission(params: {
 
   if (!user || user.isPlatformBlocked) return false;
 
-  // 1) Legacy role fallback — MANAGER only, limited subset (no legacy ADMIN bypass).
-  if (legacyRole === "MANAGER") {
-    return (
-      permission === "admin.tenants.read" ||
-      permission === "admin.users.read" ||
-      permission === "admin.sessions.revoke" ||
-      permission === "admin.mfa.reset" ||
-      permission === "admin.audit.read"
-    );
-  }
-
-  // 2) DB-driven permissions: gather ALL roles for this user
   const rows = await prisma.vendorUserRole.findMany({
     where: { userId },
     select: {
@@ -76,7 +57,6 @@ export async function hasVendorPermission(params: {
 
   if (rows.length === 0) return false;
 
-  // 3) Flatten permission codes across roles and check membership
   for (const r of rows) {
     for (const rp of r.role.permissions) {
       if (rp.permission.code === permission) return true;

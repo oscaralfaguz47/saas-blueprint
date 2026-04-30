@@ -28,7 +28,6 @@ export const GET = withErrorHandler(async (
     tenantId,
     userId: session.user.id,
     ticketId,
-    legacyRole: session.user.role,
     isVendorAdmin: false,
   });
   if (!allowed) return ApiErrors.NOT_FOUND();

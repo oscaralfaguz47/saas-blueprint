@@ -4,7 +4,7 @@ import { prisma } from "@/server/db";
 
 /**
  * Finds the least-loaded active platform admin for auto-assignment.
- * Active = not platform-blocked + has ADMIN legacy role OR at least one VendorUserRole.
+ * Active = not platform-blocked + has at least one VendorUserRole.
  * Least-loaded = fewest open (non-CLOSED) assigned tickets.
  * Returns the userId of the selected admin, or null if no eligible admin exists.
  */
@@ -13,7 +13,7 @@ export async function findLeastLoadedAdmin(): Promise<string | null> {
     const candidates = await prisma.user.findMany({
       where: {
         isPlatformBlocked: false,
-        OR: [{ role: "ADMIN" }, { vendorUserRoles: { some: {} } }],
+        vendorUserRoles: { some: {} },
       },
       select: {
         id: true,

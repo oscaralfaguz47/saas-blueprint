@@ -25,7 +25,6 @@ export const POST = withErrorHandler(async (req: Request) => {
 
   const allowed = await hasVendorPermission({
     userId: session.user.id,
-    legacyRole: session.user.role,
     permission: "admin.tenants.read",
   });
   if (!allowed) {

@@ -25,7 +25,6 @@ export default async function AdminWorkspaceTenantLayout({
 
   const canReadTenants = await hasVendorPermission({
     userId: fullSession.user.id,
-    legacyRole: fullSession.user.role,
     permission: "admin.tenants.read",
   });
   if (!canReadTenants) notFound();

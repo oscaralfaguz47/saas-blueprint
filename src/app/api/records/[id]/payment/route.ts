@@ -20,7 +20,6 @@ const recordAmountSelect = {
   type: true,
   status: true,
   requestedAmount: true,
-  amount: true,
 } as const;
 
 function paymentNotAllowedForAmountResponse() {
@@ -29,16 +28,9 @@ function paymentNotAllowedForAmountResponse() {
   );
 }
 
-function assertPositiveEffectiveAmount(record: {
-  requestedAmount: unknown;
-  amount: unknown;
-}) {
+function assertPositiveEffectiveAmount(record: { requestedAmount: unknown }) {
   const effectiveAmount =
-    record.requestedAmount != null
-      ? Number(record.requestedAmount)
-      : record.amount != null
-        ? Number(record.amount)
-        : null;
+    record.requestedAmount != null ? Number(record.requestedAmount) : null;
 
   if (!effectiveAmount || effectiveAmount <= 0) {
     return paymentNotAllowedForAmountResponse();

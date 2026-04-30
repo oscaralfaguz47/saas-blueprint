@@ -14,7 +14,7 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.ts", "src/**/*.spec.ts"],
-    exclude: ["node_modules", ".next"],
+    exclude: ["node_modules", ".next", "src/test/integration/**"],
     env: {
       DATABASE_URL: "postgresql://test:test@127.0.0.1:5432/test",
       DATABASE_DIRECT_URL: "postgresql://test:test@127.0.0.1:5432/test",

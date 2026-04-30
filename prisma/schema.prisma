@@ -10,12 +10,6 @@ datasource db {
   extensions = [vector]
 }
 
-enum RoleKey {
-  ADMIN
-  MANAGER
-  MEMBER
-}
-
 enum TenantStatus {
   DRAFT
   ACTIVE
@@ -130,15 +124,6 @@ enum RecordStatus {
   CANCELED
 }
 
-enum ApprovalRequestStatus {
-  SENT
-  APPROVED
-  REJECTED
-  EXPIRED
-  REVOKED
-  NO_RESPONSE
-}
-
 enum RecordEventType {
   RECORD_CREATED
   RECORD_CLOSED
@@ -146,6 +131,9 @@ enum RecordEventType {
   APPROVAL_APPROVED
   APPROVAL_REJECTED
   APPROVAL_LINK_OPENED
+  APPROVAL_STATUS_CHANGED
+  APPROVAL_FULLY_COMPLETED
+  APPROVAL_REJECTED_FINAL
   PARTICIPANT_VIEWED
   EVIDENCE_FILE_ADDED
   EVIDENCE_FILE_REMOVED
@@ -178,6 +166,7 @@ enum RecordParticipantStatus {
   PENDING
   APPROVED
   REJECTED
+  PENDING_BLOCKED
 }
 
 enum RecordAccessType {
@@ -361,9 +350,6 @@ model User {
   appearance           AppearanceMode   @default(SYSTEM)
   profilePhotoObjectKey String?         @db.VarChar(512)
 
-  // Legacy / compatibility role (keep for now)
-  role RoleKey @default(MEMBER)
-
   // If you later move to an IdP, these fields become useful
   identityProvider String? @db.VarChar(50)
   identityId       String? @db.VarChar(191)
@@ -433,6 +419,15 @@ model User {
   departmentsUpdated TenantDepartment[] @relation("DepartmentUpdatedBy")
   costCentersCreated TenantCostCenter[] @relation("CostCenterCreatedBy")
   costCentersUpdated TenantCostCenter[] @relation("CostCenterUpdatedBy")
+
+  financeTeamsCreated FinanceTeam[]       @relation("FinanceTeamCreatedBy")
+  financeTeamsDeleted FinanceTeam[]       @relation("FinanceTeamDeletedBy")
+  financeTeamsAdded   FinanceTeamMember[] @relation("FinanceTeamMemberAddedBy")
+  delegationsCreated  ApprovalDelegation[] @relation("DelegationCreatedBy")
+  delegationsRevoked  ApprovalDelegation[] @relation("DelegationRevokedBy")
+  financeAssignmentRulesCreated FinanceAssignmentRule[] @relation("FinanceAssignmentRuleCreatedBy")
+  approvalRoutingRulesCreated ApprovalRoutingRule[] @relation("ApprovalRoutingRuleCreatedBy")
+  webhookEndpointsCreated WebhookEndpoint[] @relation("WebhookEndpointCreatedBy")
 
   @@index([identityProvider, identityId])
 }
@@ -520,6 +515,164 @@ model WorkspaceMemberSecurity {
   @@index([userId])
 }
 
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum FinancialAccessScope {
+  ALL
+  DEPARTMENT
+  OWN_AND_PARTICIPATING
+  NONE
+}
+
+enum FinanceResponsibility {
+  PROCESS
+  APPROVE
+  PROCESS_AND_APPROVE
+  NONE
+}
+
+enum BillingAccessLevel {
+  MANAGE
+  READ
+  NONE
+}
+
+enum MembershipAvailability {
+  AVAILABLE
+  AWAY
+  OUT_OF_OFFICE
+  ON_LEAVE
+  PAUSED
+}
+
+enum DelegationFinanceHandoffPolicy {
+  HYBRID
+  ALWAYS_REVERT
+  ALWAYS_KEEP
+}
+
+enum DelegationScope {
+  ALL
+  APPROVALS_ONLY
+  FINANCE_ONLY
+}
+
+enum DelegationStatus {
+  SCHEDULED
+  ACTIVE
+  EXPIRED
+  REVOKED
+}
+
+enum FinanceStatus {
+  NOT_REQUIRED
+  PENDING_ASSIGNMENT
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELED
+  FAILED
+}
+
+enum AssignmentRuleStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum AssignmentStrategy {
+  ROUND_ROBIN
+  LEAST_LOADED
+  ROUND_ROBIN_THEN_LEAST
+  SPECIFIC_MEMBER
+  TEAM_LEAD
+}
+
+enum ConditionField {
+  RECORD_TYPE
+  REQUESTED_AMOUNT
+  CURRENCY_CODE
+  DEPARTMENT_ID
+  COST_CENTER_ID
+  CREATED_BY_USER_ID
+  CREATED_BY_DEPARTMENT_ID
+  TAG
+  CUSTOM_FIELD
+}
+
+enum ConditionOperator {
+  EQUALS
+  NOT_EQUALS
+  IN
+  NOT_IN
+  GREATER_THAN
+  LESS_THAN
+  GREATER_THAN_OR_EQUAL
+  LESS_THAN_OR_EQUAL
+  BETWEEN
+  IS_NULL
+  IS_NOT_NULL
+  CONTAINS
+}
+
+enum EvaluationOutcome {
+  ASSIGNED
+  NO_RULE_MATCHED
+  NO_CANDIDATES_AVAILABLE
+  ENGINE_DISABLED
+  PLAN_NOT_ENTITLED
+  ERROR
+}
+
+enum ApprovalRoutingRuleStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum ApprovalRoutingMode {
+  SEQUENTIAL
+  PARALLEL
+}
+
+enum ApprovalEscalationPolicy {
+  NONE
+  ESCALATE_AFTER_HOURS
+  AUTO_DELEGATE
+}
+
+enum ApproverTargetType {
+  SPECIFIC_USER
+  ROLE
+  TEAM
+  CREATOR_MANAGER
+}
+
+enum ApprovalRoutingOutcome {
+  APPROVERS_ASSIGNED
+  NO_RULE_MATCHED
+  ERROR
+}
+
+enum WebhookEndpointStatus {
+  ACTIVE
+  PAUSED
+  DISABLED_AUTO
+}
+
+enum WebhookDeliveryStatus {
+  PENDING
+  IN_FLIGHT
+  SUCCEEDED
+  FAILED_RETRY
+  FAILED_FINAL
+  CANCELED
+}
+
 model Tenant {
   id     String       @id @default(cuid())
   name   String
@@ -548,6 +701,15 @@ model Tenant {
 
   departments TenantDepartment[] @relation("TenantDepartments")
   costCenters TenantCostCenter[] @relation("TenantCostCenters")
+  financeTeams FinanceTeam[]     @relation("TenantFinanceTeams")
+  financeSettings TenantFinanceSettings? @relation("TenantFinanceSettings")
+  delegations ApprovalDelegation[] @relation("TenantDelegations")
+  financeAssignmentRules FinanceAssignmentRule[] @relation("TenantAssignmentRules")
+  financeAssignmentEvaluations FinanceAssignmentEvaluation[] @relation("TenantAssignmentEvaluations")
+  approvalRoutingRules ApprovalRoutingRule[] @relation("TenantApprovalRoutingRules")
+  approvalRoutingEvaluations ApprovalRoutingEvaluation[] @relation("TenantApprovalRoutingEvaluations")
+  webhookEndpoints  WebhookEndpoint[] @relation("TenantWebhookEndpoints")
+  webhookDeliveries WebhookDelivery[] @relation("TenantWebhookDeliveries")
 
   tenantRoles   TenantRole[]
   subscriptions Subscription[]
@@ -737,17 +899,37 @@ model TenantMembership {
   welcomeBannerDismissedAt DateTime?
 
   isDefaultTenant Boolean @default(false)
+  workspaceRole         WorkspaceRole         @default(MEMBER)
+  financialAccess       FinancialAccessScope  @default(OWN_AND_PARTICIPATING)
+  financeResponsibility FinanceResponsibility @default(NONE)
+  billingAccess         BillingAccessLevel    @default(NONE)
+
+  /// Availability — doc 04 Section 3
+  availability       MembershipAvailability @default(AVAILABLE)
+  availabilityReason String?                @db.VarChar(500)
+  unavailableUntil   DateTime?              @db.Timestamptz(6)
+
+  /// Denormalized workload counter — doc 02 Section 4 / D-006
+  financeOpenAssignmentsCount Int @default(0)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  roles TenantUserRole[]
+  roles        TenantUserRole[]
+  financeTeams FinanceTeamMember[] @relation("MembershipFinanceTeams")
+  delegationsGranted  ApprovalDelegation[] @relation("DelegationDelegator")
+  delegationsReceived ApprovalDelegation[] @relation("DelegationDelegate")
+  assignedRecords Record[] @relation("MembershipAssignedRecords")
 
   @@unique([tenantId, userId])
   @@index([userId])
   @@index([tenantId, status])
   @@index([tenantId, joinedAt])
   @@index([userId, status, isDefaultTenant, joinedAt])
+  @@index([tenantId, workspaceRole])
+  @@index([tenantId, financeResponsibility])
+  @@index([tenantId, billingAccess])
+  @@index([tenantId, availability, unavailableUntil])
 }
 
 model TenantInvitation {
@@ -769,6 +951,12 @@ model TenantInvitation {
 
   /// Role to assign when the invite is accepted. Defaults to "Member" if null.
   role String? @db.VarChar(50)
+
+  /// 4-axis access (doc 01 Section 4). Copied to TenantMembership on invitation acceptance.
+  workspaceRole         WorkspaceRole         @default(MEMBER)
+  financialAccess       FinancialAccessScope  @default(OWN_AND_PARTICIPATING)
+  financeResponsibility FinanceResponsibility @default(NONE)
+  billingAccess         BillingAccessLevel    @default(NONE)
 
   /// A5: Set when user declines invite (in-app or via link)
   rejectedAt       DateTime?
@@ -1171,6 +1359,12 @@ model KnowledgeBaseArticleTag {
   @@index([tagId])
 }
 
+/// NOTE: A composite (status, visibility) PARTIAL index exists in the database
+/// (created by migration 20260324201000_add_hnsw_index_kb_chunks/migration.sql)
+/// with WHERE status = 'PUBLISHED'. Prisma's schema cannot model partial indexes,
+/// so the @@index declaration is intentionally omitted here. All KB retrieval
+/// queries filter status = 'PUBLISHED', so the partial index is optimal.
+/// Do NOT add @@index([status, visibility]) — it would create a redundant full index.
 model KnowledgeBaseChunk {
   id           String                       @id @default(cuid())
   articleId    String
@@ -1190,7 +1384,6 @@ model KnowledgeBaseChunk {
   @@index([articleId])
   @@index([status])
   @@index([visibility])
-  @@index([status, visibility])
 }
 
 model KnowledgeBaseSearchLog {
@@ -1364,10 +1557,374 @@ model TenantDepartment {
 
   costCenters TenantCostCenter[]
   records     Record[]           @relation("RecordDepartment")
+  financeTeams FinanceTeam[]     @relation("DepartmentFinanceTeams")
 
   @@unique([tenantId, name])
   @@index([tenantId, isActive])
   @@index([tenantId, name])
+}
+
+model TenantFinanceSettings {
+  id       String @id @default(cuid())
+  tenantId String @unique
+  tenant   Tenant @relation("TenantFinanceSettings", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  delegationFinanceHandoffPolicy  DelegationFinanceHandoffPolicy @default(HYBRID)
+  delegationApprovalHandoffPolicy DelegationFinanceHandoffPolicy @default(HYBRID)
+
+  maxDelegationWindowDays Int @default(90)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+}
+
+model ApprovalDelegation {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation("TenantDelegations", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  delegatorMembershipId String
+  delegator             TenantMembership @relation("DelegationDelegator", fields: [delegatorMembershipId], references: [id], onDelete: Cascade)
+
+  delegateMembershipId String
+  delegate             TenantMembership @relation("DelegationDelegate", fields: [delegateMembershipId], references: [id], onDelete: Cascade)
+
+  scope DelegationScope
+
+  maxAmount         Decimal? @db.Decimal(20, 4)
+  maxAmountCurrency String?  @db.VarChar(3)
+
+  startsAt DateTime @db.Timestamptz(6)
+  endsAt   DateTime @db.Timestamptz(6)
+
+  status        DelegationStatus @default(SCHEDULED)
+  activatedAt   DateTime? @db.Timestamptz(6)
+  deactivatedAt DateTime? @db.Timestamptz(6)
+
+  reason String? @db.VarChar(500)
+
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  createdByUserId String?
+  createdByUser   User?    @relation("DelegationCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  revokedAt       DateTime? @db.Timestamptz(6)
+  revokedByUserId String?
+  revokedByUser   User?    @relation("DelegationRevokedBy", fields: [revokedByUserId], references: [id], onDelete: SetNull)
+
+  participants RecordParticipant[] @relation("ParticipantDelegationVia")
+
+  @@index([tenantId, status, startsAt, endsAt])
+  @@index([tenantId, delegatorMembershipId, status])
+  @@index([tenantId, delegateMembershipId, status])
+}
+
+model FinanceAssignmentRule {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation("TenantAssignmentRules", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name        String  @db.VarChar(120)
+  description String? @db.VarChar(500)
+  priority    Int     @default(100)
+
+  teamId String
+  team   FinanceTeam @relation("FinanceTeamAssignmentRules", fields: [teamId], references: [id], onDelete: Restrict)
+
+  strategy AssignmentStrategy @default(ROUND_ROBIN)
+
+  specificMembershipId String?
+
+  status AssignmentRuleStatus @default(ACTIVE)
+
+  createdAt       DateTime  @default(now()) @db.Timestamptz(6)
+  createdByUserId String?
+  createdByUser   User?     @relation("FinanceAssignmentRuleCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt       DateTime? @db.Timestamptz(6)
+
+  conditions  FinanceAssignmentRuleCondition[]
+  evaluations FinanceAssignmentEvaluation[]
+  records     Record[] @relation("RecordFinanceAssignedByRule")
+
+  @@unique([tenantId, name])
+  @@index([tenantId, status, priority, deletedAt])
+  @@index([tenantId, teamId])
+}
+
+model FinanceAssignmentRuleCondition {
+  id       String @id @default(cuid())
+  tenantId String
+
+  ruleId String
+  rule   FinanceAssignmentRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  field    ConditionField
+  operator ConditionOperator
+
+  valueString String?  @db.VarChar(255)
+  valueNumber Decimal? @db.Decimal(20, 4)
+  valueJson   Json?
+
+  customFieldKey String? @db.VarChar(120)
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  @@index([tenantId, ruleId, deletedAt])
+}
+
+model FinanceAssignmentEvaluation {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation("TenantAssignmentEvaluations", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  recordId String
+  record   Record @relation("RecordAssignmentEvaluations", fields: [recordId], references: [id], onDelete: Cascade)
+
+  triggeredByEvent  String   @db.VarChar(80)
+  triggeredByUserId String?
+  triggeredAt       DateTime @default(now()) @db.Timestamptz(6)
+
+  outcome              EvaluationOutcome
+  matchedRuleId        String?
+  matchedRule          FinanceAssignmentRule? @relation(fields: [matchedRuleId], references: [id], onDelete: SetNull)
+  assignedMembershipId String?
+
+  rulesEvaluated       Json
+  candidatesEvaluated  Json
+  selectionStrategy    String? @db.VarChar(40)
+  evaluationDurationMs Int     @default(0)
+
+  errorMessage String? @db.VarChar(500)
+
+  @@index([tenantId, recordId, triggeredAt])
+  @@index([tenantId, outcome, triggeredAt])
+  @@index([tenantId, matchedRuleId, triggeredAt])
+}
+
+model ApprovalRoutingRule {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation("TenantApprovalRoutingRules", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name        String  @db.VarChar(120)
+  description String? @db.VarChar(500)
+  priority    Int     @default(100)
+
+  mode   ApprovalRoutingMode       @default(PARALLEL)
+  status ApprovalRoutingRuleStatus @default(ACTIVE)
+
+  escalationPolicy             ApprovalEscalationPolicy @default(NONE)
+  escalationHours              Int?
+  escalationTargetMembershipId String?
+
+  triggerOnCreate       Boolean @default(true)
+  triggerOnAmountChange Boolean @default(false)
+
+  createdAt       DateTime  @default(now()) @db.Timestamptz(6)
+  createdByUserId String?
+  createdByUser   User?     @relation("ApprovalRoutingRuleCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt       DateTime? @db.Timestamptz(6)
+
+  conditions        ApprovalRoutingRuleCondition[]
+  requiredApprovers ApprovalRoutingRuleApprover[]
+  evaluations       ApprovalRoutingEvaluation[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, status, priority, deletedAt])
+}
+
+model ApprovalRoutingRuleCondition {
+  id       String @id @default(cuid())
+  tenantId String
+
+  ruleId String
+  rule   ApprovalRoutingRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  field    ConditionField
+  operator ConditionOperator
+
+  valueString    String?  @db.VarChar(255)
+  valueNumber    Decimal? @db.Decimal(20, 4)
+  valueJson      Json?
+  customFieldKey String?  @db.VarChar(120)
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  @@index([tenantId, ruleId, deletedAt])
+}
+
+model ApprovalRoutingRuleApprover {
+  id       String @id @default(cuid())
+  tenantId String
+
+  ruleId String
+  rule   ApprovalRoutingRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  sequenceOrder Int @default(1)
+
+  targetType                 ApproverTargetType
+  targetMembershipId         String?
+  targetWorkspaceRole        WorkspaceRole?
+  targetFinanceResponsibility FinanceResponsibility?
+  targetTeamId               String?
+
+  requireAll Boolean @default(false)
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  @@index([tenantId, ruleId, sequenceOrder, deletedAt])
+}
+
+model ApprovalRoutingEvaluation {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation("TenantApprovalRoutingEvaluations", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  recordId String
+  record   Record @relation("RecordApprovalRoutingEvaluations", fields: [recordId], references: [id], onDelete: Cascade)
+
+  triggeredByEvent  String   @db.VarChar(80)
+  triggeredByUserId String?
+  triggeredAt       DateTime @default(now()) @db.Timestamptz(6)
+
+  outcome ApprovalRoutingOutcome
+
+  matchedRuleId String?
+  matchedRule   ApprovalRoutingRule? @relation(fields: [matchedRuleId], references: [id], onDelete: SetNull)
+
+  rulesEvaluated       Json
+  approversAssigned    Json
+  evaluationDurationMs Int @default(0)
+
+  errorMessage String? @db.VarChar(500)
+
+  @@index([tenantId, recordId, triggeredAt])
+  @@index([tenantId, outcome, triggeredAt])
+}
+
+model WebhookEndpoint {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation("TenantWebhookEndpoints", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name        String  @db.VarChar(120)
+  description String? @db.VarChar(500)
+  url         String  @db.VarChar(2048)
+
+  subscribedEvents Json
+
+  secretHash String @db.VarChar(64)
+  secretHint String @db.VarChar(8)
+
+  status              WebhookEndpointStatus @default(ACTIVE)
+  consecutiveFailures Int                   @default(0)
+  lastSuccessAt       DateTime?             @db.Timestamptz(6)
+  lastFailureAt       DateTime?             @db.Timestamptz(6)
+  disabledAutoAt      DateTime?             @db.Timestamptz(6)
+  disabledAutoReason  String?               @db.VarChar(500)
+
+  createdAt       DateTime  @default(now()) @db.Timestamptz(6)
+  createdByUserId String?
+  createdByUser   User?     @relation("WebhookEndpointCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt       DateTime? @db.Timestamptz(6)
+
+  deliveries WebhookDelivery[]
+
+  @@index([tenantId, status, deletedAt])
+  @@index([tenantId, deletedAt, createdAt])
+}
+
+model WebhookDelivery {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation("TenantWebhookDeliveries", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  endpointId String
+  endpoint   WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  eventId        String @db.VarChar(64)
+  eventName      String @db.VarChar(80)
+  payloadVersion String @db.VarChar(8) @default("v1")
+
+  payload Json
+
+  status        WebhookDeliveryStatus @default(PENDING)
+  attemptCount  Int                   @default(0)
+  maxAttempts   Int                   @default(8)
+  nextAttemptAt DateTime?             @db.Timestamptz(6)
+
+  lastResponseStatus      Int?
+  lastResponseDurationMs  Int?
+  lastResponseBodyExcerpt String? @db.VarChar(1000)
+  lastErrorMessage        String? @db.VarChar(500)
+
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
+  succeededAt   DateTime? @db.Timestamptz(6)
+  finalFailedAt DateTime? @db.Timestamptz(6)
+
+  @@index([tenantId, status, nextAttemptAt])
+  @@index([tenantId, endpointId, status, createdAt])
+  @@index([tenantId, eventId])
+  @@index([tenantId, status, createdAt])
+}
+
+model FinanceTeam {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation("TenantFinanceTeams", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name        String  @db.VarChar(120)
+  description String? @db.VarChar(500)
+
+  departmentId String?
+  department   TenantDepartment? @relation("DepartmentFinanceTeams", fields: [departmentId], references: [id], onDelete: SetNull)
+
+  isActive Boolean @default(true)
+
+  timeZone                 String? @db.VarChar(64)
+  maxConcurrentAssignments Int?
+
+  createdAt       DateTime  @default(now()) @db.Timestamptz(6)
+  createdByUserId String?
+  createdByUser   User?     @relation("FinanceTeamCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt       DateTime? @db.Timestamptz(6)
+  deletedByUserId String?
+  deletedByUser   User?     @relation("FinanceTeamDeletedBy", fields: [deletedByUserId], references: [id], onDelete: SetNull)
+
+  members FinanceTeamMember[]
+  assignmentRules FinanceAssignmentRule[] @relation("FinanceTeamAssignmentRules")
+
+  @@unique([tenantId, name])
+  @@index([tenantId, isActive, deletedAt])
+  @@index([tenantId, departmentId])
+}
+
+model FinanceTeamMember {
+  id       String @id @default(cuid())
+  tenantId String
+
+  teamId String
+  team   FinanceTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  membershipId String
+  membership   TenantMembership @relation("MembershipFinanceTeams", fields: [membershipId], references: [id], onDelete: Cascade)
+
+  weight Int     @default(100)
+  isLead Boolean @default(false)
+
+  joinedAt        DateTime  @default(now()) @db.Timestamptz(6)
+  addedByUserId   String?
+  addedByUser     User?     @relation("FinanceTeamMemberAddedBy", fields: [addedByUserId], references: [id], onDelete: SetNull)
+  deletedAt       DateTime? @db.Timestamptz(6)
+
+  @@unique([teamId, membershipId])
+  @@index([tenantId, teamId, deletedAt])
+  @@index([tenantId, membershipId, deletedAt])
 }
 
 model TenantCostCenter {
@@ -1413,9 +1970,6 @@ model Record {
 
   clientName  String? @db.VarChar(120)
   clientEmail String? @db.VarChar(191)
-
-  amount   Decimal? @db.Decimal(12, 2)
-  currency String?  @db.VarChar(10)
 
   visibility RecordVisibility @default(RESTRICTED)
   isSensitive Boolean @default(false)
@@ -1493,7 +2047,6 @@ model Record {
 
   attachments      RecordAttachment[]
   evidenceLinks    RecordEvidenceLink[]
-  approvalRequests ApprovalRequest[]
 
   events       RecordEvent[]
   participants RecordParticipant[]
@@ -1505,6 +2058,14 @@ model Record {
   payment      RecordPayment?
   reminderLogs RecordReminderLog[]
   exports      RecordExport[]
+  financeStatus               FinanceStatus @default(NOT_REQUIRED)
+  financeAssignedMembershipId String?
+  financeAssignedAt           DateTime? @db.Timestamptz(6)
+  financeAssignedByRuleId     String?
+  financeAssignedMembership   TenantMembership? @relation("MembershipAssignedRecords", fields: [financeAssignedMembershipId], references: [id], onDelete: SetNull)
+  financeAssignedByRule       FinanceAssignmentRule? @relation("RecordFinanceAssignedByRule", fields: [financeAssignedByRuleId], references: [id], onDelete: SetNull)
+  assignmentEvaluations       FinanceAssignmentEvaluation[] @relation("RecordAssignmentEvaluations")
+  approvalRoutingEvaluations  ApprovalRoutingEvaluation[] @relation("RecordApprovalRoutingEvaluations")
 
   @@index([tenantId, createdAt])
   @@index([tenantId, status])
@@ -1517,6 +2078,8 @@ model Record {
   @@index([tenantId, approvalStatus])
   @@index([tenantId, departmentId])
   @@index([tenantId, costCenterId])
+  @@index([tenantId, financeStatus, financeAssignedAt])
+  @@index([tenantId, financeAssignedMembershipId, financeStatus])
   @@index([recordKey])
 }
 
@@ -1553,49 +2116,6 @@ model RecordEvidenceLink {
   createdAt DateTime @default(now())
 
   @@index([recordId, createdAt])
-}
-
-model ApprovalRequest {
-  id String @id @default(cuid())
-
-  recordId String
-  record   Record @relation(fields: [recordId], references: [id], onDelete: Cascade)
-
-  // External approver
-  approverEmail String @db.VarChar(191)
-  approverName  String? @db.VarChar(120)
-
-  // Token security: store only hash
-  tokenHash String @unique @db.VarChar(64)
-
-  status ApprovalRequestStatus @default(SENT)
-
-  expiresAt  DateTime
-  viewedAt   DateTime?
-  respondedAt DateTime?
-  revokedAt  DateTime?
-
-  createdAt DateTime @default(now())
-
-  actions ApprovalAction[]
-
-  @@index([recordId, createdAt])
-  @@index([expiresAt])
-  @@index([approverEmail])
-}
-
-model ApprovalAction {
-  id String @id @default(cuid())
-
-  approvalRequestId String
-  approvalRequest   ApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
-
-  action String @db.VarChar(20) // APPROVE / REJECT
-  comment String?
-
-  createdAt DateTime @default(now())
-
-  @@index([approvalRequestId, createdAt])
 }
 
 model RecordEvent {
@@ -1648,12 +2168,20 @@ model RecordParticipant {
   createdByUserId String?
   createdByUser   User?    @relation("RecordParticipantCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
 
+  delegatedToParticipantId String?
+  delegatedTo              RecordParticipant?  @relation("ParticipantDelegation", fields: [delegatedToParticipantId], references: [id], onDelete: SetNull)
+  delegatedFrom            RecordParticipant[] @relation("ParticipantDelegation")
+
+  delegatedViaDelegationId String?
+  delegatedViaDelegation   ApprovalDelegation? @relation("ParticipantDelegationVia", fields: [delegatedViaDelegationId], references: [id], onDelete: SetNull)
+
   @@unique([recordId, userId, participantRole])
   @@index([tenantId, recordId, createdAt])
   @@index([tenantId, recordId, participantRole, status, revokedAt])
   @@index([tenantId, userId, participantRole, status])
   @@index([tenantId, userId, status, createdAt])
   @@index([tenantId, email])
+  @@index([tenantId, delegatedToParticipantId])
 }
 
 model RecordAccess {
@@ -2099,22 +2627,42 @@ model OtpSessionToken {
   @@index([expiresAt])
 }
 
+enum NotificationType {
+  SUPPORT_TICKET_REPLY
+  SUPPORT_TICKET_STATUS_CHANGED
+  SUPPORT_TICKET_USER_REPLIED
+  SUPPORT_TICKET_ASSIGNED
+  RECORD_APPROVAL_FULLY_COMPLETED
+  RECORD_FINANCE_ASSIGNED
+  RECORD_PAYMENT_STATUS_CHANGED
+}
+
+enum NotificationCategory {
+  SECURITY
+  BILLING
+  WORKFLOW
+  FINANCE
+  SOCIAL
+}
+
 /// In-app notifications for workspace users.
 /// Extensible: notificationType covers support tickets today, other sources in the future.
 model UserNotification {
-  id               String   @id @default(cuid())
+  id               String                 @id @default(cuid())
   userId           String
-  notificationType String   @db.VarChar(80)
-  title            String   @db.VarChar(255)
-  body             String?  @db.VarChar(500)
-  entityType       String   @db.VarChar(80)
-  entityId         String   @db.VarChar(191)
-  actionUrl        String?  @db.VarChar(512)
+  notificationType NotificationType
+  category         NotificationCategory
+  title            String                 @db.VarChar(255)
+  body             String?                @db.VarChar(500)
+  entityType       String                 @db.VarChar(80)
+  entityId         String                 @db.VarChar(191)
+  actionUrl        String?                @db.VarChar(512)
   readAt           DateTime?
-  createdAt        DateTime @default(now())
+  createdAt        DateTime               @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, readAt, createdAt])
   @@index([userId, createdAt])
+  @@index([userId, category, readAt])
 }

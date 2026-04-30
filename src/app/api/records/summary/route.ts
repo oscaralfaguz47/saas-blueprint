@@ -14,6 +14,10 @@ import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
  * GET /api/records/summary
  * Returns summary metrics for the requests list page.
  * All counts are tenant-scoped and access-filtered (except pending-my-approval, which is user-inbox scoped).
+ *
+ * NOTE: This endpoint does not currently expose a workspace-wide
+ * "waiting for approval" count. EPIC Phase C may add `workspaceWaitingForApprovalCount`
+ * using the denormalized Record.approvalStatus field once UI consumers exist.
  */
 export const GET = withErrorHandler(async () => {
   const session = await getServerSession(authOptions);

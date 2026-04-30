@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { ApiErrors, withErrorHandler, apiSuccess } from "@/lib/api-response";
+import { LegacyFieldRemovedError } from "@/lib/validations/common";
 
 describe("ApiErrors", () => {
   it("UNAUTHENTICATED returns 401", async () => {
@@ -97,5 +98,16 @@ describe("withErrorHandler", () => {
     });
     const res = await handler();
     expect(res.status).toBe(415);
+  });
+
+  it("maps LegacyFieldRemovedError to 400 LEGACY_FIELD_REMOVED", async () => {
+    const handler = withErrorHandler(async () => {
+      throw new LegacyFieldRemovedError("amount", "Field 'amount' is no longer accepted.");
+    });
+    const res = await handler();
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error?: { code?: string; details?: { field?: string } } };
+    expect(body.error?.code).toBe("LEGACY_FIELD_REMOVED");
+    expect(body.error?.details?.field).toBe("amount");
   });
 });

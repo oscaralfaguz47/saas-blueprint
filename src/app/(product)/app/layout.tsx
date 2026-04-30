@@ -57,7 +57,6 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   try {
     const canAccessPlatformAdmin = await hasVendorPermission({
       userId,
-      legacyRole: session.user.role,
       permission: "admin.tenants.read",
     });
 

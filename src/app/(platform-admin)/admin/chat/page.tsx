@@ -15,7 +15,6 @@ export default async function AdminChatHistoryPage() {
 
   const canView = await hasVendorPermission({
     userId: fullSession.user.id,
-    legacyRole: fullSession.user.role,
     permission: "admin.support.read",
   });
   if (!canView) notFound();

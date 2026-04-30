@@ -35,7 +35,6 @@ import {
 import {
   formatAmount,
   formatDate,
-  getBestAmount,
   RECORD_TYPE_LABELS,
   RECORD_STATUS_BADGE,
   RECORD_STATUS_LABELS,
@@ -196,17 +195,21 @@ function getApiTab(ui: UiTab): ApiTab {
 }
 
 function normalizeListItem(
-  raw: RecordListItem & { amount?: unknown; requestedAmount?: unknown }
+  raw: RecordListItem & { requestedAmount?: unknown; currencyCode?: unknown }
 ): RecordListItem {
   const coerceNum = (v: unknown): number | null => {
     if (v == null || v === "") return null;
     const n = typeof v === "number" ? v : Number(v);
     return Number.isFinite(n) ? n : null;
   };
+  const code =
+    raw.currencyCode == null || raw.currencyCode === ""
+      ? null
+      : String(raw.currencyCode);
   return {
     ...raw,
-    amount: coerceNum(raw.amount),
     requestedAmount: coerceNum(raw.requestedAmount),
+    currencyCode: code,
   };
 }
 
@@ -458,7 +461,7 @@ export function RequestsListClient({
         }
         const json = (await res.json()) as {
           data: {
-            records: (RecordListItem & { amount?: unknown; requestedAmount?: unknown })[];
+            records: RecordListItem[];
             nextCursor: string | null;
             hasMore: boolean;
           };
@@ -534,7 +537,7 @@ export function RequestsListClient({
       if (!res.ok) return;
       const json = (await res.json()) as {
         data: {
-          records: (RecordListItem & { amount?: unknown; requestedAmount?: unknown })[];
+          records: RecordListItem[];
           nextCursor: string | null;
           hasMore: boolean;
         };
@@ -571,8 +574,6 @@ export function RequestsListClient({
         currencyCode: payload.currencyCode,
         neededByDate: payload.neededByDate,
         recordKey: payload.recordKey,
-        amount: null,
-        currency: null,
         approvalStatus: "NOT_STARTED",
         overdue: false,
         hasPolicyException: false,
@@ -584,12 +585,7 @@ export function RequestsListClient({
       if (tab === "my") {
         setRecords((prev) => {
           if (prev.some((r) => r.id === payload.id)) return prev;
-          return [
-            normalizeListItem(
-              newItem as RecordListItem & { amount?: unknown; requestedAmount?: unknown }
-            ),
-            ...prev,
-          ];
+          return [normalizeListItem(newItem), ...prev];
         });
       }
 
@@ -1855,7 +1851,6 @@ function RecordRow({
 }) {
   const apiFetch = useApiFetch();
   const [markingRead, setMarkingRead] = useState(false);
-  const { amount, currency } = getBestAmount(record);
   const approval = record.approvalStatus;
 
   const isUnread =
@@ -1954,7 +1949,7 @@ function RecordRow({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span className="text-sm font-bold tabular-nums text-(--text-primary)">
-            {formatAmount(amount, currency)}
+            {formatAmount(record.requestedAmount ?? null, record.currencyCode ?? null)}
           </span>
           {(uiTab === "mentioned" || uiTab === "shared") &&
             (() => {

@@ -7,6 +7,7 @@ import { requireFullSession } from "@/server/require-full-session";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { canAccessRequest } from "@/server/security/request-authorization";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
+import { recomputeApprovalStatus } from "@/server/services/record-approval-status";
 import { z } from "zod";
 
 const paramsSchema = z.object({
@@ -201,6 +202,15 @@ export const POST = withErrorHandler(async (
           comment: body.action === "APPROVE" ? (body.comment ?? null) : body.comment,
         },
       },
+    });
+
+    await recomputeApprovalStatus(tx, {
+      tenantId,
+      recordId,
+      triggeredByParticipantId: participantId,
+      triggeredByAction:
+        body.action === "APPROVE" ? "INTERNAL_APPROVED" : "INTERNAL_REJECTED",
+      actorUserId: session.user.id,
     });
 
     return result;

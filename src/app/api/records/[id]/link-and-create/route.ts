@@ -9,7 +9,7 @@ import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { canAccessRequest } from "@/server/security/request-authorization";
 import { checkMeterLimit, tryConsumeMeter } from "@/server/billing/try-consume-meter";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
-import { createRecordSchema } from "@/lib/validations";
+import { createRecordSchema, readJsonBody, rejectLegacyRecordFinanceKeys } from "@/lib/validations";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().cuid() });
@@ -63,13 +63,27 @@ export const POST = withErrorHandler(async (
   ]);
   if (!canCreate || !canLink) return ApiErrors.FORBIDDEN();
 
-  const rawBody = await req.json().catch(() => null);
-  if (!rawBody) return ApiErrors.VALIDATION_ERROR("Invalid request body");
+  const rawBody = await readJsonBody(req);
+  rejectLegacyRecordFinanceKeys(rawBody);
   const bodyResult = createRecordSchema.safeParse(rawBody);
   if (!bodyResult.success) {
     return ApiErrors.VALIDATION_ERROR("Validation failed", bodyResult.error.flatten());
   }
   const body = bodyResult.data;
+
+  let resolvedCostCenterId: string | null = null;
+  let resolvedDepartmentId: string | null = null;
+  if (body.costCenterId) {
+    const cc = await prisma.tenantCostCenter.findFirst({
+      where: { id: body.costCenterId, tenantId, isActive: true },
+      select: { id: true, departmentId: true },
+    });
+    if (!cc) {
+      return ApiErrors.VALIDATION_ERROR("Invalid cost center.");
+    }
+    resolvedCostCenterId = cc.id;
+    resolvedDepartmentId = cc.departmentId;
+  }
 
   await checkMeterLimit({ tenantId, meter: "REQUESTS", delta: 1 });
 
@@ -83,11 +97,29 @@ export const POST = withErrorHandler(async (
         description: body.description ?? null,
         clientName: body.clientName ?? null,
         clientEmail: body.clientEmail ?? null,
-        amount: body.amount != null ? body.amount : null,
-        currency: body.currency ?? null,
         visibility: body.visibility,
         isSensitive: body.isSensitive,
         status: "OPEN",
+        requestedAmount: body.requestedAmount != null ? body.requestedAmount : null,
+        currencyCode: body.currencyCode ?? null,
+        businessJustification: body.businessJustification ?? null,
+        vendorName: body.vendorName ?? null,
+        payeeName: body.payeeName ?? null,
+        invoiceNumber: body.invoiceNumber ?? null,
+        contractReference: body.contractReference ?? null,
+        purchaseOrderRef: body.purchaseOrderRef ?? null,
+        priority: body.priority ?? "MEDIUM",
+        departmentName: body.departmentName ?? null,
+        costCenterCode: body.costCenterCode ?? null,
+        costCenterId: resolvedCostCenterId,
+        departmentId: resolvedDepartmentId,
+        neededByDate: body.neededByDate ? new Date(body.neededByDate) : null,
+        hasPolicyException: body.hasPolicyException ?? false,
+        policyExceptionReason: body.policyExceptionReason ?? null,
+        isRecurring: body.isRecurring ?? false,
+        recurrenceNotes: body.recurrenceNotes ?? null,
+        amountIsEstimated: body.amountIsEstimated ?? false,
+        budgetImpactType: body.budgetImpactType ?? null,
       },
       select: { id: true, title: true, type: true, status: true, createdAt: true },
     });

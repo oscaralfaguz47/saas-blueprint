@@ -108,11 +108,8 @@ export type RecordListItem = {
   title: string;
   type: RecordType;
   status: RecordStatus;
-  amount: number | null;
-  currency: string | null;
-  // New fields from Phase 1
-  requestedAmount?: number | null;
-  currencyCode?: string | null;
+  requestedAmount: number | null;
+  currencyCode: string | null;
   priority?: RecordPriority;
   neededByDate?: string | null;
   approvalStatus?: RecordApprovalStatus;
@@ -135,8 +132,6 @@ export type RecordDetail = {
   description: string | null;
   clientName: string | null;
   clientEmail: string | null;
-  amount: number | null;
-  currency: string | null;
   visibility: "WORKSPACE" | "RESTRICTED";
   isSensitive: boolean;
   closedAt: string | null;

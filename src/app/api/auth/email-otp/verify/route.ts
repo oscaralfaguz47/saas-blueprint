@@ -79,7 +79,7 @@ export const POST = withErrorHandler(async (req: Request) => {
 
   let user = await prisma.user.findUnique({
     where: { email: result.email },
-    select: { id: true, isPlatformBlocked: true, role: true, name: true, image: true, email: true },
+    select: { id: true, isPlatformBlocked: true, name: true, image: true, email: true },
   });
 
   let isNewUser = false;
@@ -89,7 +89,7 @@ export const POST = withErrorHandler(async (req: Request) => {
         email: result.email,
         appearance: "DARK",
       },
-      select: { id: true, isPlatformBlocked: true, role: true, name: true, image: true, email: true },
+      select: { id: true, isPlatformBlocked: true, name: true, image: true, email: true },
     });
     isNewUser = true;
   }

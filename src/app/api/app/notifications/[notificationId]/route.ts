@@ -3,9 +3,12 @@ import { z } from "zod";
 
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { authOptions } from "@/server/auth-options";
-import { prisma } from "@/server/db";
 import { requireFullSession } from "@/server/require-full-session";
 import { checkNotificationMarkReadLimit } from "@/server/support/support-rate-limits";
+import {
+  getUserNotificationById,
+  markNotificationsAsRead,
+} from "@/server/services/notifications";
 
 const paramsSchema = z.object({ notificationId: z.string().cuid() });
 
@@ -27,20 +30,14 @@ export const PATCH = withErrorHandler(async (
   }
 
   const { notificationId } = paramsSchema.parse(await context.params);
-  const row = await prisma.userNotification.findFirst({
-    where: { id: notificationId, userId },
-    select: { id: true, readAt: true },
-  });
+  const row = await getUserNotificationById(userId, notificationId);
   if (!row) return ApiErrors.NOT_FOUND();
 
   if (row.readAt) {
     return apiSuccess({ ok: true });
   }
 
-  await prisma.userNotification.update({
-    where: { id: notificationId },
-    data: { readAt: new Date() },
-  });
+  await markNotificationsAsRead({ userId, notificationIds: [notificationId] });
 
   return apiSuccess({ ok: true });
 });

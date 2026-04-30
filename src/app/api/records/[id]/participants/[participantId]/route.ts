@@ -7,6 +7,7 @@ import { requireFullSession } from "@/server/require-full-session";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { canAccessRequest } from "@/server/security/request-authorization";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
+import { recomputeApprovalStatus } from "@/server/services/record-approval-status";
 import { z } from "zod";
 
 const paramsSchema = z.object({
@@ -78,8 +79,26 @@ export const DELETE = withErrorHandler(async (
   if (!record) return ApiErrors.NOT_FOUND("Record");
   if (!participant) return ApiErrors.NOT_FOUND("Participant");
 
-  // Only the request creator can remove participants
-  if (record.createdByUserId !== session.user.id) return ApiErrors.FORBIDDEN();
+  // Creator OR active approver can remove participants
+  const isCreator = record.createdByUserId === session.user.id;
+  const isApprover = !isCreator && await prisma.recordParticipant.findFirst({
+    where: {
+      recordId,
+      tenantId,
+      userId: session.user.id,
+      participantRole: "APPROVER",
+      participantType: "INTERNAL",
+      revokedAt: null,
+    },
+    select: { id: true },
+  }) !== null;
+
+  if (!isCreator && !isApprover) return ApiErrors.FORBIDDEN();
+
+  // Active approvers can only remove VIEWER participants — not APPROVER participants
+  if (!isCreator && isApprover && participant.participantRole === "APPROVER") {
+    return ApiErrors.FORBIDDEN();
+  }
 
   // Cannot remove from a closed record
   if (record.status === "CLOSED") {
@@ -160,6 +179,16 @@ export const DELETE = withErrorHandler(async (
         },
       },
     });
+
+    if (participant.participantRole === "APPROVER") {
+      await recomputeApprovalStatus(tx, {
+        tenantId,
+        recordId,
+        triggeredByParticipantId: participantId,
+        triggeredByAction: "PARTICIPANT_REVOKED",
+        actorUserId: session.user.id,
+      });
+    }
   });
 
   return apiSuccess({ participantId, removed: true });

@@ -10,6 +10,9 @@ export {
   cuidSchema,
   paginationSchema,
   parseBody,
+  readJsonBody,
+  parseWithSchema,
+  LegacyFieldRemovedError,
   MAX_JSON_BODY_BYTES,
 } from "./common";
 
@@ -24,7 +27,7 @@ export {
   logoConfirmSchema,
 } from "./workspace";
 
-export { createRecordSchema } from "./record";
+export { createRecordSchema, rejectLegacyRecordFinanceKeys } from "./record";
 
 export {
   createInvitationSchema,

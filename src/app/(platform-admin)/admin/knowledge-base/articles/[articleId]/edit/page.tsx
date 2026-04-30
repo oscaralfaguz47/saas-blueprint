@@ -22,14 +22,12 @@ export default async function AdminKbArticleEditPage({
 
   const canRead = await hasVendorPermission({
     userId: fullSession.user.id,
-    legacyRole: fullSession.user.role,
     permission: "admin.knowledge_base.read",
   });
   if (!canRead) notFound();
 
   const canManage = await hasVendorPermission({
     userId: fullSession.user.id,
-    legacyRole: fullSession.user.role,
     permission: "admin.knowledge_base.manage",
   });
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
-import { ValidationError } from "@/lib/validations/common";
+import { LegacyFieldRemovedError, ValidationError } from "@/lib/validations/common";
 
 /**
  * Standardized API error response per ai-context/api-contract-validation-errors.md
@@ -51,6 +51,9 @@ export const ApiErrors = {
     apiError("NOT_FOUND", 404, resource ? `${resource} not found` : "Resource not found"),
   VALIDATION_ERROR: (message: string, details?: unknown) =>
     apiError("VALIDATION_ERROR", 400, message, details),
+  /** Request used a removed legacy field name; 400 */
+  LEGACY_FIELD_REMOVED: (message?: string, details?: unknown) =>
+    apiError("LEGACY_FIELD_REMOVED", 400, message ?? "This field is no longer accepted.", details),
   INTERNAL_ERROR: (message?: string) =>
     apiError("INTERNAL_ERROR", 500, message || "An internal error occurred"),
   NO_TENANT: () => apiError("NO_TENANT", 403, "No active tenant found"),
@@ -170,6 +173,9 @@ export function withErrorHandler<T extends unknown[]>(
         }
         if (error instanceof ValidationError) {
           return ApiErrors.VALIDATION_ERROR(error.message);
+        }
+        if (error instanceof LegacyFieldRemovedError) {
+          return ApiErrors.LEGACY_FIELD_REMOVED(error.message, { field: error.fieldName });
         }
         if (error.message.startsWith("Validation failed:")) {
           return ApiErrors.VALIDATION_ERROR("Please check the value and try again.");

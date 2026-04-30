@@ -51,6 +51,7 @@ type Props = {
   canAssignInternal: boolean;
   canAssignExternal: boolean;
   isRequestCreator: boolean;
+  canManageViewers?: boolean;
   onRefresh: () => void | Promise<void>;
   /** Called after approve/reject succeeds and onRefresh completes (split-view list/badge updates) */
   onApprovalCompleted?: () => void;
@@ -324,7 +325,7 @@ function ParticipantRow({
             </button>
           </>
         )}
-        {canRemove && p.status === "PENDING" && !isClosed && (
+        {canRemove && p.status === "PENDING" && !isClosed && !p.id.startsWith("optimistic-") && (
           <button
             type="button"
             disabled={removeLoading}
@@ -1343,6 +1344,7 @@ export function ParticipantsPanel({
   canAssignInternal,
   canAssignExternal,
   isRequestCreator,
+  canManageViewers = isRequestCreator,
   onRefresh,
   onApprovalCompleted,
   onParticipantsChange,
@@ -1383,7 +1385,7 @@ export function ParticipantsPanel({
           canAssign={canAssignInternal}
           canAssignExternal={canAssignExternal}
           canRemind={false}
-          canRemove={isRequestCreator}
+          canRemove={canManageViewers}
           onRefresh={onRefresh}
           onApprovalCompleted={onApprovalCompleted}
           onParticipantsChange={onParticipantsChange}

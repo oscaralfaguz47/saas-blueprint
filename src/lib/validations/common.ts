@@ -10,6 +10,20 @@ export class ValidationError extends Error {
   }
 }
 
+/** Thrown when a request body includes a removed legacy field; maps to ApiErrors.LEGACY_FIELD_REMOVED. */
+export class LegacyFieldRemovedError extends Error {
+  constructor(
+    public readonly fieldName: string,
+    message?: string
+  ) {
+    super(
+      message ??
+        `Field '${fieldName}' is no longer accepted. Use the canonical field instead.`
+    );
+    this.name = "LegacyFieldRemovedError";
+  }
+}
+
 /**
  * Turn Zod's default messages into short, user-friendly text for the UI.
  */
@@ -70,18 +84,15 @@ export function zodErrorToFieldErrors(
 export const MAX_JSON_BODY_BYTES = 1 * 1024 * 1024; // 1 MB
 
 /**
- * Parse and validate request body with Zod.
- * Throws ValidationError with a user-facing message (no "Validation failed:" or field path).
- * Enforces `Content-Type: application/json` (415) and body size (413) before parsing.
+ * Read and parse JSON from a request (no Zod).
+ * Enforces `Content-Type: application/json` (415) and body size (413).
  */
-export async function parseBody<T>(req: Request, schema: z.ZodSchema<T>): Promise<T> {
-  // 1. Content-Type enforcement (415)
+export async function readJsonBody(req: Request): Promise<unknown> {
   const contentType = req.headers.get("content-type") ?? "";
   if (!contentType.toLowerCase().includes("application/json")) {
     throw new Error("UNSUPPORTED_MEDIA_TYPE");
   }
 
-  // 2. Size limit enforcement (413)
   const contentLength = req.headers.get("content-length");
   if (contentLength !== null) {
     const declaredSize = parseInt(contentLength, 10);
@@ -101,13 +112,18 @@ export async function parseBody<T>(req: Request, schema: z.ZodSchema<T>): Promis
     throw new Error("PAYLOAD_TOO_LARGE");
   }
 
-  let body: unknown;
   try {
-    body = JSON.parse(rawText);
+    return JSON.parse(rawText);
   } catch {
     throw new ValidationError("Invalid request body format");
   }
+}
 
+/**
+ * Validate an already-parsed JSON body with Zod.
+ * Throws ValidationError with a user-facing message on Zod failure.
+ */
+export function parseWithSchema<T>(body: unknown, schema: z.ZodSchema<T>): T {
   try {
     return schema.parse(body);
   } catch (error) {
@@ -120,4 +136,14 @@ export async function parseBody<T>(req: Request, schema: z.ZodSchema<T>): Promis
     }
     throw error;
   }
+}
+
+/**
+ * Parse and validate request body with Zod.
+ * Throws ValidationError with a user-facing message (no "Validation failed:" or field path).
+ * Enforces `Content-Type: application/json` (415) and body size (413) before parsing.
+ */
+export async function parseBody<T>(req: Request, schema: z.ZodSchema<T>): Promise<T> {
+  const body = await readJsonBody(req);
+  return parseWithSchema(body, schema);
 }

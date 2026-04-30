@@ -49,7 +49,7 @@ export function LinkRecordModal({ open, onClose, recordId, onSuccess }: Props) {
       .then((r) => (controller.signal.aborted ? null : r.json()))
       .then(
         (
-          json: { data?: { records?: (RecordListItem & { amount?: unknown })[] } } | null
+          json: { data?: { records?: RecordListItem[] } } | null
         ) => {
           if (!json || controller.signal.aborted) return;
           // Exclude current record from results

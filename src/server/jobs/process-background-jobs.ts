@@ -15,6 +15,8 @@ import {
   resolveSender,
   EMAIL_THEME,
 } from "@/server/services/email-templates";
+import { NotificationType } from "@prisma/client";
+import { createNotification } from "@/server/services/notifications";
 
 const MAX_BATCH = 15;
 
@@ -326,16 +328,14 @@ async function executeJob(job: {
     if (ticket.ticketType === "SALES_INQUIRY") return;
 
     if (ticket.requesterUserId) {
-      await prisma.userNotification.create({
-        data: {
-          userId: ticket.requesterUserId,
-          notificationType: "support.ticket.reply",
-          title: "New reply on your ticket",
-          body: ticket.subject,
-          entityType: "SupportTicket",
-          entityId: ticketId,
-          actionUrl: `/app/help/tickets/${ticketId}`,
-        },
+      await createNotification({
+        userId: ticket.requesterUserId,
+        type: NotificationType.SUPPORT_TICKET_REPLY,
+        title: "New reply on your ticket",
+        body: ticket.subject,
+        entityType: "SupportTicket",
+        entityId: ticketId,
+        actionUrl: `/app/help/tickets/${ticketId}`,
       });
     }
 
@@ -415,16 +415,14 @@ async function executeJob(job: {
     if (ticket.ticketType === "SALES_INQUIRY") return;
 
     if (ticket.requesterUserId) {
-      await prisma.userNotification.create({
-        data: {
-          userId: ticket.requesterUserId,
-          notificationType: "support.ticket.status_changed",
-          title: "Your ticket status was updated",
-          body: `${ticket.subject} · ${previousStatus} → ${newStatus}`,
-          entityType: "SupportTicket",
-          entityId: ticketId,
-          actionUrl: `/app/help/tickets/${ticketId}`,
-        },
+      await createNotification({
+        userId: ticket.requesterUserId,
+        type: NotificationType.SUPPORT_TICKET_STATUS_CHANGED,
+        title: "Your ticket status was updated",
+        body: `${ticket.subject} · ${previousStatus} → ${newStatus}`,
+        entityType: "SupportTicket",
+        entityId: ticketId,
+        actionUrl: `/app/help/tickets/${ticketId}`,
       });
     }
 
@@ -512,10 +510,11 @@ async function executeJob(job: {
     if (!ticket?.assigneePlatformUserId || !ticket.assignee) return;
 
     // Idempotency guard: use messageId so each reply produces its own notification
+    // (stays inline per A5 — not wrapped in a service method)
     const existing = await prisma.userNotification.findFirst({
       where: {
         userId: ticket.assigneePlatformUserId,
-        notificationType: "support.ticket.user_replied",
+        notificationType: NotificationType.SUPPORT_TICKET_USER_REPLIED,
         entityType: "SupportTicketMessage",
         entityId: messageId,
       },
@@ -524,16 +523,14 @@ async function executeJob(job: {
     if (existing) return;
 
     // 1) In-app notification for the assigned platform admin.
-    await prisma.userNotification.create({
-      data: {
-        userId: ticket.assigneePlatformUserId,
-        notificationType: "support.ticket.user_replied",
-        title: "Customer replied to a ticket",
-        body: ticket.subject,
-        entityType: "SupportTicketMessage",
-        entityId: messageId,
-        actionUrl: `/admin/support?ticketId=${ticketId}`,
-      },
+    await createNotification({
+      userId: ticket.assigneePlatformUserId,
+      type: NotificationType.SUPPORT_TICKET_USER_REPLIED,
+      title: "Customer replied to a ticket",
+      body: ticket.subject,
+      entityType: "SupportTicketMessage",
+      entityId: messageId,
+      actionUrl: `/admin/support?ticketId=${ticketId}`,
     });
 
     // 2) Email notification — best effort.
@@ -631,16 +628,14 @@ async function executeJob(job: {
     const workspaceLabel = ticket.tenant?.name ?? "No workspace (Sales inquiry)";
     const isSales = ticket.ticketType === "SALES_INQUIRY";
 
-    await prisma.userNotification.create({
-      data: {
-        userId: assigneeId,
-        notificationType: "support.ticket.assigned",
-        title: "You were assigned a new support ticket",
-        body: ticket.subject,
-        entityType: "SupportTicket",
-        entityId: ticketId,
-        actionUrl: `/admin/support?ticketId=${ticketId}`,
-      },
+    await createNotification({
+      userId: assigneeId,
+      type: NotificationType.SUPPORT_TICKET_ASSIGNED,
+      title: "You were assigned a new support ticket",
+      body: ticket.subject,
+      entityType: "SupportTicket",
+      entityId: ticketId,
+      actionUrl: `/admin/support?ticketId=${ticketId}`,
     });
 
     try {

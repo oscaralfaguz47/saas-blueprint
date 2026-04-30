@@ -2,9 +2,9 @@ import { getServerSession } from "next-auth";
 
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { authOptions } from "@/server/auth-options";
-import { prisma } from "@/server/db";
 import { requireFullSession } from "@/server/require-full-session";
 import { checkNotificationMarkAllReadLimit } from "@/server/support/support-rate-limits";
+import { markNotificationsAsRead } from "@/server/services/notifications";
 
 export const POST = withErrorHandler(async () => {
   const session = await getServerSession(authOptions);
@@ -20,10 +20,7 @@ export const POST = withErrorHandler(async () => {
     });
   }
 
-  await prisma.userNotification.updateMany({
-    where: { userId, readAt: null },
-    data: { readAt: new Date() },
-  });
+  await markNotificationsAsRead({ userId });
 
   return apiSuccess({ ok: true });
 });

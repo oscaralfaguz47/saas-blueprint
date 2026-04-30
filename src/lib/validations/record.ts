@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { emailSchema } from "./common";
+import { emailSchema, LegacyFieldRemovedError } from "./common";
 
 const recordTypeEnum = z.enum(
   [
@@ -20,8 +20,8 @@ const recordTypeEnum = z.enum(
 
 /**
  * Record creation schema — B1
- * amount: >= 0 (zero is valid, e.g. free approvals)
- * currency: ISO 4217 — exactly 3 uppercase letters
+ * requestedAmount: >= 0 (zero is valid, e.g. free approvals)
+ * currencyCode: ISO 4217 — exactly 3 uppercase letters
  */
 export const createRecordSchema = z
   .object({
@@ -30,12 +30,9 @@ export const createRecordSchema = z
     description: z.string().max(5000).trim().optional(),
     clientName: z.string().max(120).trim().optional(),
     clientEmail: emailSchema.optional(),
-    amount: z.number().min(0).optional(),
-    currency: z.string().regex(/^[A-Z]{3}$/).optional(),
     visibility: z.enum(["WORKSPACE", "RESTRICTED"]).default("WORKSPACE"),
     isSensitive: z.boolean().default(false),
     status: z.enum(["OPEN", "DRAFT"]).default("OPEN"),
-    // New finance fields — all optional
     requestedAmount: z.number().min(0).optional(),
     currencyCode: z.string().regex(/^[A-Z]{3}$/).optional(),
     businessJustification: z.string().max(2000).trim().optional(),
@@ -79,7 +76,7 @@ export const createRecordSchema = z
   )
   .refine(
     (data) => {
-      if (data.requestedAmount != null && !data.currencyCode && !data.currency) {
+      if (data.requestedAmount != null && !data.currencyCode) {
         return false;
       }
       return true;
@@ -91,3 +88,20 @@ export const createRecordSchema = z
   );
 
 export type CreateRecordInput = z.infer<typeof createRecordSchema>;
+
+export function rejectLegacyRecordFinanceKeys(body: unknown): void {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return;
+  const obj = body as Record<string, unknown>;
+  if (Object.prototype.hasOwnProperty.call(obj, "amount")) {
+    throw new LegacyFieldRemovedError(
+      "amount",
+      "Field 'amount' is no longer accepted. Use 'requestedAmount' instead."
+    );
+  }
+  if (Object.prototype.hasOwnProperty.call(obj, "currency")) {
+    throw new LegacyFieldRemovedError(
+      "currency",
+      "Field 'currency' is no longer accepted. Use 'currencyCode' instead."
+    );
+  }
+}

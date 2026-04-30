@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/server/db";
+import { hasTenantPermission } from "@/server/security/tenant-authorization";
 
 /** @mentions: @handle at word boundary; handle may include spaces (display names). */
 const MENTION_REGEX = /(?<![^\s,([])@([^@\n]+)(?=\s|$)/g;
@@ -71,6 +72,41 @@ export async function processMentions({
 
   const uniqueMembers = Array.from(new Map(members.map((m) => [m.userId, m])).values());
 
+  // Check if the actor can assign viewers via mentions
+  // Only creators, approvers, and users with elevated tenant role can auto-assign viewers
+  const canActorAssignViewers = await (async () => {
+    // Use read_all as the privilege indicator — Owner/Admin/Finance have it, Member does not
+    const hasElevatedRole = await hasTenantPermission({
+      userId: actorUserId,
+      tenantId,
+      permission: "tenant.requests.read_all",
+    });
+    if (hasElevatedRole) return true;
+
+    // Check if actor is the request creator
+    const record = await prisma.record.findFirst({
+      where: { id: recordId, tenantId },
+      select: { createdByUserId: true },
+    });
+    if (record?.createdByUserId === actorUserId) return true;
+
+    // Check if actor is an active non-revoked APPROVER on this request
+    const isApprover = await prisma.recordParticipant.findFirst({
+      where: {
+        recordId,
+        tenantId,
+        userId: actorUserId,
+        participantRole: "APPROVER",
+        participantType: "INTERNAL",
+        revokedAt: null,
+      },
+      select: { id: true },
+    });
+    if (isApprover) return true;
+
+    return false;
+  })();
+
   for (const member of uniqueMembers) {
     const userId = member.userId;
     if (userId === actorUserId) continue;
@@ -95,67 +131,74 @@ export async function processMentions({
           },
         });
 
-        const existingAccess = await tx.recordAccess.findUnique({
-          where: { recordId_userId: { recordId, userId } },
-          select: { id: true, accessType: true },
-        });
-
-        const isNewShare = !existingAccess;
-
-        if (isNewShare) {
-          await tx.recordAccess.create({
-            data: {
-              tenantId,
-              recordId,
-              userId,
-              accessType: "VIEW",
-              reason: "MENTION_AUTO_SHARE",
-              grantedByUserId: actorUserId,
-              grantedBySystem: true,
-            },
+        let isNewShare = false;
+        // Only create RecordAccess and RecordParticipant if actor can assign viewers
+        if (canActorAssignViewers) {
+          const existingAccess = await tx.recordAccess.findUnique({
+            where: { recordId_userId: { recordId, userId } },
+            select: { id: true, accessType: true },
           });
-        }
 
-        // Add as VIEWER participant (same as direct viewer assignment)
-        // Use upsert pattern: reactivate if previously revoked, create if new
-        const existingParticipant = await tx.recordParticipant.findFirst({
-          where: {
-            recordId,
-            tenantId,
-            userId,
-            participantRole: "VIEWER",
-          },
-          select: { id: true, revokedAt: true },
-        });
+          isNewShare = !existingAccess;
 
-        if (existingParticipant) {
-          if (existingParticipant.revokedAt) {
-            // Reactivate
-            await tx.recordParticipant.update({
-              where: { id: existingParticipant.id },
+          if (isNewShare) {
+            await tx.recordAccess.create({
               data: {
-                revokedAt: null,
-                status: "PENDING",
-                respondedAt: null,
-                responseReason: null,
+                tenantId,
+                recordId,
+                userId,
+                accessType: "VIEW",
+                reason: "MENTION_AUTO_SHARE",
+                grantedByUserId: actorUserId,
+                grantedBySystem: true,
               },
             });
           }
-          // Already active — no action needed
-        } else {
-          // Create new VIEWER participant
-          await tx.recordParticipant.create({
-            data: {
-              tenantId,
-              recordId,
-              participantType: "INTERNAL",
-              participantRole: "VIEWER",
-              userId,
-              status: "PENDING",
-              createdByUserId: actorUserId,
-            },
+
+          // Add as VIEWER participant
+          const existingParticipant = await tx.recordParticipant.findFirst({
+            where: { recordId, tenantId, userId, participantRole: "VIEWER" },
+            select: { id: true, revokedAt: true },
           });
-        }
+
+          if (existingParticipant) {
+            if (existingParticipant.revokedAt) {
+              await tx.recordParticipant.update({
+                where: { id: existingParticipant.id },
+                data: { revokedAt: null, status: "PENDING", respondedAt: null, responseReason: null },
+              });
+            }
+          } else {
+            await tx.recordParticipant.create({
+              data: {
+                tenantId,
+                recordId,
+                participantType: "INTERNAL",
+                participantRole: "VIEWER",
+                userId,
+                status: "PENDING",
+                createdByUserId: actorUserId,
+              },
+            });
+          }
+
+          // RECORD_SHARED event only when new share happened
+          if (isNewShare) {
+            await tx.recordEvent.create({
+              data: {
+                tenantId,
+                recordId,
+                eventType: "RECORD_SHARED",
+                actorUserId,
+                metadata: {
+                  sharedWithUserId: userId,
+                  accessType: "VIEW",
+                  reason: "MENTION_AUTO_SHARE",
+                },
+              },
+            });
+          }
+        } // end canActorAssignViewers block
 
         await tx.recordEvent.create({
           data: {
@@ -172,22 +215,6 @@ export async function processMentions({
             },
           },
         });
-
-        if (isNewShare) {
-          await tx.recordEvent.create({
-            data: {
-              tenantId,
-              recordId,
-              eventType: "RECORD_SHARED",
-              actorUserId,
-              metadata: {
-                sharedWithUserId: userId,
-                accessType: "VIEW",
-                reason: "MENTION_AUTO_SHARE",
-              },
-            },
-          });
-        }
       });
     } catch (err) {
       console.error("[mentions] failed for userId", userId, err);

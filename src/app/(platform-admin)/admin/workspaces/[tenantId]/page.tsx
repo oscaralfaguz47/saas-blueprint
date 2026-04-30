@@ -29,7 +29,6 @@ export default async function AdminManageWorkspacePage({
 
   const canResetPrimaryOwner2FA = await hasVendorPermission({
     userId: fullSession.user.id,
-    legacyRole: fullSession.user.role,
     permission: "admin.mfa.reset",
   });
 

@@ -69,7 +69,7 @@ export const POST = withErrorHandler(async (
 
   const record = await prisma.record.findFirst({
     where: { id: recordId, tenantId },
-    select: { status: true, requestedAmount: true, amount: true },
+    select: { status: true, requestedAmount: true },
   });
   if (!record) return ApiErrors.NOT_FOUND("Record");
   if (record.status === "CLOSED") {
@@ -77,11 +77,7 @@ export const POST = withErrorHandler(async (
   }
 
   const effectiveAmount =
-    record.requestedAmount != null
-      ? Number(record.requestedAmount)
-      : record.amount != null
-        ? Number(record.amount)
-        : null;
+    record.requestedAmount != null ? Number(record.requestedAmount) : null;
   if (!effectiveAmount || effectiveAmount <= 0) {
     return ApiErrors.VALIDATION_ERROR(
       "Payment tracking is only available for requests with a requested amount."

@@ -14,7 +14,6 @@ export default async function AppRootPage() {
   if (!membership?.tenant) {
     const canAccessPlatformAdmin = await hasVendorPermission({
       userId: session.user.id,
-      legacyRole: session.user.role,
       permission: "admin.tenants.read",
     });
     if (canAccessPlatformAdmin) redirect("/admin/workspaces");

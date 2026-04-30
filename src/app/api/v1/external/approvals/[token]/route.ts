@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/server/db";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
+import { recomputeApprovalStatus } from "@/server/services/record-approval-status";
 import { z } from "zod";
 import { createHash } from "crypto";
 
@@ -68,8 +69,8 @@ export const GET = withErrorHandler(async (
           title: true,
           type: true,
           status: true,
-          amount: true,
-          currency: true,
+          requestedAmount: true,
+          currencyCode: true,
           createdAt: true,
         },
       },
@@ -90,8 +91,18 @@ export const GET = withErrorHandler(async (
     data: { lastUsedAt: new Date() },
   });
 
+  const rec = participant.record;
   return apiSuccess({
-    record: participant.record,
+    record: {
+      id: rec.id,
+      title: rec.title,
+      type: rec.type,
+      status: rec.status,
+      requestedAmount:
+        rec.requestedAmount != null ? Number(rec.requestedAmount) : null,
+      currencyCode: rec.currencyCode,
+      createdAt: rec.createdAt.toISOString(),
+    },
     participantStatus: participant.status,
     expiresAt: participant.expiresAt,
   });
@@ -277,6 +288,16 @@ export const POST = withErrorHandler(async (
           performedByExternalApprover: true,
         },
       },
+    });
+
+    await recomputeApprovalStatus(tx, {
+      tenantId: participant.tenantId,
+      recordId: participant.recordId,
+      triggeredByParticipantId: participant.id,
+      triggeredByAction:
+        body.action === "APPROVE" ? "EXTERNAL_APPROVED" : "EXTERNAL_REJECTED",
+      actorUserId: auditActorUserId,
+      actorEmail: participant.email,
     });
 
     return result;

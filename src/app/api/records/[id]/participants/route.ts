@@ -8,6 +8,7 @@ import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { canAccessRequest } from "@/server/security/request-authorization";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { env } from "@/lib/env";
+import { recomputeApprovalStatus } from "@/server/services/record-approval-status";
 import { sendEmail } from "@/server/services/invitation-email";
 import {
   buildEmailShell,
@@ -120,7 +121,19 @@ export const POST = withErrorHandler(async (
   if (!record) return ApiErrors.NOT_FOUND("Record");
 
   const isCreator = record.createdByUserId === session.user.id;
-  if (!isCreator) return ApiErrors.FORBIDDEN();
+  const isApproverAssigning = !isCreator && await prisma.recordParticipant.findFirst({
+    where: {
+      recordId,
+      tenantId,
+      userId: session.user.id,
+      participantRole: "APPROVER",
+      participantType: "INTERNAL",
+      revokedAt: null,
+    },
+    select: { id: true },
+  }) !== null;
+
+  if (!isCreator && !isApproverAssigning) return ApiErrors.FORBIDDEN();
 
   if (record.status === "CLOSED") {
     return ApiErrors.CONFLICT("Cannot assign approvers to a closed record.");
@@ -133,6 +146,11 @@ export const POST = withErrorHandler(async (
     return ApiErrors.VALIDATION_ERROR("Validation failed", bodyResult.error.flatten());
   }
   const { userId: targetUserId, participantRole } = bodyResult.data;
+
+  // Active approvers can only assign VIEWER role — not APPROVER
+  if (!isCreator && isApproverAssigning && participantRole === "APPROVER") {
+    return ApiErrors.FORBIDDEN();
+  }
 
   if (targetUserId === session.user.id) {
     return ApiErrors.VALIDATION_ERROR("You cannot assign yourself as an approver or viewer.");
@@ -222,6 +240,16 @@ export const POST = withErrorHandler(async (
             metadata: { recordId, approverUserId: targetUserId, participantRole, reactivated: true },
           },
         });
+
+        if (participantRole === "APPROVER") {
+          await recomputeApprovalStatus(tx, {
+            tenantId,
+            recordId,
+            triggeredByParticipantId: existing.id,
+            triggeredByAction: "PARTICIPANT_REACTIVATED",
+            actorUserId: session.user.id,
+          });
+        }
       });
 
       return apiSuccess({ id: existing.id, reactivated: true }, 200);
@@ -298,6 +326,16 @@ export const POST = withErrorHandler(async (
         metadata: { recordId, approverUserId: targetUserId, participantRole },
       },
     });
+
+    if (participantRole === "APPROVER") {
+      await recomputeApprovalStatus(tx, {
+        tenantId,
+        recordId,
+        triggeredByParticipantId: p.id,
+        triggeredByAction: "PARTICIPANT_CREATED",
+        actorUserId: session.user.id,
+      });
+    }
 
     return p;
   });

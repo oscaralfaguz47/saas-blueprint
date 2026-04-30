@@ -106,7 +106,6 @@ function numFromUnknown(raw: unknown): number | null {
 function normalizeDetailData(
   raw: RecordDetailResponse["data"] & {
     record: RecordDetailExtended & {
-      amount?: unknown;
       requestedAmount?: unknown;
       approvedAmount?: unknown;
       taxAmount?: unknown;
@@ -118,7 +117,6 @@ function normalizeDetailData(
     ...raw,
     record: {
       ...r,
-      amount: numFromUnknown(r.amount),
       requestedAmount: numFromUnknown(r.requestedAmount),
       approvedAmount: numFromUnknown(r.approvedAmount),
       taxAmount: numFromUnknown(r.taxAmount),
@@ -410,7 +408,6 @@ export function RequestDetailClient({
       const json = (await res.json()) as RecordDetailResponse & {
         data: RecordDetailResponse["data"] & {
           record: RecordDetailExtended & {
-            amount?: unknown;
             requestedAmount?: unknown;
             approvedAmount?: unknown;
             taxAmount?: unknown;
@@ -651,8 +648,21 @@ export function RequestDetailClient({
   const { record, evidence, participants, comments, links, payment, missingProof } = data;
   const rec = record as RecordDetailExtended;
   const isRequestCreator = rec.createdByUserId === currentUserId;
-  const canAssignInternal = isRequestCreator;
-  const canAssignExternal = isRequestCreator;
+  const isActiveApprover = participants.some(
+    (p) =>
+      p.participantType === "INTERNAL" &&
+      p.participantRole === "APPROVER" &&
+      p.userId === currentUserId &&
+      p.revokedAt === null
+  );
+  const canAssignInternal = isRequestCreator || isActiveApprover;
+  const canAssignExternal = isRequestCreator || isActiveApprover;
+  const canManageApprovers = isRequestCreator; // Only creator can add/remove approvers
+  // Can assign viewers via @mention: creator, approvers, or users with share permission
+  const canShareMentions =
+    isRequestCreator ||
+    isActiveApprover ||
+    permissions.includes("tenant.requests.read_all");
   const isClosed = rec.status === "CLOSED";
   const catConfig = RECORD_CATEGORY_CONFIG[rec.type];
   const approverParticipants = participants.filter((p) => p.participantRole === "APPROVER");
@@ -821,12 +831,9 @@ export function RequestDetailClient({
                 </div>
               )}
               <div className="flex flex-wrap items-center gap-3 text-sm">
-                {(rec.requestedAmount != null || rec.amount != null) && (
+                {rec.requestedAmount != null && (
                   <span className="font-medium text-(--text-primary)">
-                    {formatAmount(
-                      rec.requestedAmount ?? rec.amount,
-                      rec.currencyCode ?? rec.currency
-                    )}
+                    {formatAmount(rec.requestedAmount, rec.currencyCode ?? null)}
                   </span>
                 )}
                 <span className="text-(--text-secondary)">
@@ -921,7 +928,7 @@ export function RequestDetailClient({
                       }`}
                     >
                       {rec.requestedAmount != null
-                        ? formatAmount(rec.requestedAmount, rec.currencyCode ?? rec.currency)
+                        ? formatAmount(rec.requestedAmount, rec.currencyCode ?? null)
                         : "—"}
                     </p>
                   </div>
@@ -933,14 +940,14 @@ export function RequestDetailClient({
                       }`}
                     >
                       {rec.approvedAmount != null
-                        ? formatAmount(rec.approvedAmount, rec.currencyCode ?? rec.currency)
+                        ? formatAmount(rec.approvedAmount, rec.currencyCode ?? null)
                         : "—"}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs font-medium text-(--text-muted)">Currency</p>
                     <p className="mt-1 text-xl font-semibold text-(--text-primary)">
-                      {rec.currencyCode ?? rec.currency ?? "—"}
+                      {rec.currencyCode ?? "—"}
                     </p>
                   </div>
                 </div>
@@ -959,7 +966,7 @@ export function RequestDetailClient({
                       <div>
                         <p className="text-xs font-medium text-(--text-muted)">Tax amount</p>
                         <p className="mt-1 text-sm font-semibold tabular-nums text-(--text-primary)">
-                          {formatAmount(rec.taxAmount, rec.currencyCode ?? rec.currency)}
+                          {formatAmount(rec.taxAmount, rec.currencyCode ?? null)}
                         </p>
                       </div>
                       <div>
@@ -1084,6 +1091,7 @@ export function RequestDetailClient({
               recordId={recordId}
               isClosed={isClosed}
               canComment={canComment}
+              canShareMentions={canShareMentions}
               currentUserId={currentUserId}
               currentUserName={currentUserName}
               currentUserEmail={currentUserEmail}
@@ -1111,7 +1119,8 @@ export function RequestDetailClient({
               currentUserId={currentUserId}
               canAssignInternal={canAssignInternal}
               canAssignExternal={canAssignExternal}
-              isRequestCreator={isRequestCreator}
+              isRequestCreator={canManageApprovers}
+              canManageViewers={isRequestCreator || isActiveApprover}
               onRefresh={load}
               onApprovalCompleted={onApprovalCompleted}
               onParticipantsChange={updateParticipants}
@@ -2158,6 +2167,7 @@ function CommentSection({
   recordId,
   isClosed,
   canComment,
+  canShareMentions,
   currentUserId,
   currentUserName,
   currentUserEmail,
@@ -2166,6 +2176,7 @@ function CommentSection({
   recordId: string;
   isClosed: boolean;
   canComment: boolean;
+  canShareMentions: boolean;
   currentUserId: string;
   currentUserName?: string | null;
   currentUserEmail?: string | null;
@@ -2699,14 +2710,14 @@ function CommentSection({
                   ref={textareaRef}
                   value={content}
                   onChange={handleContentChange}
-                  placeholder="Write a comment… Use @ to mention someone"
+                  placeholder={canShareMentions ? "Write a comment… Use @ to mention someone" : "Write a comment…"}
                   rows={2}
                   maxLength={5000}
                   disabled={submitting}
                   className="resize-none text-sm"
                 />
                 {/* Mention dropdown */}
-                {mentionOpen && filteredMentions.length > 0 && (
+                {mentionOpen && filteredMentions.length > 0 && canShareMentions && (
                   <div className="absolute bottom-full left-0 z-20 mb-1 max-h-44 w-full overflow-y-auto rounded-lg border border-(--border-subtle) bg-(--bg-surface) shadow-xl">
                     {filteredMentions.slice(0, 8).map((u) => (
                       <button
@@ -2735,11 +2746,13 @@ function CommentSection({
                 )}
               </div>
               <div className="flex items-center justify-between gap-2">
-                <p className="text-[11px] text-(--text-muted)">
-                  Use{" "}
-                  <kbd className="rounded border border-(--border-subtle) px-1 text-[10px]">@</kbd>{" "}
-                  to mention
-                </p>
+                {canShareMentions && (
+                  <p className="text-[11px] text-(--text-muted)">
+                    Use{" "}
+                    <kbd className="rounded border border-(--border-subtle) px-1 text-[10px]">@</kbd>{" "}
+                    to mention
+                  </p>
+                )}
                 <button
                   type="submit"
                   disabled={submitting || !content.trim()}

@@ -21,7 +21,6 @@ export default async function AdminWorkspaceBillingPage({
 
   const canReadBilling = await hasVendorPermission({
     userId: session!.user.id,
-    legacyRole: session!.user.role,
     permission: "admin.billing.read",
   });
   if (!canReadBilling) notFound();

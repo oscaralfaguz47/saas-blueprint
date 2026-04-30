@@ -15,14 +15,12 @@ export default async function AdminKnowledgeBasePage() {
 
   const canView = await hasVendorPermission({
     userId: fullSession.user.id,
-    legacyRole: fullSession.user.role,
     permission: "admin.knowledge_base.read",
   });
   if (!canView) notFound();
 
   const canManage = await hasVendorPermission({
     userId: fullSession.user.id,
-    legacyRole: fullSession.user.role,
     permission: "admin.knowledge_base.manage",
   });
 

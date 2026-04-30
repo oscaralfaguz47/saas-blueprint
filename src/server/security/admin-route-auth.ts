@@ -43,7 +43,6 @@ export async function requireAdminAuth(
   try {
     await requirePlatformPermission({
       userId: session.user.id,
-      legacyRole: session.user.role,
       permission,
     });
   } catch {

@@ -10,7 +10,12 @@ import { buildRecordAccessFilter } from "@/server/security/request-authorization
 import { checkMeterLimit, tryConsumeMeter } from "@/server/billing/try-consume-meter";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
-import { parseBody, createRecordSchema } from "@/lib/validations";
+import {
+  createRecordSchema,
+  parseWithSchema,
+  readJsonBody,
+  rejectLegacyRecordFinanceKeys,
+} from "@/lib/validations";
 
 const RECORD_TYPES_FOR_FILTER = [
   "SCOPE_CHANGE",
@@ -194,9 +199,7 @@ export const GET = withErrorHandler(async (req: Request) => {
   if (q.neededByFrom) filters.push({ neededByDate: { gte: new Date(q.neededByFrom) } });
   if (q.neededByTo) filters.push({ neededByDate: { lte: new Date(q.neededByTo) } });
   if (q.currency) {
-    filters.push({
-      OR: [{ currency: q.currency }, { currencyCode: q.currency }],
-    });
+    filters.push({ currencyCode: q.currency });
   }
   if (q.search) {
     filters.push({
@@ -207,14 +210,10 @@ export const GET = withErrorHandler(async (req: Request) => {
     });
   }
   if (q.amountMin != null && q.amountMin > 0) {
-    filters.push({
-      OR: [{ amount: { gte: q.amountMin } }, { requestedAmount: { gte: q.amountMin } }],
-    });
+    filters.push({ requestedAmount: { gte: q.amountMin } });
   }
   if (q.amountMax != null && q.amountMax > 0) {
-    filters.push({
-      OR: [{ amount: { lte: q.amountMax } }, { requestedAmount: { lte: q.amountMax } }],
-    });
+    filters.push({ requestedAmount: { lte: q.amountMax } });
   }
   if (q.dateFrom) filters.push({ createdAt: { gte: new Date(q.dateFrom) } });
   if (q.dateTo) filters.push({ createdAt: { lte: new Date(q.dateTo) } });
@@ -250,9 +249,9 @@ export const GET = withErrorHandler(async (req: Request) => {
       case "oldest":
         return [{ createdAt: "asc" }, { id: "asc" }];
       case "amount_desc":
-        return [{ amount: "desc" }, { id: "desc" }];
+        return [{ requestedAmount: "desc" }, { id: "desc" }];
       case "amount_asc":
-        return [{ amount: "asc" }, { id: "asc" }];
+        return [{ requestedAmount: "asc" }, { id: "asc" }];
       case "needed_by_asc":
         return [{ neededByDate: "asc" }, { id: "asc" }];
       case "updated_desc":
@@ -275,8 +274,6 @@ export const GET = withErrorHandler(async (req: Request) => {
     title: true,
     type: true,
     status: true,
-    amount: true,
-    currency: true,
     createdByUserId: true,
     createdAt: true,
     priority: true,
@@ -350,7 +347,6 @@ export const GET = withErrorHandler(async (req: Request) => {
 
   const result = page.map((r) => ({
     ...r,
-    amount: prismaDecimalToNumber(r.amount),
     requestedAmount: prismaDecimalToNumber(r.requestedAmount),
     neededByDate: r.neededByDate ? r.neededByDate.toISOString() : null,
     createdAt: r.createdAt.toISOString(),
@@ -404,7 +400,9 @@ export const POST = withErrorHandler(async (req: Request) => {
   }
 
   // 6. Validate body
-  const body = await parseBody(req, createRecordSchema);
+  const rawBody = await readJsonBody(req);
+  rejectLegacyRecordFinanceKeys(rawBody);
+  const body = parseWithSchema(rawBody, createRecordSchema);
 
   const initialStatus = body.status ?? "OPEN";
 
@@ -433,10 +431,6 @@ export const POST = withErrorHandler(async (req: Request) => {
   }
 
   // 8. Create record + emit event + audit log in one transaction
-  const legacyAmount =
-    body.amount != null ? body.amount : body.requestedAmount != null ? body.requestedAmount : null;
-  const legacyCurrency = body.currency ?? body.currencyCode ?? null;
-
   const created = await prisma.$transaction(async (tx) => {
     const record = await tx.record.create({
       data: {
@@ -447,13 +441,11 @@ export const POST = withErrorHandler(async (req: Request) => {
         description: body.description ?? null,
         clientName: body.clientName ?? null,
         clientEmail: body.clientEmail ?? null,
-        amount: legacyAmount,
-        currency: legacyCurrency,
         visibility: body.visibility,
         isSensitive: body.isSensitive,
         status: initialStatus,
         requestedAmount: body.requestedAmount != null ? body.requestedAmount : null,
-        currencyCode: body.currencyCode ?? body.currency ?? null,
+        currencyCode: body.currencyCode ?? null,
         businessJustification: body.businessJustification ?? null,
         vendorName: body.vendorName ?? null,
         payeeName: body.payeeName ?? null,
@@ -520,8 +512,6 @@ export const POST = withErrorHandler(async (req: Request) => {
           title: record.title,
           type: record.type,
           priority: body.priority,
-          ...(body.amount != null ? { amount: body.amount } : {}),
-          ...(body.currency ? { currency: body.currency } : {}),
           ...(body.requestedAmount != null ? { requestedAmount: body.requestedAmount } : {}),
           ...(resolvedCostCenterId ? { costCenterId: resolvedCostCenterId } : {}),
           ...(resolvedDepartmentId ? { departmentId: resolvedDepartmentId } : {}),
@@ -541,8 +531,6 @@ export const POST = withErrorHandler(async (req: Request) => {
           title: record.title,
           recordType: record.type,
           priority: body.priority,
-          ...(body.amount != null ? { amount: body.amount } : {}),
-          ...(body.currency ? { currency: body.currency } : {}),
           ...(body.requestedAmount != null ? { requestedAmount: body.requestedAmount } : {}),
           ...(resolvedCostCenterId ? { costCenterId: resolvedCostCenterId } : {}),
           ...(resolvedDepartmentId ? { departmentId: resolvedDepartmentId } : {}),

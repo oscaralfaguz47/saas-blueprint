@@ -13,7 +13,6 @@ export default async function AdminCronJobsPage() {
 
   const canView = await hasVendorPermission({
     userId: fullSession.user.id,
-    legacyRole: fullSession.user.role,
     permission: "admin.tenants.read",
   });
   if (!canView) notFound();

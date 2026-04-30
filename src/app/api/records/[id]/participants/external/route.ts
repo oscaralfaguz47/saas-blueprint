@@ -8,6 +8,7 @@ import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { canAccessRequest } from "@/server/security/request-authorization";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { env } from "@/lib/env";
+import { recomputeApprovalStatus } from "@/server/services/record-approval-status";
 import { sendEmail } from "@/server/services/invitation-email";
 import {
   buildEmailShell,
@@ -161,6 +162,16 @@ export const POST = withErrorHandler(async (
         metadata: { recordId, approverEmail: email, participantRole },
       },
     });
+
+    if (participantRole === "APPROVER") {
+      await recomputeApprovalStatus(tx, {
+        tenantId,
+        recordId,
+        triggeredByParticipantId: p.id,
+        triggeredByAction: "PARTICIPANT_CREATED",
+        actorUserId: session.user.id,
+      });
+    }
 
     return p;
   });

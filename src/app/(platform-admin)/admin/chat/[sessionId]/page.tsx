@@ -18,7 +18,6 @@ export default async function AdminChatSessionDetailPage({ params }: Props) {
 
   const canView = await hasVendorPermission({
     userId: fullSession.user.id,
-    legacyRole: fullSession.user.role,
     permission: "admin.support.read",
   });
   if (!canView) notFound();

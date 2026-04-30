@@ -42,8 +42,8 @@ async function loadExportSnapshot(tenantId: string, recordId: string) {
         description: true,
         clientName: true,
         clientEmail: true,
-        amount: true,
-        currency: true,
+        requestedAmount: true,
+        currencyCode: true,
         visibility: true,
         isSensitive: true,
         createdAt: true,
@@ -78,14 +78,14 @@ function sectionsFromSnapshot(params: {
 }): { heading: string; body: string }[] {
   const { record, evidence, participants } = params;
   const amt =
-    record.amount != null ? String(record.amount) : "";
+    record.requestedAmount != null ? String(record.requestedAmount) : "";
   const lines: { heading: string; body: string }[] = [
     { heading: "Record ID", body: record.id },
     { heading: "Type", body: record.type },
     { heading: "Status", body: record.status },
     { heading: "Created", body: record.createdAt.toISOString() },
   ];
-  if (amt) lines.push({ heading: "Amount", body: `${amt} ${record.currency ?? ""}`.trim() });
+  if (amt) lines.push({ heading: "Amount", body: `${amt} ${record.currencyCode ?? ""}`.trim() });
   if (record.description) lines.push({ heading: "Description", body: record.description });
   if (record.clientName || record.clientEmail) {
     lines.push({

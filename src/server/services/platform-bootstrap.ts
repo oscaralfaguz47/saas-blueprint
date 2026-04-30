@@ -17,6 +17,10 @@ export function isBootstrapAllowlistedEmail(email: string | null | undefined): b
   return normalizeAllowlist().includes(email.trim().toLowerCase());
 }
 
+/**
+ * Ensures allowlisted users receive `VendorUserRole(PlatformAdmin)` on first sign-in.
+ * Idempotent: no-op when the role is already granted. First-time grant writes an audit log.
+ */
 export async function ensureBootstrapPlatformOwner(params: {
   userId: string;
   email?: string | null;
@@ -32,16 +36,36 @@ export async function ensureBootstrapPlatformOwner(params: {
   });
   if (!platformAdminRole) return;
 
-  await prisma.vendorUserRole.upsert({
+  const existing = await prisma.vendorUserRole.findUnique({
     where: { userId_roleId: { userId, roleId: platformAdminRole.id } },
-    update: {},
-    create: { userId, roleId: platformAdminRole.id },
+    select: { userId: true },
   });
 
-  // Optional legacy sync (safe during migration)
-  await prisma.user.update({
-    where: { id: userId },
-    data: { role: "ADMIN" },
+  if (existing) return;
+
+  const normalizedEmail = email.trim().toLowerCase();
+
+  await prisma.$transaction(async (tx) => {
+    await tx.vendorUserRole.create({
+      data: { userId, roleId: platformAdminRole.id },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        actorUserId: userId,
+        actorContext: "VENDOR",
+        tenantId: null,
+        action: "admin.vendor_user.role_assigned",
+        targetType: "User",
+        targetId: userId,
+        targetUserId: userId,
+        metadata: {
+          roleName: "PlatformAdmin",
+          method: "bootstrap_allowlist",
+          grantedViaEmail: normalizedEmail,
+        },
+      },
+    });
   });
 }
 

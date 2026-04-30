@@ -107,8 +107,8 @@ function getEventsRequestMeta() {
 /** PENDING_MFA Session row expires — intentionally short (MFA challenge window). */
 const MFA_PENDING_SESSION_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
 
-// Rolling refresh window (refresh role at most every x minutes)
-const ROLE_REFRESH_WINDOW_SECONDS = 15 * 60;
+// Rolling NextAuth session JWT refresh window (refreshes session at most every 15 minutes)
+const SESSION_UPDATE_AGE_SECONDS = 15 * 60;
 
 function linkIntentCookieName(provider: "azure-ad" | "google"): string {
   return `__link_intent_${provider.replace(/-/g, "_")}`;
@@ -457,7 +457,7 @@ export const authOptions: NextAuthOptions = {
     strategy: "jwt",
     maxAge: JWT_MAX_AGE_SECONDS,
     // Rolling sessions: re-issue token/cookie after this age when session is accessed.
-    updateAge: ROLE_REFRESH_WINDOW_SECONDS,
+    updateAge: SESSION_UPDATE_AGE_SECONDS,
   },
 
   jwt: {
@@ -573,7 +573,6 @@ export const authOptions: NextAuthOptions = {
             name: true,
             image: true,
             isPlatformBlocked: true,
-            role: true,
           },
         });
 
@@ -583,7 +582,6 @@ export const authOptions: NextAuthOptions = {
           email: user.email,
           name: user.name,
           image: user.image,
-          role: user.role,
         };
       },
     }),
@@ -613,7 +611,6 @@ export const authOptions: NextAuthOptions = {
             name: true,
             image: true,
             isPlatformBlocked: true,
-            role: true,
           },
         });
 
@@ -623,7 +620,6 @@ export const authOptions: NextAuthOptions = {
           email: user.email,
           name: user.name,
           image: user.image,
-          role: user.role,
         };
       },
     }),

@@ -111,22 +111,6 @@ export const RECORD_BUDGET_IMPACT_LABELS: Record<string, string> = {
   UNKNOWN: "Unknown",
 };
 
-/**
- * Get the best available amount from a list item.
- * Prefers requestedAmount (new field) over amount (legacy field).
- */
-export function getBestAmount(item: {
-  requestedAmount?: number | null;
-  amount?: number | null;
-  currencyCode?: string | null;
-  currency?: string | null;
-}): { amount: number | null; currency: string | null } {
-  return {
-    amount: item.requestedAmount ?? item.amount ?? null,
-    currency: item.currencyCode ?? item.currency ?? null,
-  };
-}
-
 export function formatAmount(
   amount: number | null | undefined,
   currency: string | null | undefined
@@ -183,6 +167,9 @@ export const RECORD_EVENT_LABELS: Record<string, string> = {
   APPROVAL_APPROVED: "Request approved",
   APPROVAL_REJECTED: "Request rejected",
   APPROVAL_LINK_OPENED: "Approval link opened",
+  APPROVAL_STATUS_CHANGED: "Approval status changed",
+  APPROVAL_FULLY_COMPLETED: "Fully approved",
+  APPROVAL_REJECTED_FINAL: "Approval rejected",
   EVIDENCE_FILE_ADDED: "File added",
   EVIDENCE_FILE_REMOVED: "File removed",
   EVIDENCE_LINK_ADDED: "Link added",

@@ -58,7 +58,6 @@ function baseUser(overrides?: Partial<Record<string, unknown>>) {
     image: null,
     profilePhotoObjectKey: null,
     appearance: "SYSTEM",
-    role: "ADMIN",
     security: { totpEnabled: true },
     ...overrides,
   };
