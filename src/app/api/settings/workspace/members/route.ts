@@ -187,6 +187,10 @@ export const GET = withErrorHandler(async (req: Request) => {
       id: true,
       status: true,
       joinedAt: true,
+      workspaceRole: true,
+      financialAccess: true,
+      financeResponsibility: true,
+      billingAccess: true,
       user: {
         select: {
           id: true,
@@ -243,6 +247,7 @@ export const GET = withErrorHandler(async (req: Request) => {
     const displayRole = getHighestRoleName(roleNames) ?? "Member";
     const security = m.user.security;
     return {
+      membershipId: m.id,
       userId: m.user.id,
       name: m.user.name ?? null,
       email: m.user.email ?? null,
@@ -250,6 +255,10 @@ export const GET = withErrorHandler(async (req: Request) => {
       role: displayRole,
       status: m.status,
       joinedAt: m.joinedAt,
+      workspaceRole: m.workspaceRole,
+      financialAccess: m.financialAccess,
+      financeResponsibility: m.financeResponsibility,
+      billingAccess: m.billingAccess,
       mfaEnforced: mfaEnforcedByUserId.get(m.user.id) ?? false,
       totpEnabled: security?.totpEnabled ?? false,
     };

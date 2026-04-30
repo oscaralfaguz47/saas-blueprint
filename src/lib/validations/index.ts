@@ -37,6 +37,7 @@ export {
 export {
   updateMemberStatusSchema,
   updateMemberRoleSchema,
+  updateMember4AxisSchema,
 } from "./member";
 
 export {

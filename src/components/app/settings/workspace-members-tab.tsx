@@ -69,6 +69,12 @@ type MemberItem = {
   role: string;
   status: string;
   joinedAt: string | null;
+  /** 4-axis (Phase C2); optional for backward compatibility — UI binding in Phase E1 */
+  membershipId?: string;
+  workspaceRole?: "OWNER" | "ADMIN" | "MEMBER";
+  financialAccess?: "ALL" | "DEPARTMENT" | "OWN_AND_PARTICIPATING" | "NONE";
+  financeResponsibility?: "PROCESS" | "APPROVE" | "PROCESS_AND_APPROVE" | "NONE";
+  billingAccess?: "MANAGE" | "READ" | "NONE";
   /** E6: 2FA status for security dropdown visibility and table column */
   mfaEnforced?: boolean;
   totpEnabled?: boolean;
