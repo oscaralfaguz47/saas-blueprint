@@ -1,4 +1,10 @@
 import { z } from "zod";
+import {
+  BillingAccessLevel,
+  FinanceResponsibility,
+  FinancialAccessScope,
+  WorkspaceRole,
+} from "@prisma/client";
 import { emailSchema } from "./common";
 
 /**
@@ -10,6 +16,11 @@ export const createInvitationSchema = z.object({
   sendEmail: z.boolean().optional().default(true),
   /** Role to assign on accept. Defaults to Member. */
   role: z.enum(["Owner", "Admin", "Finance", "Member"]).optional().default("Member"),
+  /** 4-axis preset (doc 01 Section 4). Validated in POST handler via validate4AxisCombination. */
+  workspaceRole: z.nativeEnum(WorkspaceRole).optional(),
+  financialAccess: z.nativeEnum(FinancialAccessScope).optional(),
+  financeResponsibility: z.nativeEnum(FinanceResponsibility).optional(),
+  billingAccess: z.nativeEnum(BillingAccessLevel).optional(),
 });
 
 /**

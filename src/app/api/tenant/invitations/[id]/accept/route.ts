@@ -1,5 +1,6 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
+import { validate4AxisCombination } from "@/server/security/access-model";
 import { prisma } from "@/server/db";
 import { requireFullSession } from "@/server/require-full-session";
 import { writeAuditLog } from "@/server/services/audit";
@@ -38,6 +39,10 @@ export const POST = withErrorHandler(async (
       revokedAt: true,
       expiresAt: true,
       role: true,
+      workspaceRole: true,
+      financialAccess: true,
+      financeResponsibility: true,
+      billingAccess: true,
     },
   });
 
@@ -65,6 +70,18 @@ export const POST = withErrorHandler(async (
   });
   if (!user) return ApiErrors.NOT_FOUND("User");
   if (user.isPlatformBlocked) return ApiErrors.FORBIDDEN();
+
+  const comboErr = validate4AxisCombination({
+    workspaceRole: invite.workspaceRole,
+    financialAccess: invite.financialAccess,
+    financeResponsibility: invite.financeResponsibility,
+    billingAccess: invite.billingAccess,
+  });
+  if (comboErr !== null) {
+    return ApiErrors.VALIDATION_ERROR("Invalid access combination for this invitation.", {
+      code: comboErr,
+    });
+  }
 
   const existingMembership = await prisma.tenantMembership.findUnique({
     where: { tenantId_userId: { tenantId: invite.tenantId, userId: user.id } },
@@ -114,7 +131,13 @@ export const POST = withErrorHandler(async (
       if (existingMembership?.status === "DISABLED") {
         await tx.tenantMembership.update({
           where: { id: existingMembership.id },
-          data: { status: "ACTIVE" },
+          data: {
+            status: "ACTIVE",
+            workspaceRole: invite.workspaceRole,
+            financialAccess: invite.financialAccess,
+            financeResponsibility: invite.financeResponsibility,
+            billingAccess: invite.billingAccess,
+          },
         });
         return {
           membershipId: existingMembership.id,
@@ -130,6 +153,10 @@ export const POST = withErrorHandler(async (
           status: "ACTIVE",
           joinedAt: new Date(),
           isDefaultTenant: false,
+          workspaceRole: invite.workspaceRole,
+          financialAccess: invite.financialAccess,
+          financeResponsibility: invite.financeResponsibility,
+          billingAccess: invite.billingAccess,
         },
         select: { id: true },
       });
@@ -193,6 +220,12 @@ export const POST = withErrorHandler(async (
       membershipId: result.membershipId,
       reenabled: result.reenabled,
       role: invite.role ?? "Member",
+      axes: {
+        workspaceRole: invite.workspaceRole,
+        financialAccess: invite.financialAccess,
+        financeResponsibility: invite.financeResponsibility,
+        billingAccess: invite.billingAccess,
+      },
     },
     ipAddress: getIp(req),
     userAgent: getUserAgent(req),

@@ -1,5 +1,6 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth-options";
+import { validate4AxisCombination } from "@/server/security/access-model";
 import { prisma } from "@/server/db";
 import { requireFullSession } from "@/server/require-full-session";
 import { writeAuditLog } from "@/server/services/audit";
@@ -33,6 +34,10 @@ export const POST = withErrorHandler(async (req: Request) => {
       expiresAt: true,
       invitedByUserId: true,
       role: true,
+      workspaceRole: true,
+      financialAccess: true,
+      financeResponsibility: true,
+      billingAccess: true,
     },
   });
 
@@ -58,6 +63,18 @@ export const POST = withErrorHandler(async (req: Request) => {
         nextAction: "SIGN_OUT_AND_SIGN_IN_WITH_EXPECTED_EMAIL",
       }
     );
+  }
+
+  const comboErr = validate4AxisCombination({
+    workspaceRole: invite.workspaceRole,
+    financialAccess: invite.financialAccess,
+    financeResponsibility: invite.financeResponsibility,
+    billingAccess: invite.billingAccess,
+  });
+  if (comboErr !== null) {
+    return ApiErrors.VALIDATION_ERROR("Invalid access combination for this invitation.", {
+      code: comboErr,
+    });
   }
 
   const existingMembership = await prisma.tenantMembership.findUnique({
@@ -110,60 +127,70 @@ export const POST = withErrorHandler(async (req: Request) => {
         throw new Error("INVITATION_CONSUMED_OR_INVALID");
       }
 
-    if (existingMembership && existingMembership.status === "DISABLED") {
-      await tx.tenantMembership.update({
-        where: { id: existingMembership.id },
-        data: { status: "ACTIVE" },
-      });
-      return {
-        membershipId: existingMembership.id,
-        membershipCreated: false,
-        reenabled: true,
-      };
-    }
+      if (existingMembership && existingMembership.status === "DISABLED") {
+        await tx.tenantMembership.update({
+          where: { id: existingMembership.id },
+          data: {
+            status: "ACTIVE",
+            workspaceRole: invite.workspaceRole,
+            financialAccess: invite.financialAccess,
+            financeResponsibility: invite.financeResponsibility,
+            billingAccess: invite.billingAccess,
+          },
+        });
+        return {
+          membershipId: existingMembership.id,
+          membershipCreated: false,
+          reenabled: true,
+        };
+      }
 
-    const membership = await tx.tenantMembership.create({
-      data: {
-        tenantId: invite.tenantId,
-        userId: user.id,
-        status: "ACTIVE",
-        joinedAt: new Date(),
-        isDefaultTenant: false,
-      },
-      select: { id: true },
-    });
-
-    const assignedRoleName = invite.role ?? "Member";
-    const foundRole = await tx.tenantRole.findUnique({
-      where: {
-        tenantId_name: { tenantId: invite.tenantId, name: assignedRoleName },
-      },
-      select: { id: true },
-    });
-    const role =
-      foundRole ??
-      (await tx.tenantRole.create({
+      const membership = await tx.tenantMembership.create({
         data: {
           tenantId: invite.tenantId,
-          name: assignedRoleName,
-          isSystem: assignedRoleName === "Member",
+          userId: user.id,
+          status: "ACTIVE",
+          joinedAt: new Date(),
+          isDefaultTenant: false,
+          workspaceRole: invite.workspaceRole,
+          financialAccess: invite.financialAccess,
+          financeResponsibility: invite.financeResponsibility,
+          billingAccess: invite.billingAccess,
         },
         select: { id: true },
-      }));
+      });
 
-    await tx.tenantUserRole.create({
-      data: {
+      const assignedRoleName = invite.role ?? "Member";
+      const foundRole = await tx.tenantRole.findUnique({
+        where: {
+          tenantId_name: { tenantId: invite.tenantId, name: assignedRoleName },
+        },
+        select: { id: true },
+      });
+      const role =
+        foundRole ??
+        (await tx.tenantRole.create({
+          data: {
+            tenantId: invite.tenantId,
+            name: assignedRoleName,
+            isSystem: assignedRoleName === "Member",
+          },
+          select: { id: true },
+        }));
+
+      await tx.tenantUserRole.create({
+        data: {
+          membershipId: membership.id,
+          roleId: role.id,
+        },
+      });
+
+      return {
         membershipId: membership.id,
-        roleId: role.id,
-      },
+        membershipCreated: true,
+        reenabled: false,
+      };
     });
-
-    return {
-      membershipId: membership.id,
-      membershipCreated: true,
-      reenabled: false,
-    };
-  });
   } catch (err) {
     if (err instanceof Error && err.message === "INVITATION_CONSUMED_OR_INVALID") {
       return ApiErrors.NOT_FOUND("Invitation not found or expired");
@@ -195,6 +222,12 @@ export const POST = withErrorHandler(async (req: Request) => {
       membershipId: result.membershipId,
       reenabled: result.reenabled,
       role: invite.role ?? "Member",
+      axes: {
+        workspaceRole: invite.workspaceRole,
+        financialAccess: invite.financialAccess,
+        financeResponsibility: invite.financeResponsibility,
+        billingAccess: invite.billingAccess,
+      },
     },
     ipAddress: getIp(req),
     userAgent: getUserAgent(req),

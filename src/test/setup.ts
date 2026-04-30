@@ -13,6 +13,7 @@ vi.mock("next/server", () => {
           status: init?.status ?? 200,
           headers,
           json: async () => body,
+          cookies: { set: vi.fn(), get: vi.fn(), delete: vi.fn() },
         };
       },
     },

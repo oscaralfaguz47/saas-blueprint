@@ -1,12 +1,20 @@
 import { getServerSession } from "next-auth";
+import {
+  BillingAccessLevel,
+  FinanceResponsibility,
+  FinancialAccessScope,
+  WorkspaceRole,
+  Prisma,
+} from "@prisma/client";
 import { authOptions } from "@/server/auth-options";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { hasTenantPermission } from "@/server/security/tenant-authorization";
+import { validate4AxisCombination } from "@/server/security/access-model";
 import { prisma } from "@/server/db";
 import { requireFullSession } from "@/server/require-full-session";
 import { writeAuditLog } from "@/server/services/audit";
 import { sendInvitationEmail } from "@/server/services/invitation-email";
-import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
+import { ApiErrors, apiError, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { getBaseUrlFromRequest } from "@/lib/request-utils";
 import { parseBody, createInvitationSchema } from "@/lib/validations";
 import crypto from "crypto";
@@ -17,6 +25,12 @@ const ROLE_RANK: Record<string, number> = {
   Admin: 3,
   Finance: 2,
   Member: 1,
+};
+
+const WORKSPACE_ROLE_RANK: Record<WorkspaceRole, number> = {
+  OWNER: 3,
+  ADMIN: 2,
+  MEMBER: 1,
 };
 
 function normalizeEmail(email: string): string {
@@ -49,6 +63,10 @@ export const GET = withErrorHandler(async (req: Request) => {
       expiresAt: true,
       acceptedAt: true,
       revokedAt: true,
+      workspaceRole: true,
+      financialAccess: true,
+      financeResponsibility: true,
+      billingAccess: true,
       invitedByUser: { select: { name: true, email: true } },
     },
     orderBy: [{ createdAt: "desc" }],
@@ -64,6 +82,10 @@ export const GET = withErrorHandler(async (req: Request) => {
       : null,
     invitedAt: inv.createdAt,
     expiresAt: inv.expiresAt,
+    workspaceRole: inv.workspaceRole,
+    financialAccess: inv.financialAccess,
+    financeResponsibility: inv.financeResponsibility,
+    billingAccess: inv.billingAccess,
   }));
 
   return apiSuccess({ invitations: list });
@@ -102,6 +124,7 @@ export const POST = withErrorHandler(async (req: Request) => {
   const inviterMembership = await prisma.tenantMembership.findUnique({
     where: { tenantId_userId: { tenantId: tenant.id, userId: session.user.id } },
     select: {
+      workspaceRole: true,
       roles: { select: { role: { select: { name: true } } } },
     },
   });
@@ -111,6 +134,40 @@ export const POST = withErrorHandler(async (req: Request) => {
 
   if (requestedRank >= inviterMaxRank) {
     return ApiErrors.FORBIDDEN();
+  }
+
+  if (!inviterMembership) {
+    return ApiErrors.FORBIDDEN();
+  }
+
+  const requestedWorkspaceRole = body.workspaceRole ?? WorkspaceRole.MEMBER;
+  const inviterWorkspaceRank = WORKSPACE_ROLE_RANK[inviterMembership.workspaceRole];
+  const targetWorkspaceRank = WORKSPACE_ROLE_RANK[requestedWorkspaceRole];
+  if (targetWorkspaceRank > inviterWorkspaceRank) {
+    return apiError("FORBIDDEN", 403, "Cannot invite with a workspace role higher than your own.", {
+      code: "WORKSPACE_ROLE_RANK_EXCEEDED",
+    });
+  }
+
+  const axisProvided =
+    body.workspaceRole !== undefined ||
+    body.financialAccess !== undefined ||
+    body.financeResponsibility !== undefined ||
+    body.billingAccess !== undefined;
+
+  if (axisProvided) {
+    const mergedAxes = {
+      workspaceRole: body.workspaceRole ?? WorkspaceRole.MEMBER,
+      financialAccess: body.financialAccess ?? FinancialAccessScope.OWN_AND_PARTICIPATING,
+      financeResponsibility: body.financeResponsibility ?? FinanceResponsibility.NONE,
+      billingAccess: body.billingAccess ?? BillingAccessLevel.NONE,
+    };
+    const comboErr = validate4AxisCombination(mergedAxes);
+    if (comboErr !== null) {
+      return ApiErrors.VALIDATION_ERROR("Invalid access combination for this invitation.", {
+        code: comboErr,
+      });
+    }
   }
 
   const emailNormalized = normalizeEmail(body.email);
@@ -158,6 +215,12 @@ export const POST = withErrorHandler(async (req: Request) => {
       expiresAt,
       invitedByUserId: session.user.id,
       role: requestedRole,
+      ...(body.workspaceRole !== undefined && { workspaceRole: body.workspaceRole }),
+      ...(body.financialAccess !== undefined && { financialAccess: body.financialAccess }),
+      ...(body.financeResponsibility !== undefined && {
+        financeResponsibility: body.financeResponsibility,
+      }),
+      ...(body.billingAccess !== undefined && { billingAccess: body.billingAccess }),
     },
     select: {
       id: true,
@@ -165,8 +228,38 @@ export const POST = withErrorHandler(async (req: Request) => {
       expiresAt: true,
       acceptedAt: true,
       role: true,
+      workspaceRole: true,
+      financialAccess: true,
+      financeResponsibility: true,
+      billingAccess: true,
     },
   });
+
+  const auditMetadata: Prisma.InputJsonValue = axisProvided
+    ? {
+        email: invite.email,
+        expiresAt: invite.expiresAt.toISOString(),
+        sendEmail: body.sendEmail,
+        role: requestedRole,
+        axes: {
+          workspaceRole: invite.workspaceRole,
+          financialAccess: invite.financialAccess,
+          financeResponsibility: invite.financeResponsibility,
+          billingAccess: invite.billingAccess,
+        },
+        axesExplicit: {
+          workspaceRole: body.workspaceRole !== undefined,
+          financialAccess: body.financialAccess !== undefined,
+          financeResponsibility: body.financeResponsibility !== undefined,
+          billingAccess: body.billingAccess !== undefined,
+        },
+      }
+    : {
+        email: invite.email,
+        expiresAt: invite.expiresAt.toISOString(),
+        sendEmail: body.sendEmail,
+        role: requestedRole,
+      };
 
   await writeAuditLog({
     actorUserId: session.user.id,
@@ -175,12 +268,7 @@ export const POST = withErrorHandler(async (req: Request) => {
     action: "tenant.user.invited",
     targetType: "TenantInvitation",
     targetId: invite.id,
-    metadata: {
-      email: invite.email,
-      expiresAt: invite.expiresAt.toISOString(),
-      sendEmail: body.sendEmail,
-      role: requestedRole,
-    },
+    metadata: auditMetadata,
     ipAddress: getIp(req),
     userAgent: getUserAgent(req),
   });

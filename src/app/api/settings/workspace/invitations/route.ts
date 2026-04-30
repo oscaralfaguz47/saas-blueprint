@@ -218,6 +218,10 @@ export const GET = withErrorHandler(async (req: Request) => {
       acceptedAt: true,
       revokedAt: true,
       role: true,
+      workspaceRole: true,
+      financialAccess: true,
+      financeResponsibility: true,
+      billingAccess: true,
       invitedByUser: { select: { name: true, email: true } },
     },
     orderBy,
@@ -250,6 +254,10 @@ export const GET = withErrorHandler(async (req: Request) => {
     invitedAt: inv.createdAt,
     expiresAt: inv.expiresAt,
     role: inv.role ?? "Member",
+    workspaceRole: inv.workspaceRole,
+    financialAccess: inv.financialAccess,
+    financeResponsibility: inv.financeResponsibility,
+    billingAccess: inv.billingAccess,
     invitedBy: inv.invitedByUser
       ? {
           name: inv.invitedByUser.name,
