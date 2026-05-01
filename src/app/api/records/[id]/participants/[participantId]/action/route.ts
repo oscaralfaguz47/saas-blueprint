@@ -7,6 +7,7 @@ import { requireFullSession } from "@/server/require-full-session";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { canAccessRequest } from "@/server/security/request-authorization";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
+import { maybeAssignFinanceAfterApprovalReconcile } from "@/server/services/approval-completion-hook";
 import { recomputeApprovalStatus } from "@/server/services/record-approval-status";
 import { z } from "zod";
 
@@ -142,6 +143,8 @@ export const POST = withErrorHandler(async (
   const responseReason =
     body.action === "APPROVE" ? (body.comment ?? null) : body.comment;
 
+  let reconcileResult: Awaited<ReturnType<typeof recomputeApprovalStatus>> | undefined;
+
   const updated = await prisma.$transaction(async (tx) => {
     const result = await tx.recordParticipant.updateMany({
       where: {
@@ -204,7 +207,7 @@ export const POST = withErrorHandler(async (
       },
     });
 
-    await recomputeApprovalStatus(tx, {
+    reconcileResult = await recomputeApprovalStatus(tx, {
       tenantId,
       recordId,
       triggeredByParticipantId: participantId,
@@ -218,6 +221,14 @@ export const POST = withErrorHandler(async (
 
   if (!updated) {
     return ApiErrors.CONFLICT("Already responded to this approval request.");
+  }
+
+  if (reconcileResult) {
+    await maybeAssignFinanceAfterApprovalReconcile(prisma, reconcileResult, {
+      tenantId,
+      recordId,
+      actorUserId: session.user.id,
+    });
   }
 
   return apiSuccess({ action: body.action, status: newStatus, respondedAt });

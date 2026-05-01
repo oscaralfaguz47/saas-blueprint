@@ -8,6 +8,7 @@ import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { canAccessRequest } from "@/server/security/request-authorization";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { env } from "@/lib/env";
+import { maybeAssignFinanceAfterApprovalReconcile } from "@/server/services/approval-completion-hook";
 import { recomputeApprovalStatus } from "@/server/services/record-approval-status";
 import { sendEmail } from "@/server/services/invitation-email";
 import {
@@ -119,6 +120,8 @@ export const POST = withErrorHandler(async (
   const tokenHash = createHash("sha256").update(plainToken).digest("hex");
   const expiresAt = new Date(Date.now() + expiresInHours * 60 * 60 * 1000);
 
+  let reconcileResult: Awaited<ReturnType<typeof recomputeApprovalStatus>> | undefined;
+
   const participant = await prisma.$transaction(async (tx) => {
     const p = await tx.recordParticipant.create({
       data: {
@@ -164,7 +167,7 @@ export const POST = withErrorHandler(async (
     });
 
     if (participantRole === "APPROVER") {
-      await recomputeApprovalStatus(tx, {
+      reconcileResult = await recomputeApprovalStatus(tx, {
         tenantId,
         recordId,
         triggeredByParticipantId: p.id,
@@ -175,6 +178,14 @@ export const POST = withErrorHandler(async (
 
     return p;
   });
+
+  if (reconcileResult) {
+    await maybeAssignFinanceAfterApprovalReconcile(prisma, reconcileResult, {
+      tenantId,
+      recordId,
+      actorUserId: session.user.id,
+    });
+  }
 
   const appUrl = (env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "");
   const approvalLink = appUrl

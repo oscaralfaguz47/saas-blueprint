@@ -8,6 +8,7 @@ import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { canAccessRequest } from "@/server/security/request-authorization";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { env } from "@/lib/env";
+import { maybeAssignFinanceAfterApprovalReconcile } from "@/server/services/approval-completion-hook";
 import { recomputeApprovalStatus } from "@/server/services/record-approval-status";
 import { sendEmail } from "@/server/services/invitation-email";
 import {
@@ -183,6 +184,10 @@ export const POST = withErrorHandler(async (
   if (existing) {
     // If previously revoked, reactivate it instead of returning alreadyAssigned
     if (existing.revokedAt) {
+      let reconcileResultReactivate: Awaited<
+        ReturnType<typeof recomputeApprovalStatus>
+      > | undefined;
+
       await prisma.$transaction(async (tx) => {
         await tx.recordParticipant.update({
           where: { id: existing.id },
@@ -242,7 +247,7 @@ export const POST = withErrorHandler(async (
         });
 
         if (participantRole === "APPROVER") {
-          await recomputeApprovalStatus(tx, {
+          reconcileResultReactivate = await recomputeApprovalStatus(tx, {
             tenantId,
             recordId,
             triggeredByParticipantId: existing.id,
@@ -252,12 +257,22 @@ export const POST = withErrorHandler(async (
         }
       });
 
+      if (reconcileResultReactivate) {
+        await maybeAssignFinanceAfterApprovalReconcile(prisma, reconcileResultReactivate, {
+          tenantId,
+          recordId,
+          actorUserId: session.user.id,
+        });
+      }
+
       return apiSuccess({ id: existing.id, reactivated: true }, 200);
     }
 
     // Not revoked — genuinely already assigned
     return apiSuccess({ id: existing.id, alreadyAssigned: true }, 200);
   }
+
+  let reconcileResultCreate: Awaited<ReturnType<typeof recomputeApprovalStatus>> | undefined;
 
   const participant = await prisma.$transaction(async (tx) => {
     const p = await tx.recordParticipant.create({
@@ -328,7 +343,7 @@ export const POST = withErrorHandler(async (
     });
 
     if (participantRole === "APPROVER") {
-      await recomputeApprovalStatus(tx, {
+      reconcileResultCreate = await recomputeApprovalStatus(tx, {
         tenantId,
         recordId,
         triggeredByParticipantId: p.id,
@@ -339,6 +354,14 @@ export const POST = withErrorHandler(async (
 
     return p;
   });
+
+  if (reconcileResultCreate) {
+    await maybeAssignFinanceAfterApprovalReconcile(prisma, reconcileResultCreate, {
+      tenantId,
+      recordId,
+      actorUserId: session.user.id,
+    });
+  }
 
   if (participantRole === "APPROVER") {
     const [targetUser, recordForEmail] = await Promise.all([

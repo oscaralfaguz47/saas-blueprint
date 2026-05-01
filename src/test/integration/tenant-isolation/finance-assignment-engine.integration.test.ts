@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import "../_harness/auth-helpers-mocks";
 import {
   applyMigrations,
@@ -382,6 +382,157 @@ describe("tenant isolation — finance assignment engine", () => {
     await prisma.tenantMembership.update({
       where: { id: membershipAId },
       data: { availability: MembershipAvailability.AVAILABLE },
+    });
+  });
+
+  describe("C8 approval-completion hook", () => {
+    it("recompute FULLY_APPROVED then maybeAssignFinanceAfterApprovalReconcile assigns", async () => {
+      const suffix = `${Date.now()}`;
+      const memBOnA = await prisma.tenantMembership.create({
+        data: {
+          tenantId: tenantAId,
+          userId: userBId,
+          status: "ACTIVE",
+          joinedAt: new Date(),
+          isDefaultTenant: false,
+          financeResponsibility: FinanceResponsibility.PROCESS_AND_APPROVE,
+        },
+        select: { id: true },
+      });
+      const memberRole = await prisma.tenantRole.findFirstOrThrow({
+        where: { tenantId: tenantAId, name: "Member" },
+        select: { id: true },
+      });
+      await prisma.tenantUserRole.create({
+        data: { membershipId: memBOnA.id, roleId: memberRole.id },
+      });
+
+      const team = await prisma.financeTeam.create({
+        data: { tenantId: tenantAId, name: `C8 FT ${suffix}`, isActive: true },
+      });
+      await prisma.financeTeamMember.create({
+        data: {
+          tenantId: tenantAId,
+          teamId: team.id,
+          membershipId: membershipAId,
+          weight: 100,
+          isLead: false,
+        },
+      });
+      await prisma.financeAssignmentRule.create({
+        data: {
+          tenantId: tenantAId,
+          teamId: team.id,
+          name: `C8 Rule ${suffix}`,
+          priority: 10,
+          strategy: AssignmentStrategy.ROUND_ROBIN,
+          status: "ACTIVE",
+          conditions: {
+            create: [
+              {
+                tenantId: tenantAId,
+                field: ConditionField.RECORD_TYPE,
+                operator: ConditionOperator.EQUALS,
+                valueString: "OTHER_FINANCIAL_REQUEST",
+              },
+            ],
+          },
+        },
+      });
+
+      const record = await prisma.record.create({
+        data: {
+          tenantId: tenantAId,
+          createdByUserId: userAId,
+          title: `C8 ${suffix}`,
+          type: RecordType.OTHER_FINANCIAL_REQUEST,
+          status: "OPEN",
+          approvalStatus: RecordApprovalStatus.WAITING_FOR_APPROVAL,
+        },
+      });
+
+      const participant = await prisma.recordParticipant.create({
+        data: {
+          tenantId: tenantAId,
+          recordId: record.id,
+          participantType: "INTERNAL",
+          participantRole: "APPROVER",
+          userId: userBId,
+          status: "PENDING",
+        },
+        select: { id: true },
+      });
+
+      let reconcileResult: Awaited<
+        ReturnType<typeof import("@/server/services/record-approval-status").recomputeApprovalStatus>
+      >;
+
+      await prisma.$transaction(async (tx) => {
+        await tx.recordParticipant.update({
+          where: { id: participant.id },
+          data: { status: "APPROVED", respondedAt: new Date() },
+        });
+        const { recomputeApprovalStatus } = await import(
+          "@/server/services/record-approval-status"
+        );
+        reconcileResult = await recomputeApprovalStatus(tx, {
+          tenantId: tenantAId,
+          recordId: record.id,
+          triggeredByParticipantId: participant.id,
+          triggeredByAction: "INTERNAL_APPROVED",
+          actorUserId: userBId,
+        });
+      });
+
+      const { maybeAssignFinanceAfterApprovalReconcile } = await import(
+        "@/server/services/approval-completion-hook"
+      );
+      const hookOut = await maybeAssignFinanceAfterApprovalReconcile(prisma, reconcileResult!, {
+        tenantId: tenantAId,
+        recordId: record.id,
+        actorUserId: userBId,
+      });
+
+      expect(reconcileResult!.newStatus).toBe(RecordApprovalStatus.FULLY_APPROVED);
+      expect(hookOut.engineTriggered).toBe(true);
+      expect(hookOut.engineOutcome).toBe(EvaluationOutcome.ASSIGNED);
+
+      const updated = await prisma.record.findUniqueOrThrow({
+        where: { id: record.id },
+        select: { financeAssignedMembershipId: true, financeStatus: true },
+      });
+      expect(updated.financeAssignedMembershipId).toBe(membershipAId);
+      expect(updated.financeStatus).toBe(FinanceStatus.ASSIGNED);
+    });
+
+    it("maybeAssignFinanceAfterApprovalReconcile does not throw when engine throws", async () => {
+      const engine = await import("@/server/services/finance-assignment-engine/index");
+      const spy = vi
+        .spyOn(engine, "evaluateAndAssign")
+        .mockRejectedValue(new Error("simulated engine failure"));
+
+      const { maybeAssignFinanceAfterApprovalReconcile } = await import(
+        "@/server/services/approval-completion-hook"
+      );
+
+      await expect(
+        maybeAssignFinanceAfterApprovalReconcile(
+          prisma,
+          {
+            previousStatus: RecordApprovalStatus.WAITING_FOR_APPROVAL,
+            newStatus: RecordApprovalStatus.FULLY_APPROVED,
+            changed: true,
+            isTerminalTransition: true,
+          },
+          { tenantId: tenantAId, recordId: "nonexistent-record-id", actorUserId: userAId }
+        )
+      ).resolves.toMatchObject({
+        engineTriggered: false,
+        engineEvaluationId: null,
+        engineOutcome: null,
+      });
+
+      spy.mockRestore();
     });
   });
 });

@@ -70,6 +70,11 @@ export type EvaluateAndAssignResult = {
   matchedRuleId?: string | null;
 };
 
+/** Stable trigger event strings for callers (e.g. A4 approval completion hook). */
+export const TRIGGER_EVENTS = {
+  APPROVAL_FULLY_COMPLETED: "APPROVAL_FULLY_COMPLETED",
+} as const;
+
 function availabilityToExclusion(a: MembershipAvailability): ExclusionReason | null {
   switch (a) {
     case MembershipAvailability.AVAILABLE:
