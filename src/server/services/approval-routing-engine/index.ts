@@ -28,6 +28,7 @@ function truncateForJson<T>(items: T[], cap: number): (T | TruncationMarker)[] {
 
 export const APPROVAL_ROUTING_TRIGGER_EVENTS = {
   RECORD_CREATED: "RECORD_CREATED",
+  ADMIN_MANUAL_REEVALUATION: "ADMIN_MANUAL_REEVALUATION",
 } as const;
 
 export type EvaluateAndAssignInput = {
@@ -59,7 +60,8 @@ type RuleEvalSnapshot = {
 /**
  * 1) Load record (status, title, creator, full row for conditions).
  * 2) If status !== OPEN → return skipped (no evaluation row).
- * 3) If any active APPROVER exists → skipped (no evaluation row).
+ * 3) If any active APPROVER exists → skipped (no evaluation row), except
+ *    `ADMIN_MANUAL_REEVALUATION` (C14 clear-then-reeval; manuals / responded routing may remain).
  * 4) Resolve tenant plan; if approval routing disabled → persist NO_RULE_MATCHED and exit.
  * 5) Load ACTIVE trigger-on-create rules ordered by priority.
  * 6) For each rule: plan gate snapshot; skip if not entitled.
@@ -67,8 +69,11 @@ type RuleEvalSnapshot = {
  * 8) Evaluate AND of conditions via finance `evaluateCondition` (routing conditions are shape-compatible).
  * 9) First matching rule wins; others recorded as evaluated non-matches.
  * 10) Resolve approvers + dedupe; if none → ERROR + NO_APPROVERS_RESOLVED detail in JSON.
- * 11) In one transaction: create participants (global min sequenceOrder → PENDING, else PENDING_BLOCKED),
- *     persist ApprovalRoutingEvaluation, APPROVERS_ASSIGNED event, audit, recomputeApprovalStatus.
+ * 11) In one transaction: materialize participants (global min sequenceOrder → PENDING, else PENDING_BLOCKED),
+ *     then persist ApprovalRoutingEvaluation, APPROVERS_ASSIGNED event, audit, recomputeApprovalStatus.
+ *     For `RECORD_CREATED`: create-only. For `ADMIN_MANUAL_REEVALUATION`: reactivate soft-revoked routing rows,
+ *     attach routing fields to active manual rows, or create — avoids @@unique([recordId, userId, APPROVER])
+ *     violations after C14 clear phase (revoked rows still occupy the unique key).
  * 12) After commit: notify each PENDING assignee only (try/catch per notification).
  * 13) On thrown errors: separate transaction persists outcome ERROR with safe message.
  */
@@ -90,16 +95,18 @@ export async function evaluateAndAssign(
     return { skipped: true, reason: "NOT_OPEN" };
   }
 
-  const existingApprovers = await prisma.recordParticipant.count({
-    where: {
-      tenantId: input.tenantId,
-      recordId: input.recordId,
-      participantRole: "APPROVER",
-      revokedAt: null,
-    },
-  });
-  if (existingApprovers > 0) {
-    return { skipped: true, reason: "EXISTING_APPROVERS" };
+  if (input.triggerEvent !== APPROVAL_ROUTING_TRIGGER_EVENTS.ADMIN_MANUAL_REEVALUATION) {
+    const existingApprovers = await prisma.recordParticipant.count({
+      where: {
+        tenantId: input.tenantId,
+        recordId: input.recordId,
+        participantRole: "APPROVER",
+        revokedAt: null,
+      },
+    });
+    if (existingApprovers > 0) {
+      return { skipped: true, reason: "EXISTING_APPROVERS" };
+    }
   }
 
   const plan = await resolveTenantPlan(input.tenantId);
@@ -272,9 +279,101 @@ export async function evaluateAndAssign(
 
     const notifyAfter: { userId: string }[] = [];
 
+    const isAdminReevaluation =
+      input.triggerEvent === APPROVAL_ROUTING_TRIGGER_EVENTS.ADMIN_MANUAL_REEVALUATION;
+
     const evalRow = await prisma.$transaction(async (tx) => {
       for (const row of kept) {
         const status = row.sequenceOrder === minSeq ? "PENDING" : "PENDING_BLOCKED";
+
+        /**
+         * C14 manual re-evaluation: C14 clears routing-owned rows with soft revoke; those rows
+         * still occupy @@unique([recordId, userId, APPROVER]). Reactivate revoked routing rows,
+         * attach routing metadata to an active manual row, or create — RECORD_CREATED stays create-only.
+         */
+        if (isAdminReevaluation) {
+          const activeRouting = await tx.recordParticipant.findFirst({
+            where: {
+              tenantId: input.tenantId,
+              recordId: input.recordId,
+              userId: row.userId,
+              participantRole: "APPROVER",
+              routingRuleId: { not: null },
+              revokedAt: null,
+            },
+          });
+
+          if (activeRouting) {
+            const preserveTerminal =
+              activeRouting.status === "APPROVED" || activeRouting.status === "REJECTED";
+            await tx.recordParticipant.update({
+              where: { id: activeRouting.id },
+              data: {
+                routingRuleId: matchedRule!.id,
+                routingApproverId: row.routingApproverId,
+                sequenceOrder: row.sequenceOrder,
+                ...(preserveTerminal ? {} : { status }),
+              },
+            });
+            if (!preserveTerminal && status === "PENDING") {
+              notifyAfter.push({ userId: row.userId });
+            }
+            continue;
+          }
+
+          const revokedRouting = await tx.recordParticipant.findFirst({
+            where: {
+              tenantId: input.tenantId,
+              recordId: input.recordId,
+              userId: row.userId,
+              participantRole: "APPROVER",
+              routingRuleId: { not: null },
+              revokedAt: { not: null },
+            },
+            orderBy: { revokedAt: "desc" },
+          });
+
+          if (revokedRouting) {
+            await tx.recordParticipant.update({
+              where: { id: revokedRouting.id },
+              data: {
+                revokedAt: null,
+                routingRuleId: matchedRule!.id,
+                routingApproverId: row.routingApproverId,
+                sequenceOrder: row.sequenceOrder,
+                status,
+              },
+            });
+            if (status === "PENDING") {
+              notifyAfter.push({ userId: row.userId });
+            }
+            continue;
+          }
+
+          const activeManual = await tx.recordParticipant.findFirst({
+            where: {
+              tenantId: input.tenantId,
+              recordId: input.recordId,
+              userId: row.userId,
+              participantRole: "APPROVER",
+              routingRuleId: null,
+              revokedAt: null,
+            },
+          });
+
+          if (activeManual) {
+            await tx.recordParticipant.update({
+              where: { id: activeManual.id },
+              data: {
+                routingRuleId: matchedRule!.id,
+                routingApproverId: row.routingApproverId,
+                sequenceOrder: row.sequenceOrder,
+              },
+            });
+            continue;
+          }
+        }
+
         await tx.recordParticipant.create({
           data: {
             tenantId: input.tenantId,
