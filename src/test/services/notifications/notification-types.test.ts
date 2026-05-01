@@ -24,6 +24,9 @@ describe("TYPE_TO_CATEGORY + getCategoryForType", () => {
     expect(getCategoryForType(PrismaType.RECORD_APPROVAL_FULLY_COMPLETED)).toBe(
       NotificationCategory.WORKFLOW
     );
+    expect(getCategoryForType(PrismaType.RECORD_APPROVAL_REQUESTED)).toBe(
+      NotificationCategory.WORKFLOW
+    );
     expect(getCategoryForType(PrismaType.RECORD_FINANCE_ASSIGNED)).toBe(
       NotificationCategory.FINANCE
     );

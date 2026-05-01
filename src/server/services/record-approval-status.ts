@@ -46,6 +46,19 @@ export function computeApprovalStatusFromParticipants(
   }
 
   const pending = active.filter((p) => p.status === "PENDING");
+  const pendingBlocked = active.filter((p) => p.status === "PENDING_BLOCKED");
+
+  const hasNonExpiredPending = pending.some(
+    (p) => p.expiresAt == null || p.expiresAt.getTime() >= now.getTime()
+  );
+  if (hasNonExpiredPending) {
+    return "WAITING_FOR_APPROVAL";
+  }
+
+  if (pendingBlocked.length > 0) {
+    return "WAITING_FOR_APPROVAL";
+  }
+
   if (pending.length > 0) {
     const allPendingExpired = pending.every(
       (p) => p.expiresAt != null && p.expiresAt.getTime() < now.getTime()
@@ -53,7 +66,6 @@ export function computeApprovalStatusFromParticipants(
     if (allPendingExpired) {
       return "APPROVAL_EXPIRED";
     }
-    return "WAITING_FOR_APPROVAL";
   }
 
   return "NOT_STARTED";

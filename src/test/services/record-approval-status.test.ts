@@ -97,6 +97,25 @@ describe("computeApprovalStatusFromParticipants", () => {
     ).toBe("WAITING_FOR_APPROVAL");
   });
 
+  it("returns WAITING_FOR_APPROVAL when only PENDING_BLOCKED remain (sequential gate)", () => {
+    expect(
+      computeApprovalStatusFromParticipants(
+        [p("APPROVED"), p("PENDING_BLOCKED")],
+        NOW
+      )
+    ).toBe("WAITING_FOR_APPROVAL");
+  });
+
+  it("prefers WAITING_FOR_APPROVAL over APPROVAL_EXPIRED when PENDING expired but PENDING_BLOCKED exists", () => {
+    const past = new Date("2026-01-14T00:00:00.000Z");
+    expect(
+      computeApprovalStatusFromParticipants(
+        [p("PENDING", { expiresAt: past }), p("PENDING_BLOCKED")],
+        NOW
+      )
+    ).toBe("WAITING_FOR_APPROVAL");
+  });
+
   it("ignores revoked rows when computing status", () => {
     expect(
       computeApprovalStatusFromParticipants(

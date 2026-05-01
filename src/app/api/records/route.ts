@@ -16,6 +16,10 @@ import {
   readJsonBody,
   rejectLegacyRecordFinanceKeys,
 } from "@/lib/validations";
+import {
+  APPROVAL_ROUTING_TRIGGER_EVENTS,
+  evaluateAndAssign,
+} from "@/server/services/approval-routing-engine";
 
 const RECORD_TYPES_FOR_FILTER = [
   "SCOPE_CHANGE",
@@ -552,6 +556,23 @@ export const POST = withErrorHandler(async (req: Request) => {
       sourceId: created.id,
       actorUserId: session.user.id,
     });
+  }
+
+  if (initialStatus === "OPEN") {
+    try {
+      await evaluateAndAssign({
+        tenantId,
+        recordId: created.id,
+        triggerEvent: APPROVAL_ROUTING_TRIGGER_EVENTS.RECORD_CREATED,
+        triggeredByUserId: session.user.id,
+      });
+    } catch (routingErr) {
+      console.error("[records] approval routing engine failed after create", {
+        recordId: created.id,
+        tenantId,
+        error: routingErr instanceof Error ? routingErr.message : String(routingErr),
+      });
+    }
   }
 
   return apiSuccess(

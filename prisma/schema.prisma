@@ -131,6 +131,7 @@ enum RecordEventType {
   APPROVAL_APPROVED
   APPROVAL_REJECTED
   APPROVAL_LINK_OPENED
+  APPROVERS_ASSIGNED
   APPROVAL_STATUS_CHANGED
   APPROVAL_FULLY_COMPLETED
   APPROVAL_REJECTED_FINAL
@@ -1734,6 +1735,7 @@ model ApprovalRoutingRule {
   conditions        ApprovalRoutingRuleCondition[]
   requiredApprovers ApprovalRoutingRuleApprover[]
   evaluations       ApprovalRoutingEvaluation[]
+  recordParticipants RecordParticipant[] @relation("RecordParticipantRoutingRule")
 
   @@unique([tenantId, name])
   @@index([tenantId, status, priority, deletedAt])
@@ -1779,6 +1781,8 @@ model ApprovalRoutingRuleApprover {
 
   createdAt DateTime  @default(now()) @db.Timestamptz(6)
   deletedAt DateTime? @db.Timestamptz(6)
+
+  recordParticipants RecordParticipant[] @relation("RecordParticipantRoutingApprover")
 
   @@index([tenantId, ruleId, sequenceOrder, deletedAt])
 }
@@ -2180,7 +2184,15 @@ model RecordParticipant {
   delegatedViaDelegationId String?
   delegatedViaDelegation   ApprovalDelegation? @relation("ParticipantDelegationVia", fields: [delegatedViaDelegationId], references: [id], onDelete: SetNull)
 
+  /// Step order from approval routing (1 for parallel). Null for manually added participants.
+  sequenceOrder Int?
+  routingRuleId String?
+  routingRule   ApprovalRoutingRule? @relation("RecordParticipantRoutingRule", fields: [routingRuleId], references: [id], onDelete: SetNull)
+  routingApproverId String?
+  routingApprover   ApprovalRoutingRuleApprover? @relation("RecordParticipantRoutingApprover", fields: [routingApproverId], references: [id], onDelete: SetNull)
+
   @@unique([recordId, userId, participantRole])
+  @@index([recordId, sequenceOrder])
   @@index([tenantId, recordId, createdAt])
   @@index([tenantId, recordId, participantRole, status, revokedAt])
   @@index([tenantId, userId, participantRole, status])
@@ -2638,6 +2650,7 @@ enum NotificationType {
   SUPPORT_TICKET_USER_REPLIED
   SUPPORT_TICKET_ASSIGNED
   RECORD_APPROVAL_FULLY_COMPLETED
+  RECORD_APPROVAL_REQUESTED
   RECORD_FINANCE_ASSIGNED
   RECORD_PAYMENT_STATUS_CHANGED
 }

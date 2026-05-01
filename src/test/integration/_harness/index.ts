@@ -7,3 +7,4 @@ export {
 export { seedTwoTenants } from "./seed-tenants";
 export type { TwoTenantSeed } from "./seed-tenants";
 export { resetDb } from "./reset-db";
+export { seedScaleSubscription } from "./seed-scale-subscription";
