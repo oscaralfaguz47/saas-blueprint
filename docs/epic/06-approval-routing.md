@@ -317,7 +317,7 @@ Engine invariants:
 
 - Tenant isolation on every query (`tenantId` on record and all lookups).
 - Creator-as-self-approver guard remains enforced at participant creation.
-- Re-evaluation policy: **add-only** for approvers (Section 10); engine must not delete existing participants.
+- Re-evaluation policy: **clear-routing-owned and re-evaluate** (revised v2). Manual approvers preserved. Already-responded routing approvers preserved (audit trail). Only PENDING/PENDING_BLOCKED routing-owned approvers are revoked before engine re-runs.
 
 Dedup key:
 
@@ -450,11 +450,46 @@ HTTP semantics (suggested):
 7. **Condition references CUSTOM_FIELD that doesn't exist on record**: condition fails (`passed=false`), rule doesn't match.
 8. **Sequential chain with rejection mid-way**: subsequent `PENDING_BLOCKED` participants remain blocked; A4 sets terminal rejected state for record.
 9. **Concurrent record edits triggering re-evaluation**: serialized via record-level lock; second evaluation runs after first completes.
-10. **Re-evaluation removes existing approvers**: **NEVER** removes — only adds. Admin must manually revoke participants if needed.
+10. **Re-evaluation removes existing approvers (revised v2)**: Re-evaluation REVOKES routing-owned PENDING/PENDING_BLOCKED approvers, preserves manual approvers (those with `routingRuleId IS NULL`), and preserves already-responded routing approvers (status APPROVED or REJECTED). Engine then re-runs to assign new approvers based on current rules.
 11. **`escalationPolicy=ESCALATE_AFTER_HOURS` with no escalationTarget**: validation rejects at create time.
 12. **Circular creator→approver = creator**: rejected at participant create (existing product rule).
 13. **Plan downgrade with active rules**: rules continue working for in-flight records; creating new rules may be blocked per plan (TBD); v1 baseline: Pro+ as per Section 11.
 14. **Snapshot truncation**: `rulesEvaluated` capped at 100, `approversAssigned` capped at 200 with truncation metadata.
+
+### Re-evaluation policy revision (v2 — supersedes add-only policy)
+
+**Original policy (deprecated):** Add-only — re-evaluation never removes existing approvers, only adds new ones based on rule matching.
+
+**Revised policy (current):** Clear-routing-owned-and-re-evaluate.
+
+**Rationale for revision:**
+
+The original add-only policy was specified before C13a/C13b implementation. During C14 implementation planning, two blocking issues emerged:
+
+1. **Technical blocker:** The `evaluateAndAssign` engine has an `EXISTING_APPROVERS` early-return guard that skips evaluation if ANY active APPROVER exists on the record. Add-only mode would mean re-evaluation always skips → endpoint provides no value.
+
+2. **UX problem (approver accumulation):** Add-only causes approver lists to grow indefinitely as rules change. Real-world scenario: admin changes rule from "CFO + CEO" to "CFO + Board" — record ends up with three approvers (CFO + CEO + Board), creating a broken workflow that requires manual revocation of old approvers.
+
+**Revised policy details:**
+
+When re-evaluation is triggered (admin via `POST /api/records/[recordId]/routing/evaluate`):
+
+- **Routing-owned approvers in PENDING/PENDING_BLOCKED status:** REVOKED (set `revokedAt = now()`)
+- **Routing-owned approvers in APPROVED/REJECTED status:** PRESERVED (audit trail of past decisions)
+- **Manual approvers (`routingRuleId IS NULL`):** PRESERVED (admin's deliberate additions, not engine-managed)
+- **Engine then re-runs** with `triggerEvent: ADMIN_MANUAL_REEVALUATION`
+- **Engine bypasses `EXISTING_APPROVERS` check** when triggered with `ADMIN_MANUAL_REEVALUATION` (the clear phase already handled it)
+- **Engine `EXISTING_APPROVERS` check is also refined globally** to only count `routingRuleId IS NOT NULL` rows (semantic fix — engine should only care about routing-owned state)
+
+**State preservation guarantees:**
+
+- Past approval/rejection decisions never lost
+- Manual approver workflows untouched
+- Audit log records the clear operation separately from the engine re-evaluation
+- Notifications fire for newly assigned approvers (engine post-tx pattern from C13a)
+- A4 reconciler maintains correct `Record.approvalStatus` throughout
+
+**This change supersedes Section 10 line items referencing add-only policy.**
 
 ## Section 11 — Plan Gating
 
@@ -489,7 +524,7 @@ Enforcement:
 Verification checklist:
 
 - Unit tests: condition evaluation parity with assignment rule tests where shared.
-- API tests: plan gates, dedupe, add-only re-evaluate.
+- API tests: plan gates, dedupe, admin re-evaluation (clear-routing-owned, v2 policy).
 - Integration tests: sequential unblock on approve action.
 
 ## Section 13 — Changelog
