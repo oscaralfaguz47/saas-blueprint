@@ -7,6 +7,10 @@ import { prisma } from "@/server/db";
 import { requireFullSession } from "@/server/require-full-session";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { requireFinanceQueueAssignee } from "@/server/security/finance-queue-authorization";
+import {
+  FinanceStatusTransitionError,
+  recomputeFinanceStatus,
+} from "@/server/services/record-finance-status";
 import { ApiErrors, apiError, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { financeQueueRecordIdParamSchema } from "@/lib/validations/finance-queue";
 
@@ -69,23 +73,13 @@ export const POST = withErrorHandler(async (
 
   try {
     await prisma.$transaction(async (tx) => {
-      const updated = await tx.record.updateMany({
-        where: {
-          id: recordId,
-          tenantId,
-          financeAssignedMembershipId: gate.membershipId,
-          financeStatus: { in: [FinanceStatus.ASSIGNED, FinanceStatus.IN_PROGRESS] },
-        },
-        data: { financeStatus: FinanceStatus.COMPLETED },
-      });
-
-      if (updated.count !== 1) {
-        throw new Error(INVALID_STATE_TRANSITION);
-      }
-
-      await tx.tenantMembership.update({
-        where: { id: gate.membershipId, tenantId },
-        data: { financeOpenAssignmentsCount: { decrement: 1 } },
+      await recomputeFinanceStatus(tx, {
+        tenantId,
+        recordId,
+        newStatus: FinanceStatus.COMPLETED,
+        expectFromStatus: [FinanceStatus.ASSIGNED, FinanceStatus.IN_PROGRESS],
+        expectFromAssignee: gate.membershipId,
+        decrementMembershipId: gate.membershipId,
       });
 
       await tx.recordEvent.create({
@@ -111,7 +105,10 @@ export const POST = withErrorHandler(async (
       });
     });
   } catch (err: unknown) {
-    if (err instanceof Error && err.message === INVALID_STATE_TRANSITION) {
+    if (
+      err instanceof FinanceStatusTransitionError &&
+      err.reason === "INVALID_STATE_TRANSITION"
+    ) {
       return apiError("INVALID_STATE_TRANSITION", 409, "Invalid state transition for this record");
     }
     throw err;

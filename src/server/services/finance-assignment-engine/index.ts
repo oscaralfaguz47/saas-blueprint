@@ -459,6 +459,7 @@ export async function evaluateAndAssign(
     }
 
     const evalRow = await prisma.$transaction(async (tx) => {
+      // TODO(F-phase): adopt recomputeFinanceStatus for handler/engine parity
       await tx.record.update({
         where: { id: input.recordId, tenantId: input.tenantId },
         data: {

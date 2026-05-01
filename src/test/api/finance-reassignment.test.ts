@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   $transaction: vi.fn(),
   evaluateAndAssign: vi.fn(),
   createNotification: vi.fn(),
+  txRecordFindFirst: vi.fn(),
   txRecordUpdateMany: vi.fn(),
   txTenantMembershipUpdate: vi.fn(),
   txEvalCreate: vi.fn(),
@@ -85,7 +86,10 @@ function txMock() {
   mocks.$transaction.mockImplementation(
     async (fn: (tx: Record<string, unknown>) => Promise<unknown>) => {
       return fn({
-        record: { updateMany: mocks.txRecordUpdateMany },
+        record: {
+          findFirst: mocks.txRecordFindFirst,
+          updateMany: mocks.txRecordUpdateMany,
+        },
         tenantMembership: { update: mocks.txTenantMembershipUpdate },
         financeAssignmentEvaluation: { create: mocks.txEvalCreate },
         recordEvent: { create: mocks.txRecordEventCreate },
@@ -114,6 +118,10 @@ beforeEach(() => {
     userId: TARGET_USER,
   });
   txMock();
+  mocks.txRecordFindFirst.mockResolvedValue({
+    financeStatus: FinanceStatus.ASSIGNED,
+    financeAssignedMembershipId: OLD_MEM,
+  });
   mocks.txRecordUpdateMany.mockResolvedValue({ count: 1 });
   mocks.txTenantMembershipUpdate.mockResolvedValue({});
   mocks.txEvalCreate.mockResolvedValue({ id: "eval-manual-1" });
@@ -273,6 +281,10 @@ describe("POST /api/finance/assignments/[recordId]/reassign", () => {
       financeAssignedMembershipId: null,
       title: "T",
     });
+    mocks.txRecordFindFirst.mockResolvedValue({
+      financeStatus: FinanceStatus.PENDING_ASSIGNMENT,
+      financeAssignedMembershipId: null,
+    });
     await POST(
       new Request("http://localhost", {
         method: "POST",
@@ -301,7 +313,10 @@ describe("POST /api/finance/assignments/[recordId]/reassign", () => {
     mocks.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
       order.push("tx");
       return fn({
-        record: { updateMany: mocks.txRecordUpdateMany },
+        record: {
+          findFirst: mocks.txRecordFindFirst,
+          updateMany: mocks.txRecordUpdateMany,
+        },
         tenantMembership: { update: mocks.txTenantMembershipUpdate },
         financeAssignmentEvaluation: { create: mocks.txEvalCreate },
         recordEvent: { create: mocks.txRecordEventCreate },

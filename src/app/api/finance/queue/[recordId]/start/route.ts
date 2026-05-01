@@ -1,16 +1,18 @@
 import "server-only";
 
 import { getServerSession } from "next-auth";
-import { RecordEventType } from "@prisma/client";
+import { FinanceStatus, RecordEventType } from "@prisma/client";
 import { authOptions } from "@/server/auth-options";
 import { prisma } from "@/server/db";
 import { requireFullSession } from "@/server/require-full-session";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
+import {
+  FinanceStatusTransitionError,
+  recomputeFinanceStatus,
+} from "@/server/services/record-finance-status";
 import { requireFinanceQueueAssignee } from "@/server/security/finance-queue-authorization";
 import { ApiErrors, apiError, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { financeQueueRecordIdParamSchema } from "@/lib/validations/finance-queue";
-
-const INVALID_STATE_TRANSITION = "INVALID_STATE_TRANSITION";
 
 /**
  * POST /api/finance/queue/[recordId]/start
@@ -47,19 +49,13 @@ export const POST = withErrorHandler(async (
 
   try {
     await prisma.$transaction(async (tx) => {
-      const updated = await tx.record.updateMany({
-        where: {
-          id: recordId,
-          tenantId,
-          financeAssignedMembershipId: gate.membershipId,
-          financeStatus: "ASSIGNED",
-        },
-        data: { financeStatus: "IN_PROGRESS" },
+      await recomputeFinanceStatus(tx, {
+        tenantId,
+        recordId,
+        newStatus: FinanceStatus.IN_PROGRESS,
+        expectFromStatus: FinanceStatus.ASSIGNED,
+        expectFromAssignee: gate.membershipId,
       });
-
-      if (updated.count !== 1) {
-        throw new Error(INVALID_STATE_TRANSITION);
-      }
 
       await tx.recordEvent.create({
         data: {
@@ -84,7 +80,10 @@ export const POST = withErrorHandler(async (
       });
     });
   } catch (err: unknown) {
-    if (err instanceof Error && err.message === INVALID_STATE_TRANSITION) {
+    if (
+      err instanceof FinanceStatusTransitionError &&
+      err.reason === "INVALID_STATE_TRANSITION"
+    ) {
       return apiError("INVALID_STATE_TRANSITION", 409, "Invalid state transition for this record");
     }
     throw err;

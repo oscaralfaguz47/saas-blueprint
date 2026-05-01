@@ -19,6 +19,10 @@ import {
   TRIGGER_EVENTS,
 } from "@/server/services/finance-assignment-engine";
 import { createNotification } from "@/server/services/notifications";
+import {
+  FinanceStatusTransitionError,
+  recomputeFinanceStatus,
+} from "@/server/services/record-finance-status";
 import { ApiErrors, apiError, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { parseBody } from "@/lib/validations";
 import { financeQueueRecordIdParamSchema } from "@/lib/validations/finance-queue";
@@ -125,42 +129,16 @@ export const POST = withErrorHandler(async (
     let evaluationId: string;
     try {
       evaluationId = await prisma.$transaction(async (tx) => {
-        const recordWhere =
-          oldAssigneeId !== null
-            ? {
-                id: recordId,
-                tenantId,
-                financeAssignedMembershipId: oldAssigneeId,
-              }
-            : {
-                id: recordId,
-                tenantId,
-                financeAssignedMembershipId: null,
-              };
-
-        const updated = await tx.record.updateMany({
-          where: recordWhere,
-          data: {
-            financeAssignedMembershipId: targetMembershipId,
-            financeStatus: FinanceStatus.ASSIGNED,
-            financeAssignedAt: new Date(),
-            financeAssignedByRuleId: null,
-          },
-        });
-        if (updated.count !== 1) {
-          throw new Error(INVALID_STATE_TRANSITION);
-        }
-
-        if (oldAssigneeId !== null) {
-          await tx.tenantMembership.update({
-            where: { id: oldAssigneeId, tenantId },
-            data: { financeOpenAssignmentsCount: { decrement: 1 } },
-          });
-        }
-
-        await tx.tenantMembership.update({
-          where: { id: targetMembershipId, tenantId },
-          data: { financeOpenAssignmentsCount: { increment: 1 } },
+        await recomputeFinanceStatus(tx, {
+          tenantId,
+          recordId,
+          newStatus: FinanceStatus.ASSIGNED,
+          newAssigneeId: targetMembershipId,
+          newAssignedAt: new Date(),
+          newAssignedByRuleId: null,
+          expectFromAssignee: oldAssigneeId,
+          incrementMembershipId: targetMembershipId,
+          ...(oldAssigneeId !== null ? { decrementMembershipId: oldAssigneeId } : {}),
         });
 
         const evaluation = await tx.financeAssignmentEvaluation.create({
@@ -215,7 +193,10 @@ export const POST = withErrorHandler(async (
         return evaluation.id;
       });
     } catch (err: unknown) {
-      if (err instanceof Error && err.message === INVALID_STATE_TRANSITION) {
+      if (
+        err instanceof FinanceStatusTransitionError &&
+        err.reason === "INVALID_STATE_TRANSITION"
+      ) {
         return apiError(
           INVALID_STATE_TRANSITION,
           409,
@@ -256,26 +237,15 @@ export const POST = withErrorHandler(async (
   if (oldAssigneeId !== null) {
     try {
       await prisma.$transaction(async (tx) => {
-        const cleared = await tx.record.updateMany({
-          where: {
-            id: recordId,
-            tenantId,
-            financeAssignedMembershipId: oldAssigneeId,
-          },
-          data: {
-            financeAssignedMembershipId: null,
-            financeStatus: FinanceStatus.PENDING_ASSIGNMENT,
-            financeAssignedAt: null,
-            financeAssignedByRuleId: null,
-          },
-        });
-        if (cleared.count !== 1) {
-          throw new Error(INVALID_STATE_TRANSITION);
-        }
-
-        await tx.tenantMembership.update({
-          where: { id: oldAssigneeId, tenantId },
-          data: { financeOpenAssignmentsCount: { decrement: 1 } },
+        await recomputeFinanceStatus(tx, {
+          tenantId,
+          recordId,
+          newStatus: FinanceStatus.PENDING_ASSIGNMENT,
+          newAssigneeId: null,
+          newAssignedAt: null,
+          newAssignedByRuleId: null,
+          expectFromAssignee: oldAssigneeId,
+          decrementMembershipId: oldAssigneeId,
         });
 
         const eventMeta = {
@@ -310,7 +280,10 @@ export const POST = withErrorHandler(async (
         });
       });
     } catch (err: unknown) {
-      if (err instanceof Error && err.message === INVALID_STATE_TRANSITION) {
+      if (
+        err instanceof FinanceStatusTransitionError &&
+        err.reason === "INVALID_STATE_TRANSITION"
+      ) {
         return apiError(
           INVALID_STATE_TRANSITION,
           409,

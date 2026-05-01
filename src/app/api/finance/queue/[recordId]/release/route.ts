@@ -8,6 +8,10 @@ import { requireFullSession } from "@/server/require-full-session";
 import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { requireFinanceQueueAssignee } from "@/server/security/finance-queue-authorization";
 import {
+  FinanceStatusTransitionError,
+  recomputeFinanceStatus,
+} from "@/server/services/record-finance-status";
+import {
   evaluateAndAssign,
   TRIGGER_EVENTS,
 } from "@/server/services/finance-assignment-engine";
@@ -73,28 +77,16 @@ export const POST = withErrorHandler(async (
 
   try {
     await prisma.$transaction(async (tx) => {
-      const updated = await tx.record.updateMany({
-        where: {
-          id: recordId,
-          tenantId,
-          financeAssignedMembershipId: gate.membershipId,
-          financeStatus: { in: [FinanceStatus.ASSIGNED, FinanceStatus.IN_PROGRESS] },
-        },
-        data: {
-          financeStatus: FinanceStatus.PENDING_ASSIGNMENT,
-          financeAssignedMembershipId: null,
-          financeAssignedAt: null,
-          financeAssignedByRuleId: null,
-        },
-      });
-
-      if (updated.count !== 1) {
-        throw new Error(INVALID_STATE_TRANSITION);
-      }
-
-      await tx.tenantMembership.update({
-        where: { id: gate.membershipId, tenantId },
-        data: { financeOpenAssignmentsCount: { decrement: 1 } },
+      await recomputeFinanceStatus(tx, {
+        tenantId,
+        recordId,
+        newStatus: FinanceStatus.PENDING_ASSIGNMENT,
+        newAssigneeId: null,
+        newAssignedAt: null,
+        newAssignedByRuleId: null,
+        expectFromStatus: [FinanceStatus.ASSIGNED, FinanceStatus.IN_PROGRESS],
+        expectFromAssignee: gate.membershipId,
+        decrementMembershipId: gate.membershipId,
       });
 
       await tx.recordEvent.create({
@@ -120,7 +112,10 @@ export const POST = withErrorHandler(async (
       });
     });
   } catch (err: unknown) {
-    if (err instanceof Error && err.message === INVALID_STATE_TRANSITION) {
+    if (
+      err instanceof FinanceStatusTransitionError &&
+      err.reason === "INVALID_STATE_TRANSITION"
+    ) {
       return apiError("INVALID_STATE_TRANSITION", 409, "Invalid state transition for this record");
     }
     throw err;

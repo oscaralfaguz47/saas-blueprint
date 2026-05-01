@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   tenantMembershipFindUnique: vi.fn(),
   recordFindFirst: vi.fn(),
   $transaction: vi.fn(),
+  txRecordFindFirst: vi.fn(),
   txRecordUpdateMany: vi.fn(),
   txTenantMembershipUpdate: vi.fn(),
   txRecordEventCreate: vi.fn(),
@@ -78,7 +79,10 @@ function txMock() {
   mocks.$transaction.mockImplementation(
     async (fn: (tx: Record<string, unknown>) => Promise<unknown>) => {
       return fn({
-        record: { updateMany: mocks.txRecordUpdateMany },
+        record: {
+          findFirst: mocks.txRecordFindFirst,
+          updateMany: mocks.txRecordUpdateMany,
+        },
         tenantMembership: { update: mocks.txTenantMembershipUpdate },
         recordEvent: { create: mocks.txRecordEventCreate },
         auditLog: { create: mocks.txAuditLogCreate },
@@ -95,6 +99,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   setupAuthed();
   txMock();
+  mocks.txRecordFindFirst.mockResolvedValue({
+    financeStatus: FinanceStatus.ASSIGNED,
+    financeAssignedMembershipId: MEMBERSHIP_ID,
+  });
   mocks.txRecordUpdateMany.mockResolvedValue({ count: 1 });
   mocks.txTenantMembershipUpdate.mockResolvedValue({});
   mocks.txRecordEventCreate.mockResolvedValue({});
@@ -178,6 +186,10 @@ describe("POST /api/finance/queue/[recordId]/complete", () => {
       financeAssignedMembershipId: MEMBERSHIP_ID,
       financeStatus: FinanceStatus.IN_PROGRESS,
     });
+    mocks.txRecordFindFirst.mockResolvedValue({
+      financeStatus: FinanceStatus.IN_PROGRESS,
+      financeAssignedMembershipId: MEMBERSHIP_ID,
+    });
     const res = await POST_COMPLETE(new Request("http://localhost"), ctx());
     expect(res.status).toBe(200);
     expect(mocks.txRecordEventCreate).toHaveBeenCalledWith(
@@ -211,7 +223,10 @@ describe("POST /api/finance/queue/[recordId]/release", () => {
     mocks.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
       order.push("tx-start");
       const out = await fn({
-        record: { updateMany: mocks.txRecordUpdateMany },
+        record: {
+          findFirst: mocks.txRecordFindFirst,
+          updateMany: mocks.txRecordUpdateMany,
+        },
         tenantMembership: { update: mocks.txTenantMembershipUpdate },
         recordEvent: { create: mocks.txRecordEventCreate },
         auditLog: { create: mocks.txAuditLogCreate },
