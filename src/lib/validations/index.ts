@@ -87,6 +87,21 @@ export type {
 } from "./finance-assignment-rule";
 
 export {
+  approvalRoutingRuleCreateSchema,
+  approvalRoutingRulePatchSchema,
+  approvalRoutingRuleListQuerySchema,
+  approvalRoutingRuleApproverSchema,
+  evaluateApprovalRoutingPlanGate,
+  assertMergedEscalationConfig,
+} from "./approval-routing-rule";
+export type {
+  ApprovalRoutingRuleCreateInput,
+  ApprovalRoutingRulePatchInput,
+  ApprovalRoutingPlanFeatures,
+  ApprovalRoutingPlanGateResult,
+} from "./approval-routing-rule";
+
+export {
   financeQueueListQuerySchema,
   financeQueueRecordIdParamSchema,
 } from "./finance-queue";

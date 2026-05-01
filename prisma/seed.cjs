@@ -54,6 +54,11 @@ const PERMISSIONS = [
     scope: "TENANT",
     description: "Manage financial configuration (departments and cost centers)",
   },
+  {
+    code: "tenant.approval_routing.manage",
+    scope: "TENANT",
+    description: "Manage approval routing rules (conditions and required approvers)",
+  },
   { code: "tenant.roles.read", scope: "TENANT", description: "View roles and permissions" },
   { code: "tenant.roles.manage", scope: "TENANT", description: "Create/edit roles and assign permissions" },
   { code: "tenant.users.read", scope: "TENANT", description: "View workspace users" },

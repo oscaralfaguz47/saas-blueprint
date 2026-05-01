@@ -62,6 +62,7 @@ vi.mock("@/server/db", () => ({
   },
 }));
 
+import type { PlanFeatures } from "@/server/billing/provider-types";
 import { validateConditionShape } from "@/lib/validations/finance-assignment-rule";
 import { GET as GET_LIST, POST as POST_CREATE } from "@/app/api/tenant/finance-assignment-rules/route";
 import {
@@ -80,14 +81,34 @@ const baseSession = {
   user: { id: ACTOR_ID, sessionToken: "s" },
 };
 
+const approvalRoutingDisabled = {
+  enabled: false,
+  maxRules: 0,
+  allowSequential: false,
+  allowEscalation: false,
+  allowCustomField: false,
+};
+
 const enterprisePlan = {
   planCode: "scale",
-  features: { assignmentEngine: true },
+  features: {
+    assignmentEngine: true,
+    approvalRouting: {
+      enabled: true,
+      maxRules: 100,
+      allowSequential: true,
+      allowEscalation: true,
+      allowCustomField: true,
+    },
+  } as PlanFeatures,
 };
 
 const freePlan = {
   planCode: "free",
-  features: { assignmentEngine: false },
+  features: {
+    assignmentEngine: false,
+    approvalRouting: approvalRoutingDisabled,
+  } as PlanFeatures,
 };
 
 function setupAuthedManager() {

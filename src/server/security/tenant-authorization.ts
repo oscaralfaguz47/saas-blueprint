@@ -10,6 +10,7 @@ export type TenantPermission =
   | "tenant.audit.read"
   | "tenant.billing.manage"
   | "tenant.financial_config.manage"
+  | "tenant.approval_routing.manage"
   | "tenant.settings.manage"
   | "tenant.roles.read"
   | "tenant.roles.manage"

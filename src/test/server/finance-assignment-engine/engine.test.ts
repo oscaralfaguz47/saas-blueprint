@@ -29,7 +29,16 @@ vi.mock("@/server/security/feature-flags", () => ({
   FEATURE_FLAG_CODES: { ASSIGNMENT_ENGINE_ENABLED: "FT_ASSIGNMENT_ENGINE_ENABLED" },
 }));
 
+import type { PlanFeatures } from "@/server/billing/provider-types";
 import { evaluateAndAssign } from "@/server/services/finance-assignment-engine/index";
+
+const approvalRoutingDisabled = {
+  enabled: false,
+  maxRules: 0,
+  allowSequential: false,
+  allowEscalation: false,
+  allowCustomField: false,
+} satisfies PlanFeatures["approvalRouting"];
 
 describe("evaluateAndAssign", () => {
   beforeEach(() => {
@@ -85,7 +94,10 @@ describe("evaluateAndAssign", () => {
       createdByUserId: "u1",
     });
     mockResolveTenantPlan.mockResolvedValue({
-      features: { assignmentEngine: false },
+      features: {
+        assignmentEngine: false,
+        approvalRouting: approvalRoutingDisabled,
+      } as PlanFeatures,
     });
     const out = await evaluateAndAssign({
       tenantId: "t1",
@@ -105,7 +117,10 @@ describe("evaluateAndAssign", () => {
       createdByUserId: "u1",
     });
     mockResolveTenantPlan.mockResolvedValue({
-      features: { assignmentEngine: true },
+      features: {
+        assignmentEngine: true,
+        approvalRouting: approvalRoutingDisabled,
+      } as PlanFeatures,
     });
     mockIsFeatureEnabled.mockResolvedValue(false);
     const out = await evaluateAndAssign({

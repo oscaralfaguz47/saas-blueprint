@@ -29,6 +29,15 @@ export type ZipLimits = {
   enabled: boolean;
 };
 
+/** C12: Approval routing rules — plan-gated capabilities and caps. */
+export type ApprovalRoutingFeatures = {
+  enabled: boolean;
+  maxRules: number;
+  allowSequential: boolean;
+  allowEscalation: boolean;
+  allowCustomField: boolean;
+};
+
 export type PlanFeatures = {
   requests: RequestsLimits;
   pdf: PdfLimits;
@@ -47,4 +56,6 @@ export type PlanFeatures = {
   storageLimitGb: number;
   /** Enterprise: Finance Assignment Engine (rules). D-005. */
   assignmentEngine: boolean;
+  /** C12: tenant-scoped approval routing rules. */
+  approvalRouting: ApprovalRoutingFeatures;
 };

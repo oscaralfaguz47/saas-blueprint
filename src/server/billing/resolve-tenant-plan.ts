@@ -2,6 +2,7 @@ import "server-only";
 
 import { prisma } from "@/server/db";
 import type {
+  ApprovalRoutingFeatures,
   BillingInterval,
   EmailBranding,
   PlanCode,
@@ -55,6 +56,13 @@ const DEFAULT_FREE_FEATURES: PlanFeatures = {
   emailBranding: "powered_by",
   storageLimitGb: 1,
   assignmentEngine: false,
+  approvalRouting: {
+    enabled: false,
+    maxRules: 0,
+    allowSequential: false,
+    allowEscalation: false,
+    allowCustomField: false,
+  },
 };
 
 /** Build PlanFeatures from server plan catalog (EPIC 5 canonical). */
@@ -84,6 +92,7 @@ function featuresFromCatalog(entry: import("./plans/catalog").PlanCatalogEntry):
     emailBranding: entry.emailBranding,
     storageLimitGb: entry.storageLimitGb,
     assignmentEngine: entry.assignmentEngine,
+    approvalRouting: entry.approvalRouting,
   };
 }
 
@@ -126,6 +135,21 @@ function parseFeaturesJson(featuresJson: unknown): PlanFeatures {
     emailBranding: (raw?.emailBranding === "removed" ? "removed" : "powered_by") as EmailBranding,
     storageLimitGb: typeof raw?.storageLimitGb === "number" ? raw.storageLimitGb : 1,
     assignmentEngine: raw.assignmentEngine === true,
+    approvalRouting: parseApprovalRoutingJson(raw.approvalRouting),
+  };
+}
+
+function parseApprovalRoutingJson(rawAr: unknown): ApprovalRoutingFeatures {
+  if (!rawAr || typeof rawAr !== "object" || Array.isArray(rawAr)) {
+    return { ...DEFAULT_FREE_FEATURES.approvalRouting };
+  }
+  const o = rawAr as Record<string, unknown>;
+  return {
+    enabled: o.enabled === true,
+    maxRules: typeof o.maxRules === "number" ? o.maxRules : 0,
+    allowSequential: o.allowSequential === true,
+    allowEscalation: o.allowEscalation === true,
+    allowCustomField: o.allowCustomField === true,
   };
 }
 

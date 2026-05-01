@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { ApprovalRoutingFeatures } from "../provider-types";
+
 export type ServerPlanCode = "free" | "starter" | "pro" | "scale";
 
 export type PlanCatalogEntry = {
@@ -22,6 +24,8 @@ export type PlanCatalogEntry = {
   storageLimitGb: number;
   /** D-005: Finance Assignment Engine (Enterprise / scale). */
   assignmentEngine: boolean;
+  /** C12: approval routing caps and flags. */
+  approvalRouting: ApprovalRoutingFeatures;
 };
 
 export const PLAN_CATALOG: Record<ServerPlanCode, PlanCatalogEntry> = {
@@ -44,6 +48,13 @@ export const PLAN_CATALOG: Record<ServerPlanCode, PlanCatalogEntry> = {
     emailBranding: "powered_by",
     storageLimitGb: 1,
     assignmentEngine: false,
+    approvalRouting: {
+      enabled: false,
+      maxRules: 0,
+      allowSequential: false,
+      allowEscalation: false,
+      allowCustomField: false,
+    },
   },
   starter: {
     code: "starter",
@@ -64,6 +75,13 @@ export const PLAN_CATALOG: Record<ServerPlanCode, PlanCatalogEntry> = {
     emailBranding: "powered_by",
     storageLimitGb: 20,
     assignmentEngine: false,
+    approvalRouting: {
+      enabled: false,
+      maxRules: 0,
+      allowSequential: false,
+      allowEscalation: false,
+      allowCustomField: false,
+    },
   },
   pro: {
     code: "pro",
@@ -84,6 +102,13 @@ export const PLAN_CATALOG: Record<ServerPlanCode, PlanCatalogEntry> = {
     emailBranding: "removed",
     storageLimitGb: 100,
     assignmentEngine: false,
+    approvalRouting: {
+      enabled: true,
+      maxRules: 5,
+      allowSequential: false,
+      allowEscalation: false,
+      allowCustomField: false,
+    },
   },
   scale: {
     code: "scale",
@@ -104,6 +129,13 @@ export const PLAN_CATALOG: Record<ServerPlanCode, PlanCatalogEntry> = {
     emailBranding: "removed",
     storageLimitGb: 500,
     assignmentEngine: true,
+    approvalRouting: {
+      enabled: true,
+      maxRules: 100,
+      allowSequential: true,
+      allowEscalation: true,
+      allowCustomField: true,
+    },
   },
 };
 
