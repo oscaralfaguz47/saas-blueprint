@@ -1,0 +1,8 @@
+-- AlterEnum
+ALTER TYPE "RecordEventType" ADD VALUE 'FINANCE_WORK_STARTED';
+
+-- AlterEnum
+ALTER TYPE "RecordEventType" ADD VALUE 'FINANCE_WORK_COMPLETED';
+
+-- AlterEnum
+ALTER TYPE "RecordEventType" ADD VALUE 'FINANCE_WORK_RELEASED';

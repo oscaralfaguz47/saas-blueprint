@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import "../_harness/auth-helpers-mocks";
+import { mockAppSession, setMockSession } from "../_harness/auth-helpers-mocks";
 import {
   applyMigrations,
   createTestPrismaClient,
@@ -533,6 +534,107 @@ describe("tenant isolation — finance assignment engine", () => {
       });
 
       spy.mockRestore();
+    });
+  });
+
+  describe("C9 finance queue", () => {
+    it("lifecycle: start keeps counter; complete decrements and sets COMPLETED", async () => {
+      const label = `c9-life-${Date.now()}`;
+      const { record } = await createTeamRuleRecord(label);
+      const { evaluateAndAssign } = await import("@/server/services/finance-assignment-engine/index");
+      await evaluateAndAssign({
+        tenantId: tenantAId,
+        recordId: record.id,
+        triggerEvent: "TEST",
+        triggeredByUserId: userAId,
+      });
+
+      const beforeStart = await prisma.tenantMembership.findUniqueOrThrow({
+        where: { id: membershipAId },
+        select: { financeOpenAssignmentsCount: true },
+      });
+      expect(beforeStart.financeOpenAssignmentsCount).toBeGreaterThanOrEqual(1);
+
+      setMockSession(mockAppSession(userAId));
+      const { POST: POST_START } = await import("@/app/api/finance/queue/[recordId]/start/route");
+      let res = await POST_START(new Request("http://localhost"), {
+        params: Promise.resolve({ recordId: record.id }),
+      });
+      expect(res.status).toBe(200);
+
+      const afterStart = await prisma.tenantMembership.findUniqueOrThrow({
+        where: { id: membershipAId },
+        select: { financeOpenAssignmentsCount: true },
+      });
+      expect(afterStart.financeOpenAssignmentsCount).toBe(beforeStart.financeOpenAssignmentsCount);
+
+      const { POST: POST_COMPLETE } = await import("@/app/api/finance/queue/[recordId]/complete/route");
+      res = await POST_COMPLETE(new Request("http://localhost"), {
+        params: Promise.resolve({ recordId: record.id }),
+      });
+      expect(res.status).toBe(200);
+
+      const afterComplete = await prisma.tenantMembership.findUniqueOrThrow({
+        where: { id: membershipAId },
+        select: { financeOpenAssignmentsCount: true },
+      });
+      expect(afterComplete.financeOpenAssignmentsCount).toBe(beforeStart.financeOpenAssignmentsCount - 1);
+
+      const rec = await prisma.record.findUniqueOrThrow({ where: { id: record.id } });
+      expect(rec.financeStatus).toBe(FinanceStatus.COMPLETED);
+    });
+
+    it("release clears assignment, decrements, and records RELEASE_BY_ASSIGNEE evaluation", async () => {
+      const label = `c9-rel-${Date.now()}`;
+      const { record } = await createTeamRuleRecord(label);
+      const { evaluateAndAssign } = await import("@/server/services/finance-assignment-engine/index");
+      await evaluateAndAssign({
+        tenantId: tenantAId,
+        recordId: record.id,
+        triggerEvent: "TEST",
+        triggeredByUserId: userAId,
+      });
+
+      const before = await prisma.tenantMembership.findUniqueOrThrow({
+        where: { id: membershipAId },
+        select: { financeOpenAssignmentsCount: true },
+      });
+
+      setMockSession(mockAppSession(userAId));
+      const { POST: POST_RELEASE } = await import("@/app/api/finance/queue/[recordId]/release/route");
+      const res = await POST_RELEASE(new Request("http://localhost"), {
+        params: Promise.resolve({ recordId: record.id }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.reEvaluationTriggered).toBe(true);
+
+      const releaseEval = await prisma.financeAssignmentEvaluation.findFirst({
+        where: { recordId: record.id, triggeredByEvent: "RELEASE_BY_ASSIGNEE" },
+        orderBy: { triggeredAt: "desc" },
+      });
+      expect(releaseEval).not.toBeNull();
+
+      const rec = await prisma.record.findUniqueOrThrow({ where: { id: record.id } });
+      const after = await prisma.tenantMembership.findUniqueOrThrow({
+        where: { id: membershipAId },
+        select: { financeOpenAssignmentsCount: true },
+      });
+      // Release decrements then engine may re-assign the same member (net counter unchanged).
+      expect(after.financeOpenAssignmentsCount).toBe(before.financeOpenAssignmentsCount);
+      expect(rec.financeStatus).toBe(FinanceStatus.ASSIGNED);
+      expect(rec.financeAssignedMembershipId).toBe(membershipAId);
+    });
+
+    it("cross-tenant: user B gets 404 acting on tenant A record id", async () => {
+      const label = `c9-iso-${Date.now()}`;
+      const { record } = await createTeamRuleRecord(label);
+      setMockSession(mockAppSession(userBId));
+      const { POST: POST_START } = await import("@/app/api/finance/queue/[recordId]/start/route");
+      const res = await POST_START(new Request("http://localhost"), {
+        params: Promise.resolve({ recordId: record.id }),
+      });
+      expect(res.status).toBe(404);
     });
   });
 });

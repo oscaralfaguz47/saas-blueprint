@@ -73,6 +73,7 @@ export type EvaluateAndAssignResult = {
 /** Stable trigger event strings for callers (e.g. A4 approval completion hook). */
 export const TRIGGER_EVENTS = {
   APPROVAL_FULLY_COMPLETED: "APPROVAL_FULLY_COMPLETED",
+  RELEASE_BY_ASSIGNEE: "RELEASE_BY_ASSIGNEE",
 } as const;
 
 function availabilityToExclusion(a: MembershipAvailability): ExclusionReason | null {
