@@ -90,3 +90,6 @@ export {
   financeQueueListQuerySchema,
   financeQueueRecordIdParamSchema,
 } from "./finance-queue";
+
+export { reassignBodySchema } from "./finance-reassignment";
+export type { ReassignBody } from "./finance-reassignment";

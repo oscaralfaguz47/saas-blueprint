@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "RecordEventType" ADD VALUE 'FINANCE_REASSIGNED';

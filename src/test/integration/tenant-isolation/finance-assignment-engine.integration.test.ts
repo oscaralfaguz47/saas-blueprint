@@ -637,4 +637,172 @@ describe("tenant isolation — finance assignment engine", () => {
       expect(res.status).toBe(404);
     });
   });
+
+  describe("C10 finance reassignment", () => {
+    it("Direct mode: swaps assignee, counters, MANUAL_REASSIGN snapshot and FINANCE_REASSIGNED event", async () => {
+      const suffix = `${Date.now()}`;
+      const memberRole = await prisma.tenantRole.findFirstOrThrow({
+        where: { tenantId: tenantAId, name: "Member" },
+        select: { id: true },
+      });
+      let memBOnA = await prisma.tenantMembership.findUnique({
+        where: { tenantId_userId: { tenantId: tenantAId, userId: userBId } },
+        select: { id: true },
+      });
+      if (!memBOnA) {
+        memBOnA = await prisma.tenantMembership.create({
+          data: {
+            tenantId: tenantAId,
+            userId: userBId,
+            status: "ACTIVE",
+            joinedAt: new Date(),
+            isDefaultTenant: false,
+            financeResponsibility: FinanceResponsibility.PROCESS_AND_APPROVE,
+          },
+          select: { id: true },
+        });
+        await prisma.tenantUserRole.create({
+          data: { membershipId: memBOnA.id, roleId: memberRole.id },
+        });
+      } else {
+        await prisma.tenantMembership.update({
+          where: { id: memBOnA.id },
+          data: {
+            financeResponsibility: FinanceResponsibility.PROCESS_AND_APPROVE,
+            status: "ACTIVE",
+          },
+        });
+        const hasMemberRole = await prisma.tenantUserRole.findFirst({
+          where: { membershipId: memBOnA.id, roleId: memberRole.id },
+        });
+        if (!hasMemberRole) {
+          await prisma.tenantUserRole.create({
+            data: { membershipId: memBOnA.id, roleId: memberRole.id },
+          });
+        }
+      }
+
+      const label = `c10-dir-${suffix}`;
+      const { record } = await createTeamRuleRecord(label);
+      const { evaluateAndAssign } = await import("@/server/services/finance-assignment-engine/index");
+      await evaluateAndAssign({
+        tenantId: tenantAId,
+        recordId: record.id,
+        triggerEvent: "TEST",
+        triggeredByUserId: userAId,
+      });
+
+      const countBeforeA = await prisma.tenantMembership.findUniqueOrThrow({
+        where: { id: membershipAId },
+        select: { financeOpenAssignmentsCount: true },
+      });
+      const countBeforeB = await prisma.tenantMembership.findUniqueOrThrow({
+        where: { id: memBOnA.id },
+        select: { financeOpenAssignmentsCount: true },
+      });
+      expect(countBeforeA.financeOpenAssignmentsCount).toBeGreaterThanOrEqual(1);
+
+      setMockSession(mockAppSession(userAId));
+      const { POST: POST_REASSIGN } = await import(
+        "@/app/api/finance/assignments/[recordId]/reassign/route"
+      );
+      const res = await POST_REASSIGN(
+        new Request("http://localhost", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targetMembershipId: memBOnA.id, note: "admin override" }),
+        }),
+        { params: Promise.resolve({ recordId: record.id }) }
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.mode).toBe("DIRECT");
+
+      const rec = await prisma.record.findUniqueOrThrow({ where: { id: record.id } });
+      expect(rec.financeAssignedMembershipId).toBe(memBOnA.id);
+      expect(rec.financeStatus).toBe(FinanceStatus.ASSIGNED);
+      expect(rec.financeAssignedByRuleId).toBeNull();
+
+      const countAfterA = await prisma.tenantMembership.findUniqueOrThrow({
+        where: { id: membershipAId },
+        select: { financeOpenAssignmentsCount: true },
+      });
+      const countAfterB = await prisma.tenantMembership.findUniqueOrThrow({
+        where: { id: memBOnA.id },
+        select: { financeOpenAssignmentsCount: true },
+      });
+      expect(countAfterA.financeOpenAssignmentsCount).toBe(
+        countBeforeA.financeOpenAssignmentsCount - 1
+      );
+      expect(countAfterB.financeOpenAssignmentsCount).toBe(
+        countBeforeB.financeOpenAssignmentsCount + 1
+      );
+
+      const manual = await prisma.financeAssignmentEvaluation.findFirst({
+        where: { recordId: record.id, selectionStrategy: "MANUAL_REASSIGN" },
+        orderBy: { triggeredAt: "desc" },
+      });
+      expect(manual).not.toBeNull();
+      expect(manual!.triggeredByEvent).toBe("ADMIN_MANUAL_REASSIGN");
+
+      const ev = await prisma.recordEvent.findFirst({
+        where: { recordId: record.id, eventType: "FINANCE_REASSIGNED" },
+        orderBy: { occurredAt: "desc" },
+      });
+      expect(ev).not.toBeNull();
+    });
+
+    it("Evaluation mode: clears assignee then engine runs with ADMIN_MANUAL_REEVALUATION", async () => {
+      const label = `c10-eval-${Date.now()}`;
+      const { record } = await createTeamRuleRecord(label);
+      const { evaluateAndAssign } = await import("@/server/services/finance-assignment-engine/index");
+      await evaluateAndAssign({
+        tenantId: tenantAId,
+        recordId: record.id,
+        triggerEvent: "TEST",
+        triggeredByUserId: userAId,
+      });
+
+      setMockSession(mockAppSession(userAId));
+      const { POST: POST_REASSIGN } = await import(
+        "@/app/api/finance/assignments/[recordId]/reassign/route"
+      );
+      const res = await POST_REASSIGN(
+        new Request("http://localhost", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        }),
+        { params: Promise.resolve({ recordId: record.id }) }
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.mode).toBe("EVALUATION");
+      expect(body.data.engineOutcome).not.toBe("ENGINE_ERROR");
+
+      const reEval = await prisma.financeAssignmentEvaluation.findFirst({
+        where: { recordId: record.id, triggeredByEvent: "ADMIN_MANUAL_REEVALUATION" },
+        orderBy: { triggeredAt: "desc" },
+      });
+      expect(reEval).not.toBeNull();
+    });
+
+    it("cross-tenant: reassign returns 404 for tenant B admin on tenant A record", async () => {
+      const label = `c10-iso-${Date.now()}`;
+      const { record } = await createTeamRuleRecord(label);
+      setMockSession(mockAppSession(userBId));
+      const { POST: POST_REASSIGN } = await import(
+        "@/app/api/finance/assignments/[recordId]/reassign/route"
+      );
+      const res = await POST_REASSIGN(
+        new Request("http://localhost", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        }),
+        { params: Promise.resolve({ recordId: record.id }) }
+      );
+      expect(res.status).toBe(404);
+    });
+  });
 });

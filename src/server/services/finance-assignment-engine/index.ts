@@ -74,6 +74,7 @@ export type EvaluateAndAssignResult = {
 export const TRIGGER_EVENTS = {
   APPROVAL_FULLY_COMPLETED: "APPROVAL_FULLY_COMPLETED",
   RELEASE_BY_ASSIGNEE: "RELEASE_BY_ASSIGNEE",
+  ADMIN_MANUAL_REEVALUATION: "ADMIN_MANUAL_REEVALUATION",
 } as const;
 
 function availabilityToExclusion(a: MembershipAvailability): ExclusionReason | null {
