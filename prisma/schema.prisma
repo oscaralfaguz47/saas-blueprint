@@ -150,6 +150,7 @@ enum RecordEventType {
   REMINDER_SENT
   EXPORT_PDF_GENERATED
   EXPORT_BUNDLE_GENERATED
+  FINANCE_ASSIGNED
 }
 
 enum RecordParticipantType {
