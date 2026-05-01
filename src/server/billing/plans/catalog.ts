@@ -20,6 +20,8 @@ export type PlanCatalogEntry = {
   auditRetentionDays: number;
   emailBranding: "powered_by" | "removed";
   storageLimitGb: number;
+  /** D-005: Finance Assignment Engine (Enterprise / scale). */
+  assignmentEngine: boolean;
 };
 
 export const PLAN_CATALOG: Record<ServerPlanCode, PlanCatalogEntry> = {
@@ -41,6 +43,7 @@ export const PLAN_CATALOG: Record<ServerPlanCode, PlanCatalogEntry> = {
     auditRetentionDays: 30,
     emailBranding: "powered_by",
     storageLimitGb: 1,
+    assignmentEngine: false,
   },
   starter: {
     code: "starter",
@@ -60,6 +63,7 @@ export const PLAN_CATALOG: Record<ServerPlanCode, PlanCatalogEntry> = {
     auditRetentionDays: 90,
     emailBranding: "powered_by",
     storageLimitGb: 20,
+    assignmentEngine: false,
   },
   pro: {
     code: "pro",
@@ -79,6 +83,7 @@ export const PLAN_CATALOG: Record<ServerPlanCode, PlanCatalogEntry> = {
     auditRetentionDays: 365,
     emailBranding: "removed",
     storageLimitGb: 100,
+    assignmentEngine: false,
   },
   scale: {
     code: "scale",
@@ -98,6 +103,7 @@ export const PLAN_CATALOG: Record<ServerPlanCode, PlanCatalogEntry> = {
     auditRetentionDays: 1095,
     emailBranding: "removed",
     storageLimitGb: 500,
+    assignmentEngine: true,
   },
 };
 

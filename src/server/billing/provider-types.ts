@@ -45,4 +45,6 @@ export type PlanFeatures = {
   emailBranding: EmailBranding;
   /** Storage limit in GB. */
   storageLimitGb: number;
+  /** Enterprise: Finance Assignment Engine (rules). D-005. */
+  assignmentEngine: boolean;
 };

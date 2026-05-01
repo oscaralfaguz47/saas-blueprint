@@ -54,6 +54,7 @@ const DEFAULT_FREE_FEATURES: PlanFeatures = {
   auditRetentionDays: 30,
   emailBranding: "powered_by",
   storageLimitGb: 1,
+  assignmentEngine: false,
 };
 
 /** Build PlanFeatures from server plan catalog (EPIC 5 canonical). */
@@ -82,6 +83,7 @@ function featuresFromCatalog(entry: import("./plans/catalog").PlanCatalogEntry):
     auditRetentionDays: entry.auditRetentionDays,
     emailBranding: entry.emailBranding,
     storageLimitGb: entry.storageLimitGb,
+    assignmentEngine: entry.assignmentEngine,
   };
 }
 
@@ -123,6 +125,7 @@ function parseFeaturesJson(featuresJson: unknown): PlanFeatures {
     auditRetentionDays: typeof raw?.auditRetentionDays === "number" ? raw.auditRetentionDays : 30,
     emailBranding: (raw?.emailBranding === "removed" ? "removed" : "powered_by") as EmailBranding,
     storageLimitGb: typeof raw?.storageLimitGb === "number" ? raw.storageLimitGb : 1,
+    assignmentEngine: raw.assignmentEngine === true,
   };
 }
 
