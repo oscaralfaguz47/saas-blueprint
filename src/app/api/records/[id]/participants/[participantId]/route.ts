@@ -8,6 +8,7 @@ import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { canAccessRequest } from "@/server/security/request-authorization";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { maybeAssignFinanceAfterApprovalReconcile } from "@/server/services/approval-completion-hook";
+import { maybeUnblockNextApprovalStep } from "@/server/services/approval-unblock-hook";
 import { recomputeApprovalStatus } from "@/server/services/record-approval-status";
 import { z } from "zod";
 
@@ -199,6 +200,13 @@ export const DELETE = withErrorHandler(async (
       tenantId,
       recordId,
       actorUserId: session.user.id,
+    });
+    await maybeUnblockNextApprovalStep(prisma, reconcileResult, {
+      tenantId,
+      recordId,
+      actorUserId: session.user.id,
+      triggeredByParticipantId: participantId,
+      triggeredByAction: "PARTICIPANT_REVOKED",
     });
   }
 

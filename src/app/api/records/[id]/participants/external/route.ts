@@ -9,6 +9,7 @@ import { canAccessRequest } from "@/server/security/request-authorization";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { env } from "@/lib/env";
 import { maybeAssignFinanceAfterApprovalReconcile } from "@/server/services/approval-completion-hook";
+import { maybeUnblockNextApprovalStep } from "@/server/services/approval-unblock-hook";
 import { recomputeApprovalStatus } from "@/server/services/record-approval-status";
 import { sendEmail } from "@/server/services/invitation-email";
 import {
@@ -184,6 +185,13 @@ export const POST = withErrorHandler(async (
       tenantId,
       recordId,
       actorUserId: session.user.id,
+    });
+    await maybeUnblockNextApprovalStep(prisma, reconcileResult, {
+      tenantId,
+      recordId,
+      actorUserId: session.user.id,
+      triggeredByParticipantId: participant.id,
+      triggeredByAction: "PARTICIPANT_CREATED",
     });
   }
 

@@ -4,6 +4,7 @@ import { prisma } from "@/server/db";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { maybeAssignFinanceAfterApprovalReconcile } from "@/server/services/approval-completion-hook";
+import { maybeUnblockNextApprovalStep } from "@/server/services/approval-unblock-hook";
 import { recomputeApprovalStatus } from "@/server/services/record-approval-status";
 import { z } from "zod";
 import { createHash } from "crypto";
@@ -315,6 +316,14 @@ export const POST = withErrorHandler(async (
       tenantId: participant.tenantId,
       recordId: participant.recordId,
       actorUserId: auditActorUserId,
+    });
+    await maybeUnblockNextApprovalStep(prisma, reconcileResult, {
+      tenantId: participant.tenantId,
+      recordId: participant.recordId,
+      actorUserId: auditActorUserId,
+      triggeredByParticipantId: participant.id,
+      triggeredByAction:
+        body.action === "APPROVE" ? "EXTERNAL_APPROVED" : "EXTERNAL_REJECTED",
     });
   }
 

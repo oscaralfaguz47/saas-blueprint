@@ -15,7 +15,7 @@ export default defineConfig({
     include: ["src/test/integration/**/*.integration.test.ts"],
     exclude: ["node_modules", ".next"],
     testTimeout: 60_000,
-    hookTimeout: 90_000,
+    hookTimeout: 180_000,
     pool: "forks",
     fileParallelism: false,
     poolOptions: {

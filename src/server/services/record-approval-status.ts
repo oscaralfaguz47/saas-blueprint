@@ -20,7 +20,8 @@ export type ApprovalRecomputeTrigger =
   | "INTERNAL_APPROVED"
   | "INTERNAL_REJECTED"
   | "EXTERNAL_APPROVED"
-  | "EXTERNAL_REJECTED";
+  | "EXTERNAL_REJECTED"
+  | "SEQUENTIAL_STEP_UNBLOCKED";
 
 /**
  * Pure: applies the locked state matrix to APPROVER rows (revoked rows are ignored).
