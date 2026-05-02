@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/spinner";
 import { Dialog } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { FinanceTeamsSection } from "./finance-teams-section";
 
 type Department = {
   id: string;
@@ -36,26 +37,28 @@ type Props = {
 };
 
 export function FinancialConfigTab({ canManage }: Props) {
-  const [activeSection, setActiveSection] = useState<"departments" | "cost-centers">(
-    "departments"
-  );
+  const [activeSection, setActiveSection] = useState<
+    "departments" | "cost-centers" | "finance-teams"
+  >("departments");
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-base font-semibold text-(--text-primary)">Financial configuration</h2>
         <p className="mt-1 text-sm text-(--text-muted)">
-          Manage departments and cost centers used to classify financial requests.
+          Manage departments, cost centers, and finance teams used to classify and route financial
+          requests.
         </p>
       </div>
 
       <div className="rounded-lg border border-(--border-subtle) bg-(--color-info-soft) px-4 py-3 text-sm text-(--text-secondary)">
         These starter departments and cost centers were created automatically to help you get
-        started. Review and customize them to match your financial structure.
+        started. Review and customize them to match your financial structure. Finance teams are
+        managed under the Finance teams tab.
       </div>
 
-      <div className="flex gap-0.5 border-b border-(--border-subtle)">
-        {(["departments", "cost-centers"] as const).map((section) => (
+      <div className="flex flex-wrap gap-0.5 border-b border-(--border-subtle)">
+        {(["departments", "cost-centers", "finance-teams"] as const).map((section) => (
           <button
             key={section}
             type="button"
@@ -67,13 +70,18 @@ export function FinancialConfigTab({ canManage }: Props) {
                 : "text-(--text-muted) hover:text-(--text-secondary)",
             ].join(" ")}
           >
-            {section === "departments" ? "Departments" : "Cost Centers"}
+            {section === "departments"
+              ? "Departments"
+              : section === "cost-centers"
+                ? "Cost centers"
+                : "Finance teams"}
           </button>
         ))}
       </div>
 
       {activeSection === "departments" && <DepartmentsSection canManage={canManage} />}
       {activeSection === "cost-centers" && <CostCentersSection canManage={canManage} />}
+      {activeSection === "finance-teams" && <FinanceTeamsSection canManage={canManage} />}
     </div>
   );
 }

@@ -14,11 +14,15 @@ export const financeTeamCreateSchema = z.object(financeTeamFields);
 export const financeTeamPatchSchema = z
   .object({
     name: financeTeamFields.name.optional(),
-    description: financeTeamFields.description,
-    departmentId: financeTeamFields.departmentId,
+    description: z
+      .union([z.string().trim().max(500), z.null()])
+      .optional(),
+    departmentId: z.union([z.string().cuid(), z.null()]).optional(),
     isActive: z.boolean().optional(),
-    timeZone: financeTeamFields.timeZone,
-    maxConcurrentAssignments: financeTeamFields.maxConcurrentAssignments,
+    timeZone: z.union([z.string().trim().max(64), z.null()]).optional(),
+    maxConcurrentAssignments: z
+      .union([z.number().int().positive().max(10000), z.null()])
+      .optional(),
   })
   .refine(
     (d) =>

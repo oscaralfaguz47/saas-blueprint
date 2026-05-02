@@ -163,7 +163,7 @@ export const PATCH = withErrorHandler(async (
   });
   if (!existing) return ApiErrors.NOT_FOUND("Finance team");
 
-  if (body.departmentId !== undefined) {
+  if (body.departmentId !== undefined && body.departmentId !== null) {
     const dept = await prisma.tenantDepartment.findFirst({
       where: { id: body.departmentId, tenantId: tenant.id },
       select: { id: true },
