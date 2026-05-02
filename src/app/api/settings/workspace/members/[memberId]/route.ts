@@ -9,12 +9,15 @@ import { isStepUpEligible } from "@/server/services/step-up";
 import { prisma } from "@/server/db";
 import { requireFullSession } from "@/server/require-full-session";
 import {
-  checkMemberAccessInvariants,
   MemberInvariantError,
   type MemberAccessInvariantError,
 } from "@/server/services/member-access";
-import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
-import { parseBody, updateMember4AxisSchema } from "@/lib/validations";
+import {
+  MemberAccessUpdateError,
+  updateMemberAccessInTransaction,
+} from "@/server/services/member-access-update-service";
+import { ApiErrors, apiError, apiSuccess, withErrorHandler } from "@/lib/api-response";
+import { parseBody, updateMemberAccessSchema } from "@/lib/validations";
 import { z } from "zod";
 
 const paramsSchema = z.object({ memberId: z.string().cuid() });
@@ -23,7 +26,7 @@ const paramsSchema = z.object({ memberId: z.string().cuid() });
  * PATCH /api/settings/workspace/members/[memberId]
  *
  * `memberId` is `TenantMembership.id` (cuid), not `User.id`.
- * Updates 4-axis fields only (workspaceRole, financialAccess, financeResponsibility, billingAccess).
+ * Updates 4-axis fields and/or legacy TenantUserRole in one atomic transaction (D-1a).
  * Primary Owner rows cannot be changed here — use `POST /api/tenant/primary-owner/transfer`.
  */
 export const PATCH = withErrorHandler(async (
@@ -45,19 +48,6 @@ export const PATCH = withErrorHandler(async (
   const tenant = membership?.tenant;
   if (!tenant) return ApiErrors.NO_TENANT();
 
-  const allowed = await hasTenantPermission({
-    userId: session.user.id,
-    tenantId: tenant.id,
-    permission: "tenant.users.manage",
-  });
-  if (!allowed) return ApiErrors.FORBIDDEN();
-
-  const stepUpOk = await isStepUpEligible(
-    session.user.sessionToken ?? undefined,
-    session.user.id
-  );
-  if (!stepUpOk) return ApiErrors.STEP_UP_REQUIRED();
-
   let memberId: string;
   try {
     memberId = paramsSchema.parse(await context.params).memberId;
@@ -65,81 +55,43 @@ export const PATCH = withErrorHandler(async (
     return ApiErrors.VALIDATION_ERROR("Invalid or missing membership id");
   }
 
-  let body: z.infer<typeof updateMember4AxisSchema>;
+  let body: z.infer<typeof updateMemberAccessSchema>;
   try {
-    body = await parseBody(req, updateMember4AxisSchema);
+    body = await parseBody(req, updateMemberAccessSchema);
   } catch {
     return ApiErrors.VALIDATION_ERROR("Invalid request body");
   }
 
-  const target = await prisma.tenantMembership.findFirst({
-    where: { id: memberId, tenantId: tenant.id },
-    select: {
-      id: true,
-      userId: true,
-      status: true,
-      workspaceRole: true,
-      financialAccess: true,
-      financeResponsibility: true,
-      billingAccess: true,
-      roles: { select: { role: { select: { name: true } } } },
-    },
-  });
-
-  if (!target || target.status !== "ACTIVE") {
-    return ApiErrors.NOT_FOUND("Member");
-  }
-
-  if (target.userId === session.user.id) {
-    return ApiErrors.FORBIDDEN();
-  }
-
-  const isPrimaryOwner = target.roles.some((r) => r.role.name === "Primary Owner");
-  const patchTouchesAxis =
+  const has4AxisField =
     body.workspaceRole !== undefined ||
     body.financialAccess !== undefined ||
     body.financeResponsibility !== undefined ||
     body.billingAccess !== undefined;
+  const hasRoleField = body.role !== undefined;
 
-  if (isPrimaryOwner && patchTouchesAxis) {
-    return ApiErrors.VALIDATION_ERROR(
-      "Primary Owner access must be changed via the primary owner transfer flow.",
-      { code: "PRIMARY_OWNER_AXIS_LOCKED" }
-    );
+  if (has4AxisField) {
+    const ok = await hasTenantPermission({
+      userId: session.user.id,
+      tenantId: tenant.id,
+      permission: "tenant.users.manage",
+    });
+    if (!ok) return ApiErrors.FORBIDDEN();
   }
 
-  const before = {
-    workspaceRole: target.workspaceRole,
-    financialAccess: target.financialAccess,
-    financeResponsibility: target.financeResponsibility,
-    billingAccess: target.billingAccess,
-  };
-
-  const fieldsChanged: string[] = [];
-  if (body.workspaceRole !== undefined) fieldsChanged.push("workspaceRole");
-  if (body.financialAccess !== undefined) fieldsChanged.push("financialAccess");
-  if (body.financeResponsibility !== undefined) {
-    fieldsChanged.push("financeResponsibility");
+  if (hasRoleField) {
+    const ok = await hasTenantPermission({
+      userId: session.user.id,
+      tenantId: tenant.id,
+      permission: "tenant.roles.manage",
+    });
+    if (!ok) return ApiErrors.FORBIDDEN();
   }
-  if (body.billingAccess !== undefined) fieldsChanged.push("billingAccess");
 
-  const updateData: Prisma.TenantMembershipUpdateInput = {};
-  if (body.workspaceRole !== undefined) updateData.workspaceRole = body.workspaceRole;
-  if (body.financialAccess !== undefined) {
-    updateData.financialAccess = body.financialAccess;
-  }
-  if (body.financeResponsibility !== undefined) {
-    updateData.financeResponsibility = body.financeResponsibility;
-  }
-  if (body.billingAccess !== undefined) updateData.billingAccess = body.billingAccess;
-
-  const after = {
-    workspaceRole: body.workspaceRole ?? target.workspaceRole,
-    financialAccess: body.financialAccess ?? target.financialAccess,
-    financeResponsibility:
-      body.financeResponsibility ?? target.financeResponsibility,
-    billingAccess: body.billingAccess ?? target.billingAccess,
-  };
+  const stepUpOk = await isStepUpEligible(
+    session.user.sessionToken ?? undefined,
+    session.user.id
+  );
+  if (!stepUpOk) return ApiErrors.STEP_UP_REQUIRED();
 
   const ipAddress = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
   const userAgent = req.headers.get("user-agent") ?? null;
@@ -158,69 +110,60 @@ export const PATCH = withErrorHandler(async (
     });
   }
 
+  function mapServiceError(err: MemberAccessUpdateError) {
+    if (err.httpStatus === 403 && err.details?.code === "MEMBER_ACCESS_HIERARCHY") {
+      return apiError("FORBIDDEN", 403, err.message, {
+        code: "MEMBER_ACCESS_HIERARCHY",
+      });
+    }
+    if (err.httpStatus === 404) {
+      return ApiErrors.NOT_FOUND(err.message);
+    }
+    if (err.httpStatus === 403) {
+      return ApiErrors.FORBIDDEN();
+    }
+    if (err.httpStatus === 400) {
+      return ApiErrors.VALIDATION_ERROR(err.message, err.details);
+    }
+    return ApiErrors.FORBIDDEN();
+  }
+
   try {
-    await prisma.$transaction(
-      async (tx) => {
-        const invariant = await checkMemberAccessInvariants({
+    const result = await prisma.$transaction(
+      async (tx) =>
+        updateMemberAccessInTransaction({
           tx,
           tenantId: tenant.id,
           membershipId: memberId,
+          actorUserId: session.user.id,
           patch: body,
-        });
-        if (invariant !== null) {
-          throw new MemberInvariantError(invariant);
-        }
-
-        await tx.tenantMembership.update({
-          where: { id: memberId },
-          data: updateData,
-        });
-
-        await tx.auditLog.create({
-          data: {
-            actorUserId: session.user.id,
-            actorContext: "TENANT",
-            tenantId: tenant.id,
-            action: "tenant.member.access_updated",
-            targetType: "TenantMembership",
-            targetId: memberId,
-            targetUserId: target.userId,
-            metadata: {
-              membershipId: memberId,
-              before,
-              after: {
-                workspaceRole: after.workspaceRole,
-                financialAccess: after.financialAccess,
-                financeResponsibility: after.financeResponsibility,
-                billingAccess: after.billingAccess,
-              },
-              fieldsChanged,
-            },
-            ipAddress,
-            userAgent,
-          },
-        });
-      },
+          ipAddress,
+          userAgent,
+        }),
       {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
       }
     );
+
+    return apiSuccess({
+      membershipId: result.membershipId,
+      userId: result.userId,
+      workspaceRole: result.after.workspaceRole,
+      financialAccess: result.after.financialAccess,
+      financeResponsibility: result.after.financeResponsibility,
+      billingAccess: result.after.billingAccess,
+      role: result.after.role,
+    });
   } catch (err) {
     if (err instanceof MemberInvariantError) {
       return mapInvariant(err.code);
+    }
+    if (err instanceof MemberAccessUpdateError) {
+      return mapServiceError(err);
     }
     if (err instanceof Error && err.message === "MEMBERSHIP_STALE") {
       return ApiErrors.NOT_FOUND("Member");
     }
     throw err;
   }
-
-  return apiSuccess({
-    membershipId: memberId,
-    userId: target.userId,
-    workspaceRole: after.workspaceRole,
-    financialAccess: after.financialAccess,
-    financeResponsibility: after.financeResponsibility,
-    billingAccess: after.billingAccess,
-  });
 });
