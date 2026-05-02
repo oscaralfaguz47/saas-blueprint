@@ -10,6 +10,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Dialog } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { FinanceTeamsSection } from "./finance-teams-section";
+import { AssignmentRulesSection } from "./assignment-rules-section";
 
 type Department = {
   id: string;
@@ -38,7 +39,7 @@ type Props = {
 
 export function FinancialConfigTab({ canManage }: Props) {
   const [activeSection, setActiveSection] = useState<
-    "departments" | "cost-centers" | "finance-teams"
+    "departments" | "cost-centers" | "finance-teams" | "assignment-rules"
   >("departments");
 
   return (
@@ -46,42 +47,47 @@ export function FinancialConfigTab({ canManage }: Props) {
       <div>
         <h2 className="text-base font-semibold text-(--text-primary)">Financial configuration</h2>
         <p className="mt-1 text-sm text-(--text-muted)">
-          Manage departments, cost centers, and finance teams used to classify and route financial
-          requests.
+          Manage departments, cost centers, finance teams, and assignment rules used to classify
+          and route financial requests.
         </p>
       </div>
 
       <div className="rounded-lg border border-(--border-subtle) bg-(--color-info-soft) px-4 py-3 text-sm text-(--text-secondary)">
         These starter departments and cost centers were created automatically to help you get
-        started. Review and customize them to match your financial structure. Finance teams are
-        managed under the Finance teams tab.
+        started. Review and customize them to match your financial structure. Finance teams and
+        assignment rules have dedicated tabs below.
       </div>
 
       <div className="flex flex-wrap gap-0.5 border-b border-(--border-subtle)">
-        {(["departments", "cost-centers", "finance-teams"] as const).map((section) => (
-          <button
-            key={section}
-            type="button"
-            onClick={() => setActiveSection(section)}
-            className={[
-              "px-4 py-2.5 text-sm font-medium transition-colors",
-              activeSection === section
-                ? "border-b-2 border-(--color-primary) text-(--color-primary)"
-                : "text-(--text-muted) hover:text-(--text-secondary)",
-            ].join(" ")}
-          >
-            {section === "departments"
-              ? "Departments"
-              : section === "cost-centers"
-                ? "Cost centers"
-                : "Finance teams"}
-          </button>
-        ))}
+        {(["departments", "cost-centers", "finance-teams", "assignment-rules"] as const).map(
+          (section) => (
+            <button
+              key={section}
+              type="button"
+              onClick={() => setActiveSection(section)}
+              className={[
+                "px-4 py-2.5 text-sm font-medium transition-colors",
+                activeSection === section
+                  ? "border-b-2 border-(--color-primary) text-(--color-primary)"
+                  : "text-(--text-muted) hover:text-(--text-secondary)",
+              ].join(" ")}
+            >
+              {section === "departments"
+                ? "Departments"
+                : section === "cost-centers"
+                  ? "Cost centers"
+                  : section === "finance-teams"
+                    ? "Finance teams"
+                    : "Assignment rules"}
+            </button>
+          ),
+        )}
       </div>
 
       {activeSection === "departments" && <DepartmentsSection canManage={canManage} />}
       {activeSection === "cost-centers" && <CostCentersSection canManage={canManage} />}
       {activeSection === "finance-teams" && <FinanceTeamsSection canManage={canManage} />}
+      {activeSection === "assignment-rules" && <AssignmentRulesSection canManage={canManage} />}
     </div>
   );
 }
