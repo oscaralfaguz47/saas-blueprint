@@ -8,13 +8,18 @@ import { WorkspaceMembersTab } from "./workspace-members-tab";
 import { WorkspaceInvitesTab } from "./workspace-invites-tab";
 import { WorkspaceBillingTab } from "./workspace-billing-tab";
 import { FinancialConfigTab } from "./financial-config-tab";
+import {
+  ApprovalRoutingRulesSection,
+  type ApprovalRoutingPlanSnapshot,
+} from "./approval-routing-rules-section";
 
 export type WorkspaceSettingsTab =
   | "general"
   | "members"
   | "invites"
   | "billing"
-  | "financial-config";
+  | "financial-config"
+  | "approval-routing";
 
 type Tenant = {
   id: string;
@@ -33,6 +38,7 @@ type Props = {
   permissions: string[];
   currentUserId: string;
   currentUserRole: string;
+  planApprovalRouting: ApprovalRoutingPlanSnapshot;
 };
 
 const ALL_TABS: { id: WorkspaceSettingsTab; label: string; permission: string }[] = [
@@ -45,6 +51,11 @@ const ALL_TABS: { id: WorkspaceSettingsTab; label: string; permission: string }[
     label: "Financial config",
     permission: "tenant.financial_config.manage",
   },
+  {
+    id: "approval-routing",
+    label: "Approval routing",
+    permission: "tenant.approval_routing.manage",
+  },
 ];
 
 export function WorkspaceSettingsTabs({
@@ -52,6 +63,7 @@ export function WorkspaceSettingsTabs({
   permissions,
   currentUserId,
   currentUserRole,
+  planApprovalRouting,
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -124,6 +136,14 @@ export function WorkspaceSettingsTabs({
               canManage={permSet.has("tenant.financial_config.manage")}
             />
           )}
+        </TabsContent>
+        <TabsContent value="approval-routing">
+          {permSet.has("tenant.approval_routing.manage") ? (
+            <ApprovalRoutingRulesSection
+              canManage={permSet.has("tenant.approval_routing.manage")}
+              planApprovalRouting={planApprovalRouting}
+            />
+          ) : null}
         </TabsContent>
       </Tabs>
     </div>

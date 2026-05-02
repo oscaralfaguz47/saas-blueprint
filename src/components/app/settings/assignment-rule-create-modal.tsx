@@ -16,18 +16,25 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { useToast } from "@/components/ui/toast";
 import { validateConditionShape } from "@/lib/validations/finance-assignment-rule";
-import { STRATEGY_LABELS, STATUS_LABELS } from "@/lib/assignment-rule-labels";
+import {
+  STRATEGY_LABELS,
+  STATUS_LABELS,
+  FIELD_LABELS,
+  OPERATOR_LABELS,
+  VISIBLE_CONDITION_FIELDS,
+  operatorsForField,
+  defaultOperatorForField,
+  RECORD_TYPE_LABELS,
+  recordTypeSelectOptions,
+} from "@/lib/assignment-rule-labels";
 import {
   fetchActiveWorkspaceMembers,
   fetchFinanceTeamsDirectory,
   membersToUserAndMembershipOptions,
 } from "@/lib/workspace-directory-fetch";
-import {
-  AssignmentRuleConditionRow,
-  type ConditionDraft,
-} from "./assignment-rule-condition-row";
+import { RuleConditionRow, type ConditionRowDraft } from "./rule-condition-row";
 
-function newRow(): ConditionDraft {
+function newRow(): ConditionRowDraft {
   return {
     clientId: crypto.randomUUID(),
     field: "RECORD_TYPE",
@@ -61,7 +68,7 @@ function shapeErrorMessage(code: string): string {
 }
 
 /** Build API-shaped condition from draft; returns null if incomplete. */
-export function draftToConditionPayload(d: ConditionDraft): {
+export function draftToConditionPayload(d: ConditionRowDraft): {
   field: ConditionField;
   operator: ConditionOperator;
   valueString?: string;
@@ -139,7 +146,7 @@ export function AssignmentRuleCreateModal({ open, onClose, onSuccess, onPlanBloc
   const [strategy, setStrategy] = useState<AssignmentStrategy>(AssignmentStrategy.ROUND_ROBIN);
   const [specificMembershipId, setSpecificMembershipId] = useState("");
   const [status, setStatus] = useState<AssignmentRuleStatus>(AssignmentRuleStatus.ACTIVE);
-  const [conditions, setConditions] = useState<ConditionDraft[]>([]);
+  const [conditions, setConditions] = useState<ConditionRowDraft[]>([]);
   const [teamOptions, setTeamOptions] = useState<{ value: string; label: string }[]>([]);
   const [deptOptions, setDeptOptions] = useState<{ value: string; label: string }[]>([]);
   const [ccOptions, setCcOptions] = useState<{ value: string; label: string }[]>([]);
@@ -204,7 +211,7 @@ export function AssignmentRuleCreateModal({ open, onClose, onSuccess, onPlanBloc
     void loadReferenceData();
   }, [open, loadReferenceData]);
 
-  const updateCondition = (clientId: string, next: ConditionDraft) => {
+  const updateCondition = (clientId: string, next: ConditionRowDraft) => {
     setConditions((prev) => prev.map((c) => (c.clientId === clientId ? next : c)));
   };
 
@@ -444,7 +451,7 @@ export function AssignmentRuleCreateModal({ open, onClose, onSuccess, onPlanBloc
               <p className="mt-1 text-xs text-(--text-muted)">Up to 20 conditions. All must match.</p>
               <div className="mt-2 space-y-2">
                 {conditions.map((c) => (
-                  <AssignmentRuleConditionRow
+                  <RuleConditionRow
                     key={c.clientId}
                     row={c}
                     onChange={(next) => updateCondition(c.clientId, next)}
@@ -452,6 +459,13 @@ export function AssignmentRuleCreateModal({ open, onClose, onSuccess, onPlanBloc
                     departmentOptions={deptOptions}
                     costCenterOptions={ccOptions}
                     memberOptions={memberUserOptions}
+                    visibleFields={VISIBLE_CONDITION_FIELDS}
+                    fieldLabels={FIELD_LABELS}
+                    operatorLabels={OPERATOR_LABELS}
+                    operatorsForField={operatorsForField}
+                    defaultOperatorForField={defaultOperatorForField}
+                    recordTypeSelectOptions={recordTypeSelectOptions()}
+                    recordTypeLabels={RECORD_TYPE_LABELS}
                     disabled={submitting}
                   />
                 ))}

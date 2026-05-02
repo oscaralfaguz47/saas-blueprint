@@ -1,20 +1,11 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { ConditionField, ConditionOperator, RecordType } from "@prisma/client";
+import type { ConditionField, ConditionOperator } from "@prisma/client";
 import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import {
-  defaultOperatorForField,
-  FIELD_LABELS,
-  operatorsForField,
-  OPERATOR_LABELS,
-  RECORD_TYPE_LABELS,
-  recordTypeSelectOptions,
-  VISIBLE_CONDITION_FIELDS,
-} from "@/lib/assignment-rule-labels";
 
-export type ConditionDraft = {
+export type ConditionRowDraft = {
   clientId: string;
   field: ConditionField;
   operator: ConditionOperator;
@@ -25,18 +16,27 @@ export type ConditionDraft = {
   currencyListComma?: string;
 };
 
-type Props = {
-  row: ConditionDraft;
-  onChange: (next: ConditionDraft) => void;
+export type RuleConditionRowProps = {
+  row: ConditionRowDraft;
+  onChange: (next: ConditionRowDraft) => void;
   onRemove: () => void;
   departmentOptions: { value: string; label: string }[];
   costCenterOptions: { value: string; label: string }[];
+  /** Options for CREATED_BY_USER_ID (user id values, matching Record.createdByUserId). */
   memberOptions: { value: string; label: string }[];
+  visibleFields: readonly ConditionField[];
+  fieldLabels: Record<ConditionField, string>;
+  operatorLabels: Record<ConditionOperator, string>;
+  operatorsForField: (field: ConditionField) => ConditionOperator[];
+  defaultOperatorForField: (field: ConditionField) => ConditionOperator;
+  recordTypeSelectOptions: { value: string; label: string }[];
+  /** Labels for record type chips (IN/NOT_IN). */
+  recordTypeLabels: Record<string, string>;
   disabled?: boolean;
 };
 
-function resetValues(partial: Partial<ConditionDraft> = {}): Pick<
-  ConditionDraft,
+function resetValues(partial: Partial<ConditionRowDraft> = {}): Pick<
+  ConditionRowDraft,
   "valueString" | "valueNumber" | "valueJson" | "amountListComma" | "currencyListComma"
 > {
   return {
@@ -110,24 +110,31 @@ function IdInNotInPicker({
   );
 }
 
-export function AssignmentRuleConditionRow({
+export function RuleConditionRow({
   row,
   onChange,
   onRemove,
   departmentOptions,
   costCenterOptions,
   memberOptions,
+  visibleFields,
+  fieldLabels,
+  operatorLabels,
+  operatorsForField,
+  defaultOperatorForField,
+  recordTypeSelectOptions,
+  recordTypeLabels,
   disabled,
-}: Props) {
-  const fieldOptions = VISIBLE_CONDITION_FIELDS.map((f) => ({
+}: RuleConditionRowProps) {
+  const fieldOptions = visibleFields.map((f) => ({
     value: f,
-    label: FIELD_LABELS[f],
+    label: fieldLabels[f],
   }));
   const opOptions = operatorsForField(row.field).map((o) => ({
     value: o,
-    label: OPERATOR_LABELS[o],
+    label: operatorLabels[o],
   }));
-  const recordOpts = recordTypeSelectOptions();
+  const recordOpts = recordTypeSelectOptions;
   const idArray = Array.isArray(row.valueJson)
     ? (row.valueJson as string[]).filter((x) => typeof x === "string")
     : [];
@@ -196,7 +203,7 @@ export function AssignmentRuleConditionRow({
                 key={`${id}-${idx}`}
                 className="inline-flex items-center gap-1 rounded-full bg-(--bg-surface-elev) px-2 py-0.5 text-xs"
               >
-                {RECORD_TYPE_LABELS[id as RecordType] ?? id}
+                {recordTypeLabels[id] ?? id}
                 <button
                   type="button"
                   disabled={disabled}

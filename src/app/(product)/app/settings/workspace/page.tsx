@@ -6,6 +6,7 @@ import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { getTenantPermissions } from "@/server/security/tenant-authorization";
 import { getHighestRoleName } from "@/server/security/authority";
 import { prisma } from "@/server/db";
+import { resolveTenantPlan } from "@/server/billing/resolve-tenant-plan";
 import { Container } from "@/components/ui/container";
 import Link from "next/link";
 import { WorkspaceSettingsTabs } from "@/components/app/settings/workspace-settings-tabs";
@@ -67,7 +68,7 @@ export default async function WorkspaceSettingsPage() {
     );
   }
 
-  const [permissions, currentUserMembership] = await Promise.all([
+  const [permissions, currentUserMembership, plan] = await Promise.all([
     getTenantPermissions({
       userId: session.user.id,
       tenantId: tenant.id,
@@ -76,6 +77,7 @@ export default async function WorkspaceSettingsPage() {
       where: { tenantId_userId: { tenantId: tenant.id, userId: session.user.id } },
       select: { roles: { select: { role: { select: { name: true } } } } },
     }),
+    resolveTenantPlan(tenant.id),
   ]);
   const canAccessAnyTab = WORKSPACE_SETTINGS_PERMISSIONS.some((p) =>
     permissions.includes(p)
@@ -111,6 +113,7 @@ export default async function WorkspaceSettingsPage() {
           permissions={permissions}
           currentUserId={session.user.id}
           currentUserRole={currentUserRole}
+          planApprovalRouting={plan.features.approvalRouting}
         />
       </Suspense>
     </div>
