@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import {
   IconChevronLeft,
   IconChevronRight,
+  IconClockPending,
   IconFileText,
   IconHelpCircle,
   IconPlus,
@@ -49,6 +50,10 @@ type AppSidebarProps = {
 
 function isRequestsActive(pathname: string) {
   return pathname === "/app/requests" || pathname.startsWith("/app/requests/");
+}
+
+function isQueueActive(pathname: string) {
+  return pathname === "/app/queue" || pathname.startsWith("/app/queue/");
 }
 
 const hoverBg = "hover:bg-(--nav-hover)";
@@ -251,6 +256,7 @@ export default function AppSidebar({
   }
 
   const requestsActive = isRequestsActive(pathname);
+  const queueActive = isQueueActive(pathname);
   const workspaceSettingsActive =
     pathname === "/app/settings/workspace" || pathname.startsWith("/app/settings/workspace?");
   const helpActive =
@@ -324,6 +330,16 @@ export default function AppSidebar({
                   )}
                 </span>
               ) : null}
+            </Link>
+            <Link
+              href="/app/queue"
+              onClick={() => isMobile && onClose()}
+              aria-current={queueActive ? "page" : undefined}
+              title="Queue"
+              className={`flex items-center rounded-lg py-2.5 text-sm font-medium transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} ${queueActive ? `${activeBg} text-(--text-primary)` : `text-(--text-secondary) ${hoverBg} hover:text-(--text-primary)`}`}
+            >
+              <IconClockPending size={18} className="shrink-0" />
+              {showLabels ? <span>Queue</span> : null}
             </Link>
             {canCreateRequests ? (
               <button
