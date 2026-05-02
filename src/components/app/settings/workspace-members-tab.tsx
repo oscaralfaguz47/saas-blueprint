@@ -43,6 +43,7 @@ import { useToast } from "@/components/ui/toast";
 import { StepUpModal } from "@/components/app/step-up-modal";
 import { InviteMemberModal } from "./invite-member-modal";
 import { TransferOwnershipModal } from "./transfer-ownership-modal";
+import { EditMemberAccessModal, type UpdatedMemberAccessFields } from "./edit-member-access-modal";
 
 const PAGE_SIZE = 10;
 /** Roles that can be assigned via the UI (Primary Owner is only via transfer). */
@@ -103,6 +104,38 @@ function roleRank(name: string): number {
 function getAssignableRoles(currentUserRole: string): { value: string; label: string }[] {
   const rank = roleRank(currentUserRole);
   return ROLES_ASSIGN.filter((r) => roleRank(r.value) < rank);
+}
+
+/** assignable ∪ { current }; current not assignable → option disabled (D-1b). */
+function buildLegacyRoleSelectOptions(
+  assignable: { value: string; label: string }[],
+  currentRole: string,
+): { value: string; label: string; disabled: boolean }[] {
+  const assignValues = new Set(assignable.map((r) => r.value));
+  const ordered = ["Owner", "Admin", "Finance", "Member"];
+  const result: { value: string; label: string; disabled: boolean }[] = [];
+  for (const v of ordered) {
+    const inAssignable = assignValues.has(v);
+    const isCurrent = v === currentRole;
+    if (!inAssignable && !isCurrent) continue;
+    const label =
+      assignable.find((r) => r.value === v)?.label ??
+      ROLES_ASSIGN.find((r) => r.value === v)?.label ??
+      v;
+    result.push({
+      value: v,
+      label,
+      disabled: !inAssignable && isCurrent,
+    });
+  }
+  if (!result.some((r) => r.value === currentRole)) {
+    result.unshift({
+      value: currentRole,
+      label: ROLES_ASSIGN.find((r) => r.value === currentRole)?.label ?? currentRole,
+      disabled: true,
+    });
+  }
+  return result;
 }
 
 /** Whether the current user can show Enable/Disable for a member with the given role (hierarchy: only for roles below current user). */
@@ -197,8 +230,8 @@ export function WorkspaceMembersTab({
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [inviteOpen, setInviteOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
+  const [editingAccessMember, setEditingAccessMember] = useState<MemberItem | null>(null);
   const [statusLoadingId, setStatusLoadingId] = useState<string | null>(null);
-  const [roleLoadingId, setRoleLoadingId] = useState<string | null>(null);
   const [copiedUserId, setCopiedUserId] = useState<string | null>(null);
   const [securityMenuUserId, setSecurityMenuUserId] = useState<string | null>(null);
   const [securityLoadingId, setSecurityLoadingId] = useState<string | null>(null);
@@ -308,21 +341,26 @@ export function WorkspaceMembersTab({
     }
   };
 
-  const handleRole = async (userId: string, role: string) => {
-    setRoleLoadingId(userId);
-    try {
-      const res = await apiFetch(`/api/tenant/users/${userId}/role`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role }),
-      });
-      if (res.ok) {
-        setItems((prev) => prev.map((m) => (m.userId === userId ? { ...m, role } : m)));
-      }
-    } finally {
-      setRoleLoadingId(null);
-    }
-  };
+  const mergeUpdatedMemberAccess = useCallback(
+    (userId: string, u: UpdatedMemberAccessFields) => {
+      setItems((prev) =>
+        prev.map((m) =>
+          m.userId === userId
+            ? {
+                ...m,
+                membershipId: u.membershipId,
+                role: u.role,
+                workspaceRole: u.workspaceRole,
+                financialAccess: u.financialAccess,
+                financeResponsibility: u.financeResponsibility,
+                billingAccess: u.billingAccess,
+              }
+            : m,
+        ),
+      );
+    },
+    [],
+  );
 
   const copyEmail = async (userId: string, email: string | null) => {
     if (!email) return;
@@ -541,6 +579,19 @@ export function WorkspaceMembersTab({
         currentUserRole={currentUserRole}
         onSuccess={loadInitial}
       />
+      {editingAccessMember ? (
+        <EditMemberAccessModal
+          key={editingAccessMember.userId}
+          open
+          onClose={() => setEditingAccessMember(null)}
+          member={editingAccessMember}
+          permissions={permSet}
+          hasTwoFactor={hasTwoFactor}
+          email={sessionData?.user?.email ?? null}
+          legacyRoleOptions={buildLegacyRoleSelectOptions(assignableRoles, editingAccessMember.role)}
+          onSuccess={(u) => mergeUpdatedMemberAccess(editingAccessMember.userId, u)}
+        />
+      ) : null}
       {tenant.slug ? (
         <TransferOwnershipModal
           open={transferOpen}
@@ -636,13 +687,13 @@ export function WorkspaceMembersTab({
                 const isOwnerLevel = m.role === "Primary Owner" || m.role === "Owner";
                 const isPrimaryOwner = m.role === "Primary Owner";
                 const isLastOwnerLevel = isOwnerLevel && ownerLevelCount <= 1;
-                const showRoleSelect =
-                  canManageRoles &&
+                const canEditMemberAccess =
+                  Boolean(m.membershipId) &&
                   !isLastOwnerLevel &&
                   !isPrimaryOwner &&
                   !isCurrentUser &&
                   roleRank(currentUserRole) > roleRank(m.role) &&
-                  assignableRoles.length > 0;
+                  (canManageRoles || canManage);
                 const showStatusButtons =
                   canShowStatusButtonsFor(currentUserRole, m.role) && !isCurrentUser;
                 const showSecurityActions =
@@ -671,33 +722,19 @@ export function WorkspaceMembersTab({
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1.5">
-                        {roleLoadingId === m.userId ? (
-                          <div
-                            className="flex min-h-[44px] min-w-[100px] items-center justify-center rounded border border-(--border-subtle) bg-(--bg-surface) px-2 py-1"
-                            aria-busy="true"
-                            aria-label="Updating role"
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="rounded-full bg-(--bg-surface-elev) px-2 py-0.5 text-xs font-medium text-(--text-primary)">
+                          {m.role}
+                        </span>
+                        {canEditMemberAccess ? (
+                          <button
+                            type="button"
+                            onClick={() => setEditingAccessMember(m)}
+                            className="min-h-[44px] cursor-pointer rounded-lg border border-(--border-subtle) px-2.5 py-1 text-xs font-medium text-(--color-primary) hover:bg-(--bg-surface-elev)"
                           >
-                            <Spinner size="sm" />
-                          </div>
-                        ) : showRoleSelect ? (
-                          <select
-                            value={m.role}
-                            onChange={(e) => handleRole(m.userId, e.target.value)}
-                            disabled={roleLoadingId === m.userId}
-                            className="min-h-[44px] min-w-[100px] cursor-pointer rounded border border-(--border-subtle) bg-(--bg-surface) px-2 py-1 text-xs text-(--text-primary) disabled:opacity-60"
-                          >
-                            {assignableRoles.map((r) => (
-                              <option key={r.value} value={r.value}>
-                                {r.label}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <span className="rounded-full bg-(--bg-surface-elev) px-2 py-0.5 text-xs font-medium text-(--text-primary)">
-                            {m.role}
-                          </span>
-                        )}
+                            Edit access
+                          </button>
+                        ) : null}
                         <HoverCard>
                           <HoverCardTrigger>
                             <IconHelpCircle

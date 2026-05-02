@@ -2,10 +2,22 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  BillingAccessLevel,
+  FinancialAccessScope,
+  FinanceResponsibility,
+  WorkspaceRole,
+} from "@prisma/client";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { useApiFetch } from "@/hooks/use-api-fetch";
+import {
+  BILLING_ACCESS_LABELS,
+  FINANCE_RESPONSIBILITY_LABELS,
+  FINANCIAL_ACCESS_LABELS,
+  WORKSPACE_ROLE_LABELS,
+} from "@/lib/4-axis-labels";
 
 const ROLE_RANK: Record<string, number> = {
   "Primary Owner": 5,
@@ -73,6 +85,17 @@ export function InviteMemberModal({
   const [error, setError] = useState<string | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [workspaceRoleAxis, setWorkspaceRoleAxis] = useState<WorkspaceRole | undefined>(undefined);
+  const [financialAccessAxis, setFinancialAccessAxis] = useState<
+    FinancialAccessScope | undefined
+  >(undefined);
+  const [financeResponsibilityAxis, setFinanceResponsibilityAxis] = useState<
+    FinanceResponsibility | undefined
+  >(undefined);
+  const [billingAccessAxis, setBillingAccessAxis] = useState<BillingAccessLevel | undefined>(
+    undefined,
+  );
 
   const assignableRoles = getAssignableRoles(currentUserRole);
 
@@ -89,14 +112,22 @@ export function InviteMemberModal({
     setSubmittingMode(mode);
     setStatus("submitting");
     try {
+      const inviteBody: Record<string, unknown> = {
+        email: trimmed,
+        sendEmail: mode === "email",
+        role: effectiveRole,
+      };
+      if (workspaceRoleAxis !== undefined) inviteBody.workspaceRole = workspaceRoleAxis;
+      if (financialAccessAxis !== undefined) inviteBody.financialAccess = financialAccessAxis;
+      if (financeResponsibilityAxis !== undefined) {
+        inviteBody.financeResponsibility = financeResponsibilityAxis;
+      }
+      if (billingAccessAxis !== undefined) inviteBody.billingAccess = billingAccessAxis;
+
       const res = await apiFetch("/api/tenant/invitations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: trimmed,
-          sendEmail: mode === "email",
-          role: effectiveRole,
-        }),
+        body: JSON.stringify(inviteBody),
         showToastOnError: false,
       });
       const data = (await res.json()) as {
@@ -123,6 +154,11 @@ export function InviteMemberModal({
       if (mode === "email") {
         setEmail("");
         setRole("Member");
+        setShowAdvanced(false);
+        setWorkspaceRoleAxis(undefined);
+        setFinancialAccessAxis(undefined);
+        setFinanceResponsibilityAxis(undefined);
+        setBillingAccessAxis(undefined);
         setStatus("idle");
         onSuccess?.();
         router.refresh();
@@ -167,6 +203,11 @@ export function InviteMemberModal({
     if (status !== "submitting") {
       setEmail("");
       setRole("Member");
+      setShowAdvanced(false);
+      setWorkspaceRoleAxis(undefined);
+      setFinancialAccessAxis(undefined);
+      setFinanceResponsibilityAxis(undefined);
+      setBillingAccessAxis(undefined);
       setError(null);
       setStatus("idle");
       setInviteUrl(null);
@@ -252,6 +293,132 @@ export function InviteMemberModal({
             </div>
           )}
 
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowAdvanced((prev) => !prev)}
+              className="text-sm font-medium text-(--color-primary) hover:underline"
+            >
+              {showAdvanced ? "Hide advanced options" : "Advanced options (optional)"}
+            </button>
+            {showAdvanced ? (
+              <div className="mt-3 space-y-3 border-t border-(--border-subtle) pt-3">
+                <p className="text-xs text-(--text-secondary)">
+                  Override default access. Choose &quot;Server default&quot; to let the API pick
+                  sensible values.
+                </p>
+                <div>
+                  <label
+                    htmlFor="invite-ws-role"
+                    className="block text-sm font-medium text-(--text-primary)"
+                  >
+                    Workspace role (axis)
+                  </label>
+                  <select
+                    id="invite-ws-role"
+                    value={workspaceRoleAxis ?? ""}
+                    onChange={(e) =>
+                      setWorkspaceRoleAxis(
+                        e.target.value === "" ? undefined : (e.target.value as WorkspaceRole),
+                      )
+                    }
+                    disabled={status === "submitting"}
+                    className="mt-1.5 min-h-[44px] w-full cursor-pointer rounded border border-(--border-subtle) bg-(--bg-surface) px-2 py-1 text-xs text-(--text-primary) disabled:opacity-60"
+                  >
+                    <option value="">Server default</option>
+                    {(Object.values(WorkspaceRole) as WorkspaceRole[]).map((v) => (
+                      <option key={v} value={v}>
+                        {WORKSPACE_ROLE_LABELS[v]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label
+                    htmlFor="invite-financial"
+                    className="block text-sm font-medium text-(--text-primary)"
+                  >
+                    Financial access
+                  </label>
+                  <select
+                    id="invite-financial"
+                    value={financialAccessAxis ?? ""}
+                    onChange={(e) =>
+                      setFinancialAccessAxis(
+                        e.target.value === ""
+                          ? undefined
+                          : (e.target.value as FinancialAccessScope),
+                      )
+                    }
+                    disabled={status === "submitting"}
+                    className="mt-1.5 min-h-[44px] w-full cursor-pointer rounded border border-(--border-subtle) bg-(--bg-surface) px-2 py-1 text-xs text-(--text-primary) disabled:opacity-60"
+                  >
+                    <option value="">Server default</option>
+                    {(Object.values(FinancialAccessScope) as FinancialAccessScope[]).map((v) => (
+                      <option key={v} value={v}>
+                        {FINANCIAL_ACCESS_LABELS[v]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label
+                    htmlFor="invite-finance-resp"
+                    className="block text-sm font-medium text-(--text-primary)"
+                  >
+                    Finance responsibility
+                  </label>
+                  <select
+                    id="invite-finance-resp"
+                    value={financeResponsibilityAxis ?? ""}
+                    onChange={(e) =>
+                      setFinanceResponsibilityAxis(
+                        e.target.value === ""
+                          ? undefined
+                          : (e.target.value as FinanceResponsibility),
+                      )
+                    }
+                    disabled={status === "submitting"}
+                    className="mt-1.5 min-h-[44px] w-full cursor-pointer rounded border border-(--border-subtle) bg-(--bg-surface) px-2 py-1 text-xs text-(--text-primary) disabled:opacity-60"
+                  >
+                    <option value="">Server default</option>
+                    {(Object.values(FinanceResponsibility) as FinanceResponsibility[]).map((v) => (
+                      <option key={v} value={v}>
+                        {FINANCE_RESPONSIBILITY_LABELS[v]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label
+                    htmlFor="invite-billing"
+                    className="block text-sm font-medium text-(--text-primary)"
+                  >
+                    Billing access
+                  </label>
+                  <select
+                    id="invite-billing"
+                    value={billingAccessAxis ?? ""}
+                    onChange={(e) =>
+                      setBillingAccessAxis(
+                        e.target.value === "" ? undefined : (e.target.value as BillingAccessLevel),
+                      )
+                    }
+                    disabled={status === "submitting"}
+                    className="mt-1.5 min-h-[44px] w-full cursor-pointer rounded border border-(--border-subtle) bg-(--bg-surface) px-2 py-1 text-xs text-(--text-primary) disabled:opacity-60"
+                  >
+                    <option value="">Server default</option>
+                    {(Object.values(BillingAccessLevel) as BillingAccessLevel[]).map((v) => (
+                      <option key={v} value={v}>
+                        {BILLING_ACCESS_LABELS[v]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
           {error ? (
             <div
               role="alert"
@@ -331,6 +498,11 @@ export function InviteMemberModal({
                 setInviteUrl(null);
                 setEmail("");
                 setRole("Member");
+                setShowAdvanced(false);
+                setWorkspaceRoleAxis(undefined);
+                setFinancialAccessAxis(undefined);
+                setFinanceResponsibilityAxis(undefined);
+                setBillingAccessAxis(undefined);
                 onSuccess?.();
                 router.refresh();
               }}

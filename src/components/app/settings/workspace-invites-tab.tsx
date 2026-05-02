@@ -13,7 +13,20 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { DropdownMultiSelect } from "@/components/ui/dropdown-multi-select";
+import type {
+  BillingAccessLevel,
+  FinancialAccessScope,
+  FinanceResponsibility,
+  WorkspaceRole,
+} from "@prisma/client";
 import { useApiFetch } from "@/hooks/use-api-fetch";
+import {
+  BILLING_ACCESS_LABELS,
+  FINANCE_RESPONSIBILITY_LABELS,
+  FINANCIAL_ACCESS_LABELS,
+  WORKSPACE_ROLE_LABELS,
+} from "@/lib/4-axis-labels";
+import { Badge } from "@/components/ui/badge";
 import { InviteMemberModal } from "./invite-member-modal";
 
 const PAGE_SIZE = 10;
@@ -34,6 +47,10 @@ type InvitationItem = {
   invitedAt: string;
   expiresAt: string;
   role: string;
+  workspaceRole?: WorkspaceRole | null;
+  financialAccess?: FinancialAccessScope | null;
+  financeResponsibility?: FinanceResponsibility | null;
+  billingAccess?: BillingAccessLevel | null;
   invitedBy: { name: string | null; email: string | null } | null;
 };
 
@@ -335,22 +352,51 @@ export function WorkspaceInvitesTab({ tenant, permissions, currentUserRole }: Pr
                     </span>
                   </TableCell>
                   <TableCell className="px-3 py-3 text-sm text-(--text-secondary)">
-                    <span className="inline-flex items-center gap-1.5">
-                      <span
-                        className="h-2 w-2 shrink-0 rounded-full"
-                        style={{
-                          backgroundColor:
-                            inv.role === "Owner"
-                              ? "#7c3aed"
-                              : inv.role === "Admin"
-                                ? "#2563eb"
-                                : inv.role === "Finance"
-                                  ? "#16a34a"
-                                  : "#71717a",
-                        }}
-                      />
-                      {inv.role}
-                    </span>
+                    <div className="flex flex-col gap-1">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span
+                          className="h-2 w-2 shrink-0 rounded-full"
+                          style={{
+                            backgroundColor:
+                              inv.role === "Owner"
+                                ? "#7c3aed"
+                                : inv.role === "Admin"
+                                  ? "#2563eb"
+                                  : inv.role === "Finance"
+                                    ? "#16a34a"
+                                    : "#71717a",
+                          }}
+                        />
+                        {inv.role}
+                      </span>
+                      {inv.workspaceRole != null ||
+                      inv.financialAccess != null ||
+                      inv.financeResponsibility != null ||
+                      inv.billingAccess != null ? (
+                        <div className="flex flex-wrap gap-1">
+                          {inv.workspaceRole != null ? (
+                            <Badge variant="secondary">
+                              {WORKSPACE_ROLE_LABELS[inv.workspaceRole]}
+                            </Badge>
+                          ) : null}
+                          {inv.financialAccess != null ? (
+                            <Badge variant="secondary">
+                              {FINANCIAL_ACCESS_LABELS[inv.financialAccess]}
+                            </Badge>
+                          ) : null}
+                          {inv.financeResponsibility != null ? (
+                            <Badge variant="secondary">
+                              {FINANCE_RESPONSIBILITY_LABELS[inv.financeResponsibility]}
+                            </Badge>
+                          ) : null}
+                          {inv.billingAccess != null ? (
+                            <Badge variant="secondary">
+                              {BILLING_ACCESS_LABELS[inv.billingAccess]}
+                            </Badge>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
                   </TableCell>
                   <TableCell className="text-(--text-muted)">
                     {inv.invitedBy?.name ?? inv.invitedBy?.email ?? "—"}
