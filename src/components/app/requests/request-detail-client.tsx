@@ -50,6 +50,7 @@ import {
 import { RejectApprovalModal } from "./reject-approval-modal";
 import { ParticipantsPanel } from "./participants-panel";
 import { SetPaymentStatusModal } from "./set-payment-status-modal";
+import { ManualRerouteModal } from "./manual-reroute-modal";
 import { LinkRecordModal } from "./link-record-modal";
 import {
   formatAmount,
@@ -225,6 +226,7 @@ export function RequestDetailClient({
   const [error, setError] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
   const [setPaymentOpen, setSetPaymentOpen] = useState(false);
+  const [manualRerouteOpen, setManualRerouteOpen] = useState(false);
   const [linkRecordOpen, setLinkRecordOpen] = useState(false);
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   const [closePanelStyle, setClosePanelStyle] = useState<CSSProperties>({
@@ -671,6 +673,11 @@ export function RequestDetailClient({
     approverParticipants.length === 0 &&
     canAssignInternal &&
     !isClosed;
+  const showManualReroute =
+    permissions.includes("tenant.approval_routing.manage") &&
+    rec.status === "OPEN" &&
+    rec.approvalStatus !== "FULLY_APPROVED" &&
+    rec.approvalStatus !== "APPROVAL_REJECTED";
   const createdByLabel =
     rec.createdByUserId === currentUserId
       ? currentUserName || currentUserEmail || "you"
@@ -867,6 +874,15 @@ export function RequestDetailClient({
                     className="cursor-pointer inline-flex h-9 items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-secondary) transition-colors hover:border-(--border-strong) hover:text-(--text-primary)"
                   >
                     Export PDF
+                  </button>
+                )}
+                {showManualReroute && (
+                  <button
+                    type="button"
+                    onClick={() => setManualRerouteOpen(true)}
+                    className="cursor-pointer inline-flex h-9 items-center rounded-lg border border-(--border-subtle) bg-(--bg-surface) px-4 text-sm font-medium text-(--text-secondary) transition-colors hover:border-(--border-strong) hover:text-(--text-primary)"
+                  >
+                    Re-evaluate routing
                   </button>
                 )}
                 {canClose && !isClosed && (
@@ -1282,6 +1298,12 @@ export function RequestDetailClient({
           onSuccess={load}
         />
       )}
+      <ManualRerouteModal
+        open={manualRerouteOpen}
+        onClose={() => setManualRerouteOpen(false)}
+        recordId={recordId}
+        onSuccess={load}
+      />
       <LinkRecordModal
         open={linkRecordOpen}
         onClose={() => setLinkRecordOpen(false)}
