@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import {
   ApprovalEscalationPolicy,
   ApprovalRoutingMode,
@@ -9,10 +8,12 @@ import {
   ApproverTargetType,
   ConditionField,
 } from "@prisma/client";
+import { PlanGateBanner } from "@/components/ui/plan-gate";
 import { Dialog } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { useToast } from "@/components/ui/toast";
+import { isUpgradeRequiredFromApiResponse } from "@/lib/plan-gate-detection";
 import { validateConditionShape } from "@/lib/validations/finance-assignment-rule";
 import { evaluateApprovalRoutingPlanGate } from "@/lib/validations/approval-routing-rule";
 import {
@@ -25,13 +26,6 @@ import type { ConditionRowDraft } from "./rule-condition-row";
 import { newApproverDraft, serializeRequiredApprovers, type ApproverRowDraft } from "./approval-rule-approver-row";
 import { ApprovalRoutingRuleFormFields } from "./approval-routing-rule-form-fields";
 import type { ApprovalRoutingPlanSnapshot } from "./approval-routing-rules-section";
-
-function isUpgradeRequiredPayload(data: unknown): boolean {
-  const err = (data as { error?: { code?: string; details?: unknown } } | null)?.error;
-  if (err?.code === "UPGRADE_REQUIRED") return true;
-  const d = err?.details;
-  return typeof d === "object" && d !== null && (d as { code?: string }).code === "UPGRADE_REQUIRED";
-}
 
 function shapeErrorMessage(code: string): string {
   const m: Record<string, string> = {
@@ -277,7 +271,7 @@ export function ApprovalRoutingRuleCreateModal({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        if (isUpgradeRequiredPayload(data)) {
+        if (isUpgradeRequiredFromApiResponse(data)) {
           onPlanBlocked();
           setShowBillingLink(true);
           setError(
@@ -361,16 +355,11 @@ export function ApprovalRoutingRuleCreateModal({
             className="rounded-lg border border-(--color-danger) bg-(--bg-surface) p-3 text-sm"
           >
             {error}
-            {showBillingLink ? (
-              <div className="mt-2">
-                <Link
-                  href="/app/settings/workspace?tab=billing"
-                  className="font-medium text-(--color-primary) hover:underline"
-                >
-                  View billing and plans
-                </Link>
-              </div>
-            ) : null}
+            <PlanGateBanner
+              variant="modal"
+              visible={showBillingLink}
+              description={null}
+            />
           </div>
         ) : null}
         <div className="flex justify-end gap-2">

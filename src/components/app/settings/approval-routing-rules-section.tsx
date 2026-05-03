@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ApprovalRoutingRuleStatus } from "@prisma/client";
 import { useApiFetch } from "@/hooks/use-api-fetch";
@@ -25,6 +24,8 @@ import {
   ApprovalRoutingRuleEditModal,
   type ApprovalRoutingRuleDetail,
 } from "./approval-routing-rule-edit-modal";
+import { PlanGateBanner } from "@/components/ui/plan-gate";
+import { isUpgradeRequiredFromApiResponse } from "@/lib/plan-gate-detection";
 
 export type ApprovalRoutingPlanSnapshot = {
   enabled: boolean;
@@ -55,13 +56,6 @@ type Props = {
   canManage: boolean;
   planApprovalRouting: ApprovalRoutingPlanSnapshot;
 };
-
-function isUpgradeRequiredPayload(data: unknown): boolean {
-  const err = (data as { error?: { code?: string; details?: unknown } } | null)?.error;
-  if (err?.code === "UPGRADE_REQUIRED") return true;
-  const d = err?.details;
-  return typeof d === "object" && d !== null && (d as { code?: string }).code === "UPGRADE_REQUIRED";
-}
 
 export function ApprovalRoutingRulesSection({ canManage, planApprovalRouting }: Props) {
   const apiFetch = useApiFetch();
@@ -163,7 +157,7 @@ export function ApprovalRoutingRulesSection({ canManage, planApprovalRouting }: 
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        if (isUpgradeRequiredPayload(data)) {
+        if (isUpgradeRequiredFromApiResponse(data)) {
           setPlanBlocked(true);
           toast.addToast(
             "error",
@@ -218,23 +212,12 @@ export function ApprovalRoutingRulesSection({ canManage, planApprovalRouting }: 
         </p>
       </div>
 
-      {planBlocked ? (
-        <div
-          role="status"
-          className="rounded-lg border border-(--border-subtle) bg-(--color-info-soft) px-4 py-3 text-sm text-(--text-secondary)"
-        >
-          <p className="font-medium text-(--text-primary)">Plan upgrade required</p>
-          <p className="mt-1">
-            Approval routing limits depend on your subscription.{" "}
-            <Link
-              href="/app/settings/workspace?tab=billing"
-              className="text-(--color-primary) hover:underline"
-            >
-              Open billing
-            </Link>
-          </p>
-        </div>
-      ) : null}
+      <PlanGateBanner
+        variant="section"
+        visible={planBlocked}
+        title="Plan upgrade required"
+        description="Approval routing limits depend on your subscription."
+      />
 
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-[160px]">

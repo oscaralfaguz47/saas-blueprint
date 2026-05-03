@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import {
   AssignmentRuleStatus,
   AssignmentStrategy,
 } from "@prisma/client";
+import { PlanGateBanner } from "@/components/ui/plan-gate";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,6 +13,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useApiFetch } from "@/hooks/use-api-fetch";
 import { useToast } from "@/components/ui/toast";
+import { isUpgradeRequiredFromApiResponse } from "@/lib/plan-gate-detection";
 import { STRATEGY_LABELS, STATUS_LABELS } from "@/lib/assignment-rule-labels";
 import {
   fetchActiveWorkspaceMembers,
@@ -67,12 +68,6 @@ export function computeAssignmentRulePatch(
   }
 
   return diff;
-}
-
-function isUpgradeRequiredPayload(data: unknown): boolean {
-  const err = (data as { error?: { details?: unknown } } | null)?.error;
-  const d = err?.details;
-  return typeof d === "object" && d !== null && (d as { code?: string }).code === "UPGRADE_REQUIRED";
 }
 
 type Props = {
@@ -210,7 +205,7 @@ export function AssignmentRuleEditModal({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        if (isUpgradeRequiredPayload(data)) {
+        if (isUpgradeRequiredFromApiResponse(data)) {
           onPlanBlocked();
           setShowBillingLink(true);
           setError(
@@ -385,16 +380,11 @@ export function AssignmentRuleEditModal({
             className="rounded-lg border border-(--color-danger) bg-(--bg-surface) p-3 text-sm"
           >
             {error}
-            {showBillingLink ? (
-              <div className="mt-2">
-                <Link
-                  href="/app/settings/workspace?tab=billing"
-                  className="font-medium text-(--color-primary) hover:underline"
-                >
-                  View billing and plans
-                </Link>
-              </div>
-            ) : null}
+            <PlanGateBanner
+              variant="modal"
+              visible={showBillingLink}
+              description={null}
+            />
           </div>
         ) : null}
         <div className="flex justify-end gap-2">
