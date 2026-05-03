@@ -103,6 +103,11 @@ export type {
 } from "./approval-routing-rule";
 
 export {
+  evaluateWebhooksPlanGate,
+} from "./webhook-plan-gate";
+export type { WebhooksPlanGateResult } from "./webhook-plan-gate";
+
+export {
   financeQueueListQuerySchema,
   financeQueueRecordIdParamSchema,
 } from "./finance-queue";

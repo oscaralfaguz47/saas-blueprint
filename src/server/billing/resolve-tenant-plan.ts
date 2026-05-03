@@ -56,6 +56,7 @@ const DEFAULT_FREE_FEATURES: PlanFeatures = {
   emailBranding: "powered_by",
   storageLimitGb: 1,
   assignmentEngine: false,
+  webhooks: false,
   approvalRouting: {
     enabled: false,
     maxRules: 0,
@@ -92,6 +93,7 @@ function featuresFromCatalog(entry: import("./plans/catalog").PlanCatalogEntry):
     emailBranding: entry.emailBranding,
     storageLimitGb: entry.storageLimitGb,
     assignmentEngine: entry.assignmentEngine,
+    webhooks: entry.webhooks,
     approvalRouting: entry.approvalRouting,
   };
 }
@@ -135,6 +137,7 @@ function parseFeaturesJson(featuresJson: unknown): PlanFeatures {
     emailBranding: (raw?.emailBranding === "removed" ? "removed" : "powered_by") as EmailBranding,
     storageLimitGb: typeof raw?.storageLimitGb === "number" ? raw.storageLimitGb : 1,
     assignmentEngine: raw.assignmentEngine === true,
+    webhooks: raw.webhooks === true,
     approvalRouting: parseApprovalRoutingJson(raw.approvalRouting),
   };
 }

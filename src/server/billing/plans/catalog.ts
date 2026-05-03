@@ -24,6 +24,8 @@ export type PlanCatalogEntry = {
   storageLimitGb: number;
   /** D-005: Finance Assignment Engine (Enterprise / scale). */
   assignmentEngine: boolean;
+  /** D-005 / E-001: Outbound webhooks (Enterprise / scale tier). */
+  webhooks: boolean;
   /** C12: approval routing caps and flags. */
   approvalRouting: ApprovalRoutingFeatures;
 };
@@ -48,6 +50,7 @@ export const PLAN_CATALOG: Record<ServerPlanCode, PlanCatalogEntry> = {
     emailBranding: "powered_by",
     storageLimitGb: 1,
     assignmentEngine: false,
+    webhooks: false,
     approvalRouting: {
       enabled: false,
       maxRules: 0,
@@ -75,6 +78,7 @@ export const PLAN_CATALOG: Record<ServerPlanCode, PlanCatalogEntry> = {
     emailBranding: "powered_by",
     storageLimitGb: 20,
     assignmentEngine: false,
+    webhooks: false,
     approvalRouting: {
       enabled: false,
       maxRules: 0,
@@ -102,6 +106,7 @@ export const PLAN_CATALOG: Record<ServerPlanCode, PlanCatalogEntry> = {
     emailBranding: "removed",
     storageLimitGb: 100,
     assignmentEngine: false,
+    webhooks: false,
     approvalRouting: {
       enabled: true,
       maxRules: 5,
@@ -129,6 +134,7 @@ export const PLAN_CATALOG: Record<ServerPlanCode, PlanCatalogEntry> = {
     emailBranding: "removed",
     storageLimitGb: 500,
     assignmentEngine: true,
+    webhooks: true,
     approvalRouting: {
       enabled: true,
       maxRules: 100,

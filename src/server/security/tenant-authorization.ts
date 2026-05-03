@@ -11,6 +11,7 @@ export type TenantPermission =
   | "tenant.billing.manage"
   | "tenant.financial_config.manage"
   | "tenant.approval_routing.manage"
+  | "tenant.webhooks.manage"
   | "tenant.settings.manage"
   | "tenant.roles.read"
   | "tenant.roles.manage"

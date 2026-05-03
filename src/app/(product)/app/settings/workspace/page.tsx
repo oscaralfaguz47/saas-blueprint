@@ -17,6 +17,7 @@ const WORKSPACE_SETTINGS_PERMISSIONS = [
   "tenant.users.read",
   "tenant.billing.manage",
   "tenant.financial_config.manage",
+  "tenant.webhooks.manage",
 ] as const;
 
 export default async function WorkspaceSettingsPage() {

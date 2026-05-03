@@ -56,6 +56,8 @@ export type PlanFeatures = {
   storageLimitGb: number;
   /** Enterprise: Finance Assignment Engine (rules). D-005. */
   assignmentEngine: boolean;
+  /** D-005 / E-001: Outbound webhooks (Enterprise / scale tier). */
+  webhooks: boolean;
   /** C12: tenant-scoped approval routing rules. */
   approvalRouting: ApprovalRoutingFeatures;
 };
