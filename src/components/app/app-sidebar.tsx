@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import {
+  IconBell,
   IconChevronLeft,
   IconChevronRight,
   IconClockPending,
@@ -54,6 +55,10 @@ function isRequestsActive(pathname: string) {
 
 function isQueueActive(pathname: string) {
   return pathname === "/app/queue" || pathname.startsWith("/app/queue/");
+}
+
+function isNotificationsActive(pathname: string) {
+  return pathname === "/app/notifications";
 }
 
 const hoverBg = "hover:bg-(--nav-hover)";
@@ -257,6 +262,7 @@ export default function AppSidebar({
 
   const requestsActive = isRequestsActive(pathname);
   const queueActive = isQueueActive(pathname);
+  const notificationsActive = isNotificationsActive(pathname);
   const workspaceSettingsActive =
     pathname === "/app/settings/workspace" || pathname.startsWith("/app/settings/workspace?");
   const helpActive =
@@ -340,6 +346,16 @@ export default function AppSidebar({
             >
               <IconClockPending size={18} className="shrink-0" />
               {showLabels ? <span>Queue</span> : null}
+            </Link>
+            <Link
+              href="/app/notifications"
+              onClick={() => isMobile && onClose()}
+              aria-current={notificationsActive ? "page" : undefined}
+              title="Notifications"
+              className={`flex items-center rounded-lg py-2.5 text-sm font-medium transition-colors duration-150 ${showLabels ? "gap-3 px-3" : "justify-center px-2"} ${notificationsActive ? `${activeBg} text-(--text-primary)` : `text-(--text-secondary) ${hoverBg} hover:text-(--text-primary)`}`}
+            >
+              <IconBell size={18} className="shrink-0" />
+              {showLabels ? <span>Notifications</span> : null}
             </Link>
             {canCreateRequests ? (
               <button
