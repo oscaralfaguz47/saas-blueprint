@@ -20,6 +20,8 @@ export default defineConfig({
       DATABASE_DIRECT_URL: "postgresql://test:test@127.0.0.1:5432/test",
       NEXTAUTH_URL: "http://localhost:3000",
       NEXTAUTH_SECRET: "01234567890123456789012345678901",
+      /** Cron route auth in unit tests */
+      CRON_SECRET: "vitest-cron-secret",
       /** Test-only 32-byte key as 64 hex chars — must match WEBHOOK_SECRET_ENCRYPTION_KEY validation */
       WEBHOOK_SECRET_ENCRYPTION_KEY:
         "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
