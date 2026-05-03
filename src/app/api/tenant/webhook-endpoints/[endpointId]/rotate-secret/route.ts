@@ -45,13 +45,13 @@ export const POST = withErrorHandler(async (
   const planErr = await assertOutboundWebhooksPlan(tenant.id);
   if (planErr) return planErr;
 
-  const { raw, hash, hint } = generateWebhookSecret();
+  const { raw, encrypted, hint } = generateWebhookSecret();
 
   const row = await prisma.$transaction(async (tx) => {
     const updated = await tx.webhookEndpoint.update({
       where: { id: endpointId },
       data: {
-        secretHash: hash,
+        secretEncrypted: encrypted,
         secretHint: hint,
       },
       select: endpointPublicSelect,

@@ -157,7 +157,7 @@ export const POST = withErrorHandler(async (req: Request) => {
     return ApiErrors.VALIDATION_ERROR(webhookUrlValidationMessage(urlCheck.reason));
   }
 
-  const { raw, hash, hint } = generateWebhookSecret();
+  const { raw, encrypted, hint } = generateWebhookSecret();
 
   const row = await prisma.$transaction(async (tx) => {
     const created = await tx.webhookEndpoint.create({
@@ -167,7 +167,7 @@ export const POST = withErrorHandler(async (req: Request) => {
         description: body.description ?? null,
         url: body.url.trim(),
         subscribedEvents: body.subscribedEvents,
-        secretHash: hash,
+        secretEncrypted: encrypted,
         secretHint: hint,
         status: "ACTIVE",
         createdByUserId: session.user.id,

@@ -85,6 +85,14 @@ const envSchema = z.object({
   CRON_SECRET: z.string().optional(),
   BILLING_PERIOD_CLOSE_SECRET: z.string().optional(),
 
+  // ── Outbound webhooks (E-3.5+) — AES-256-GCM at rest; 32 bytes as 64 hex chars
+  WEBHOOK_SECRET_ENCRYPTION_KEY: z
+    .string()
+    .regex(
+      /^[0-9a-fA-F]{64}$/,
+      "WEBHOOK_SECRET_ENCRYPTION_KEY must be 64 hex characters (openssl rand -hex 32)"
+    ),
+
   // ── AI (Help & Support KB search) ────────────────────────────────────────
   AI_PROVIDER: z.enum(["openai", "anthropic"]).optional(),
   AI_API_KEY: z.string().optional(),

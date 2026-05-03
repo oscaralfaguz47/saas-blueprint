@@ -1827,8 +1827,8 @@ model WebhookEndpoint {
 
   subscribedEvents Json
 
-  secretHash String @db.VarChar(64)
-  secretHint String @db.VarChar(8)
+  secretEncrypted String @db.VarChar(512)
+  secretHint        String @db.VarChar(8)
 
   status              WebhookEndpointStatus @default(ACTIVE)
   consecutiveFailures Int                   @default(0)
@@ -1881,6 +1881,7 @@ model WebhookDelivery {
   @@index([tenantId, endpointId, status, createdAt])
   @@index([tenantId, eventId])
   @@index([tenantId, status, createdAt])
+  @@unique([tenantId, endpointId, eventId])
 }
 
 model FinanceTeam {

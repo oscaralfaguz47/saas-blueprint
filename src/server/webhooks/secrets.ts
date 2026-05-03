@@ -1,21 +1,23 @@
 import "server-only";
 
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
+import { env } from "@/lib/env";
+import { encryptWebhookSecret } from "./secret-encryption";
 
 export type GeneratedWebhookSecret = {
   raw: string;
-  hash: string;
+  encrypted: string;
   hint: string;
 };
 
 /**
- * Generates a prefixed webhook secret, SHA-256 hash for persistence, and a short hint.
- * Hash is of the full raw string including the `whsec_` prefix.
+ * Generates a prefixed webhook secret, encrypts for persistence, and a short hint.
+ * Raw format: whsec_<64 hex chars>; hint = last 4 of hex segment.
  */
 export function generateWebhookSecret(): GeneratedWebhookSecret {
   const hex = randomBytes(32).toString("hex");
   const raw = `whsec_${hex}`;
-  const hash = createHash("sha256").update(raw, "utf8").digest("hex");
+  const encrypted = encryptWebhookSecret(raw, env.WEBHOOK_SECRET_ENCRYPTION_KEY);
   const hint = hex.slice(-4);
-  return { raw, hash, hint };
+  return { raw, encrypted, hint };
 }

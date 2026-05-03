@@ -28,6 +28,8 @@ export default defineConfig({
       NEXTAUTH_URL: "http://localhost:3000",
       NEXTAUTH_SECRET: "01234567890123456789012345678901",
       NEXT_PUBLIC_APP_URL: "http://localhost:3000",
+      WEBHOOK_SECRET_ENCRYPTION_KEY:
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
       EMBEDDING_MODEL: "text-embedding-3-small",
       EMBEDDING_DIMENSIONS: "1536",
     },

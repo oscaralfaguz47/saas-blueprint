@@ -21,6 +21,14 @@
     {
       "path": "/api/internal/cron/jobs",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/internal/cron/webhooks",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/internal/cron/webhooks-stale",
+      "schedule": "*/30 * * * *"
     }
   ],
   "headers": [

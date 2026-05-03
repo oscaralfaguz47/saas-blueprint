@@ -134,7 +134,7 @@ describe("POST /api/tenant/webhook-endpoints", () => {
     expect(mocks.auditLogCreate).toHaveBeenCalled();
     const meta = mocks.auditLogCreate.mock.calls[0][0].data.metadata as Record<string, unknown>;
     expect(meta).not.toHaveProperty("secret");
-    expect(meta).not.toHaveProperty("secretHash");
+    expect(meta).not.toHaveProperty("secretEncrypted");
     expect(meta).not.toHaveProperty("secretHint");
     expect(meta).toEqual(
       expect.objectContaining({
