@@ -108,6 +108,17 @@ export {
 export type { WebhooksPlanGateResult } from "./webhook-plan-gate";
 
 export {
+  webhookEndpointCreateSchema,
+  webhookEndpointPatchSchema,
+  webhookEndpointListQuerySchema,
+} from "./webhook-endpoint";
+export type {
+  WebhookEndpointCreateInput,
+  WebhookEndpointPatchInput,
+  WebhookEndpointListQuery,
+} from "./webhook-endpoint";
+
+export {
   financeQueueListQuerySchema,
   financeQueueRecordIdParamSchema,
 } from "./finance-queue";
