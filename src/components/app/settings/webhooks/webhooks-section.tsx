@@ -18,6 +18,7 @@ import { DeleteEndpointModal } from "./delete-endpoint-modal";
 import { RotateSecretModal } from "./rotate-secret-modal";
 import { SecretDisplayDialog } from "./secret-display-dialog";
 import { DeliveriesModal } from "./deliveries-modal";
+import { WebhookSendTestButton } from "./webhook-send-test-button";
 
 type WebhookListItem = {
   id: string;
@@ -255,6 +256,11 @@ export function WebhooksSection({ planWebhooksEnabled }: Props) {
                 <Button type="button" variant="secondary" size="sm" onClick={() => setDeliveriesEndpoint({ id: ep.id, name: ep.name })}>
                   View deliveries
                 </Button>
+                <WebhookSendTestButton
+                  endpoint={ep}
+                  planBlocked={planBlocked}
+                  onPlanBlocked={handlePlanBlocked}
+                />
                 <Button type="button" variant="secondary" size="sm" onClick={() => setEditTarget(ep)}>
                   Edit
                 </Button>
