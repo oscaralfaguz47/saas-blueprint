@@ -8,6 +8,8 @@ import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { canAccessRequest } from "@/server/security/request-authorization";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
+import { buildRecordPaymentStatusChangedData } from "@/server/webhooks/event-builders";
+import { enqueueWebhookEvent } from "@/server/webhooks/enqueue";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().cuid() });
@@ -155,14 +157,19 @@ export const POST = withErrorHandler(async (
   }
   const { status } = bodyResult.data;
 
-  const payment = await prisma.$transaction(async (tx) => {
+  const txResult = await prisma.$transaction(async (tx) => {
     const cur = await tx.recordPayment.findUnique({
       where: { recordId },
       select: { id: true, status: true, setAt: true },
     });
 
     if (cur?.status === status) {
-      return { id: cur.id, status: cur.status, setAt: cur.setAt };
+      return {
+        paymentRow: { id: cur.id, status: cur.status, setAt: cur.setAt },
+        statusChanged: false as const,
+        previousStatus: null as string | null,
+        newStatus: null as string | null,
+      };
     }
 
     const previousStatus = cur?.status ?? null;
@@ -207,8 +214,37 @@ export const POST = withErrorHandler(async (
       },
     });
 
-    return p;
+    return {
+      paymentRow: p,
+      statusChanged: true as const,
+      previousStatus,
+      newStatus: status,
+    };
   });
 
-  return apiSuccess(payment);
+  if (txResult.statusChanged && txResult.newStatus != null) {
+    try {
+      await enqueueWebhookEvent({
+        tenantId,
+        eventName: "record.payment.status_changed",
+        recordId,
+        occurredAt: txResult.paymentRow.setAt,
+        data: buildRecordPaymentStatusChangedData({
+          recordId,
+          paymentId: txResult.paymentRow.id,
+          previousStatus: txResult.previousStatus,
+          newStatus: txResult.newStatus,
+          changedAt: txResult.paymentRow.setAt,
+        }),
+      });
+    } catch (webhookErr) {
+      console.error("[records/payment] webhook enqueue defensive catch", {
+        recordId,
+        tenantId,
+        error: webhookErr instanceof Error ? webhookErr.message : String(webhookErr),
+      });
+    }
+  }
+
+  return apiSuccess(txResult.paymentRow);
 });

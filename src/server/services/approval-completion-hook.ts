@@ -1,10 +1,13 @@
 import "server-only";
 
 import type { PrismaClient, RecordApprovalStatus } from "@prisma/client";
+import { RecordParticipantRole } from "@prisma/client";
 import {
   evaluateAndAssign,
   TRIGGER_EVENTS,
 } from "@/server/services/finance-assignment-engine";
+import { buildRecordApprovalCompletedData } from "@/server/webhooks/event-builders";
+import { enqueueWebhookEvent } from "@/server/webhooks/enqueue";
 
 export type ApprovalReconcileResult = {
   previousStatus: RecordApprovalStatus;
@@ -33,6 +36,49 @@ export async function maybeAssignFinanceAfterApprovalReconcile(
   engineEvaluationId: string | null;
   engineOutcome: string | null;
 }> {
+  const fullyApprovedTransition =
+    reconcileResult.changed === true &&
+    reconcileResult.newStatus === "FULLY_APPROVED" &&
+    reconcileResult.previousStatus !== "FULLY_APPROVED";
+
+  if (fullyApprovedTransition) {
+    try {
+      const completedAt = new Date();
+      const approverRows = await prisma.recordParticipant.findMany({
+        where: {
+          tenantId: ctx.tenantId,
+          recordId: ctx.recordId,
+          participantRole: RecordParticipantRole.APPROVER,
+          revokedAt: null,
+        },
+        select: { id: true, userId: true, status: true },
+      });
+      await enqueueWebhookEvent({
+        tenantId: ctx.tenantId,
+        eventName: "record.approval.completed",
+        recordId: ctx.recordId,
+        occurredAt: completedAt,
+        data: buildRecordApprovalCompletedData({
+          recordId: ctx.recordId,
+          completedAt,
+          approvers: approverRows
+            .filter((r): r is typeof r & { userId: string } => r.userId != null)
+            .map((r) => ({
+              participantId: r.id,
+              userId: r.userId,
+              status: String(r.status),
+            })),
+        }),
+      });
+    } catch (webhookErr) {
+      console.error("[approval-completion-hook] webhook enqueue defensive catch", {
+        recordId: ctx.recordId,
+        tenantId: ctx.tenantId,
+        error: webhookErr instanceof Error ? webhookErr.message : String(webhookErr),
+      });
+    }
+  }
+
   const shouldRun =
     reconcileResult.changed === true &&
     reconcileResult.newStatus === "FULLY_APPROVED" &&
@@ -45,8 +91,6 @@ export async function maybeAssignFinanceAfterApprovalReconcile(
       engineOutcome: null,
     };
   }
-
-  void prisma;
 
   try {
     const out = await evaluateAndAssign({

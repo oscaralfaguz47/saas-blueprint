@@ -20,6 +20,8 @@ import {
   APPROVAL_ROUTING_TRIGGER_EVENTS,
   evaluateAndAssign,
 } from "@/server/services/approval-routing-engine";
+import { buildRecordCreatedData } from "@/server/webhooks/event-builders";
+import { enqueueWebhookEvent } from "@/server/webhooks/enqueue";
 
 const RECORD_TYPES_FOR_FILTER = [
   "SCOPE_CHANGE",
@@ -544,6 +546,30 @@ export const POST = withErrorHandler(async (req: Request) => {
 
     return updatedRecord;
   });
+
+  try {
+    await enqueueWebhookEvent({
+      tenantId,
+      eventName: "record.created",
+      recordId: created.id,
+      occurredAt: created.createdAt,
+      data: buildRecordCreatedData({
+        id: created.id,
+        title: created.title,
+        type: created.type,
+        status: created.status,
+        createdAt: created.createdAt,
+        createdByUserId: session.user.id,
+        recordKey: created.recordKey,
+      }),
+    });
+  } catch (webhookErr) {
+    console.error("[records] webhook enqueue defensive catch", {
+      recordId: created.id,
+      tenantId,
+      error: webhookErr instanceof Error ? webhookErr.message : String(webhookErr),
+    });
+  }
 
   // 9. Increment usage counter only for OPEN creates (after successful transaction)
   if (initialStatus === "OPEN") {

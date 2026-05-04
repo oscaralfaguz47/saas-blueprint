@@ -15,6 +15,8 @@ import {
 } from "@prisma/client";
 import type { Record } from "@prisma/client";
 import { prisma } from "@/server/db";
+import { enqueueWebhookEvent } from "@/server/webhooks/enqueue";
+import { buildRecordFinanceAssignedData } from "@/server/webhooks/event-builders";
 import { resolveTenantPlan } from "@/server/billing/resolve-tenant-plan";
 import { FEATURE_FLAG_CODES, isFeatureEnabled } from "@/server/security/feature-flags";
 import { createNotification } from "@/server/services/notifications";
@@ -458,6 +460,8 @@ export async function evaluateAndAssign(
       throw new Error("Cannot assign finance record: missing actor for audit log");
     }
 
+    const assignmentOccurredAt = new Date();
+
     const evalRow = await prisma.$transaction(async (tx) => {
       // TODO(F-phase): adopt recomputeFinanceStatus for handler/engine parity
       await tx.record.update({
@@ -465,7 +469,7 @@ export async function evaluateAndAssign(
         data: {
           financeAssignedMembershipId: winner.membershipId,
           financeStatus: FinanceStatus.ASSIGNED,
-          financeAssignedAt: new Date(),
+          financeAssignedAt: assignmentOccurredAt,
           financeAssignedByRuleId: matchedRule!.id,
         },
       });
@@ -542,10 +546,33 @@ export async function evaluateAndAssign(
         });
       }
 
-      // TODO C7-WEBHOOK-001: enqueue webhook `record.finance.assigned` (doc 05) after successful assignment.
-
       return evaluation;
     });
+
+    try {
+      await enqueueWebhookEvent({
+        tenantId: input.tenantId,
+        eventName: "record.finance.assigned",
+        recordId: input.recordId,
+        occurredAt: assignmentOccurredAt,
+        data: buildRecordFinanceAssignedData({
+          recordId: input.recordId,
+          assignedToUserId: winner.membership.userId,
+          membershipId: winner.membershipId,
+          ruleId: matchedRule.id,
+          ruleName: matchedRule.name,
+          evaluationId: evalRow.id,
+          assignedAt: assignmentOccurredAt,
+          strategy: matchedRule.strategy,
+        }),
+      });
+    } catch (webhookErr) {
+      console.error("[finance-assignment-engine] webhook enqueue defensive catch", {
+        recordId: input.recordId,
+        tenantId: input.tenantId,
+        error: webhookErr instanceof Error ? webhookErr.message : String(webhookErr),
+      });
+    }
 
     return {
       outcome: EvaluationOutcome.ASSIGNED,

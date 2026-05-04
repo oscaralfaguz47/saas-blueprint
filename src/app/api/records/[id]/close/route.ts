@@ -8,6 +8,8 @@ import { getDefaultTenantForUser } from "@/server/services/tenancy";
 import { hasTenantPermission } from "@/server/security/tenant-authorization";
 import { canAccessRequest } from "@/server/security/request-authorization";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
+import { buildRecordClosedData } from "@/server/webhooks/event-builders";
+import { enqueueWebhookEvent } from "@/server/webhooks/enqueue";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().cuid() });
@@ -172,6 +174,26 @@ export const POST = withErrorHandler(async (
 
   if (!updated) {
     return apiSuccess({ id: recordId, status: "CLOSED", alreadyClosed: true });
+  }
+
+  try {
+    await enqueueWebhookEvent({
+      tenantId,
+      eventName: "record.closed",
+      recordId,
+      occurredAt: closedAt,
+      data: buildRecordClosedData({
+        recordId,
+        closedAt,
+        closedByUserId: session.user.id,
+      }),
+    });
+  } catch (webhookErr) {
+    console.error("[records/close] webhook enqueue defensive catch", {
+      recordId,
+      tenantId,
+      error: webhookErr instanceof Error ? webhookErr.message : String(webhookErr),
+    });
   }
 
   return apiSuccess({ id: recordId, status: "CLOSED", closedAt });

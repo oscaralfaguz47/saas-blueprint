@@ -10,6 +10,8 @@ import { canAccessRequest } from "@/server/security/request-authorization";
 import { checkMeterLimit, tryConsumeMeter } from "@/server/billing/try-consume-meter";
 import { ApiErrors, apiSuccess, withErrorHandler } from "@/lib/api-response";
 import { createRecordSchema, readJsonBody, rejectLegacyRecordFinanceKeys } from "@/lib/validations";
+import { buildRecordCreatedData } from "@/server/webhooks/event-builders";
+import { enqueueWebhookEvent } from "@/server/webhooks/enqueue";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().cuid() });
@@ -124,6 +126,26 @@ export const POST = withErrorHandler(async (
       select: { id: true, title: true, type: true, status: true, createdAt: true },
     });
 
+    const seqCount = await tx.record.count({
+      where: { tenantId },
+    });
+    const year = new Date().getFullYear();
+    const seq = String(seqCount).padStart(6, "0");
+    const recordKey = `REQ-${year}-${seq}`;
+
+    const updatedRecord = await tx.record.update({
+      where: { id: record.id },
+      data: { recordKey },
+      select: {
+        id: true,
+        title: true,
+        type: true,
+        status: true,
+        createdAt: true,
+        recordKey: true,
+      },
+    });
+
     const l = await tx.recordLink.create({
       data: {
         tenantId,
@@ -184,7 +206,7 @@ export const POST = withErrorHandler(async (
       },
     });
 
-    return { newRecord: record, link: l };
+    return { newRecord: updatedRecord, link: l };
   });
 
   await tryConsumeMeter({
@@ -196,6 +218,30 @@ export const POST = withErrorHandler(async (
     sourceId: newRecord.id,
     actorUserId: session.user.id,
   });
+
+  try {
+    await enqueueWebhookEvent({
+      tenantId,
+      eventName: "record.created",
+      recordId: newRecord.id,
+      occurredAt: newRecord.createdAt,
+      data: buildRecordCreatedData({
+        id: newRecord.id,
+        title: newRecord.title,
+        type: newRecord.type,
+        status: newRecord.status,
+        createdAt: newRecord.createdAt,
+        createdByUserId: session.user.id,
+        recordKey: newRecord.recordKey ?? null,
+      }),
+    });
+  } catch (webhookErr) {
+    console.error("[records/link-and-create] webhook enqueue defensive catch", {
+      recordId: newRecord.id,
+      tenantId,
+      error: webhookErr instanceof Error ? webhookErr.message : String(webhookErr),
+    });
+  }
 
   return apiSuccess({ record: newRecord, linkId: link.id }, 201);
 });

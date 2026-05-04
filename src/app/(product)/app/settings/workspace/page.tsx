@@ -115,6 +115,7 @@ export default async function WorkspaceSettingsPage() {
           currentUserId={session.user.id}
           currentUserRole={currentUserRole}
           planApprovalRouting={plan.features.approvalRouting}
+          planWebhooksEnabled={plan.features.webhooks}
         />
       </Suspense>
     </div>

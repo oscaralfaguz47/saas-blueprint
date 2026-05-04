@@ -18,6 +18,8 @@ type DialogProps = {
   description?: string;
   /** When true, Escape, overlay click, and X do not close the dialog */
   closeDisabled?: boolean;
+  /** When true, the header close (X) control is not rendered (e.g. forced-acknowledge flows). */
+  hideCloseButton?: boolean;
   /** When false, clicking overlay does not close (e.g. confirm step). Default true. */
   allowOverlayClose?: boolean;
   /** Optional class for the content box (e.g. max-w-5xl for wide modals) */
@@ -33,6 +35,7 @@ export function Dialog({
   headerExtra,
   description,
   closeDisabled,
+  hideCloseButton = false,
   allowOverlayClose = true,
   contentClassName,
   footer,
@@ -127,15 +130,17 @@ export function Dialog({
               </p>
             ) : null}
           </div>
-          <button
-            type="button"
-            onClick={canCloseByEscOrX ? onClose : undefined}
-            disabled={!canCloseByEscOrX}
-            className="shrink-0 cursor-pointer touch-manipulation rounded-lg p-2 text-(--text-muted) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--text-primary) disabled:pointer-events-none disabled:opacity-50 sm:p-1.5"
-            aria-label="Close"
-          >
-            <IconX size={18} />
-          </button>
+          {hideCloseButton ? null : (
+            <button
+              type="button"
+              onClick={canCloseByEscOrX ? onClose : undefined}
+              disabled={!canCloseByEscOrX}
+              className="shrink-0 cursor-pointer touch-manipulation rounded-lg p-2 text-(--text-muted) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--text-primary) disabled:pointer-events-none disabled:opacity-50 sm:p-1.5"
+              aria-label="Close"
+            >
+              <IconX size={18} />
+            </button>
+          )}
         </div>
 
         {/* Optional step indicator or extra header chrome */}

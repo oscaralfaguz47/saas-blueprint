@@ -10,6 +10,8 @@ import {
 } from "@prisma/client";
 import type { FinanceAssignmentRuleCondition } from "@prisma/client";
 import { prisma } from "@/server/db";
+import { buildRecordApprovalRequestedData } from "@/server/webhooks/event-builders";
+import { enqueueWebhookEvent } from "@/server/webhooks/enqueue";
 import { resolveTenantPlan } from "@/server/billing/resolve-tenant-plan";
 import { evaluateApprovalRoutingPlanGate } from "@/lib/validations/approval-routing-rule";
 import { evaluateCondition } from "@/server/services/finance-assignment-engine/evaluate-condition";
@@ -469,6 +471,33 @@ export async function evaluateAndAssign(
           error: notifyErr instanceof Error ? notifyErr.message : String(notifyErr),
         });
       }
+    }
+
+    const requestedAt = new Date();
+    try {
+      await enqueueWebhookEvent({
+        tenantId: input.tenantId,
+        eventName: "record.approval.requested",
+        recordId: input.recordId,
+        occurredAt: requestedAt,
+        data: buildRecordApprovalRequestedData({
+          recordId: input.recordId,
+          ruleId: matchedRule.id,
+          evaluationId: evalRow.id,
+          requestedAt,
+          approvers: kept.map((k) => ({
+            userId: k.userId,
+            sequenceOrder: k.sequenceOrder,
+            routingApproverId: k.routingApproverId,
+          })),
+        }),
+      });
+    } catch (webhookErr) {
+      console.error("[approval-routing-engine] webhook enqueue defensive catch", {
+        recordId: input.recordId,
+        tenantId: input.tenantId,
+        error: webhookErr instanceof Error ? webhookErr.message : String(webhookErr),
+      });
     }
 
     return {

@@ -12,6 +12,7 @@ import {
   ApprovalRoutingRulesSection,
   type ApprovalRoutingPlanSnapshot,
 } from "./approval-routing-rules-section";
+import { WebhooksSection } from "./webhooks/webhooks-section";
 
 export type WorkspaceSettingsTab =
   | "general"
@@ -19,7 +20,8 @@ export type WorkspaceSettingsTab =
   | "invites"
   | "billing"
   | "financial-config"
-  | "approval-routing";
+  | "approval-routing"
+  | "webhooks";
 
 type Tenant = {
   id: string;
@@ -39,6 +41,7 @@ type Props = {
   currentUserId: string;
   currentUserRole: string;
   planApprovalRouting: ApprovalRoutingPlanSnapshot;
+  planWebhooksEnabled: boolean;
 };
 
 const ALL_TABS: { id: WorkspaceSettingsTab; label: string; permission: string }[] = [
@@ -56,6 +59,7 @@ const ALL_TABS: { id: WorkspaceSettingsTab; label: string; permission: string }[
     label: "Approval routing",
     permission: "tenant.approval_routing.manage",
   },
+  { id: "webhooks", label: "Webhooks", permission: "tenant.webhooks.manage" },
 ];
 
 export function WorkspaceSettingsTabs({
@@ -64,6 +68,7 @@ export function WorkspaceSettingsTabs({
   currentUserId,
   currentUserRole,
   planApprovalRouting,
+  planWebhooksEnabled,
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -143,6 +148,11 @@ export function WorkspaceSettingsTabs({
               canManage={permSet.has("tenant.approval_routing.manage")}
               planApprovalRouting={planApprovalRouting}
             />
+          ) : null}
+        </TabsContent>
+        <TabsContent value="webhooks">
+          {permSet.has("tenant.webhooks.manage") ? (
+            <WebhooksSection planWebhooksEnabled={planWebhooksEnabled} />
           ) : null}
         </TabsContent>
       </Tabs>
