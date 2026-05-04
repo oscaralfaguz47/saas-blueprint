@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { Prisma } from "@prisma/client";
-import { WebhookEndpointStatus } from "@prisma/client";
+import { WebhookDeliveryStatus, WebhookEndpointStatus } from "@prisma/client";
 import { ApiErrors } from "@/lib/api-response";
 import { evaluateWebhooksPlanGate } from "@/lib/validations/webhook-plan-gate";
 import { prisma } from "@/server/db";
@@ -94,6 +94,63 @@ const endpointPublicSelect = {
 } as const;
 
 export { endpointPublicSelect };
+
+/** Public projection for delivery history — never includes `payload` (size + sensitivity). */
+export const deliveryPublicSelect = {
+  id: true,
+  eventName: true,
+  eventId: true,
+  payloadVersion: true,
+  status: true,
+  attemptCount: true,
+  maxAttempts: true,
+  nextAttemptAt: true,
+  lastResponseStatus: true,
+  lastResponseDurationMs: true,
+  lastResponseBodyExcerpt: true,
+  lastErrorMessage: true,
+  createdAt: true,
+  succeededAt: true,
+  finalFailedAt: true,
+} as const;
+
+export function mapPublicWebhookDelivery(r: {
+  id: string;
+  eventName: string;
+  eventId: string;
+  payloadVersion: string;
+  status: WebhookDeliveryStatus;
+  attemptCount: number;
+  maxAttempts: number;
+  nextAttemptAt: Date | null;
+  lastResponseStatus: number | null;
+  lastResponseDurationMs: number | null;
+  lastResponseBodyExcerpt: string | null;
+  lastErrorMessage: string | null;
+  createdAt: Date;
+  succeededAt: Date | null;
+  finalFailedAt: Date | null;
+}) {
+  return {
+    id: r.id,
+    eventName: r.eventName,
+    eventId: r.eventId,
+    payloadVersion: r.payloadVersion,
+    status: r.status,
+    attemptCount: r.attemptCount,
+    maxAttempts: r.maxAttempts,
+    nextAttemptAt: r.nextAttemptAt,
+    lastResponseStatus: r.lastResponseStatus,
+    lastResponseDurationMs: r.lastResponseDurationMs,
+    lastResponseBodyExcerpt: r.lastResponseBodyExcerpt,
+    lastErrorMessage: r.lastErrorMessage,
+    createdAt: r.createdAt,
+    succeededAt: r.succeededAt,
+    finalFailedAt: r.finalFailedAt,
+  };
+}
+
+export type WebhookDeliveryPublic = ReturnType<typeof mapPublicWebhookDelivery>;
 
 export async function requireTenantWebhookManager(sessionUserId: string): Promise<
   | { error: NextResponse; tenant: null }

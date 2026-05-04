@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { WebhookEndpointStatus } from "@prisma/client";
+import { WebhookDeliveryStatus, WebhookEndpointStatus } from "@prisma/client";
 import { webhookEventNameSchema } from "@/lib/webhooks/event-catalog";
 
 const nameField = z.string().trim().min(1).max(120);
@@ -41,6 +41,16 @@ export const webhookEndpointListQuerySchema = z.object({
   sortDir: z.enum(["asc", "desc"]).default("desc"),
 });
 
+/** GET /api/tenant/webhook-endpoints/[endpointId]/deliveries */
+export const webhookEndpointDeliveriesListQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(50).default(20),
+  cursor: z.string().optional(),
+  status: z.nativeEnum(WebhookDeliveryStatus).optional(),
+});
+
 export type WebhookEndpointCreateInput = z.infer<typeof webhookEndpointCreateSchema>;
 export type WebhookEndpointPatchInput = z.infer<typeof webhookEndpointPatchSchema>;
 export type WebhookEndpointListQuery = z.infer<typeof webhookEndpointListQuerySchema>;
+export type WebhookEndpointDeliveriesListQuery = z.infer<
+  typeof webhookEndpointDeliveriesListQuerySchema
+>;

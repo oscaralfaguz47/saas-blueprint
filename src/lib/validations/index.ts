@@ -111,11 +111,13 @@ export {
   webhookEndpointCreateSchema,
   webhookEndpointPatchSchema,
   webhookEndpointListQuerySchema,
+  webhookEndpointDeliveriesListQuerySchema,
 } from "./webhook-endpoint";
 export type {
   WebhookEndpointCreateInput,
   WebhookEndpointPatchInput,
   WebhookEndpointListQuery,
+  WebhookEndpointDeliveriesListQuery,
 } from "./webhook-endpoint";
 
 export {

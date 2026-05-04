@@ -17,6 +17,7 @@ import { EditEndpointModal } from "./edit-endpoint-modal";
 import { DeleteEndpointModal } from "./delete-endpoint-modal";
 import { RotateSecretModal } from "./rotate-secret-modal";
 import { SecretDisplayDialog } from "./secret-display-dialog";
+import { DeliveriesModal } from "./deliveries-modal";
 
 type WebhookListItem = {
   id: string;
@@ -71,6 +72,9 @@ export function WebhooksSection({ planWebhooksEnabled }: Props) {
   const [deleteTarget, setDeleteTarget] = useState<WebhookListItem | null>(null);
   const [rotateTarget, setRotateTarget] = useState<WebhookListItem | null>(null);
   const [secretToShow, setSecretToShow] = useState<string | null>(null);
+  const [deliveriesEndpoint, setDeliveriesEndpoint] = useState<{ id: string; name: string } | null>(
+    null,
+  );
 
   const fetchList = useCallback(async () => {
     setLoadError(null);
@@ -248,6 +252,9 @@ export function WebhooksSection({ planWebhooksEnabled }: Props) {
                     Reactivate
                   </Button>
                 ) : null}
+                <Button type="button" variant="secondary" size="sm" onClick={() => setDeliveriesEndpoint({ id: ep.id, name: ep.name })}>
+                  View deliveries
+                </Button>
                 <Button type="button" variant="secondary" size="sm" onClick={() => setEditTarget(ep)}>
                   Edit
                 </Button>
@@ -313,6 +320,12 @@ export function WebhooksSection({ planWebhooksEnabled }: Props) {
           setSecretToShow(null);
           void fetchList();
         }}
+      />
+
+      <DeliveriesModal
+        open={deliveriesEndpoint !== null}
+        endpoint={deliveriesEndpoint}
+        onClose={() => setDeliveriesEndpoint(null)}
       />
     </div>
   );
