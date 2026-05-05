@@ -23,7 +23,7 @@ import { recomputeApprovalStatus } from "@/server/services/record-approval-statu
 import { NextResponse } from "next/server";
 
 const paramsSchema = z.object({
-  recordId: z.string().cuid(),
+  id: z.string().cuid(),
 });
 
 const bodySchema = z
@@ -40,12 +40,12 @@ export type ApprovalRoutingReevaluateResponseData = {
 };
 
 /**
- * POST /api/records/[recordId]/routing/evaluate
+ * POST /api/records/[id]/routing/evaluate
  * C14 — Admin manual approval routing re-evaluation (clear routing-owned pendings, then engine).
  */
 export const POST = withErrorHandler(async (
   req: Request,
-  context: { params: Promise<{ recordId: string }> }
+  context: { params: Promise<{ id: string }> }
 ) => {
   const session = await getServerSession(authOptions);
   const mfaError = await requireFullSession(session);
@@ -74,7 +74,7 @@ export const POST = withErrorHandler(async (
   if (!paramsParse.success) {
     return ApiErrors.VALIDATION_ERROR("Invalid record id");
   }
-  const { recordId } = paramsParse.data;
+  const { id: recordId } = paramsParse.data;
 
   let body: z.infer<typeof bodySchema>;
   try {

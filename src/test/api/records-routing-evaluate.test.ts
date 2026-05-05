@@ -66,7 +66,7 @@ vi.mock("@/server/services/record-approval-status", () => ({
   recomputeApprovalStatus: mocks.recomputeApprovalStatus,
 }));
 
-import { POST } from "@/app/api/records/[recordId]/routing/evaluate/route";
+import { POST } from "@/app/api/records/[id]/routing/evaluate/route";
 
 const TENANT_ID = "cltenant000000000001";
 const USER_ID = "clactor0000000000001";
@@ -91,7 +91,7 @@ function setupAuthed() {
 }
 
 function ctx() {
-  return { params: Promise.resolve({ recordId: RECORD_ID }) };
+  return { params: Promise.resolve({ id: RECORD_ID }) };
 }
 
 beforeEach(() => {
@@ -126,7 +126,7 @@ beforeEach(() => {
   });
 });
 
-describe("POST /api/records/[recordId]/routing/evaluate", () => {
+describe("POST /api/records/[id]/routing/evaluate", () => {
   it("returns 401 when unauthenticated", async () => {
     mocks.getServerSession.mockResolvedValue(null);
     const res = await POST(
