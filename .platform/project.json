@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "saas-blueprint",
+  "name": "SaaS Blueprint",
+  "description": "Multi-tenant SaaS boilerplate (Next.js 16 App Router, TypeScript, Prisma/PostgreSQL, NextAuth.js) implementing a request/approval workflow product with billing (Paddle), R2-backed file evidence, an AI-searchable knowledge base, and a support/help center.",
+  "domain": "software-engineering",
+  "repository": {
+    "type": "git",
+    "expectedRemote": "https://github.com/oscaralfaguz47/saas-blueprint.git",
+    "defaultBranch": "main",
+    "requireCleanWorkingTree": true
+  },
+  "agents": {
+    "allowed": [
+      "software-engineering.code-reviewer",
+      "software-engineering.software-architect",
+      "software-engineering.implementer"
+    ],
+    "defaultAgent": "software-engineering.implementer"
+  },
+  "knowledge": {
+    "projectId": "saas-blueprint",
+    "allowedScopes": ["global", "domain:software-engineering", "project:active"]
+  },
+  "tools": { "allowedCapabilities": ["filesystem.read", "git.read"] },
+  "writePolicy": {
+    "allowedPaths": [],
+    "allowCreate": false,
+    "allowModify": false,
+    "allowGitStage": false,
+    "allowGitCommit": false
+  },
+  "runtime": { "preferredAdapter": "opencode", "headlessAllowed": true },
+  "secrets": []
+}
