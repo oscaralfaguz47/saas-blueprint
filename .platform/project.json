@@ -22,7 +22,16 @@
     "projectId": "saas-blueprint",
     "allowedScopes": ["global", "domain:software-engineering", "project:active"]
   },
-  "tools": { "allowedCapabilities": ["filesystem.read", "git.read"] },
+  "tools": {
+    "allowedCapabilities": [
+      "filesystem.read",
+      "git.read",
+      "validation.test",
+      "validation.typecheck",
+      "validation.lint",
+      "validation.format-check"
+    ]
+  },
   "writePolicy": {
     "allowedPaths": [],
     "allowCreate": false,
@@ -31,5 +40,37 @@
     "allowGitCommit": false
   },
   "runtime": { "preferredAdapter": "opencode", "headlessAllowed": true },
+  "validation": {
+    "commands": {
+      "test": {
+        "capability": "validation.test",
+        "executable": "pnpm",
+        "args": ["test"],
+        "timeoutMs": 120000,
+        "networkRequired": false
+      },
+      "typecheck": {
+        "capability": "validation.typecheck",
+        "executable": "pnpm",
+        "args": ["tsc", "--noEmit"],
+        "timeoutMs": 120000,
+        "networkRequired": false
+      },
+      "lint": {
+        "capability": "validation.lint",
+        "executable": "pnpm",
+        "args": ["lint"],
+        "timeoutMs": 60000,
+        "networkRequired": false
+      },
+      "format-check": {
+        "capability": "validation.format-check",
+        "executable": "pnpm",
+        "args": ["format:check"],
+        "timeoutMs": 60000,
+        "networkRequired": false
+      }
+    }
+  },
   "secrets": []
 }
