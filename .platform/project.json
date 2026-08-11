@@ -25,6 +25,7 @@
   "tools": {
     "allowedCapabilities": [
       "filesystem.read",
+      "filesystem.write",
       "git.read",
       "validation.test",
       "validation.typecheck",
@@ -33,8 +34,8 @@
     ]
   },
   "writePolicy": {
-    "allowedPaths": [],
-    "allowCreate": false,
+    "allowedPaths": ["src/test/lib/slug.test.ts"],
+    "allowCreate": true,
     "allowModify": false,
     "allowGitStage": false,
     "allowGitCommit": false
